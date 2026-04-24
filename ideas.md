@@ -1,0 +1,9 @@
+- config file
+- health / stats apis and pages
+- file streaming
+- mutating queries
+- remote sparql endpoints
+- incremental rebuild of store in watch mode
+- standalone comile binary (with bun)
+- terminal table in cli mode
+- other output formats
