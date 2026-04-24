@@ -10,6 +10,18 @@
   "volta": {
     "node": "24.15.0"
   },
+  "scripts": {
+    "dev": "nx run-many -t serve -p cli web --parallel=2",
+    "dev:cli": "nx serve cli",
+    "dev:web": "nx serve web",
+    "build": "nx run-many -t build",
+    "build:cli": "nx build cli",
+    "build:web": "nx build web",
+    "test": "nx run-many -t test",
+    "lint": "nx run-many -t lint",
+    "check": "nx run-many -t build lint test",
+    "sparqly": "nx build cli && node dist/apps/cli/main.js"
+  },
   "devDependencies": {
     "@angular-devkit/core": "~21.2.0",
     "@angular-devkit/schematics": "~21.2.0",
