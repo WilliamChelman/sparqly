@@ -1,0 +1,10 @@
+{
+  "name": "sparqly",
+  "version": "0.0.0",
+  "description": "RDF CLI with SPARQL query and embedded YASGUI playground",
+  "license": "MIT",
+  "bin": {
+    "sparqly": "./main.js"
+  },
+  "main": "./main.js"
+}

@@ -1,0 +1,52 @@
+# compiled output
+dist
+tmp
+out-tsc
+
+# dependencies
+node_modules
+
+# Nx cache
+.nx/cache
+.nx/workspace-data
+
+# environment
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE / editor
+.idea
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.DS_Store
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# test / coverage
+coverage
+*.lcov
+.nyc_output
+
+# build outputs
+*.tsbuildinfo
+
+.angular
+
+__screenshots__/
+
+vitest.config.*.timestamp*
