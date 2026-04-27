@@ -201,9 +201,28 @@ importers:
 
   libs/core:
     dependencies:
+      '@comunica/query-sparql':
+        specifier: ^5.2.1
+        version: 5.2.1
+      n3:
+        specifier: ^2.0.3
+        version: 2.0.3
+      rdf-parse:
+        specifier: ^5.0.0
+        version: 5.0.0
+      sparqljs:
+        specifier: ^3.7.4
+        version: 3.7.4
+      tinyglobby:
+        specifier: ^0.2.16
+        version: 0.2.16
       tslib:
         specifier: ^2.3.0
         version: 2.8.1
+    devDependencies:
+      '@types/sparqljs':
+        specifier: ^3.1.12
+        version: 3.1.12
 
   libs/domain:
     dependencies:
@@ -10714,7 +10733,6 @@ packages:
     resolution: {integrity: sha512-zg/sdKKtYI0845wKPSuSgunyU1o/+7tRzMw85lHsf4p/0UbA6+65MXAyEtv1nkaqSqrq/bXm7+bqXas+Xo5dpQ==}
     dependencies:
       '@rdfjs/types': 2.0.1
-    dev: false
 
   /@types/stack-utils@2.0.3:
     resolution: {integrity: sha512-9aEbYZ3TbYMznPdcdr3SmIrLXwC/AKZXQeCf9Pgao5CKb8CyHuEX5jzWPTkvregvhRJHcpRO6BFoGW9ycaOkYw==}

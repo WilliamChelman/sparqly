@@ -133,4 +133,58 @@ describe('QueryEngine.execute', () => {
       engine.execute('DESCRIBE <http://example.org/a>', { format: 'json' }),
     ).rejects.toThrow(/json|incompatible/i);
   });
+
+  describe('immutability guard', () => {
+    const mutatingQueries: ReadonlyArray<{ verb: string; query: string }> = [
+      {
+        verb: 'INSERT DATA',
+        query:
+          'INSERT DATA { <http://example.org/x> <http://example.org/p> <http://example.org/y> }',
+      },
+      {
+        verb: 'DELETE DATA',
+        query:
+          'DELETE DATA { <http://example.org/a> <http://example.org/p> <http://example.org/b> }',
+      },
+      {
+        verb: 'INSERT WHERE',
+        query:
+          'INSERT { ?s <http://example.org/q> ?o } WHERE { ?s <http://example.org/p> ?o }',
+      },
+      {
+        verb: 'DELETE WHERE',
+        query:
+          'DELETE { ?s <http://example.org/p> ?o } WHERE { ?s <http://example.org/p> ?o }',
+      },
+      {
+        verb: 'LOAD',
+        query: 'LOAD <http://example.org/data.ttl>',
+      },
+    ];
+
+    for (const { verb, query } of mutatingQueries) {
+      it(`rejects ${verb} by default with a message referencing the opt-in flags`, async () => {
+        const engine = new QueryEngine(exampleStore());
+        await expect(engine.execute(query)).rejects.toThrow(
+          /Mutating queries.*--mutable.*--immutable=false/,
+        );
+      });
+
+      it(`bypasses the guard for ${verb} when mutable=true (execution-not-implemented error)`, async () => {
+        const engine = new QueryEngine(exampleStore());
+        await expect(
+          engine.execute(query, { mutable: true }),
+        ).rejects.toThrow(/not yet implemented/i);
+      });
+    }
+
+    it('SELECT is unaffected by mutable=true', async () => {
+      const engine = new QueryEngine(exampleStore());
+      const result = await engine.execute(
+        'SELECT ?s WHERE { ?s ?p ?o }',
+        { mutable: true },
+      );
+      expect(result.format).toBe('json');
+    });
+  });
 });

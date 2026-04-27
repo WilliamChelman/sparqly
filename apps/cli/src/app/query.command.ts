@@ -113,7 +113,8 @@ export class QueryCommand extends CommandRunner {
 
       const queryStart = Date.now();
       const engine = new QueryEngine(store);
-      const result = await engine.execute(query, { format });
+      const mutable = options.mutable === true || options.immutable === false;
+      const result = await engine.execute(query, { format, mutable });
       logger.log(`Query executed in ${Date.now() - queryStart}ms`);
 
       process.stdout.write(result.body);
@@ -178,7 +179,8 @@ export class QueryCommand extends CommandRunner {
 
   @Option({
     flags: '--mutable',
-    description: 'Allow mutating queries (UPDATE/INSERT/DELETE/LOAD)',
+    description:
+      'Allow mutating queries (UPDATE/INSERT/DELETE/LOAD). Alias for --immutable=false. Default: mutating queries are rejected.',
   })
   parseMutable(): boolean {
     return true;
@@ -186,7 +188,8 @@ export class QueryCommand extends CommandRunner {
 
   @Option({
     flags: '--immutable [value]',
-    description: 'Disallow mutating queries (default: true)',
+    description:
+      'Reject mutating queries (default: true). Pass --immutable=false to opt in; equivalent to --mutable.',
   })
   parseImmutable(value: string): boolean {
     return value !== 'false';

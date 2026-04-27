@@ -9,7 +9,31 @@ describe('assertImmutable', () => {
     expect(() => assertImmutable('DESCRIBE')).not.toThrow();
   });
 
-  it('rejects UPDATE', () => {
-    expect(() => assertImmutable('UPDATE')).toThrow(/Mutating queries/);
+  it('rejects UPDATE by default with a message naming the opt-in flags', () => {
+    expect(() => assertImmutable('UPDATE')).toThrow(
+      /Mutating queries.*--mutable.*--immutable=false/,
+    );
+  });
+
+  it('rejects UPDATE when mutable is explicitly false', () => {
+    expect(() => assertImmutable('UPDATE', { mutable: false })).toThrow(
+      /Mutating queries/,
+    );
+  });
+
+  it('does not throw the guard error when mutable is true (execution-not-implemented is acceptable)', () => {
+    expect(() => assertImmutable('UPDATE', { mutable: true })).toThrow(
+      /not yet implemented/i,
+    );
+    expect(() => assertImmutable('UPDATE', { mutable: true })).not.toThrow(
+      /Mutating queries are disabled/,
+    );
+  });
+
+  it('still allows read queries when mutable is true', () => {
+    expect(() => assertImmutable('SELECT', { mutable: true })).not.toThrow();
+    expect(() => assertImmutable('ASK', { mutable: true })).not.toThrow();
+    expect(() => assertImmutable('CONSTRUCT', { mutable: true })).not.toThrow();
+    expect(() => assertImmutable('DESCRIBE', { mutable: true })).not.toThrow();
   });
 });

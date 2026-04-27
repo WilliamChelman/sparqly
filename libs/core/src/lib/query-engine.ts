@@ -1,5 +1,6 @@
 import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import type { Store } from 'n3';
+import { assertImmutable, detectQueryType } from './immutability';
 
 export type SparqlFormat = 'json' | 'turtle';
 
@@ -12,6 +13,7 @@ const SUPPORTED_FORMATS: ReadonlyArray<SparqlFormat> = ['json', 'turtle'];
 
 export interface ExecuteOptions {
   format?: SparqlFormat;
+  mutable?: boolean;
 }
 
 export interface ExecuteResult {
@@ -30,14 +32,11 @@ export class QueryEngine {
   constructor(private readonly store: Store) {}
 
   async execute(query: string, options: ExecuteOptions = {}): Promise<ExecuteResult> {
+    const queryType = detectQueryType(query);
+    assertImmutable(queryType, { mutable: options.mutable });
+
     const result = await this.engine.query(query, { sources: [this.store] });
     const resultType = result.resultType;
-
-    if (resultType === 'void') {
-      throw new Error(
-        'Mutating queries are disabled. Pass --mutable or --immutable=false to allow.',
-      );
-    }
 
     const defaultFormat: SparqlFormat = resultType === 'quads' ? 'turtle' : 'json';
     const format = options.format ?? defaultFormat;

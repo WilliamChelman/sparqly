@@ -415,6 +415,113 @@ describe('QueryCommand.run', () => {
     expect(stderrText()).toMatch(/unknown.*--graph-strategy/i);
   });
 
+  describe('immutability guard', () => {
+    const updateQuery =
+      'INSERT DATA { <http://example.org/x> <http://example.org/p> <http://example.org/y> }';
+
+    it('rejects an UPDATE query by default with a non-zero exit and message naming the opt-in flags', async () => {
+      await writeFile(
+        join(dir, 'data.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+
+      const cmd = new QueryCommand();
+      await cmd.run([join(dir, '*.ttl')], {
+        query: updateQuery,
+        quiet: true,
+      });
+
+      expect(process.exitCode).toBe(1);
+      expect(stderrText()).toMatch(
+        /Mutating queries.*--mutable.*--immutable=false/,
+      );
+    });
+
+    for (const verb of ['INSERT DATA', 'DELETE DATA', 'LOAD']) {
+      const queryByVerb: Record<string, string> = {
+        'INSERT DATA':
+          'INSERT DATA { <http://example.org/x> <http://example.org/p> <http://example.org/y> }',
+        'DELETE DATA':
+          'DELETE DATA { <http://example.org/a> <http://example.org/p> <http://example.org/b> }',
+        LOAD: 'LOAD <http://example.org/data.ttl>',
+      };
+
+      it(`rejects ${verb} by default`, async () => {
+        await writeFile(
+          join(dir, 'data.ttl'),
+          '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+        );
+
+        const cmd = new QueryCommand();
+        await cmd.run([join(dir, '*.ttl')], {
+          query: queryByVerb[verb],
+          quiet: true,
+        });
+
+        expect(process.exitCode).toBe(1);
+        expect(stderrText()).toMatch(/Mutating queries are disabled/);
+      });
+    }
+
+    it('lets the query reach execution when --mutable is passed (distinct not-implemented error)', async () => {
+      await writeFile(
+        join(dir, 'data.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+
+      const cmd = new QueryCommand();
+      await cmd.run([join(dir, '*.ttl')], {
+        query: updateQuery,
+        mutable: true,
+        quiet: true,
+      });
+
+      expect(process.exitCode).toBe(1);
+      expect(stderrText()).toMatch(/not yet implemented/i);
+      expect(stderrText()).not.toMatch(/Mutating queries are disabled/);
+    });
+
+    it('lets the query reach execution when --immutable=false is passed', async () => {
+      await writeFile(
+        join(dir, 'data.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+
+      const cmd = new QueryCommand();
+      await cmd.run([join(dir, '*.ttl')], {
+        query: updateQuery,
+        immutable: false,
+        quiet: true,
+      });
+
+      expect(process.exitCode).toBe(1);
+      expect(stderrText()).toMatch(/not yet implemented/i);
+      expect(stderrText()).not.toMatch(/Mutating queries are disabled/);
+    });
+
+    it('SELECT/ASK/CONSTRUCT/DESCRIBE always pass the guard regardless of the flag', async () => {
+      await writeFile(
+        join(dir, 'data.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+
+      for (const query of [
+        'SELECT ?s WHERE { ?s ?p ?o }',
+        'ASK WHERE { ?s ?p ?o }',
+        'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        'DESCRIBE <http://example.org/a>',
+      ]) {
+        process.exitCode = undefined;
+        stdout.mockClear();
+        stderr.mockClear();
+
+        const cmd = new QueryCommand();
+        await cmd.run([join(dir, '*.ttl')], { query, quiet: true });
+        expect(process.exitCode).toBeFalsy();
+      }
+    });
+  });
+
   it('exits non-zero on a query error', async () => {
     await writeFile(
       join(dir, 'data.ttl'),
