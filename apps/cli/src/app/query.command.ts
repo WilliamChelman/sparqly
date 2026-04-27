@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { Logger, type LogLevel } from '@nestjs/common';
 import { Command, CommandRunner, Option } from 'nest-commander';
-import { QueryEngine, loadRdf } from 'core';
+import { QueryEngine, isSparqlFormat, loadRdf } from 'core';
 
 interface QueryOptions {
   sources?: string;
@@ -67,6 +67,18 @@ export class QueryCommand extends CommandRunner {
       query = stdinQuery as string;
     }
 
+    let format: 'json' | 'turtle' | undefined;
+    if (options.format !== undefined) {
+      if (!isSparqlFormat(options.format)) {
+        process.stderr.write(
+          `error: unknown --format '${options.format}' (expected 'json' or 'turtle')\n`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      format = options.format;
+    }
+
     try {
       const loadStart = Date.now();
       const { store, files } = await loadRdf({ sources });
@@ -78,11 +90,11 @@ export class QueryCommand extends CommandRunner {
 
       const queryStart = Date.now();
       const engine = new QueryEngine(store);
-      const json = await engine.select(query);
+      const result = await engine.execute(query, { format });
       logger.log(`Query executed in ${Date.now() - queryStart}ms`);
 
-      process.stdout.write(json);
-      if (!json.endsWith('\n')) process.stdout.write('\n');
+      process.stdout.write(result.body);
+      if (!result.body.endsWith('\n')) process.stdout.write('\n');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       process.stderr.write(`error: ${message}\n`);

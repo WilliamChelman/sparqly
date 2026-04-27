@@ -223,6 +223,124 @@ describe('QueryCommand.run', () => {
     expect(stderrText()).toMatch(/only one query source/i);
   });
 
+  it('emits JSON results for an ASK query by default', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const cmd = new QueryCommand();
+    await cmd.run([join(dir, '*.ttl')], {
+      query: 'ASK WHERE { ?s <http://example.org/p> ?o }',
+      quiet: true,
+    });
+
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.boolean).toBe(true);
+    expect(process.exitCode).toBeFalsy();
+  });
+
+  it('emits Turtle for a CONSTRUCT query by default', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const cmd = new QueryCommand();
+    await cmd.run([join(dir, '*.ttl')], {
+      query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      quiet: true,
+    });
+
+    expect(stdoutText()).toContain('http://example.org/a');
+    expect(stdoutText()).not.toMatch(/^\s*\{/);
+    expect(process.exitCode).toBeFalsy();
+  });
+
+  it('emits Turtle for a DESCRIBE query by default', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const cmd = new QueryCommand();
+    await cmd.run([join(dir, '*.ttl')], {
+      query: 'DESCRIBE <http://example.org/a>',
+      quiet: true,
+    });
+
+    expect(stdoutText()).toContain('http://example.org/a');
+    expect(process.exitCode).toBeFalsy();
+  });
+
+  it('honours --format=turtle on a CONSTRUCT query', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const cmd = new QueryCommand();
+    await cmd.run([join(dir, '*.ttl')], {
+      query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      format: 'turtle',
+      quiet: true,
+    });
+
+    expect(stdoutText()).toContain('http://example.org/a');
+    expect(process.exitCode).toBeFalsy();
+  });
+
+  it('exits non-zero when --format=turtle is used with a SELECT query', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const cmd = new QueryCommand();
+    await cmd.run([join(dir, '*.ttl')], {
+      query: 'SELECT ?s WHERE { ?s ?p ?o }',
+      format: 'turtle',
+      quiet: true,
+    });
+
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toMatch(/turtle/i);
+  });
+
+  it('exits non-zero when --format=json is used with a CONSTRUCT query', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const cmd = new QueryCommand();
+    await cmd.run([join(dir, '*.ttl')], {
+      query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      format: 'json',
+      quiet: true,
+    });
+
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toMatch(/json/i);
+  });
+
+  it('exits non-zero on an unknown --format value', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const cmd = new QueryCommand();
+    await cmd.run([join(dir, '*.ttl')], {
+      query: 'SELECT ?s WHERE { ?s ?p ?o }',
+      format: 'csv',
+      quiet: true,
+    });
+
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toMatch(/unknown.*--format|--format.*unknown/i);
+  });
+
   it('exits non-zero on a query error', async () => {
     await writeFile(
       join(dir, 'data.ttl'),
