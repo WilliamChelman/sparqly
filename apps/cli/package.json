@@ -1,10 +1,40 @@
 {
   "name": "sparqly",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "RDF CLI with SPARQL query and embedded YASGUI playground",
   "license": "MIT",
+  "author": "William Chelman",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WilliamChelman/sparqly.git"
+  },
+  "homepage": "https://github.com/WilliamChelman/sparqly#readme",
+  "bugs": {
+    "url": "https://github.com/WilliamChelman/sparqly/issues"
+  },
+  "keywords": [
+    "rdf",
+    "sparql",
+    "turtle",
+    "n-triples",
+    "n-quads",
+    "trig",
+    "jsonld",
+    "yasgui",
+    "comunica",
+    "cli"
+  ],
   "bin": {
     "sparqly": "./main.js"
   },
-  "main": "./main.js"
+  "main": "./main.js",
+  "files": [
+    "main.js",
+    "web/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  }
 }

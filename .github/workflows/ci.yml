@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: check (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Strip pinned node from .npmrc
+        run: sed -i '/use-node-version/d' .npmrc
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8.15.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build / lint / test
+        run: pnpm run check
+
+      - name: Pack tarball
+        id: pack
+        working-directory: dist/apps/cli
+        run: |
+          tarball=$(npm pack --silent)
+          echo "tarball=$PWD/$tarball" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke — install packed tarball
+        run: |
+          mkdir -p /tmp/sparqly-smoke
+          cd /tmp/sparqly-smoke
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund "${{ steps.pack.outputs.tarball }}"
+
+      - name: Smoke — sparqly query
+        working-directory: /tmp/sparqly-smoke
+        run: |
+          cp "$GITHUB_WORKSPACE/test/data/era-shapes.ttl" ./fixture.ttl
+          out=$(npx --no-install sparqly query ./fixture.ttl -q 'SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }')
+          echo "$out"
+          echo "$out" | grep -q '"n"' || { echo "expected SELECT result with ?n binding"; exit 1; }
+
+      - name: Smoke — sparqly serve
+        working-directory: /tmp/sparqly-smoke
+        run: |
+          npx --no-install sparqly serve ./fixture.ttl --port=4123 &
+          server_pid=$!
+          trap 'kill $server_pid 2>/dev/null || true' EXIT
+
+          for i in $(seq 1 30); do
+            if curl -sf "http://127.0.0.1:4123/api/sparql?query=ASK%20%7B%7D" >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          out=$(curl -sf -H 'Accept: application/sparql-results+json' \
+            --data-urlencode 'query=SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }' \
+            "http://127.0.0.1:4123/api/sparql")
+          echo "$out"
+          echo "$out" | grep -q '"n"' || { echo "expected SELECT result with ?n binding"; exit 1; }

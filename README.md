@@ -4,6 +4,32 @@ RDF CLI with SPARQL query and an embedded YASGUI playground.
 
 See [PRD #1](https://github.com/WilliamChelman/sparqly/issues/1) for the v1 scope.
 
+## Install
+
+Requires Node **22+**.
+
+```sh
+# global install
+npm i -g sparqly
+sparqly --help
+
+# ad-hoc, no install
+npx sparqly --help
+```
+
+Run a one-shot query against a glob of RDF files:
+
+```sh
+sparqly query "data/**/*.ttl" -q 'SELECT * WHERE { ?s ?p ?o } LIMIT 10'
+```
+
+Boot the playground (Angular UI at `/`, SPARQL endpoint at `/api/sparql`):
+
+```sh
+sparqly serve "data/**/*.ttl" --port=3000
+# open http://localhost:3000
+```
+
 ## Workspace layout
 
 This is an Nx monorepo managed with pnpm.
