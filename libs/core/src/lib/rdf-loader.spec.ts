@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadRdf } from './rdf-loader';
+import { QueryEngine } from './query-engine';
 
 const FIXTURES_DIR = resolve(__dirname, '../../../../test/data/formats');
 
@@ -141,5 +142,116 @@ describe('loadRdf', () => {
     });
     expect(files).toHaveLength(6);
     expect(store.size).toBe(6);
+  });
+
+  it('places triple-format quads in the default graph by default', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const { store } = await loadRdf({ sources: join(dir, '*.ttl') });
+    const [quad] = store.getQuads(null, null, null, null);
+    expect(quad.graph.termType).toBe('DefaultGraph');
+  });
+
+  it('preserves declared graph IRIs from quad-format files by default', async () => {
+    await writeFile(
+      join(dir, 'a.nq'),
+      '<http://example.org/a> <http://example.org/p> <http://example.org/b> <http://example.org/g> .\n',
+    );
+    const { store } = await loadRdf({ sources: join(dir, '*.nq') });
+    const [quad] = store.getQuads(null, null, null, null);
+    expect(quad.graph.value).toBe('http://example.org/g');
+  });
+
+  it('--graph-per-file: places triple-format quads in a file:// graph', async () => {
+    const file = join(dir, 'a.ttl');
+    await writeFile(
+      file,
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const { store } = await loadRdf({
+      sources: join(dir, '*.ttl'),
+      graphPerFile: true,
+    });
+    const [quad] = store.getQuads(null, null, null, null);
+    expect(quad.graph.termType).toBe('NamedNode');
+    expect(quad.graph.value).toBe(`file://${file}`);
+  });
+
+  it('--graph-per-file: overrides declared graph IRIs from quad-format files', async () => {
+    const file = join(dir, 'a.nq');
+    await writeFile(
+      file,
+      '<http://example.org/a> <http://example.org/p> <http://example.org/b> <http://example.org/g> .\n',
+    );
+    const { store } = await loadRdf({
+      sources: join(dir, '*.nq'),
+      graphPerFile: true,
+    });
+    const [quad] = store.getQuads(null, null, null, null);
+    expect(quad.graph.termType).toBe('NamedNode');
+    expect(quad.graph.value).toBe(`file://${file}`);
+  });
+
+  it('SPARQL GRAPH ?g binds quad-format graphs by default and triple-format files yield no GRAPH bindings', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    await writeFile(
+      join(dir, 'b.nq'),
+      '<http://example.org/c> <http://example.org/p> <http://example.org/d> <http://example.org/g> .\n',
+    );
+    const { store } = await loadRdf({ sources: join(dir, '*') });
+    const engine = new QueryEngine(store);
+    const result = await engine.execute(
+      'SELECT ?g WHERE { GRAPH ?g { ?s ?p ?o } }',
+    );
+    const parsed = JSON.parse(result.body);
+    const graphs = parsed.results.bindings.map(
+      (b: { g: { value: string } }) => b.g.value,
+    );
+    expect(graphs).toEqual(['http://example.org/g']);
+  });
+
+  it('SPARQL GRAPH ?g under --graph-per-file binds the file:// graph for every quad', async () => {
+    const a = join(dir, 'a.ttl');
+    const b = join(dir, 'b.nq');
+    await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
+    await writeFile(
+      b,
+      '<http://example.org/c> <http://example.org/p> <http://example.org/d> <http://example.org/g> .\n',
+    );
+    const { store } = await loadRdf({
+      sources: join(dir, '*'),
+      graphPerFile: true,
+    });
+    const engine = new QueryEngine(store);
+    const result = await engine.execute(
+      'SELECT ?g WHERE { GRAPH ?g { ?s ?p ?o } }',
+    );
+    const parsed = JSON.parse(result.body);
+    const graphs = new Set(
+      parsed.results.bindings.map((bind: { g: { value: string } }) => bind.g.value),
+    );
+    expect(graphs).toEqual(new Set([`file://${a}`, `file://${b}`]));
+  });
+
+  it('--graph-per-file: gives each file its own named graph', async () => {
+    const a = join(dir, 'a.ttl');
+    const b = join(dir, 'b.ttl');
+    await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
+    await writeFile(b, '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .');
+
+    const { store } = await loadRdf({
+      sources: join(dir, '*.ttl'),
+      graphPerFile: true,
+    });
+
+    const graphs = new Set(
+      store.getQuads(null, null, null, null).map((q) => q.graph.value),
+    );
+    expect(graphs).toEqual(new Set([`file://${a}`, `file://${b}`]));
   });
 });

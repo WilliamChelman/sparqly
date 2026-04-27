@@ -1,6 +1,6 @@
 import { createReadStream } from 'node:fs';
 import { extname } from 'node:path';
-import { Store, type Quad } from 'n3';
+import { DataFactory, Store, type Quad } from 'n3';
 import { rdfParser } from 'rdf-parse';
 import { glob } from 'tinyglobby';
 
@@ -49,8 +49,11 @@ export async function loadRdf(options: LoadOptions): Promise<LoadResult> {
     if (!contentType) {
       throw new Error(`Unsupported file extension: ${file}`);
     }
+    const graphOverride = options.graphPerFile
+      ? DataFactory.namedNode(`file://${file}`)
+      : undefined;
     try {
-      await parseFileInto(file, contentType, store);
+      await parseFileInto(file, contentType, store, graphOverride);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(`Failed to parse ${file}: ${message}`);
@@ -68,13 +71,24 @@ function parseFileInto(
   file: string,
   contentType: string,
   store: Store,
+  graphOverride?: ReturnType<typeof DataFactory.namedNode>,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const stream = createReadStream(file);
     stream.on('error', reject);
     rdfParser
       .parse(stream, { contentType, baseIRI: `file://${file}` })
-      .on('data', (quad: Quad) => store.addQuad(quad))
+      .on('data', (quad: Quad) => {
+        const out = graphOverride
+          ? DataFactory.quad(
+              quad.subject,
+              quad.predicate,
+              quad.object,
+              graphOverride,
+            )
+          : quad;
+        store.addQuad(out);
+      })
       .on('error', reject)
       .on('end', resolve);
   });

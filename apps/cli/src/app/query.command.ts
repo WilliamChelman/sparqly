@@ -8,6 +8,7 @@ interface QueryOptions {
   query?: string;
   queryFile?: string;
   format?: string;
+  graphPerFile?: boolean;
   mutable?: boolean;
   immutable?: boolean;
   verbose?: boolean;
@@ -81,7 +82,10 @@ export class QueryCommand extends CommandRunner {
 
     try {
       const loadStart = Date.now();
-      const { store, files } = await loadRdf({ sources });
+      const { store, files } = await loadRdf({
+        sources,
+        graphPerFile: options.graphPerFile,
+      });
       logger.log(
         `Loaded ${files.length} file(s) (${store.size} quads) in ${
           Date.now() - loadStart
@@ -142,6 +146,15 @@ export class QueryCommand extends CommandRunner {
   })
   parseFormat(value: string): string {
     return value;
+  }
+
+  @Option({
+    flags: '--graph-per-file',
+    description:
+      'Load each file into its own file://-derived named graph (overrides declared quad graphs)',
+  })
+  parseGraphPerFile(): boolean {
+    return true;
   }
 
   @Option({
