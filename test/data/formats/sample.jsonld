@@ -1,0 +1,5 @@
+{
+  "@context": { "ex": "http://example.org/" },
+  "@id": "ex:jsonld",
+  "ex:format": "JSON-LD"
+}
