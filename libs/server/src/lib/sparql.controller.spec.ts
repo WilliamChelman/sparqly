@@ -227,3 +227,91 @@ describe('createServer with webRootDir', () => {
     expect(resp.headers.get('content-type')).toMatch(/sparql-results\+json/);
   });
 });
+
+describe('createServer with --watch', () => {
+  let dir: string;
+  let server: CreatedServer;
+  let baseUrl: string;
+  const debounceMs = 50;
+
+  beforeAll(async () => {
+    Logger.overrideLogger(false);
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-watch-'));
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    server = await createServer({
+      sources: join(dir, '*.ttl'),
+      port: 0,
+      watch: true,
+      watchDebounceMs: debounceMs,
+    });
+    baseUrl = `http://localhost:${server.port}/api/sparql`;
+  });
+
+  afterAll(async () => {
+    await server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  async function runQuery(query: string): Promise<unknown> {
+    const resp = await fetch(`${baseUrl}?query=${encodeURIComponent(query)}`);
+    expect(resp.status).toBe(200);
+    return resp.json();
+  }
+
+  it('reflects file edits after debounce', async () => {
+    const before = (await runQuery(
+      'SELECT ?o WHERE { <http://example.org/a> <http://example.org/p> ?o }',
+    )) as { results: { bindings: Array<{ o: { value: string } }> } };
+    expect(before.results.bindings.map((b) => b.o.value)).toEqual([
+      'http://example.org/b',
+    ]);
+
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:c .',
+    );
+
+    const deadline = Date.now() + 5000;
+    let after: { results: { bindings: Array<{ o: { value: string } }> } };
+    do {
+      await new Promise((r) => setTimeout(r, debounceMs * 2));
+      after = (await runQuery(
+        'SELECT ?o WHERE { <http://example.org/a> <http://example.org/p> ?o }',
+      )) as { results: { bindings: Array<{ o: { value: string } }> } };
+    } while (
+      after.results.bindings[0]?.o.value !== 'http://example.org/c' &&
+      Date.now() < deadline
+    );
+
+    expect(after.results.bindings.map((b) => b.o.value)).toEqual([
+      'http://example.org/c',
+    ]);
+  });
+
+  it('picks up newly added files', async () => {
+    await writeFile(
+      join(dir, 'extra.ttl'),
+      '@prefix ex: <http://example.org/> . ex:x ex:p ex:y .',
+    );
+
+    const deadline = Date.now() + 5000;
+    let bindings: Array<{ s: { value: string } }> = [];
+    do {
+      await new Promise((r) => setTimeout(r, debounceMs * 2));
+      const resp = await fetch(
+        `${baseUrl}?query=${encodeURIComponent(
+          'SELECT ?s WHERE { ?s <http://example.org/p> <http://example.org/y> }',
+        )}`,
+      );
+      const json = (await resp.json()) as {
+        results: { bindings: Array<{ s: { value: string } }> };
+      };
+      bindings = json.results.bindings;
+    } while (bindings.length === 0 && Date.now() < deadline);
+
+    expect(bindings.map((b) => b.s.value)).toEqual(['http://example.org/x']);
+  });
+});

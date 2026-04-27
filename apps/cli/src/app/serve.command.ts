@@ -18,6 +18,8 @@ interface ServeOptions {
   immutable?: boolean;
   verbose?: boolean;
   quiet?: boolean;
+  watch?: boolean;
+  watchDebounce?: number;
 }
 
 @Command({
@@ -58,6 +60,8 @@ export class ServeCommand extends CommandRunner {
         mutable,
         graphStrategy,
         webRootDir: WEB_BUNDLE_DIR,
+        watch: options.watch === true,
+        watchDebounceMs: options.watchDebounce,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -107,6 +111,23 @@ export class ServeCommand extends CommandRunner {
   })
   parseImmutable(value: string): boolean {
     return value !== 'false';
+  }
+
+  @Option({
+    flags: '--watch',
+    description:
+      'Watch the sources glob and rebuild the in-memory store on change (debounced). Default: off.',
+  })
+  parseWatch(): boolean {
+    return true;
+  }
+
+  @Option({
+    flags: '--watch-debounce <ms>',
+    description: 'Debounce window for --watch in milliseconds (default: 250)',
+  })
+  parseWatchDebounce(value: string): number {
+    return Number.parseInt(value, 10);
   }
 
   @Option({ flags: '-v, --verbose', description: 'Verbose logging' })

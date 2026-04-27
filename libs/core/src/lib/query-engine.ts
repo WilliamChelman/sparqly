@@ -26,16 +26,24 @@ export function isSparqlFormat(value: string): value is SparqlFormat {
   return (SUPPORTED_FORMATS as ReadonlyArray<string>).includes(value);
 }
 
+export type StoreSource = Store | (() => Store);
+
 export class QueryEngine {
   private readonly engine = new ComunicaQueryEngine();
+  private readonly resolveStore: () => Store;
 
-  constructor(private readonly store: Store) {}
+  constructor(source: StoreSource) {
+    this.resolveStore =
+      typeof source === 'function' ? source : (): Store => source;
+  }
 
   async execute(query: string, options: ExecuteOptions = {}): Promise<ExecuteResult> {
     const queryType = detectQueryType(query);
     assertImmutable(queryType, { mutable: options.mutable });
 
-    const result = await this.engine.query(query, { sources: [this.store] });
+    const result = await this.engine.query(query, {
+      sources: [this.resolveStore()],
+    });
     const resultType = result.resultType;
 
     const defaultFormat: SparqlFormat = resultType === 'quads' ? 'turtle' : 'json';

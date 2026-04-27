@@ -54,7 +54,7 @@
       "options": {
         "buildTarget": "cli:build",
         "runBuildTargetDependencies": false,
-        "args": ["serve", "test/data/**/*.ttl", "--port=3000"]
+        "args": ["serve", "test/data/**/*.ttl", "--port=3000", "--watch"]
       },
       "configurations": {
         "development": {

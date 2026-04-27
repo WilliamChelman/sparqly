@@ -1,10 +1,14 @@
 import { DynamicModule, Module } from '@nestjs/common';
-import type { Store } from 'n3';
 import { SparqlController } from './sparql.controller';
-import { SPARQL_CONFIG, SPARQL_STORE, type SparqlServerConfig } from './tokens';
+import {
+  SPARQL_CONFIG,
+  SPARQL_STORE_REF,
+  type SparqlServerConfig,
+  type StoreRef,
+} from './tokens';
 
 export interface ServerModuleOptions {
-  store: Store;
+  storeRef: StoreRef;
   config: SparqlServerConfig;
 }
 
@@ -15,7 +19,7 @@ export class ServerModule {
       module: ServerModule,
       controllers: [SparqlController],
       providers: [
-        { provide: SPARQL_STORE, useValue: options.store },
+        { provide: SPARQL_STORE_REF, useValue: options.storeRef },
         { provide: SPARQL_CONFIG, useValue: options.config },
       ],
     };

@@ -11,9 +11,13 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
-import type { Store } from 'n3';
 import { QueryEngine, type SparqlFormat } from 'core';
-import { SPARQL_CONFIG, SPARQL_STORE, type SparqlServerConfig } from './tokens';
+import {
+  SPARQL_CONFIG,
+  SPARQL_STORE_REF,
+  type SparqlServerConfig,
+  type StoreRef,
+} from './tokens';
 
 const SPARQL_QUERY_CT = 'application/sparql-query';
 const FORM_CT = 'application/x-www-form-urlencoded';
@@ -29,10 +33,10 @@ export class SparqlController {
   private readonly engine: QueryEngine;
 
   constructor(
-    @Inject(SPARQL_STORE) store: Store,
+    @Inject(SPARQL_STORE_REF) storeRef: StoreRef,
     @Inject(SPARQL_CONFIG) private readonly config: SparqlServerConfig,
   ) {
-    this.engine = new QueryEngine(store);
+    this.engine = new QueryEngine(() => storeRef.current);
   }
 
   @Get()

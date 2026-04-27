@@ -1,10 +1,13 @@
 import 'reflect-metadata';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { isAbsolute, resolve } from 'node:path';
+import * as chokidar from 'chokidar';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { type GraphStrategy, loadRdf } from 'core';
 import { ServerModule } from './server.module';
+import type { StoreRef } from './tokens';
 
 export interface CreateServerOptions {
   sources: string | string[];
@@ -12,12 +15,16 @@ export interface CreateServerOptions {
   mutable?: boolean;
   graphStrategy?: GraphStrategy;
   webRootDir?: string;
+  watch?: boolean;
+  watchDebounceMs?: number;
 }
 
 export interface CreatedServer {
   port: number;
   close: () => Promise<void>;
 }
+
+const DEFAULT_DEBOUNCE_MS = 250;
 
 export async function createServer(
   options: CreateServerOptions,
@@ -34,9 +41,11 @@ export async function createServer(
     }ms`,
   );
 
+  const storeRef: StoreRef = { current: store };
+
   const app = await NestFactory.create<NestExpressApplication>(
     ServerModule.forRoot({
-      store,
+      storeRef,
       config: { mutable: options.mutable === true },
     }),
     { abortOnError: false },
@@ -55,10 +64,125 @@ export async function createServer(
     logger.log(`Web playground served at ${url}/`);
   }
 
+  const watcher = options.watch
+    ? startWatcher({
+        sources: options.sources,
+        graphStrategy: options.graphStrategy,
+        storeRef,
+        logger,
+        debounceMs: options.watchDebounceMs ?? DEFAULT_DEBOUNCE_MS,
+      })
+    : undefined;
+  if (watcher) {
+    logger.log(
+      `Watching for changes (debounce: ${
+        options.watchDebounceMs ?? DEFAULT_DEBOUNCE_MS
+      }ms)`,
+    );
+  }
+
   return {
     port: portFromUrl(url) ?? options.port,
-    close: () => app.close(),
+    close: async () => {
+      if (watcher) await watcher.close();
+      await app.close();
+    },
   };
+}
+
+interface WatcherHandle {
+  close: () => Promise<void>;
+}
+
+interface StartWatcherOptions {
+  sources: string | string[];
+  graphStrategy?: GraphStrategy;
+  storeRef: StoreRef;
+  logger: Logger;
+  debounceMs: number;
+}
+
+function startWatcher(opts: StartWatcherOptions): WatcherHandle {
+  const patterns = Array.isArray(opts.sources) ? opts.sources : [opts.sources];
+  const baseDirs = Array.from(
+    new Set(patterns.map((p) => globBase(p))),
+  );
+
+  const watcher = chokidar.watch(baseDirs, {
+    ignoreInitial: true,
+    persistent: true,
+  });
+
+  let pending: NodeJS.Timeout | undefined;
+  let inFlight = false;
+  let queued = false;
+
+  const rebuild = async (): Promise<void> => {
+    if (inFlight) {
+      queued = true;
+      return;
+    }
+    inFlight = true;
+    try {
+      const start = Date.now();
+      const { store, files } = await loadRdf({
+        sources: opts.sources,
+        graphStrategy: opts.graphStrategy,
+      });
+      opts.storeRef.current = store;
+      opts.logger.log(
+        `Rebuilt store: ${files.length} file(s), ${store.size} quads in ${
+          Date.now() - start
+        }ms`,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      opts.logger.error(`Rebuild failed: ${message}`);
+    } finally {
+      inFlight = false;
+      if (queued) {
+        queued = false;
+        void rebuild();
+      }
+    }
+  };
+
+  const schedule = (): void => {
+    if (pending) clearTimeout(pending);
+    pending = setTimeout(() => {
+      pending = undefined;
+      void rebuild();
+    }, opts.debounceMs);
+  };
+
+  watcher.on('add', schedule);
+  watcher.on('change', schedule);
+  watcher.on('unlink', schedule);
+
+  return {
+    close: async () => {
+      if (pending) {
+        clearTimeout(pending);
+        pending = undefined;
+      }
+      await watcher.close();
+    },
+  };
+}
+
+function globBase(pattern: string): string {
+  const isAbs = isAbsolute(pattern);
+  const segments = pattern.split(/[\\/]+/);
+  const out: string[] = [];
+  for (const seg of segments) {
+    if (/[*?[\]{}!()]/.test(seg)) break;
+    out.push(seg);
+  }
+  const joined = out.join('/');
+  if (joined === '' || joined === '.') return resolve('.');
+  if (!isAbs) return resolve(joined);
+  if (out.length === 1 && out[0] === '') return '/';
+  return joined;
 }
 
 function portFromUrl(url: string): number | undefined {
