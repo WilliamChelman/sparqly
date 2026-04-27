@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { Logger, type LogLevel } from '@nestjs/common';
 import { Command, CommandRunner, Option } from 'nest-commander';
 import { QueryEngine, loadRdf } from 'core';
@@ -29,10 +30,41 @@ export class QueryCommand extends CommandRunner {
       process.exitCode = 1;
       return;
     }
-    if (!options.query) {
-      process.stderr.write('error: -q/--query <sparql> is required\n');
+    const stdinQuery = await this.readStdin();
+    const querySources: string[] = [];
+    if (options.query) querySources.push('-q/--query');
+    if (options.queryFile) querySources.push('--query-file');
+    if (stdinQuery) querySources.push('stdin');
+
+    if (querySources.length > 1) {
+      process.stderr.write(
+        `error: only one query source allowed (got ${querySources.join(', ')})\n`,
+      );
       process.exitCode = 1;
       return;
+    }
+    if (querySources.length === 0) {
+      process.stderr.write(
+        'error: a query is required (-q, --query-file, or stdin)\n',
+      );
+      process.exitCode = 1;
+      return;
+    }
+
+    let query: string;
+    if (options.query) {
+      query = options.query;
+    } else if (options.queryFile) {
+      try {
+        query = await readFile(options.queryFile, 'utf8');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`error: failed to read --query-file: ${message}\n`);
+        process.exitCode = 1;
+        return;
+      }
+    } else {
+      query = stdinQuery as string;
     }
 
     try {
@@ -46,7 +78,7 @@ export class QueryCommand extends CommandRunner {
 
       const queryStart = Date.now();
       const engine = new QueryEngine(store);
-      const json = await engine.select(options.query);
+      const json = await engine.select(query);
       logger.log(`Query executed in ${Date.now() - queryStart}ms`);
 
       process.stdout.write(json);
@@ -56,6 +88,16 @@ export class QueryCommand extends CommandRunner {
       process.stderr.write(`error: ${message}\n`);
       process.exitCode = 1;
     }
+  }
+
+  async readStdin(): Promise<string | null> {
+    if (process.stdin.isTTY) return null;
+    const chunks: Buffer[] = [];
+    for await (const chunk of process.stdin) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    const text = Buffer.concat(chunks).toString('utf8').trim();
+    return text.length > 0 ? text : null;
   }
 
   @Option({

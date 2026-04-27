@@ -22,6 +22,7 @@ describe('QueryCommand.run', () => {
     dir = await mkdtemp(join(tmpdir(), 'sparqly-cli-'));
     stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
     stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    vi.spyOn(QueryCommand.prototype, 'readStdin').mockResolvedValue(null);
     originalExitCode = process.exitCode;
     process.exitCode = undefined;
   });
@@ -87,6 +88,139 @@ describe('QueryCommand.run', () => {
 
     expect(process.exitCode).toBe(1);
     expect(stderrText()).toMatch(/broken\.ttl/);
+  });
+
+  it('reads the query from --query-file', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const queryPath = join(dir, 'q.rq');
+    await writeFile(
+      queryPath,
+      'SELECT ?s ?o WHERE { ?s <http://example.org/p> ?o }',
+    );
+
+    const cmd = new QueryCommand();
+    await cmd.run([join(dir, '*.ttl')], {
+      queryFile: queryPath,
+      quiet: true,
+    });
+
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.head.vars).toEqual(['s', 'o']);
+    expect(parsed.results.bindings[0].s.value).toBe('http://example.org/a');
+    expect(process.exitCode).toBeFalsy();
+  });
+
+  it('exits non-zero when --query-file path does not exist', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const cmd = new QueryCommand();
+    await cmd.run([join(dir, '*.ttl')], {
+      queryFile: join(dir, 'does-not-exist.rq'),
+      quiet: true,
+    });
+
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toMatch(/--query-file/);
+  });
+
+  it('reads the query from stdin when no -q/--query-file is given', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const cmd = new QueryCommand();
+    vi.spyOn(cmd, 'readStdin').mockResolvedValue(
+      'SELECT ?s ?o WHERE { ?s <http://example.org/p> ?o }',
+    );
+
+    await cmd.run([join(dir, '*.ttl')], { quiet: true });
+
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.head.vars).toEqual(['s', 'o']);
+    expect(parsed.results.bindings[0].s.value).toBe('http://example.org/a');
+    expect(process.exitCode).toBeFalsy();
+  });
+
+  it('exits non-zero when no query source is provided and stdin is a TTY', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const cmd = new QueryCommand();
+
+    await cmd.run([join(dir, '*.ttl')], { quiet: true });
+
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toMatch(/query is required/i);
+  });
+
+  it('errors when -q and --query-file are both given', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const queryPath = join(dir, 'q.rq');
+    await writeFile(queryPath, 'SELECT ?s WHERE { ?s ?p ?o }');
+
+    const cmd = new QueryCommand();
+    await cmd.run([join(dir, '*.ttl')], {
+      query: 'SELECT ?s WHERE { ?s ?p ?o }',
+      queryFile: queryPath,
+      quiet: true,
+    });
+
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toMatch(/only one query source/i);
+  });
+
+  it('errors when -q is given and stdin is also piped', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const cmd = new QueryCommand();
+    vi.spyOn(cmd, 'readStdin').mockResolvedValue(
+      'SELECT ?s WHERE { ?s ?p ?o }',
+    );
+
+    await cmd.run([join(dir, '*.ttl')], {
+      query: 'SELECT ?s WHERE { ?s ?p ?o }',
+      quiet: true,
+    });
+
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toMatch(/only one query source/i);
+  });
+
+  it('errors when --query-file is given and stdin is also piped', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const queryPath = join(dir, 'q.rq');
+    await writeFile(queryPath, 'SELECT ?s WHERE { ?s ?p ?o }');
+
+    const cmd = new QueryCommand();
+    vi.spyOn(cmd, 'readStdin').mockResolvedValue(
+      'SELECT ?s WHERE { ?s ?p ?o }',
+    );
+
+    await cmd.run([join(dir, '*.ttl')], {
+      queryFile: queryPath,
+      quiet: true,
+    });
+
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toMatch(/only one query source/i);
   });
 
   it('exits non-zero on a query error', async () => {
