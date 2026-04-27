@@ -1,4 +1,6 @@
+import { Logger, type LogLevel } from '@nestjs/common';
 import { Command, CommandRunner, Option } from 'nest-commander';
+import { QueryEngine, loadRdf } from 'core';
 
 interface QueryOptions {
   sources?: string;
@@ -14,16 +16,51 @@ interface QueryOptions {
 @Command({
   name: 'query',
   description: 'Run a SPARQL query against a glob of RDF files',
+  arguments: '[glob]',
 })
 export class QueryCommand extends CommandRunner {
-  async run(_passedParams: string[], _options: QueryOptions): Promise<void> {
-    process.stderr.write('sparqly query: not yet implemented\n');
-    process.exitCode = 1;
+  async run(passedParams: string[], options: QueryOptions = {}): Promise<void> {
+    configureLogger(options);
+    const logger = new Logger('sparqly');
+
+    const sources = options.sources ?? passedParams[0];
+    if (!sources) {
+      process.stderr.write('error: a sources glob is required\n');
+      process.exitCode = 1;
+      return;
+    }
+    if (!options.query) {
+      process.stderr.write('error: -q/--query <sparql> is required\n');
+      process.exitCode = 1;
+      return;
+    }
+
+    try {
+      const loadStart = Date.now();
+      const { store, files } = await loadRdf({ sources });
+      logger.log(
+        `Loaded ${files.length} file(s) (${store.size} quads) in ${
+          Date.now() - loadStart
+        }ms`,
+      );
+
+      const queryStart = Date.now();
+      const engine = new QueryEngine(store);
+      const json = await engine.select(options.query);
+      logger.log(`Query executed in ${Date.now() - queryStart}ms`);
+
+      process.stdout.write(json);
+      if (!json.endsWith('\n')) process.stdout.write('\n');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`error: ${message}\n`);
+      process.exitCode = 1;
+    }
   }
 
   @Option({
     flags: '-s, --sources <glob>',
-    description: 'Glob of RDF files to load',
+    description: 'Glob of RDF files to load (alternative to positional arg)',
   })
   parseSources(value: string): string {
     return value;
@@ -77,5 +114,43 @@ export class QueryCommand extends CommandRunner {
   @Option({ flags: '--quiet', description: 'Suppress non-result output' })
   parseQuiet(): boolean {
     return true;
+  }
+}
+
+function configureLogger(options: QueryOptions): void {
+  if (options.quiet) {
+    Logger.overrideLogger(false);
+    return;
+  }
+  const levels: LogLevel[] = options.verbose
+    ? ['error', 'warn', 'log', 'debug', 'verbose']
+    : ['error', 'warn'];
+  Logger.overrideLogger(new StderrLogger(levels));
+}
+
+class StderrLogger {
+  constructor(private readonly levels: ReadonlyArray<LogLevel>) {}
+
+  private write(level: LogLevel, message: unknown, context?: string): void {
+    if (!this.levels.includes(level)) return;
+    const text = typeof message === 'string' ? message : JSON.stringify(message);
+    const prefix = context ? `[${context}] ` : '';
+    process.stderr.write(`${prefix}${text}\n`);
+  }
+
+  log(message: unknown, context?: string): void {
+    this.write('log', message, context);
+  }
+  error(message: unknown, _trace?: string, context?: string): void {
+    this.write('error', message, context);
+  }
+  warn(message: unknown, context?: string): void {
+    this.write('warn', message, context);
+  }
+  debug(message: unknown, context?: string): void {
+    this.write('debug', message, context);
+  }
+  verbose(message: unknown, context?: string): void {
+    this.write('verbose', message, context);
   }
 }
