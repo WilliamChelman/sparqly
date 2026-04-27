@@ -33,13 +33,26 @@ Each test should target one thin vertical slice through the system. Do not write
 
 ### 4. Validate
 
-Run the feedback loops and fix any issues. Repeat until both pass cleanly.
+Run the full validation suite and fix any issues. Repeat until everything passes cleanly.
 
 ```
-pnpm run typecheck
-pnpm run test
+pnpm run check
 ```
+
+This runs build, lint, and test together. If you need to iterate faster on a single concern, the individual scripts are `pnpm run build`, `pnpm run lint`, and `pnpm run test` — but the final green light before committing must be `pnpm run check`.
 
 ### 5. Commit
 
-Once typecheck and tests pass, commit the work.
+Once `pnpm run check` passes cleanly, commit the work.
+
+**If the task is associated with a GitHub issue**, reference it in the commit message using a closing keyword so the issue auto-closes when the commit lands on the default branch (or when the PR merges):
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+Closes #<issue-number>
+```
+
+Accepted closing keywords: `Closes`, `Fixes`, `Resolves` (case-insensitive). Use one trailer per issue if multiple issues are addressed (e.g. `Closes #12`, `Closes #15`). If no issue is associated with the task, omit the trailer.
