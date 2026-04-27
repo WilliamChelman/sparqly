@@ -6,6 +6,10 @@
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
   "dependencies": {
+    "@comunica/query-sparql": "^5.2.1",
+    "n3": "^2.0.3",
+    "rdf-parse": "^5.0.0",
+    "tinyglobby": "^0.2.16",
     "tslib": "^2.3.0"
   }
 }
