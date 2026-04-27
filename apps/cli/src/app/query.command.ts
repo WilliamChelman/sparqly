@@ -1,14 +1,21 @@
 import { readFile } from 'node:fs/promises';
 import { Logger, type LogLevel } from '@nestjs/common';
 import { Command, CommandRunner, Option } from 'nest-commander';
-import { QueryEngine, isSparqlFormat, loadRdf } from 'core';
+import {
+  GRAPH_STRATEGIES,
+  QueryEngine,
+  isGraphStrategy,
+  isSparqlFormat,
+  loadRdf,
+  type GraphStrategy,
+} from 'core';
 
 interface QueryOptions {
   sources?: string;
   query?: string;
   queryFile?: string;
   format?: string;
-  graphPerFile?: boolean;
+  graphStrategy?: string;
   mutable?: boolean;
   immutable?: boolean;
   verbose?: boolean;
@@ -80,11 +87,23 @@ export class QueryCommand extends CommandRunner {
       format = options.format;
     }
 
+    let graphStrategy: GraphStrategy | undefined;
+    if (options.graphStrategy !== undefined) {
+      if (!isGraphStrategy(options.graphStrategy)) {
+        process.stderr.write(
+          `error: unknown --graph-strategy '${options.graphStrategy}' (expected ${GRAPH_STRATEGIES.join(', ')})\n`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      graphStrategy = options.graphStrategy;
+    }
+
     try {
       const loadStart = Date.now();
       const { store, files } = await loadRdf({
         sources,
-        graphPerFile: options.graphPerFile,
+        graphStrategy,
       });
       logger.log(
         `Loaded ${files.length} file(s) (${store.size} quads) in ${
@@ -149,12 +168,12 @@ export class QueryCommand extends CommandRunner {
   }
 
   @Option({
-    flags: '--graph-per-file',
+    flags: '--graph-strategy <strategy>',
     description:
-      'Load each file into its own file://-derived named graph (overrides declared quad graphs)',
+      "Named-graph strategy: 'default' (triples merge into the default graph, quads keep declared graphs), 'partial' (triples land in their file:// graph, quads keep declared graphs), or 'full' (every file lands in its own file:// graph)",
   })
-  parseGraphPerFile(): boolean {
-    return true;
+  parseGraphStrategy(value: string): string {
+    return value;
   }
 
   @Option({

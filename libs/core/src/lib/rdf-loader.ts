@@ -4,9 +4,21 @@ import { DataFactory, Store, type Quad } from 'n3';
 import { rdfParser } from 'rdf-parse';
 import { glob } from 'tinyglobby';
 
+export type GraphStrategy = 'default' | 'partial' | 'full';
+
+export const GRAPH_STRATEGIES: ReadonlyArray<GraphStrategy> = [
+  'default',
+  'partial',
+  'full',
+];
+
+export function isGraphStrategy(value: string): value is GraphStrategy {
+  return (GRAPH_STRATEGIES as ReadonlyArray<string>).includes(value);
+}
+
 export interface LoadOptions {
   sources: string | string[];
-  graphPerFile?: boolean;
+  graphStrategy?: GraphStrategy;
 }
 
 export interface LoadResult {
@@ -42,6 +54,7 @@ export async function loadRdf(options: LoadOptions): Promise<LoadResult> {
     );
   }
 
+  const strategy: GraphStrategy = options.graphStrategy ?? 'default';
   const store = new Store();
 
   for (const file of files) {
@@ -49,11 +62,8 @@ export async function loadRdf(options: LoadOptions): Promise<LoadResult> {
     if (!contentType) {
       throw new Error(`Unsupported file extension: ${file}`);
     }
-    const graphOverride = options.graphPerFile
-      ? DataFactory.namedNode(`file://${file}`)
-      : undefined;
     try {
-      await parseFileInto(file, contentType, store, graphOverride);
+      await parseFileInto(file, contentType, store, strategy);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(`Failed to parse ${file}: ${message}`);
@@ -71,21 +81,21 @@ function parseFileInto(
   file: string,
   contentType: string,
   store: Store,
-  graphOverride?: ReturnType<typeof DataFactory.namedNode>,
+  strategy: GraphStrategy,
 ): Promise<void> {
+  const fileGraph = DataFactory.namedNode(`file://${file}`);
   return new Promise((resolve, reject) => {
     const stream = createReadStream(file);
     stream.on('error', reject);
     rdfParser
       .parse(stream, { contentType, baseIRI: `file://${file}` })
       .on('data', (quad: Quad) => {
-        const out = graphOverride
-          ? DataFactory.quad(
-              quad.subject,
-              quad.predicate,
-              quad.object,
-              graphOverride,
-            )
+        const isTripleQuad = quad.graph.termType === 'DefaultGraph';
+        const overrideGraph =
+          strategy === 'full' ||
+          (strategy === 'partial' && isTripleQuad);
+        const out = overrideGraph
+          ? DataFactory.quad(quad.subject, quad.predicate, quad.object, fileGraph)
           : quad;
         store.addQuad(out);
       })

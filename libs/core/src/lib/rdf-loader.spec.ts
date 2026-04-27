@@ -164,7 +164,7 @@ describe('loadRdf', () => {
     expect(quad.graph.value).toBe('http://example.org/g');
   });
 
-  it('--graph-per-file: places triple-format quads in a file:// graph', async () => {
+  it('graphStrategy=partial: places triple-format quads in a file:// graph', async () => {
     const file = join(dir, 'a.ttl');
     await writeFile(
       file,
@@ -172,14 +172,14 @@ describe('loadRdf', () => {
     );
     const { store } = await loadRdf({
       sources: join(dir, '*.ttl'),
-      graphPerFile: true,
+      graphStrategy: 'partial',
     });
     const [quad] = store.getQuads(null, null, null, null);
     expect(quad.graph.termType).toBe('NamedNode');
     expect(quad.graph.value).toBe(`file://${file}`);
   });
 
-  it('--graph-per-file: overrides declared graph IRIs from quad-format files', async () => {
+  it('graphStrategy=partial: preserves declared graph IRIs from quad-format files', async () => {
     const file = join(dir, 'a.nq');
     await writeFile(
       file,
@@ -187,7 +187,36 @@ describe('loadRdf', () => {
     );
     const { store } = await loadRdf({
       sources: join(dir, '*.nq'),
-      graphPerFile: true,
+      graphStrategy: 'partial',
+    });
+    const [quad] = store.getQuads(null, null, null, null);
+    expect(quad.graph.value).toBe('http://example.org/g');
+  });
+
+  it('graphStrategy=full: places triple-format quads in a file:// graph', async () => {
+    const file = join(dir, 'a.ttl');
+    await writeFile(
+      file,
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const { store } = await loadRdf({
+      sources: join(dir, '*.ttl'),
+      graphStrategy: 'full',
+    });
+    const [quad] = store.getQuads(null, null, null, null);
+    expect(quad.graph.termType).toBe('NamedNode');
+    expect(quad.graph.value).toBe(`file://${file}`);
+  });
+
+  it('graphStrategy=full: overrides declared graph IRIs from quad-format files', async () => {
+    const file = join(dir, 'a.nq');
+    await writeFile(
+      file,
+      '<http://example.org/a> <http://example.org/p> <http://example.org/b> <http://example.org/g> .\n',
+    );
+    const { store } = await loadRdf({
+      sources: join(dir, '*.nq'),
+      graphStrategy: 'full',
     });
     const [quad] = store.getQuads(null, null, null, null);
     expect(quad.graph.termType).toBe('NamedNode');
@@ -215,7 +244,7 @@ describe('loadRdf', () => {
     expect(graphs).toEqual(['http://example.org/g']);
   });
 
-  it('SPARQL GRAPH ?g under --graph-per-file binds the file:// graph for every quad', async () => {
+  it('SPARQL GRAPH ?g under graphStrategy=partial binds file:// for triples and declared IRI for quads', async () => {
     const a = join(dir, 'a.ttl');
     const b = join(dir, 'b.nq');
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
@@ -225,7 +254,30 @@ describe('loadRdf', () => {
     );
     const { store } = await loadRdf({
       sources: join(dir, '*'),
-      graphPerFile: true,
+      graphStrategy: 'partial',
+    });
+    const engine = new QueryEngine(store);
+    const result = await engine.execute(
+      'SELECT ?g WHERE { GRAPH ?g { ?s ?p ?o } }',
+    );
+    const parsed = JSON.parse(result.body);
+    const graphs = new Set(
+      parsed.results.bindings.map((bind: { g: { value: string } }) => bind.g.value),
+    );
+    expect(graphs).toEqual(new Set([`file://${a}`, 'http://example.org/g']));
+  });
+
+  it('SPARQL GRAPH ?g under graphStrategy=full binds the file:// graph for every quad', async () => {
+    const a = join(dir, 'a.ttl');
+    const b = join(dir, 'b.nq');
+    await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
+    await writeFile(
+      b,
+      '<http://example.org/c> <http://example.org/p> <http://example.org/d> <http://example.org/g> .\n',
+    );
+    const { store } = await loadRdf({
+      sources: join(dir, '*'),
+      graphStrategy: 'full',
     });
     const engine = new QueryEngine(store);
     const result = await engine.execute(
@@ -238,7 +290,7 @@ describe('loadRdf', () => {
     expect(graphs).toEqual(new Set([`file://${a}`, `file://${b}`]));
   });
 
-  it('--graph-per-file: gives each file its own named graph', async () => {
+  it('graphStrategy=full: gives each file its own named graph', async () => {
     const a = join(dir, 'a.ttl');
     const b = join(dir, 'b.ttl');
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
@@ -246,7 +298,7 @@ describe('loadRdf', () => {
 
     const { store } = await loadRdf({
       sources: join(dir, '*.ttl'),
-      graphPerFile: true,
+      graphStrategy: 'full',
     });
 
     const graphs = new Set(

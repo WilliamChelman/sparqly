@@ -341,26 +341,6 @@ describe('QueryCommand.run', () => {
     expect(stderrText()).toMatch(/unknown.*--format|--format.*unknown/i);
   });
 
-  it('--graph-per-file: GRAPH ?g binds the file:// graph for triple-format files', async () => {
-    const file = join(dir, 'data.ttl');
-    await writeFile(
-      file,
-      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
-    );
-
-    const cmd = new QueryCommand();
-    await cmd.run([join(dir, '*.ttl')], {
-      query: 'SELECT ?g WHERE { GRAPH ?g { ?s ?p ?o } }',
-      graphPerFile: true,
-      quiet: true,
-    });
-
-    const parsed = JSON.parse(stdoutText());
-    expect(parsed.results.bindings).toHaveLength(1);
-    expect(parsed.results.bindings[0].g.value).toBe(`file://${file}`);
-    expect(process.exitCode).toBeFalsy();
-  });
-
   it('default: triple-format files yield no GRAPH ?g bindings', async () => {
     await writeFile(
       join(dir, 'data.ttl'),
@@ -376,6 +356,63 @@ describe('QueryCommand.run', () => {
     const parsed = JSON.parse(stdoutText());
     expect(parsed.results.bindings).toHaveLength(0);
     expect(process.exitCode).toBeFalsy();
+  });
+
+  it('--graph-strategy=partial: GRAPH ?g binds the file:// graph for triple-format files', async () => {
+    const file = join(dir, 'data.ttl');
+    await writeFile(
+      file,
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const cmd = new QueryCommand();
+    await cmd.run([join(dir, '*.ttl')], {
+      query: 'SELECT ?g WHERE { GRAPH ?g { ?s ?p ?o } }',
+      graphStrategy: 'partial',
+      quiet: true,
+    });
+
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.results.bindings).toHaveLength(1);
+    expect(parsed.results.bindings[0].g.value).toBe(`file://${file}`);
+    expect(process.exitCode).toBeFalsy();
+  });
+
+  it('--graph-strategy=full: GRAPH ?g binds the file:// graph for triple-format files', async () => {
+    const file = join(dir, 'data.ttl');
+    await writeFile(
+      file,
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const cmd = new QueryCommand();
+    await cmd.run([join(dir, '*.ttl')], {
+      query: 'SELECT ?g WHERE { GRAPH ?g { ?s ?p ?o } }',
+      graphStrategy: 'full',
+      quiet: true,
+    });
+
+    const parsed = JSON.parse(stdoutText());
+    expect(parsed.results.bindings).toHaveLength(1);
+    expect(parsed.results.bindings[0].g.value).toBe(`file://${file}`);
+    expect(process.exitCode).toBeFalsy();
+  });
+
+  it('exits non-zero on an unknown --graph-strategy value', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const cmd = new QueryCommand();
+    await cmd.run([join(dir, '*.ttl')], {
+      query: 'SELECT ?s WHERE { ?s ?p ?o }',
+      graphStrategy: 'bogus',
+      quiet: true,
+    });
+
+    expect(process.exitCode).toBe(1);
+    expect(stderrText()).toMatch(/unknown.*--graph-strategy/i);
   });
 
   it('exits non-zero on a query error', async () => {
