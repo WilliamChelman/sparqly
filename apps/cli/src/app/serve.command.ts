@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { Command, CommandRunner, Option } from 'nest-commander';
 import {
   GRAPH_STRATEGIES,
@@ -6,6 +7,8 @@ import {
 } from 'core';
 import { createServer } from 'server';
 import { configureLogger } from './logging';
+
+const WEB_BUNDLE_DIR = join(__dirname, 'web');
 
 interface ServeOptions {
   sources?: string;
@@ -49,7 +52,13 @@ export class ServeCommand extends CommandRunner {
     const mutable = options.mutable === true || options.immutable === false;
 
     try {
-      await createServer({ sources, port, mutable, graphStrategy });
+      await createServer({
+        sources,
+        port,
+        mutable,
+        graphStrategy,
+        webRootDir: WEB_BUNDLE_DIR,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       process.stderr.write(`error: ${message}\n`);

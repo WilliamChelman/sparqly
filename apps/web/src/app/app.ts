@@ -1,13 +1,9 @@
 import { Component } from '@angular/core';
-import { RouterModule } from '@angular/router';
-import { NxWelcome } from './nx-welcome';
+import { YasguiPage } from './yasgui-page';
 
 @Component({
-  imports: [NxWelcome, RouterModule],
+  imports: [YasguiPage],
   selector: 'app-root',
-  templateUrl: './app.html',
-  styleUrl: './app.css',
+  template: '<app-yasgui-page />',
 })
-export class App {
-  protected title = 'web';
-}
+export class App {}

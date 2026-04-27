@@ -2,8 +2,7 @@
 
 RDF CLI with SPARQL query and an embedded YASGUI playground.
 
-> v1 scaffold — commands are stubs; the query engine, loader, and HTTP endpoint
-> are not yet implemented. See [PRD #1](https://github.com/WilliamChelman/sparqly/issues/1).
+See [PRD #1](https://github.com/WilliamChelman/sparqly/issues/1) for the v1 scope.
 
 ## Workspace layout
 
@@ -62,8 +61,19 @@ There are **two** ways to run the web UI, and they must not be confused.
 
 During development the Angular app runs in its own dev server (fast rebuilds,
 HMR). `sparqly serve` boots the HTTP API separately. The Angular dev server
-must be configured to proxy `/api/*` to the running `sparqly serve` — do **not**
-serve the dev bundle from the CLI.
+proxies `/api/*` to the running `sparqly serve` (see
+[`apps/web/proxy.conf.json`](apps/web/proxy.conf.json)) — do **not** serve the
+dev bundle from the CLI.
+
+In two terminals:
+
+```sh
+# terminal 1 — SPARQL endpoint on :3000
+node dist/apps/cli/main.js serve "test/data/**/*.ttl" --port=3000
+
+# terminal 2 — Angular dev server on :4200, proxies /api/* to :3000
+pnpm exec nx serve web
+```
 
 ```
 ┌─────────────┐   HTTP        ┌───────────────────┐
@@ -77,7 +87,8 @@ serve the dev bundle from the CLI.
 ### Prod: `sparqly serve` alone
 
 For shipping, `apps/web` is built and its output is bundled **inside the CLI
-package**. `sparqly serve` then serves both the static app at `/` and the
+package** at `dist/apps/cli/web/` (driven by `apps/cli`'s build depending on
+`web:build`). `sparqly serve` then serves both the static app at `/` and the
 SPARQL endpoint at `/api/sparql` from a single process — no extra tooling
 required after `npm i -g sparqly`.
 

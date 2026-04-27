@@ -7,6 +7,9 @@
   "targets": {
     "build": {
       "executor": "nx:run-commands",
+      "dependsOn": ["^build", "web:build"],
+      "inputs": ["production", "^production"],
+      "outputs": ["{workspaceRoot}/dist/apps/cli"],
       "options": {
         "command": "webpack-cli build",
         "args": ["--node-env=production"],

@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { type GraphStrategy, loadRdf } from 'core';
 import { ServerModule } from './server.module';
 
@@ -10,6 +11,7 @@ export interface CreateServerOptions {
   port: number;
   mutable?: boolean;
   graphStrategy?: GraphStrategy;
+  webRootDir?: string;
 }
 
 export interface CreatedServer {
@@ -32,7 +34,7 @@ export async function createServer(
     }ms`,
   );
 
-  const app = await NestFactory.create(
+  const app = await NestFactory.create<NestExpressApplication>(
     ServerModule.forRoot({
       store,
       config: { mutable: options.mutable === true },
@@ -42,9 +44,16 @@ export async function createServer(
   app.setGlobalPrefix('api');
   app.use(sparqlQueryBodyParser);
 
+  if (options.webRootDir) {
+    app.useStaticAssets(options.webRootDir, { index: ['index.html'] });
+  }
+
   await app.listen(options.port);
   const url = await app.getUrl();
   logger.log(`SPARQL endpoint listening at ${url}/api/sparql`);
+  if (options.webRootDir) {
+    logger.log(`Web playground served at ${url}/`);
+  }
 
   return {
     port: portFromUrl(url) ?? options.port,

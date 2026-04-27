@@ -179,3 +179,51 @@ describe('W3C SPARQL Protocol endpoint with --mutable', () => {
     expect(body).not.toMatch(/Mutating queries are disabled/);
   });
 });
+
+describe('createServer with webRootDir', () => {
+  let dataDir: string;
+  let webDir: string;
+  let server: CreatedServer;
+  let rootUrl: string;
+
+  beforeAll(async () => {
+    Logger.overrideLogger(false);
+    dataDir = await mkdtemp(join(tmpdir(), 'sparqly-server-data-'));
+    webDir = await mkdtemp(join(tmpdir(), 'sparqly-server-web-'));
+    await writeFile(join(dataDir, 'data.ttl'), SAMPLE_TTL);
+    await writeFile(
+      join(webDir, 'index.html'),
+      '<!doctype html><title>sparqly</title><div id="yasgui-marker"></div>',
+    );
+    server = await createServer({
+      sources: join(dataDir, '*.ttl'),
+      port: 0,
+      webRootDir: webDir,
+    });
+    rootUrl = `http://localhost:${server.port}`;
+  });
+
+  afterAll(async () => {
+    await server.close();
+    await rm(dataDir, { recursive: true, force: true });
+    await rm(webDir, { recursive: true, force: true });
+  });
+
+  it('serves the bundled index.html at /', async () => {
+    const resp = await fetch(`${rootUrl}/`);
+
+    expect(resp.status).toBe(200);
+    expect(resp.headers.get('content-type')).toMatch(/text\/html/);
+    const body = await resp.text();
+    expect(body).toContain('yasgui-marker');
+  });
+
+  it('still routes /api/sparql to the SPARQL controller', async () => {
+    const resp = await fetch(
+      `${rootUrl}/api/sparql?query=${encodeURIComponent('SELECT ?s WHERE { ?s ?p ?o }')}`,
+    );
+
+    expect(resp.status).toBe(200);
+    expect(resp.headers.get('content-type')).toMatch(/sparql-results\+json/);
+  });
+});
