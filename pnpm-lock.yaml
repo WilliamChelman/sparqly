@@ -238,6 +238,15 @@ importers:
       '@nestjs/core':
         specifier: ^11.0.0
         version: 11.1.19(@nestjs/common@11.1.19)(@nestjs/platform-express@11.1.19)(reflect-metadata@0.1.14)(rxjs@7.8.2)
+      core:
+        specifier: workspace:*
+        version: link:../core
+      n3:
+        specifier: ^2.0.3
+        version: 2.0.3
+      reflect-metadata:
+        specifier: ^0.1.13
+        version: 0.1.14
       tslib:
         specifier: ^2.3.0
         version: 2.8.1

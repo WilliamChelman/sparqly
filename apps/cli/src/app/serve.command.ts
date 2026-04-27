@@ -1,28 +1,65 @@
 import { Command, CommandRunner, Option } from 'nest-commander';
+import {
+  GRAPH_STRATEGIES,
+  isGraphStrategy,
+  type GraphStrategy,
+} from 'core';
 import { createServer } from 'server';
+import { configureLogger } from './logging';
 
 interface ServeOptions {
   sources?: string;
   port?: number;
-  watch?: boolean;
+  graphStrategy?: string;
   mutable?: boolean;
   immutable?: boolean;
   verbose?: boolean;
+  quiet?: boolean;
 }
 
 @Command({
   name: 'serve',
-  description: 'Serve the SPARQL endpoint and YASGUI playground',
+  description: 'Serve a W3C SPARQL Protocol endpoint at /api/sparql',
+  arguments: '[glob]',
 })
 export class ServeCommand extends CommandRunner {
-  async run(_passedParams: string[], options: ServeOptions): Promise<void> {
+  async run(passedParams: string[], options: ServeOptions = {}): Promise<void> {
+    configureLogger(options);
+
+    const sources = options.sources ?? passedParams[0];
+    if (!sources) {
+      process.stderr.write('error: a sources glob is required\n');
+      process.exitCode = 1;
+      return;
+    }
+
+    let graphStrategy: GraphStrategy | undefined;
+    if (options.graphStrategy !== undefined) {
+      if (!isGraphStrategy(options.graphStrategy)) {
+        process.stderr.write(
+          `error: unknown --graph-strategy '${options.graphStrategy}' (expected ${GRAPH_STRATEGIES.join(', ')})\n`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      graphStrategy = options.graphStrategy;
+    }
+
     const port = options.port ?? 3000;
-    await createServer({ port });
+    const mutable = options.mutable === true || options.immutable === false;
+
+    try {
+      await createServer({ sources, port, mutable, graphStrategy });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`error: ${message}\n`);
+      process.exitCode = 1;
+    }
   }
 
   @Option({
     flags: '-s, --sources <glob>',
-    description: 'Glob of RDF files to load',
+    description: 'Glob of RDF files to load (alternative to positional arg)',
   })
   parseSources(value: string): string {
     return value;
@@ -37,16 +74,18 @@ export class ServeCommand extends CommandRunner {
   }
 
   @Option({
-    flags: '-w, --watch',
-    description: 'Rebuild the store when source files change',
+    flags: '--graph-strategy <strategy>',
+    description:
+      "Named-graph strategy: 'default', 'partial', or 'full' (see `query --help`)",
   })
-  parseWatch(): boolean {
-    return true;
+  parseGraphStrategy(value: string): string {
+    return value;
   }
 
   @Option({
     flags: '--mutable',
-    description: 'Allow mutating queries',
+    description:
+      'Allow mutating queries (UPDATE/INSERT/DELETE/LOAD). Alias for --immutable=false. Default: mutating queries are rejected.',
   })
   parseMutable(): boolean {
     return true;
@@ -54,7 +93,8 @@ export class ServeCommand extends CommandRunner {
 
   @Option({
     flags: '--immutable [value]',
-    description: 'Disallow mutating queries (default: true)',
+    description:
+      'Reject mutating queries (default: true). Pass --immutable=false to opt in; equivalent to --mutable.',
   })
   parseImmutable(value: string): boolean {
     return value !== 'false';
@@ -62,6 +102,11 @@ export class ServeCommand extends CommandRunner {
 
   @Option({ flags: '-v, --verbose', description: 'Verbose logging' })
   parseVerbose(): boolean {
+    return true;
+  }
+
+  @Option({ flags: '--quiet', description: 'Suppress non-error logging' })
+  parseQuiet(): boolean {
     return true;
   }
 }
