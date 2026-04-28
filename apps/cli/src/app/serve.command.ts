@@ -7,7 +7,8 @@ import {
 } from 'core';
 import { createServer } from 'server';
 import { loadCliConfig } from './config/load-cli-config';
-import { resolveMutable } from './query.command';
+import { mutableFromCli } from './query.command';
+import type { EffectiveOptions } from './config/schema';
 
 const WEB_BUNDLE_DIR = join(__dirname, 'web');
 
@@ -31,46 +32,56 @@ interface ServeOptions {
 })
 export class ServeCommand extends CommandRunner {
   async run(passedParams: string[], options: ServeOptions = {}): Promise<void> {
+    const cliOverrides: Partial<EffectiveOptions> = {};
+    if (options.sources !== undefined) cliOverrides.sources = options.sources;
+    if (options.port !== undefined) cliOverrides.port = options.port;
+    if (options.watch !== undefined) cliOverrides.watch = options.watch;
+    if (options.watchDebounce !== undefined)
+      cliOverrides.watchDebounce = options.watchDebounce;
+    if (options.verbose !== undefined) cliOverrides.verbose = options.verbose;
+    if (options.quiet !== undefined) cliOverrides.quiet = options.quiet;
+
+    if (options.graphStrategy !== undefined) {
+      if (!isGraphStrategy(options.graphStrategy)) {
+        process.stderr.write(
+          `error: unknown --graph-strategy '${options.graphStrategy}' (expected ${GRAPH_STRATEGIES.join(', ')})\n`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      cliOverrides.graphStrategy = options.graphStrategy;
+    }
+    const cliMutable = mutableFromCli(options);
+    if (cliMutable !== undefined) cliOverrides.mutable = cliMutable;
+
     const loaded = await loadCliConfig({
+      command: 'serve',
       configPath: options.config,
-      verbose: options.verbose,
-      quiet: options.quiet,
+      cliOverrides,
+      positionalSources: passedParams[0],
     });
     if (!loaded) return;
-    const fileCfg = loaded.config;
+    const effective = loaded.effective;
 
-    const sources = options.sources ?? fileCfg.sources ?? passedParams[0];
-    if (!sources) {
+    if (!effective.sources) {
       process.stderr.write('error: a sources glob is required\n');
       process.exitCode = 1;
       return;
     }
 
-    const graphStrategyRaw = options.graphStrategy ?? fileCfg.graphStrategy;
-    let graphStrategy: GraphStrategy | undefined;
-    if (graphStrategyRaw !== undefined) {
-      if (!isGraphStrategy(graphStrategyRaw)) {
-        process.stderr.write(
-          `error: unknown --graph-strategy '${graphStrategyRaw}' (expected ${GRAPH_STRATEGIES.join(', ')})\n`,
-        );
-        process.exitCode = 1;
-        return;
-      }
-      graphStrategy = graphStrategyRaw;
-    }
-
-    const port = options.port ?? 3000;
-    const mutable = resolveMutable(options, fileCfg.mutable);
+    const graphStrategy: GraphStrategy | undefined = effective.graphStrategy;
+    const port = effective.port ?? 3000;
+    const mutable = effective.mutable === true;
 
     try {
       await createServer({
-        sources,
+        sources: effective.sources,
         port,
         mutable,
         graphStrategy,
         webRootDir: WEB_BUNDLE_DIR,
-        watch: options.watch === true,
-        watchDebounceMs: options.watchDebounce,
+        watch: effective.watch === true,
+        watchDebounceMs: effective.watchDebounce,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

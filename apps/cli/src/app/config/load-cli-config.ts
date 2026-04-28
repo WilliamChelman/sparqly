@@ -1,36 +1,40 @@
 import { Logger } from '@nestjs/common';
 import { configureLogger } from '../logging';
+import { readEnv } from './env-config';
 import { ConfigError, resolveConfig } from './resolve-config';
-import type { SharedConfig } from './schema';
+import { resolveEffective } from './resolve-effective';
+import type { CommandName, EffectiveOptions } from './schema';
 
-export interface CliSharedOptions {
+export interface LoadCliConfigInput<C extends CommandName> {
+  command: C;
   configPath?: string;
-  verbose?: boolean;
-  quiet?: boolean;
+  cliOverrides: Partial<EffectiveOptions>;
+  positionalSources?: string;
+  env?: NodeJS.ProcessEnv;
+  cwd?: string;
 }
 
 export interface LoadedCliConfig {
-  config: SharedConfig;
+  effective: EffectiveOptions;
   filepath: string | null;
-  verbose: boolean | undefined;
-  quiet: boolean | undefined;
 }
 
 /**
- * Resolves the on-disk config file, then configures the Nest logger using the
- * CLI > file precedence for `verbose`/`quiet`. Writes the error and sets
- * `process.exitCode` itself on a `ConfigError`, returning `null` so the caller
- * can early-return.
+ * Loads the on-disk config file, layers env vars and CLI overrides on top, and
+ * configures the Nest logger. On a `ConfigError`, writes to stderr and sets
+ * `process.exitCode = 1`, returning `null` so the caller can early-return.
  */
-export async function loadCliConfig(
-  options: CliSharedOptions,
+export async function loadCliConfig<C extends CommandName>(
+  input: LoadCliConfigInput<C>,
 ): Promise<LoadedCliConfig | null> {
+  const env = input.env ?? process.env;
+  const cwd = input.cwd ?? process.cwd();
+
   let resolved;
+  let envLayer;
   try {
-    resolved = await resolveConfig({
-      cwd: process.cwd(),
-      configPath: options.configPath,
-    });
+    resolved = await resolveConfig({ cwd, configPath: input.configPath });
+    envLayer = readEnv(input.command, env);
   } catch (err) {
     if (err instanceof ConfigError) {
       process.stderr.write(`error: ${err.message}\n`);
@@ -40,12 +44,18 @@ export async function loadCliConfig(
     throw err;
   }
 
-  const verbose = options.verbose ?? resolved.config.verbose;
-  const quiet = options.quiet ?? resolved.config.quiet;
-  configureLogger({ verbose, quiet });
-  if (resolved.filepath && verbose) {
+  const effective = resolveEffective({
+    command: input.command,
+    resolved,
+    env: envLayer,
+    cliOverrides: input.cliOverrides,
+    positionalSources: input.positionalSources,
+  });
+
+  configureLogger({ verbose: effective.verbose, quiet: effective.quiet });
+  if (resolved.filepath && effective.verbose) {
     new Logger('sparqly').log(`Loaded config from ${resolved.filepath}`);
   }
 
-  return { ...resolved, verbose, quiet };
+  return { effective, filepath: resolved.filepath };
 }

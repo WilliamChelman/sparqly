@@ -10,6 +10,7 @@ import {
   type GraphStrategy,
 } from 'core';
 import { loadCliConfig } from './config/load-cli-config';
+import type { EffectiveOptions } from './config/schema';
 
 interface QueryOptions {
   sources?: string;
@@ -31,25 +32,56 @@ interface QueryOptions {
 })
 export class QueryCommand extends CommandRunner {
   async run(passedParams: string[], options: QueryOptions = {}): Promise<void> {
+    const cliOverrides: Partial<EffectiveOptions> = {};
+    if (options.sources !== undefined) cliOverrides.sources = options.sources;
+    if (options.query !== undefined) cliOverrides.query = options.query;
+    if (options.queryFile !== undefined)
+      cliOverrides.queryFile = options.queryFile;
+    if (options.verbose !== undefined) cliOverrides.verbose = options.verbose;
+    if (options.quiet !== undefined) cliOverrides.quiet = options.quiet;
+
+    if (options.format !== undefined) {
+      if (!isSparqlFormat(options.format)) {
+        process.stderr.write(
+          `error: unknown --format '${options.format}' (expected 'json' or 'turtle')\n`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      cliOverrides.format = options.format;
+    }
+    if (options.graphStrategy !== undefined) {
+      if (!isGraphStrategy(options.graphStrategy)) {
+        process.stderr.write(
+          `error: unknown --graph-strategy '${options.graphStrategy}' (expected ${GRAPH_STRATEGIES.join(', ')})\n`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      cliOverrides.graphStrategy = options.graphStrategy;
+    }
+    const cliMutable = mutableFromCli(options);
+    if (cliMutable !== undefined) cliOverrides.mutable = cliMutable;
+
     const loaded = await loadCliConfig({
+      command: 'query',
       configPath: options.config,
-      verbose: options.verbose,
-      quiet: options.quiet,
+      cliOverrides,
+      positionalSources: passedParams[0],
     });
     if (!loaded) return;
-    const fileCfg = loaded.config;
+    const effective = loaded.effective;
     const logger = new Logger('sparqly');
 
-    const sources = options.sources ?? fileCfg.sources ?? passedParams[0];
-    if (!sources) {
+    if (!effective.sources) {
       process.stderr.write('error: a sources glob is required\n');
       process.exitCode = 1;
       return;
     }
     const stdinQuery = await this.readStdin();
     const querySources: string[] = [];
-    if (options.query) querySources.push('-q/--query');
-    if (options.queryFile) querySources.push('--query-file');
+    if (effective.query) querySources.push('-q/--query');
+    if (effective.queryFile) querySources.push('--query-file');
     if (stdinQuery) querySources.push('stdin');
 
     if (querySources.length > 1) {
@@ -68,11 +100,11 @@ export class QueryCommand extends CommandRunner {
     }
 
     let query: string;
-    if (options.query) {
-      query = options.query;
-    } else if (options.queryFile) {
+    if (effective.query) {
+      query = effective.query;
+    } else if (effective.queryFile) {
       try {
-        query = await readFile(options.queryFile, 'utf8');
+        query = await readFile(effective.queryFile, 'utf8');
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         process.stderr.write(`error: failed to read --query-file: ${message}\n`);
@@ -83,35 +115,14 @@ export class QueryCommand extends CommandRunner {
       query = stdinQuery as string;
     }
 
-    let format: 'json' | 'turtle' | undefined;
-    if (options.format !== undefined) {
-      if (!isSparqlFormat(options.format)) {
-        process.stderr.write(
-          `error: unknown --format '${options.format}' (expected 'json' or 'turtle')\n`,
-        );
-        process.exitCode = 1;
-        return;
-      }
-      format = options.format;
-    }
-
-    const graphStrategyRaw = options.graphStrategy ?? fileCfg.graphStrategy;
-    let graphStrategy: GraphStrategy | undefined;
-    if (graphStrategyRaw !== undefined) {
-      if (!isGraphStrategy(graphStrategyRaw)) {
-        process.stderr.write(
-          `error: unknown --graph-strategy '${graphStrategyRaw}' (expected ${GRAPH_STRATEGIES.join(', ')})\n`,
-        );
-        process.exitCode = 1;
-        return;
-      }
-      graphStrategy = graphStrategyRaw;
-    }
+    const graphStrategy: GraphStrategy | undefined = effective.graphStrategy;
+    const format = effective.format;
+    const mutable = effective.mutable === true;
 
     try {
       const loadStart = Date.now();
       const { store, files } = await loadRdf({
-        sources,
+        sources: effective.sources,
         graphStrategy,
       });
       logger.log(
@@ -122,7 +133,6 @@ export class QueryCommand extends CommandRunner {
 
       const queryStart = Date.now();
       const engine = new QueryEngine(store);
-      const mutable = resolveMutable(options, fileCfg.mutable);
       const result = await engine.execute(query, { format, mutable });
       logger.log(`Query executed in ${Date.now() - queryStart}ms`);
 
@@ -224,13 +234,11 @@ export class QueryCommand extends CommandRunner {
   }
 }
 
-export function resolveMutable(
-  options: { mutable?: boolean; immutable?: boolean },
-  fromConfig: boolean | undefined,
-): boolean {
+export function mutableFromCli(options: {
+  mutable?: boolean;
+  immutable?: boolean;
+}): boolean | undefined {
   if (options.mutable === true) return true;
   if (options.immutable !== undefined) return options.immutable === false;
-  if (fromConfig !== undefined) return fromConfig;
-  return false;
+  return undefined;
 }
-

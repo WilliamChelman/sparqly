@@ -1,8 +1,12 @@
 import { cosmiconfig, type CosmiconfigResult } from 'cosmiconfig';
 import { z } from 'zod';
 import {
+  fileConfigSchema,
+  QUERY_BLOCK_KEYS,
+  SERVE_BLOCK_KEYS,
   SHARED_CONFIG_KEYS,
-  sharedConfigSchema,
+  type QueryBlockConfig,
+  type ServeBlockConfig,
   type SharedConfig,
 } from './schema';
 
@@ -21,7 +25,9 @@ export interface ResolveConfigOptions {
 }
 
 export interface ResolvedConfig {
-  config: SharedConfig;
+  shared: SharedConfig;
+  queryBlock: QueryBlockConfig;
+  serveBlock: ServeBlockConfig;
   filepath: string | null;
 }
 
@@ -31,7 +37,13 @@ const SEARCH_PLACES = [
   'sparqly.config.json',
 ];
 
-const KNOWN_KEYS: ReadonlySet<string> = new Set(SHARED_CONFIG_KEYS);
+const TOP_LEVEL_KNOWN: ReadonlySet<string> = new Set([
+  ...SHARED_CONFIG_KEYS,
+  'query',
+  'serve',
+]);
+const QUERY_KNOWN: ReadonlySet<string> = new Set(QUERY_BLOCK_KEYS);
+const SERVE_KNOWN: ReadonlySet<string> = new Set(SERVE_BLOCK_KEYS);
 
 export async function resolveConfig(
   options: ResolveConfigOptions = {},
@@ -61,7 +73,7 @@ export async function resolveConfig(
   }
 
   if (!result || result.isEmpty) {
-    return { config: {}, filepath: null };
+    return { shared: {}, queryBlock: {}, serveBlock: {}, filepath: null };
   }
 
   const raw = result.config;
@@ -71,27 +83,69 @@ export async function resolveConfig(
     );
   }
 
-  const parsed = sharedConfigSchema.safeParse(raw);
+  const parsed = fileConfigSchema.safeParse(raw);
   if (!parsed.success) {
     throw new ConfigError(formatZodError(parsed.error, result.filepath));
   }
 
   const warn = options.warn ?? defaultWarn;
-  for (const key of Object.keys(raw as Record<string, unknown>)) {
-    if (!KNOWN_KEYS.has(key)) {
-      warn(`warning: unknown key '${key}' in ${result.filepath} (ignored)`);
-    }
+  warnUnknownKeys(raw, TOP_LEVEL_KNOWN, result.filepath, warn);
+  const queryRaw = (raw as Record<string, unknown>).query;
+  if (queryRaw && typeof queryRaw === 'object' && !Array.isArray(queryRaw)) {
+    warnUnknownKeys(
+      queryRaw as Record<string, unknown>,
+      QUERY_KNOWN,
+      `${result.filepath} (query)`,
+      warn,
+    );
+  }
+  const serveRaw = (raw as Record<string, unknown>).serve;
+  if (serveRaw && typeof serveRaw === 'object' && !Array.isArray(serveRaw)) {
+    warnUnknownKeys(
+      serveRaw as Record<string, unknown>,
+      SERVE_KNOWN,
+      `${result.filepath} (serve)`,
+      warn,
+    );
   }
 
-  const known: SharedConfig = {};
-  for (const key of SHARED_CONFIG_KEYS) {
-    const value = (parsed.data as Record<string, unknown>)[key];
-    if (value !== undefined) {
-      (known as Record<string, unknown>)[key] = value;
+  const data = parsed.data as Record<string, unknown>;
+  const shared = pickKnown<SharedConfig>(data, SHARED_CONFIG_KEYS);
+  const queryBlock = pickKnown<QueryBlockConfig>(
+    (data.query as Record<string, unknown> | undefined) ?? {},
+    QUERY_BLOCK_KEYS,
+  );
+  const serveBlock = pickKnown<ServeBlockConfig>(
+    (data.serve as Record<string, unknown> | undefined) ?? {},
+    SERVE_BLOCK_KEYS,
+  );
+
+  return { shared, queryBlock, serveBlock, filepath: result.filepath };
+}
+
+function pickKnown<T extends object>(
+  source: Record<string, unknown>,
+  keys: ReadonlyArray<string>,
+): T {
+  const out: Record<string, unknown> = {};
+  for (const key of keys) {
+    const value = source[key];
+    if (value !== undefined) out[key] = value;
+  }
+  return out as T;
+}
+
+function warnUnknownKeys(
+  raw: Record<string, unknown>,
+  known: ReadonlySet<string>,
+  scope: string,
+  warn: (message: string) => void,
+): void {
+  for (const key of Object.keys(raw)) {
+    if (!known.has(key)) {
+      warn(`warning: unknown key '${key}' in ${scope} (ignored)`);
     }
   }
-
-  return { config: known, filepath: result.filepath };
 }
 
 function defaultWarn(message: string): void {
