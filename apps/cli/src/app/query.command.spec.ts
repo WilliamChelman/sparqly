@@ -522,6 +522,104 @@ describe('QueryCommand.run', () => {
     });
   });
 
+  describe('config file integration', () => {
+    it('uses sources from --config when no CLI override is given', async () => {
+      await writeFile(
+        join(dir, 'data.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+      const configPath = join(dir, 'sparqly.config.yaml');
+      await writeFile(configPath, `sources: "${join(dir, '*.ttl')}"\n`);
+
+      const cmd = new QueryCommand();
+      await cmd.run([], {
+        query: 'SELECT ?s WHERE { ?s ?p ?o }',
+        config: configPath,
+        quiet: true,
+      });
+
+      const parsed = JSON.parse(stdoutText());
+      expect(parsed.results.bindings).toHaveLength(1);
+      expect(process.exitCode).toBeFalsy();
+    });
+
+    it('logs the discovered config path under --verbose', async () => {
+      await writeFile(
+        join(dir, 'data.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+      const configPath = join(dir, 'sparqly.config.json');
+      await writeFile(
+        configPath,
+        JSON.stringify({ sources: join(dir, '*.ttl') }),
+      );
+
+      const cmd = new QueryCommand();
+      await cmd.run([], {
+        query: 'SELECT ?s WHERE { ?s ?p ?o }',
+        config: configPath,
+        verbose: true,
+      });
+
+      expect(stderrText()).toContain(configPath);
+      expect(stderrText()).toMatch(/Loaded config from/);
+      expect(process.exitCode).toBeFalsy();
+    });
+
+    it('hard-errors when --config path does not exist', async () => {
+      const cmd = new QueryCommand();
+      await cmd.run([], {
+        query: 'SELECT ?s WHERE { ?s ?p ?o }',
+        config: join(dir, 'missing.yaml'),
+        quiet: true,
+      });
+
+      expect(process.exitCode).toBe(1);
+      expect(stderrText()).toMatch(/missing\.yaml/);
+    });
+
+    it('CLI --mutable overrides mutable: false from the config file', async () => {
+      await writeFile(
+        join(dir, 'data.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+      const configPath = join(dir, 'sparqly.config.json');
+      await writeFile(configPath, JSON.stringify({ mutable: false }));
+
+      const cmd = new QueryCommand();
+      await cmd.run([join(dir, '*.ttl')], {
+        query:
+          'INSERT DATA { <http://example.org/x> <http://example.org/p> <http://example.org/y> }',
+        mutable: true,
+        config: configPath,
+        quiet: true,
+      });
+
+      expect(stderrText()).toMatch(/not yet implemented/i);
+      expect(stderrText()).not.toMatch(/Mutating queries are disabled/);
+    });
+
+    it('config mutable: true lets a mutating query reach execution when no CLI flag is set', async () => {
+      await writeFile(
+        join(dir, 'data.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+      const configPath = join(dir, 'sparqly.config.json');
+      await writeFile(configPath, JSON.stringify({ mutable: true }));
+
+      const cmd = new QueryCommand();
+      await cmd.run([join(dir, '*.ttl')], {
+        query:
+          'INSERT DATA { <http://example.org/x> <http://example.org/p> <http://example.org/y> }',
+        config: configPath,
+        quiet: true,
+      });
+
+      expect(stderrText()).toMatch(/not yet implemented/i);
+      expect(stderrText()).not.toMatch(/Mutating queries are disabled/);
+    });
+  });
+
   it('exits non-zero on a query error', async () => {
     await writeFile(
       join(dir, 'data.ttl'),

@@ -45,6 +45,9 @@ importers:
       '@triply/yasgui':
         specifier: ^4.2.28
         version: 4.2.28
+      cosmiconfig:
+        specifier: ^9.0.1
+        version: 9.0.1(typescript@5.9.3)
       n3:
         specifier: ^2.0.3
         version: 2.0.3
@@ -63,6 +66,9 @@ importers:
       tinyglobby:
         specifier: ^0.2.16
         version: 0.2.16
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
     devDependencies:
       '@angular-devkit/core':
         specifier: ~21.2.0
@@ -13186,7 +13192,6 @@ packages:
       js-yaml: 4.1.1
       parse-json: 5.2.0
       typescript: 5.9.3
-    dev: true
 
   /cron-parser@4.9.0:
     resolution: {integrity: sha512-p0SaNjrHOnQeR8/VnfGbmg9te2kfyYSQ7Sc/j/6DtPL3JQvKxmjO9TSjNFpujqV3vEYYBvNNvXSxzyksBWAx1Q==}
@@ -13750,7 +13755,6 @@ packages:
   /env-paths@2.2.1:
     resolution: {integrity: sha512-+h1lkLKhZMTYjog1VEpJNG7NZJWcuc2DDk/qsqSTRRCOXiLjeQ1d1/udrUGhqMxUgAlwKNZ0cf2uqan5GLuS2A==}
     engines: {node: '>=6'}
-    dev: true
 
   /envinfo@7.21.0:
     resolution: {integrity: sha512-Lw7I8Zp5YKHFCXL7+Dz95g4CcbMEpgvqZNNq3AmlT5XAV6CgAAk6gyAMqn2zjw08K9BHfcNuKrMiCPLByGafow==}
@@ -21733,4 +21737,3 @@ packages:
 
   /zod@4.3.6:
     resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
-    dev: true

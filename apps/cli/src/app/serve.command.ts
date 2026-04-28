@@ -6,7 +6,8 @@ import {
   type GraphStrategy,
 } from 'core';
 import { createServer } from 'server';
-import { configureLogger } from './logging';
+import { loadCliConfig } from './config/load-cli-config';
+import { resolveMutable } from './query.command';
 
 const WEB_BUNDLE_DIR = join(__dirname, 'web');
 
@@ -20,6 +21,7 @@ interface ServeOptions {
   quiet?: boolean;
   watch?: boolean;
   watchDebounce?: number;
+  config?: string;
 }
 
 @Command({
@@ -29,29 +31,36 @@ interface ServeOptions {
 })
 export class ServeCommand extends CommandRunner {
   async run(passedParams: string[], options: ServeOptions = {}): Promise<void> {
-    configureLogger(options);
+    const loaded = await loadCliConfig({
+      configPath: options.config,
+      verbose: options.verbose,
+      quiet: options.quiet,
+    });
+    if (!loaded) return;
+    const fileCfg = loaded.config;
 
-    const sources = options.sources ?? passedParams[0];
+    const sources = options.sources ?? fileCfg.sources ?? passedParams[0];
     if (!sources) {
       process.stderr.write('error: a sources glob is required\n');
       process.exitCode = 1;
       return;
     }
 
+    const graphStrategyRaw = options.graphStrategy ?? fileCfg.graphStrategy;
     let graphStrategy: GraphStrategy | undefined;
-    if (options.graphStrategy !== undefined) {
-      if (!isGraphStrategy(options.graphStrategy)) {
+    if (graphStrategyRaw !== undefined) {
+      if (!isGraphStrategy(graphStrategyRaw)) {
         process.stderr.write(
-          `error: unknown --graph-strategy '${options.graphStrategy}' (expected ${GRAPH_STRATEGIES.join(', ')})\n`,
+          `error: unknown --graph-strategy '${graphStrategyRaw}' (expected ${GRAPH_STRATEGIES.join(', ')})\n`,
         );
         process.exitCode = 1;
         return;
       }
-      graphStrategy = options.graphStrategy;
+      graphStrategy = graphStrategyRaw;
     }
 
     const port = options.port ?? 3000;
-    const mutable = options.mutable === true || options.immutable === false;
+    const mutable = resolveMutable(options, fileCfg.mutable);
 
     try {
       await createServer({
@@ -138,5 +147,14 @@ export class ServeCommand extends CommandRunner {
   @Option({ flags: '--quiet', description: 'Suppress non-error logging' })
   parseQuiet(): boolean {
     return true;
+  }
+
+  @Option({
+    flags: '--config <path>',
+    description:
+      'Path to a sparqly.config.{yaml,yml,json} file. Disables auto-discovery; hard error if the path is missing or unparseable.',
+  })
+  parseConfig(value: string): string {
+    return value;
   }
 }

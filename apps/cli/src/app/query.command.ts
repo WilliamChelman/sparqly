@@ -9,7 +9,7 @@ import {
   loadRdf,
   type GraphStrategy,
 } from 'core';
-import { configureLogger } from './logging';
+import { loadCliConfig } from './config/load-cli-config';
 
 interface QueryOptions {
   sources?: string;
@@ -21,6 +21,7 @@ interface QueryOptions {
   immutable?: boolean;
   verbose?: boolean;
   quiet?: boolean;
+  config?: string;
 }
 
 @Command({
@@ -30,10 +31,16 @@ interface QueryOptions {
 })
 export class QueryCommand extends CommandRunner {
   async run(passedParams: string[], options: QueryOptions = {}): Promise<void> {
-    configureLogger(options);
+    const loaded = await loadCliConfig({
+      configPath: options.config,
+      verbose: options.verbose,
+      quiet: options.quiet,
+    });
+    if (!loaded) return;
+    const fileCfg = loaded.config;
     const logger = new Logger('sparqly');
 
-    const sources = options.sources ?? passedParams[0];
+    const sources = options.sources ?? fileCfg.sources ?? passedParams[0];
     if (!sources) {
       process.stderr.write('error: a sources glob is required\n');
       process.exitCode = 1;
@@ -88,16 +95,17 @@ export class QueryCommand extends CommandRunner {
       format = options.format;
     }
 
+    const graphStrategyRaw = options.graphStrategy ?? fileCfg.graphStrategy;
     let graphStrategy: GraphStrategy | undefined;
-    if (options.graphStrategy !== undefined) {
-      if (!isGraphStrategy(options.graphStrategy)) {
+    if (graphStrategyRaw !== undefined) {
+      if (!isGraphStrategy(graphStrategyRaw)) {
         process.stderr.write(
-          `error: unknown --graph-strategy '${options.graphStrategy}' (expected ${GRAPH_STRATEGIES.join(', ')})\n`,
+          `error: unknown --graph-strategy '${graphStrategyRaw}' (expected ${GRAPH_STRATEGIES.join(', ')})\n`,
         );
         process.exitCode = 1;
         return;
       }
-      graphStrategy = options.graphStrategy;
+      graphStrategy = graphStrategyRaw;
     }
 
     try {
@@ -114,7 +122,7 @@ export class QueryCommand extends CommandRunner {
 
       const queryStart = Date.now();
       const engine = new QueryEngine(store);
-      const mutable = options.mutable === true || options.immutable === false;
+      const mutable = resolveMutable(options, fileCfg.mutable);
       const result = await engine.execute(query, { format, mutable });
       logger.log(`Query executed in ${Date.now() - queryStart}ms`);
 
@@ -205,5 +213,24 @@ export class QueryCommand extends CommandRunner {
   parseQuiet(): boolean {
     return true;
   }
+
+  @Option({
+    flags: '--config <path>',
+    description:
+      'Path to a sparqly.config.{yaml,yml,json} file. Disables auto-discovery; hard error if the path is missing or unparseable.',
+  })
+  parseConfig(value: string): string {
+    return value;
+  }
+}
+
+export function resolveMutable(
+  options: { mutable?: boolean; immutable?: boolean },
+  fromConfig: boolean | undefined,
+): boolean {
+  if (options.mutable === true) return true;
+  if (options.immutable !== undefined) return options.immutable === false;
+  if (fromConfig !== undefined) return fromConfig;
+  return false;
 }
 
