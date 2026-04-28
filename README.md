@@ -3,15 +3,19 @@
 RDF CLI with SPARQL query and an embedded YASGUI playground.
 
 See [PRD #1](https://github.com/WilliamChelman/sparqly/issues/1) for the v1 scope.
+Release notes live in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## Install
 
-Requires Node **22+**.
+Requires Node **22+**. Published to the public npm registry as `sparqly`.
 
 ```sh
-# global install
-npm i -g sparqly
+# stable, global install
+npm install -g sparqly
 sparqly --help
+
+# pre-release channel (beta dist-tag)
+npm install -g sparqly@beta
 
 # ad-hoc, no install
 npx sparqly --help
@@ -50,7 +54,7 @@ This is an Nx monorepo managed with pnpm.
 Node version is also enforced by `.npmrc` (`use-node-version=24.15.0`), so pnpm
 subprocesses run against the same version regardless of what's on `$PATH`.
 
-## Install
+## Setting up the workspace
 
 ```sh
 pnpm install
