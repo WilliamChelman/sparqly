@@ -39,11 +39,29 @@ Run the full validation suite and fix any issues. Repeat until everything passes
 pnpm run check
 ```
 
-This runs build, lint, and test together. If you need to iterate faster on a single concern, the individual scripts are `pnpm run build`, `pnpm run lint`, and `pnpm run test` — but the final green light before committing must be `pnpm run check`.
+This runs build, lint, and test together. If you need to iterate faster on a single concern, the individual scripts are `pnpm run build`, `pnpm run lint`, and `pnpm run test` — but the final green light must be `pnpm run check`.
 
-### 5. Commit
+### 5. Refactor
 
-Once `pnpm run check` passes cleanly, commit the work.
+With tests green, review the changes for quality, modularity, and DRYness before committing. The goal is to leave the code better than you found it, without expanding scope.
+
+Look for:
+- **Duplication**: repeated logic, near-identical blocks, or copy-pasted patterns that should be extracted into a shared helper or module.
+- **Shallow modules**: thin wrappers, leaky abstractions, or modules whose interface is as complex as their implementation — deepen them or inline them.
+- **Misplaced responsibility**: code that lives in the wrong layer, functions doing two unrelated things, or types that belong in a different file.
+- **Naming**: identifiers that no longer reflect what the code does after the change.
+- **Dead code**: branches, parameters, exports, or comments left behind by the implementation.
+
+Constraints:
+- Do not expand scope. Only refactor code touched by or directly adjacent to this change. Defer broader cleanup to a separate task.
+- Keep behavior identical. Refactors must not change semantics — tests stay green throughout.
+- Re-run `pnpm run check` after refactoring. The final green light before committing is a clean check **after** the refactor pass.
+
+If nothing meaningful improves, skip this step — do not invent changes.
+
+### 6. Commit
+
+Once `pnpm run check` passes cleanly after the refactor pass, commit the work.
 
 **If the task is associated with a GitHub issue**, reference it in the commit message using a closing keyword so the issue auto-closes when the commit lands on the default branch (or when the PR merges):
 
