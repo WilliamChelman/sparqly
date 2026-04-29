@@ -4,7 +4,11 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readEnv } from './env-config';
 import { ConfigError, resolveConfig } from './resolve-config';
-import { resolveEffective } from './resolve-effective';
+import {
+  formatPrintConfig,
+  resolveEffective,
+  resolveEffectiveWithSources,
+} from './resolve-effective';
 
 describe('full precedence chain', () => {
   let dir: string;
@@ -231,5 +235,157 @@ describe('env-var coercion', () => {
     expect(readEnv('serve', { PATH: '/usr/bin', NODE_ENV: 'test' })).toEqual(
       {},
     );
+  });
+});
+
+describe('source tracking and --print-config formatting', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-print-config-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  async function loadFile(): ReturnType<typeof resolveConfig> {
+    return resolveConfig({ cwd: dir, stopDir: dir });
+  }
+
+  it('annotates defaults when no other source supplies a value', async () => {
+    const resolved = await loadFile();
+    const env = readEnv('serve', {});
+    const result = resolveEffectiveWithSources({
+      command: 'serve',
+      resolved,
+      env,
+      cliOverrides: {},
+    });
+    expect(result.effective.port).toBe(3000);
+    expect(result.sources.port).toBe('default');
+    expect(result.sources.mutable).toBe('default');
+    expect(result.sources.watch).toBe('default');
+    expect(result.sources.watchDebounce).toBe('default');
+    expect(result.sources.graphStrategy).toBe('default');
+  });
+
+  it('marks file values, env values, and CLI flags with their tier', async () => {
+    await writeFile(
+      join(dir, 'sparqly.config.yaml'),
+      [
+        'sources: "from-file/**/*.ttl"',
+        'mutable: true',
+        'serve:',
+        '  port: 8080',
+        '',
+      ].join('\n'),
+    );
+    const resolved = await loadFile();
+    const env = readEnv('serve', { SPARQLY_SERVE_WATCH: 'true' });
+    const result = resolveEffectiveWithSources({
+      command: 'serve',
+      resolved,
+      env,
+      cliOverrides: { graphStrategy: 'partial' },
+    });
+    expect(result.sources.sources).toBe('file');
+    expect(result.sources.mutable).toBe('file');
+    expect(result.sources.port).toBe('file');
+    expect(result.sources.watch).toBe('env');
+    expect(result.sources.graphStrategy).toBe('flag');
+  });
+
+  it('marks the positional sources override as flag', async () => {
+    await writeFile(
+      join(dir, 'sparqly.config.yaml'),
+      'sources: "from-file/**/*.ttl"\n',
+    );
+    const resolved = await loadFile();
+    const env = readEnv('query', {});
+    const result = resolveEffectiveWithSources({
+      command: 'query',
+      resolved,
+      env,
+      cliOverrides: {},
+      positionalSources: 'from-positional/**/*.ttl',
+    });
+    expect(result.effective.sources).toBe('from-positional/**/*.ttl');
+    expect(result.sources.sources).toBe('flag');
+  });
+
+  it('formats print output deterministically with key/source annotations', async () => {
+    await writeFile(
+      join(dir, 'sparqly.config.yaml'),
+      ['sources: "data/**/*.ttl"', 'mutable: true', ''].join('\n'),
+    );
+    const resolved = await loadFile();
+    const env = readEnv('query', {});
+    const result = resolveEffectiveWithSources({
+      command: 'query',
+      resolved,
+      env,
+      cliOverrides: {},
+    });
+    const out = formatPrintConfig({
+      command: 'query',
+      result,
+      filepath: resolved.filepath,
+    });
+    const lines = out.trimEnd().split('\n');
+    expect(lines[0]).toBe('# sparqly query --print-config');
+    expect(lines[1]).toBe(`# config file: ${resolved.filepath}`);
+    expect(out).toMatch(/sources\s*:\s*"data\/\*\*\/\*\.ttl"\s+# file/);
+    expect(out).toMatch(/mutable\s*:\s*true\s+# file/);
+    expect(out).toMatch(/graphStrategy\s*:\s*"default"\s+# default/);
+  });
+
+  it('print output reports "(none)" when no config file was discovered', async () => {
+    const resolved = await loadFile();
+    const env = readEnv('serve', {});
+    const result = resolveEffectiveWithSources({
+      command: 'serve',
+      resolved,
+      env,
+      cliOverrides: {},
+    });
+    const out = formatPrintConfig({
+      command: 'serve',
+      result,
+      filepath: resolved.filepath,
+    });
+    expect(out).toContain('# config file: (none)');
+  });
+
+  it('print output reflects each precedence tier on the same key', async () => {
+    await writeFile(
+      join(dir, 'sparqly.config.yaml'),
+      'serve:\n  port: 8080\n',
+    );
+    const fileOnly = resolveEffectiveWithSources({
+      command: 'serve',
+      resolved: await loadFile(),
+      env: readEnv('serve', {}),
+      cliOverrides: {},
+    });
+    expect(fileOnly.sources.port).toBe('file');
+
+    const envWins = resolveEffectiveWithSources({
+      command: 'serve',
+      resolved: await loadFile(),
+      env: readEnv('serve', { SPARQLY_SERVE_PORT: '9090' }),
+      cliOverrides: {},
+    });
+    expect(envWins.sources.port).toBe('env');
+    expect(envWins.effective.port).toBe(9090);
+
+    const flagWins = resolveEffectiveWithSources({
+      command: 'serve',
+      resolved: await loadFile(),
+      env: readEnv('serve', { SPARQLY_SERVE_PORT: '9090' }),
+      cliOverrides: { port: 4000 },
+    });
+    expect(flagWins.sources.port).toBe('flag');
+    expect(flagWins.effective.port).toBe(4000);
   });
 });

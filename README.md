@@ -34,6 +34,91 @@ sparqly serve "data/**/*.ttl" --port=3000
 # open http://localhost:3000
 ```
 
+## Configuration file
+
+Both `sparqly query` and `sparqly serve` read a shared config file so you don't
+have to repeat `--sources`, `--graph-strategy`, `--port`, etc. on every
+invocation. The CLI walks up parent directories from the current working
+directory looking for the first match of:
+
+- `sparqly.config.yaml`
+- `sparqly.config.yml`
+- `sparqly.config.json`
+
+Pass `--config <path>` to skip auto-discovery and pin a specific file. A missing
+or unparseable `--config` path is a hard error.
+
+### Schema
+
+The file has shared defaults at the top level plus optional `query:` and
+`serve:` blocks that override those defaults for one command. Every option
+that is exposed as a CLI flag is also expressible in the config file.
+
+```yaml
+# sparqly.config.yaml — full example
+sources: "data/**/*.ttl"
+graphStrategy: default     # default | partial | full
+mutable: false
+verbose: false
+quiet: false
+
+query:
+  query: |
+    SELECT ?s ?p ?o
+    WHERE { ?s ?p ?o }
+    LIMIT 10
+  queryFile: ./queries/default.rq   # mutually exclusive with `query`
+  format: json                      # json | turtle
+
+serve:
+  port: 3000
+  watch: true
+  watchDebounce: 250
+  mutable: true                     # overrides shared `mutable: false` for `serve`
+```
+
+JSON is supported with the same shape (`sparqly.config.json`).
+
+### Precedence
+
+Values are merged from lowest to highest priority — later sources override
+earlier ones:
+
+| Priority   | Source                                                                                  |
+| ---------- | --------------------------------------------------------------------------------------- |
+| 1 (lowest) | Built-in defaults                                                                        |
+| 2          | Config file — top-level shared keys                                                      |
+| 3          | Config file — `query:` / `serve:` block (for the active command)                         |
+| 4          | Environment variables                                                                    |
+| 5 (highest) | CLI flags (and the positional `[glob]` argument, which sets `sources`)                  |
+
+Environment variables follow a predictable contract:
+
+- Shared keys: `SPARQLY_<UPPER_SNAKE_KEY>` (e.g., `SPARQLY_SOURCES`,
+  `SPARQLY_GRAPH_STRATEGY`, `SPARQLY_MUTABLE`).
+- Command-specific keys: `SPARQLY_<COMMAND>_<UPPER_SNAKE_KEY>` (e.g.,
+  `SPARQLY_SERVE_PORT`, `SPARQLY_QUERY_FORMAT`, `SPARQLY_SERVE_WATCH_DEBOUNCE`).
+
+String env values are coerced to numbers / booleans according to the schema.
+
+### `--print-config`
+
+To see exactly what `sparqly` will run with — and which layer each value came
+from — pass `--print-config` to either command. It resolves the merged
+configuration, prints it annotated, and exits 0 without running the query or
+starting the server.
+
+```sh
+sparqly query --print-config
+# sparqly query --print-config
+# config file: /path/to/sparqly.config.yaml
+sources       : "data/**/*.ttl"  # file
+graphStrategy : default          # default
+mutable       : true             # file
+verbose       : false            # default
+quiet         : false            # default
+```
+
 ## Workspace layout
 
 This is an Nx monorepo managed with pnpm.

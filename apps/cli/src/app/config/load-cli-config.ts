@@ -2,7 +2,11 @@ import { Logger } from '@nestjs/common';
 import { configureLogger } from '../logging';
 import { readEnv } from './env-config';
 import { ConfigError, resolveConfig } from './resolve-config';
-import { resolveEffective } from './resolve-effective';
+import {
+  formatPrintConfig,
+  resolveEffective,
+  resolveEffectiveWithSources,
+} from './resolve-effective';
 import type { CommandName, EffectiveOptions } from './schema';
 
 export interface LoadCliConfigInput<C extends CommandName> {
@@ -17,6 +21,7 @@ export interface LoadCliConfigInput<C extends CommandName> {
 export interface LoadedCliConfig {
   effective: EffectiveOptions;
   filepath: string | null;
+  printConfig: string;
 }
 
 /**
@@ -44,12 +49,20 @@ export async function loadCliConfig<C extends CommandName>(
     throw err;
   }
 
-  const effective = resolveEffective({
+  const resolveInput = {
     command: input.command,
     resolved,
     env: envLayer,
     cliOverrides: input.cliOverrides,
     positionalSources: input.positionalSources,
+  };
+
+  const effective = resolveEffective(resolveInput);
+  const detailed = resolveEffectiveWithSources(resolveInput);
+  const printConfig = formatPrintConfig({
+    command: input.command,
+    result: detailed,
+    filepath: resolved.filepath,
   });
 
   configureLogger({ verbose: effective.verbose, quiet: effective.quiet });
@@ -57,5 +70,5 @@ export async function loadCliConfig<C extends CommandName>(
     new Logger('sparqly').log(`Loaded config from ${resolved.filepath}`);
   }
 
-  return { effective, filepath: resolved.filepath };
+  return { effective, filepath: resolved.filepath, printConfig };
 }

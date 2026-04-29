@@ -23,6 +23,7 @@ interface QueryOptions {
   verbose?: boolean;
   quiet?: boolean;
   config?: string;
+  printConfig?: boolean;
 }
 
 @Command({
@@ -72,6 +73,11 @@ export class QueryCommand extends CommandRunner {
     if (!loaded) return;
     const effective = loaded.effective;
     const logger = new Logger('sparqly');
+
+    if (options.printConfig) {
+      process.stdout.write(loaded.printConfig);
+      return;
+    }
 
     if (!effective.sources) {
       process.stderr.write('error: a sources glob is required\n');
@@ -227,10 +233,19 @@ export class QueryCommand extends CommandRunner {
   @Option({
     flags: '--config <path>',
     description:
-      'Path to a sparqly.config.{yaml,yml,json} file. Disables auto-discovery; hard error if the path is missing or unparseable.',
+      'Path to a sparqly.config.{yaml,yml,json} file. Disables auto-discovery; hard error if the path is missing or unparseable. See README "Configuration file".',
   })
   parseConfig(value: string): string {
     return value;
+  }
+
+  @Option({
+    flags: '--print-config',
+    description:
+      'Print the fully-merged effective configuration with the source of each value (default/file/env/flag) and exit 0. See README "Configuration file".',
+  })
+  parsePrintConfig(): boolean {
+    return true;
   }
 }
 

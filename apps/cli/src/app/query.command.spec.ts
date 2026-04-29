@@ -599,6 +599,47 @@ describe('QueryCommand.run', () => {
       expect(stderrText()).not.toMatch(/Mutating queries are disabled/);
     });
 
+    it('--print-config prints the effective config with source per key and exits 0 without running the query', async () => {
+      const configPath = join(dir, 'sparqly.config.yaml');
+      await writeFile(
+        configPath,
+        ['sources: "from-file/**/*.ttl"', 'mutable: true', ''].join('\n'),
+      );
+
+      const cmd = new QueryCommand();
+      await cmd.run([], {
+        config: configPath,
+        printConfig: true,
+        graphStrategy: 'partial',
+        quiet: true,
+      });
+
+      const out = stdoutText();
+      expect(out).toContain('# sparqly query --print-config');
+      expect(out).toContain(`# config file: ${configPath}`);
+      expect(out).toMatch(/sources\s*:\s*"from-file\/\*\*\/\*\.ttl"\s+# file/);
+      expect(out).toMatch(/mutable\s*:\s*true\s+# file/);
+      expect(out).toMatch(/graphStrategy\s*:\s*"partial"\s+# flag/);
+      expect(process.exitCode).toBeFalsy();
+    });
+
+    it('--print-config marks the positional sources override as flag', async () => {
+      const cmd = new QueryCommand();
+      await cmd.run([join(dir, '*.ttl')], {
+        printConfig: true,
+        quiet: true,
+      });
+
+      const out = stdoutText();
+      const sourcesLine = out
+        .split('\n')
+        .find((line) => line.startsWith('sources'));
+      expect(sourcesLine).toBeDefined();
+      expect(sourcesLine).toContain(JSON.stringify(join(dir, '*.ttl')));
+      expect(sourcesLine).toMatch(/# flag$/);
+      expect(process.exitCode).toBeFalsy();
+    });
+
     it('config mutable: true lets a mutating query reach execution when no CLI flag is set', async () => {
       await writeFile(
         join(dir, 'data.ttl'),
