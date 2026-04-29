@@ -105,5 +105,6 @@ export function formatPrintConfig(input: {
 
 function formatValue(value: unknown): string {
   if (typeof value === 'string') return JSON.stringify(value);
+  if (Array.isArray(value)) return JSON.stringify(value);
   return String(value);
 }

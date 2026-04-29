@@ -44,12 +44,16 @@ const SERVE_ONLY_FIELDS: Record<string, FieldDef> = {
   watchDebounce: { schema: coercedInt, default: 250 },
 };
 
-const HASH_ONLY_FIELDS: Record<string, FieldDef> = {};
+const HASH_ONLY_FIELDS: Record<string, FieldDef> = {
+  sources: {
+    schema: z.union([z.string(), z.array(z.string()).min(1)]),
+  },
+};
 
 export type CommandName = 'query' | 'serve' | 'hash';
 
 export interface EffectiveOptions {
-  sources?: string;
+  sources?: string | string[];
   graphStrategy?: 'default' | 'partial' | 'full' | 'none';
   mutable?: boolean;
   verbose?: boolean;
@@ -93,10 +97,9 @@ export const SERVE_BLOCK_KEYS: ReadonlyArray<string> = [
   ...SHARED_KEYS,
   ...Object.keys(SERVE_ONLY_FIELDS),
 ];
-export const HASH_BLOCK_KEYS: ReadonlyArray<string> = [
-  ...SHARED_KEYS,
-  ...Object.keys(HASH_ONLY_FIELDS),
-];
+export const HASH_BLOCK_KEYS: ReadonlyArray<string> = Array.from(
+  new Set([...SHARED_KEYS, ...Object.keys(HASH_ONLY_FIELDS)]),
+);
 
 const sharedShape = shapeOf(SHARED_FIELDS);
 

@@ -307,4 +307,141 @@ describe('HashCommand.run', () => {
       expect(process.exitCode).toBeFalsy();
     });
   });
+
+  describe('multiple --sources', () => {
+    it('prints one line per --sources flag in input order', async () => {
+      const a = join(dir, 'a.ttl');
+      const b = join(dir, 'b.ttl');
+      await writeFile(
+        a,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+      await writeFile(
+        b,
+        '@prefix ex: <http://example.org/> . ex:c ex:q ex:d .\n',
+      );
+
+      const cmd = new HashCommand();
+      await cmd.run([], { sources: [a, b], quiet: true });
+
+      const out = stdoutText();
+      const lines = out.split('\n').filter((l) => l.length > 0);
+      expect(lines).toHaveLength(2);
+      expect(lines[0]).toMatch(new RegExp(`^[0-9a-f]{64} {2}${escapeRe(a)}$`));
+      expect(lines[1]).toMatch(new RegExp(`^[0-9a-f]{64} {2}${escapeRe(b)}$`));
+      expect(process.exitCode).toBeFalsy();
+    });
+
+    it('a glob within a single --sources is merged into one hash', async () => {
+      const single = join(dir, 'domain.ttl');
+      await writeFile(
+        single,
+        [
+          '@prefix ex: <http://example.org/> .',
+          'ex:a ex:p ex:b .',
+          'ex:c ex:q ex:d .',
+          '',
+        ].join('\n'),
+      );
+
+      const partsDir = join(dir, 'parts');
+      await mkdir(partsDir);
+      await writeFile(
+        join(partsDir, 'one.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+      await writeFile(
+        join(partsDir, 'two.ttl'),
+        '@prefix ex: <http://example.org/> . ex:c ex:q ex:d .\n',
+      );
+
+      const cmdSingle = new HashCommand();
+      await cmdSingle.run([single], { quiet: true });
+      const hashSingle = stdoutText().split('  ')[0];
+
+      stdout.mockClear();
+      process.exitCode = undefined;
+
+      const glob = join(partsDir, '*.ttl');
+      const cmdGlob = new HashCommand();
+      await cmdGlob.run([], { sources: [glob], quiet: true });
+
+      const out = stdoutText();
+      const lines = out.split('\n').filter((l) => l.length > 0);
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toBe(`${hashSingle}  ${glob}`);
+    });
+
+    it('one bad source out of N aborts the whole command with no stdout', async () => {
+      const good = join(dir, 'good.ttl');
+      const bad = join(dir, 'broken.ttl');
+      await writeFile(
+        good,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+      await writeFile(bad, 'this is not valid turtle <<<');
+
+      const cmd = new HashCommand();
+      await cmd.run([], { sources: [good, bad], quiet: true });
+
+      expect(process.exitCode).toBe(1);
+      expect(stdoutText()).toBe('');
+      expect(stderrText()).toMatch(/broken\.ttl/);
+    });
+
+    it('hash.sources accepts an array in the config file', async () => {
+      const a = join(dir, 'a.ttl');
+      const b = join(dir, 'b.ttl');
+      await writeFile(
+        a,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+      await writeFile(
+        b,
+        '@prefix ex: <http://example.org/> . ex:c ex:q ex:d .\n',
+      );
+
+      const configPath = join(dir, 'sparqly.config.yaml');
+      await writeFile(
+        configPath,
+        ['hash:', '  sources:', `    - "${a}"`, `    - "${b}"`, ''].join('\n'),
+      );
+
+      const cmd = new HashCommand();
+      await cmd.run([], { config: configPath, quiet: true });
+
+      const lines = stdoutText().split('\n').filter((l) => l.length > 0);
+      expect(lines).toHaveLength(2);
+      expect(lines[0].endsWith(`  ${a}`)).toBe(true);
+      expect(lines[1].endsWith(`  ${b}`)).toBe(true);
+      expect(process.exitCode).toBeFalsy();
+    });
+
+    it('SPARQLY_HASH_SOURCES env var still works for the single-source case', async () => {
+      const file = join(dir, 'env.ttl');
+      await writeFile(
+        file,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+
+      const original = process.env['SPARQLY_HASH_SOURCES'];
+      process.env['SPARQLY_HASH_SOURCES'] = file;
+      try {
+        const cmd = new HashCommand();
+        await cmd.run([], { quiet: true });
+      } finally {
+        if (original === undefined) delete process.env['SPARQLY_HASH_SOURCES'];
+        else process.env['SPARQLY_HASH_SOURCES'] = original;
+      }
+
+      const lines = stdoutText().split('\n').filter((l) => l.length > 0);
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toMatch(new RegExp(`^[0-9a-f]{64} {2}${escapeRe(file)}$`));
+      expect(process.exitCode).toBeFalsy();
+    });
+  });
 });
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}

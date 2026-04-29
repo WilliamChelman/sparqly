@@ -11,7 +11,7 @@ import {
 import { runWithConfig, type EffectiveOptions } from './config';
 
 interface HashOptions {
-  sources?: string;
+  sources?: string[];
   graphStrategy?: string;
   verbose?: boolean;
   quiet?: boolean;
@@ -22,7 +22,7 @@ interface HashOptions {
 @Command({
   name: 'hash',
   description:
-    'Compute a stable SHA-256 over the canonicalized RDF content of a source',
+    'Compute a stable SHA-256 over the canonicalized RDF content of one or more sources',
   arguments: '[glob]',
 })
 export class HashCommand extends CommandRunner {
@@ -52,51 +52,68 @@ export class HashCommand extends CommandRunner {
   private async execute(effective: EffectiveOptions): Promise<void> {
     const logger = new Logger('sparqly');
 
-    if (!effective.sources) {
+    if (
+      effective.sources === undefined ||
+      (Array.isArray(effective.sources) && effective.sources.length === 0)
+    ) {
       process.stderr.write('error: a sources glob is required\n');
       process.exitCode = 1;
       return;
     }
 
+    const sourceSpecs = Array.isArray(effective.sources)
+      ? effective.sources
+      : [effective.sources];
     const graphStrategy: GraphStrategy | undefined = effective.graphStrategy;
 
-    try {
-      const loadStart = Date.now();
-      const { store, files } = await loadRdf({
-        sources: effective.sources,
-        graphStrategy,
-      });
-      logger.log(
-        `Loaded ${files.length} file(s) (${store.size} quads) in ${
-          Date.now() - loadStart
-        }ms`,
-      );
+    const lines: string[] = [];
+    for (const spec of sourceSpecs) {
+      try {
+        const loadStart = Date.now();
+        const { store, files } = await loadRdf({
+          sources: spec,
+          graphStrategy,
+        });
+        logger.log(
+          `Loaded ${files.length} file(s) (${store.size} quads) for '${spec}' in ${
+            Date.now() - loadStart
+          }ms`,
+        );
 
-      const canonStart = Date.now();
-      const canonical = await rdfCanonize.canonize(
-        store.getQuads(null, null, null, null),
-        {
-          algorithm: 'RDFC-1.0',
-          format: 'application/n-quads',
-        },
-      );
-      const hash = createHash('sha256').update(canonical).digest('hex');
-      logger.log(`Canonicalized + hashed in ${Date.now() - canonStart}ms`);
+        const canonStart = Date.now();
+        const canonical = await rdfCanonize.canonize(
+          store.getQuads(null, null, null, null),
+          {
+            algorithm: 'RDFC-1.0',
+            format: 'application/n-quads',
+          },
+        );
+        const hash = createHash('sha256').update(canonical).digest('hex');
+        logger.log(
+          `Canonicalized + hashed '${spec}' in ${Date.now() - canonStart}ms`,
+        );
 
-      process.stdout.write(`${hash}  ${effective.sources}\n`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`error: ${message}\n`);
-      process.exitCode = 1;
+        lines.push(`${hash}  ${spec}\n`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`error: ${message}\n`);
+        process.exitCode = 1;
+        return;
+      }
+    }
+
+    for (const line of lines) {
+      process.stdout.write(line);
     }
   }
 
   @Option({
     flags: '-s, --sources <glob>',
-    description: 'Glob of RDF files to load (alternative to positional arg)',
+    description:
+      'Glob of RDF files to load (alternative to positional arg). Repeat to hash multiple sources independently.',
   })
-  parseSources(value: string): string {
-    return value;
+  parseSources(value: string, previous: string[] = []): string[] {
+    return [...previous, value];
   }
 
   @Option({
