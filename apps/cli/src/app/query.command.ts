@@ -9,8 +9,7 @@ import {
   loadRdf,
   type GraphStrategy,
 } from 'core';
-import { loadCliConfig } from './config/load-cli-config';
-import type { EffectiveOptions } from './config/schema';
+import { runWithConfig, type EffectiveOptions } from './config';
 
 interface QueryOptions {
   sources?: string;
@@ -64,20 +63,14 @@ export class QueryCommand extends CommandRunner {
     const cliMutable = mutableFromCli(options);
     if (cliMutable !== undefined) cliOverrides.mutable = cliMutable;
 
-    const loaded = await loadCliConfig({
-      command: 'query',
-      configPath: options.config,
-      cliOverrides,
-      positionalSources: passedParams[0],
-    });
-    if (!loaded) return;
-    const effective = loaded.effective;
-    const logger = new Logger('sparqly');
+    await runWithConfig(
+      { command: 'query', passedParams, options, cliOverrides },
+      (effective) => this.execute(effective),
+    );
+  }
 
-    if (options.printConfig) {
-      process.stdout.write(loaded.printConfig);
-      return;
-    }
+  private async execute(effective: EffectiveOptions): Promise<void> {
+    const logger = new Logger('sparqly');
 
     if (!effective.sources) {
       process.stderr.write('error: a sources glob is required\n');

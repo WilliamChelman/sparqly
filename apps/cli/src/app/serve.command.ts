@@ -6,9 +6,8 @@ import {
   type GraphStrategy,
 } from 'core';
 import { createServer } from 'server';
-import { loadCliConfig } from './config/load-cli-config';
+import { runWithConfig, type EffectiveOptions } from './config';
 import { mutableFromCli } from './query.command';
-import type { EffectiveOptions } from './config/schema';
 
 const WEB_BUNDLE_DIR = join(__dirname, 'web');
 
@@ -55,20 +54,13 @@ export class ServeCommand extends CommandRunner {
     const cliMutable = mutableFromCli(options);
     if (cliMutable !== undefined) cliOverrides.mutable = cliMutable;
 
-    const loaded = await loadCliConfig({
-      command: 'serve',
-      configPath: options.config,
-      cliOverrides,
-      positionalSources: passedParams[0],
-    });
-    if (!loaded) return;
-    const effective = loaded.effective;
+    await runWithConfig(
+      { command: 'serve', passedParams, options, cliOverrides },
+      (effective) => this.execute(effective),
+    );
+  }
 
-    if (options.printConfig) {
-      process.stdout.write(loaded.printConfig);
-      return;
-    }
-
+  private async execute(effective: EffectiveOptions): Promise<void> {
     if (!effective.sources) {
       process.stderr.write('error: a sources glob is required\n');
       process.exitCode = 1;

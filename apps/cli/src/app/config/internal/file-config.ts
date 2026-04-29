@@ -1,33 +1,24 @@
 import { cosmiconfig, type CosmiconfigResult } from 'cosmiconfig';
 import { z } from 'zod';
+import { ConfigError } from './errors';
 import {
   fileConfigSchema,
   QUERY_BLOCK_KEYS,
   SERVE_BLOCK_KEYS,
-  SHARED_CONFIG_KEYS,
-  type QueryBlockConfig,
-  type ServeBlockConfig,
-  type SharedConfig,
+  SHARED_KEYS,
 } from './schema';
 
-export class ConfigError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ConfigError';
-  }
-}
-
-export interface ResolveConfigOptions {
+export interface LoadFileConfigOptions {
   cwd?: string;
   configPath?: string;
   stopDir?: string;
   warn?: (message: string) => void;
 }
 
-export interface ResolvedConfig {
-  shared: SharedConfig;
-  queryBlock: QueryBlockConfig;
-  serveBlock: ServeBlockConfig;
+export interface FileConfigBlocks {
+  shared: Record<string, unknown>;
+  queryBlock: Record<string, unknown>;
+  serveBlock: Record<string, unknown>;
   filepath: string | null;
 }
 
@@ -38,16 +29,16 @@ const SEARCH_PLACES = [
 ];
 
 const TOP_LEVEL_KNOWN: ReadonlySet<string> = new Set([
-  ...SHARED_CONFIG_KEYS,
+  ...SHARED_KEYS,
   'query',
   'serve',
 ]);
 const QUERY_KNOWN: ReadonlySet<string> = new Set(QUERY_BLOCK_KEYS);
 const SERVE_KNOWN: ReadonlySet<string> = new Set(SERVE_BLOCK_KEYS);
 
-export async function resolveConfig(
-  options: ResolveConfigOptions = {},
-): Promise<ResolvedConfig> {
+export async function loadFileConfig(
+  options: LoadFileConfigOptions = {},
+): Promise<FileConfigBlocks> {
   const explorer = cosmiconfig('sparqly', {
     searchPlaces: SEARCH_PLACES,
     stopDir: options.stopDir,
@@ -110,29 +101,30 @@ export async function resolveConfig(
   }
 
   const data = parsed.data as Record<string, unknown>;
-  const shared = pickKnown<SharedConfig>(data, SHARED_CONFIG_KEYS);
-  const queryBlock = pickKnown<QueryBlockConfig>(
-    (data.query as Record<string, unknown> | undefined) ?? {},
-    QUERY_BLOCK_KEYS,
-  );
-  const serveBlock = pickKnown<ServeBlockConfig>(
-    (data.serve as Record<string, unknown> | undefined) ?? {},
-    SERVE_BLOCK_KEYS,
-  );
-
-  return { shared, queryBlock, serveBlock, filepath: result.filepath };
+  return {
+    shared: pickKnown(data, SHARED_KEYS),
+    queryBlock: pickKnown(
+      (data.query as Record<string, unknown> | undefined) ?? {},
+      QUERY_BLOCK_KEYS,
+    ),
+    serveBlock: pickKnown(
+      (data.serve as Record<string, unknown> | undefined) ?? {},
+      SERVE_BLOCK_KEYS,
+    ),
+    filepath: result.filepath,
+  };
 }
 
-function pickKnown<T extends object>(
+function pickKnown(
   source: Record<string, unknown>,
   keys: ReadonlyArray<string>,
-): T {
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const key of keys) {
     const value = source[key];
     if (value !== undefined) out[key] = value;
   }
-  return out as T;
+  return out;
 }
 
 function warnUnknownKeys(

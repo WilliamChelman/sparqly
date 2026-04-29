@@ -1,40 +1,30 @@
 import type { ZodError } from 'zod';
-import { ConfigError } from './resolve-config';
+import { ConfigError } from './errors';
 import {
-  QUERY_BLOCK_KEYS,
-  queryBlockSchema,
-  SERVE_BLOCK_KEYS,
-  serveBlockSchema,
-  SHARED_CONFIG_KEYS,
+  blockKeysFor,
+  blockSchemaFor,
+  SHARED_KEYS,
   type CommandName,
-  type QueryBlockConfig,
-  type ServeBlockConfig,
 } from './schema';
 
-export type EnvBlock<C extends CommandName> = C extends 'query'
-  ? QueryBlockConfig
-  : ServeBlockConfig;
-
-export function readEnv<C extends CommandName>(
-  command: C,
+export function readEnv(
+  command: CommandName,
   env: NodeJS.ProcessEnv,
-): EnvBlock<C> {
-  const blockKeys =
-    command === 'query' ? QUERY_BLOCK_KEYS : SERVE_BLOCK_KEYS;
-  const blockSchema = command === 'query' ? queryBlockSchema : serveBlockSchema;
+): Record<string, unknown> {
+  const blockKeys = blockKeysFor(command);
+  const blockSchema = blockSchemaFor(command);
   const prefix = command === 'query' ? 'SPARQLY_QUERY_' : 'SPARQLY_SERVE_';
 
   const raw: Record<string, unknown> = {};
   const sourceEnvName: Record<string, string> = {};
 
-  for (const key of SHARED_CONFIG_KEYS) {
+  for (const key of SHARED_KEYS) {
     const envName = `SPARQLY_${toUpperSnake(key)}`;
     if (env[envName] !== undefined) {
       raw[key] = env[envName];
       sourceEnvName[key] = envName;
     }
   }
-
   for (const key of blockKeys) {
     const envName = `${prefix}${toUpperSnake(key)}`;
     if (env[envName] !== undefined) {
@@ -53,7 +43,7 @@ export function readEnv<C extends CommandName>(
     const value = (parsed.data as Record<string, unknown>)[key];
     if (value !== undefined) out[key] = value;
   }
-  return out as EnvBlock<C>;
+  return out;
 }
 
 function toUpperSnake(camel: string): string {
