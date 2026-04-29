@@ -34,12 +34,20 @@ sparqly serve "data/**/*.ttl" --port=3000
 # open http://localhost:3000
 ```
 
+Compute a stable, blank-node-canonical SHA-256 over RDF content, and verify
+that a split-then-merged copy still denotes the same graph:
+
+```sh
+sparqly hash domain.ttl --compare-with "parts/**/*.ttl"
+# match: 4f3c…a1
+```
+
 ## Configuration file
 
-Both `sparqly query` and `sparqly serve` read a shared config file so you don't
-have to repeat `--sources`, `--graph-strategy`, `--port`, etc. on every
-invocation. The CLI walks up parent directories from the current working
-directory looking for the first match of:
+All three commands (`sparqly query`, `sparqly serve`, `sparqly hash`) read a
+shared config file so you don't have to repeat `--sources`, `--graph-strategy`,
+`--port`, etc. on every invocation. The CLI walks up parent directories from
+the current working directory looking for the first match of:
 
 - `sparqly.config.yaml`
 - `sparqly.config.yml`
@@ -50,9 +58,10 @@ or unparseable `--config` path is a hard error.
 
 ### Schema
 
-The file has shared defaults at the top level plus optional `query:` and
-`serve:` blocks that override those defaults for one command. Every option
-that is exposed as a CLI flag is also expressible in the config file.
+The file has shared defaults at the top level plus optional `query:`,
+`serve:`, and `hash:` blocks that override those defaults for one command.
+Every option that is exposed as a CLI flag is also expressible in the config
+file.
 
 ```yaml
 # sparqly.config.yaml — full example
@@ -75,7 +84,20 @@ serve:
   watch: true
   watchDebounce: 250
   mutable: true                     # overrides shared `mutable: false` for `serve`
+
+hash:
+  sources:                          # may be a string or an array of source specs
+    - "domain.ttl"
+    - "parts/**/*.ttl"
+  graphStrategy: none               # flatten quads to triples for hashing
+  json: false
+  # compareWith: "parts/**/*.ttl"   # requires exactly one primary source
 ```
+
+`graphStrategy: none` is new: it strips graph names from quad-bearing formats
+(`.trig`, `.nq`) and places every statement in the default graph. It is part
+of the shared loader, so it works for `query` and `serve` too — useful when
+you want to coerce quad sources to triples regardless of command.
 
 JSON is supported with the same shape (`sparqly.config.json`).
 
@@ -88,7 +110,7 @@ earlier ones:
 | ---------- | --------------------------------------------------------------------------------------- |
 | 1 (lowest) | Built-in defaults                                                                        |
 | 2          | Config file — top-level shared keys                                                      |
-| 3          | Config file — `query:` / `serve:` block (for the active command)                         |
+| 3          | Config file — `query:` / `serve:` / `hash:` block (for the active command)               |
 | 4          | Environment variables                                                                    |
 | 5 (highest) | CLI flags (and the positional `[glob]` argument, which sets `sources`)                  |
 
@@ -97,7 +119,8 @@ Environment variables follow a predictable contract:
 - Shared keys: `SPARQLY_<UPPER_SNAKE_KEY>` (e.g., `SPARQLY_SOURCES`,
   `SPARQLY_GRAPH_STRATEGY`, `SPARQLY_MUTABLE`).
 - Command-specific keys: `SPARQLY_<COMMAND>_<UPPER_SNAKE_KEY>` (e.g.,
-  `SPARQLY_SERVE_PORT`, `SPARQLY_QUERY_FORMAT`, `SPARQLY_SERVE_WATCH_DEBOUNCE`).
+  `SPARQLY_SERVE_PORT`, `SPARQLY_QUERY_FORMAT`, `SPARQLY_SERVE_WATCH_DEBOUNCE`,
+  `SPARQLY_HASH_JSON`, `SPARQLY_HASH_COMPARE_WITH`).
 
 String env values are coerced to numbers / booleans according to the schema.
 
@@ -118,6 +141,117 @@ mutable       : true             # file
 verbose       : false            # default
 quiet         : false            # default
 ```
+
+## `sparqly hash`
+
+`sparqly hash` computes a stable SHA-256 over the **canonicalized** RDF content
+of one or more sources, using [RDFC-1.0](https://www.w3.org/TR/rdf-canon/) for
+blank-node canonicalization. The hash is invariant under blank-node relabeling,
+statement reordering, prefix changes, and other serialization-level differences,
+so a `.ttl` file and its split-then-merged equivalent produce the same hash
+whenever they actually denote the same RDF graph.
+
+Supported formats are everything the loader already accepts: Turtle, N-Triples,
+N-Quads, TriG, JSON-LD, and RDF/XML.
+
+> **Known limitation.** RDFC-1.0 does not normalize literal lexical forms, so
+> `"01"^^xsd:integer` and `"1"^^xsd:integer` hash differently even though they
+> denote the same value. Same for `"1.0"` vs `"1.00"`, language-tag casing, etc.
+> This is acceptable for the primary split/merge workflow as long as the
+> splitter does not rewrite literals. Tracked in `ideas.md`.
+
+### Synopsis
+
+```sh
+sparqly hash [glob]
+            [-s, --sources <glob>]...
+            [--graph-strategy <default|partial|full|none>]
+            [--json]
+            [--compare-with <source>]
+            [--config <path>] [--print-config]
+            [-v, --verbose] [--quiet]
+```
+
+### Primary workflow: split → merge round-trip
+
+Record a fingerprint of the curated source, then verify that a split into per-topic
+files round-trips back to the same content:
+
+```sh
+# 1. Record a known-good fingerprint of the unsplit source
+sparqly hash domain.ttl
+# 4f3c…a1  domain.ttl
+
+# 2. Hash the split parts as a single merged store
+sparqly hash "parts/**/*.ttl"
+# 4f3c…a1  parts/**/*.ttl
+
+# 3. Or do both in one shot — exits 0 on match, 1 on mismatch
+sparqly hash domain.ttl --compare-with "parts/**/*.ttl"
+# match: 4f3c…a1
+```
+
+Wire step 3 into a publish script or CI step to fail loudly if the split has
+drifted from the merged source.
+
+### Multiple sources and JSON output
+
+A glob always merges into a **single** hash. To get multiple hashes in one
+invocation, pass `--sources` repeatedly — each `--sources` is its own unit of
+identity:
+
+```sh
+sparqly hash --sources domain.ttl --sources "vocab/**/*.ttl"
+# 4f3c…a1  domain.ttl
+# 9b22…ee  vocab/**/*.ttl
+
+sparqly hash --sources domain.ttl --sources "vocab/**/*.ttl" --json
+# [{"source":"domain.ttl","hash":"4f3c…a1"},{"source":"vocab/**/*.ttl","hash":"9b22…ee"}]
+```
+
+### Exit codes
+
+| Mode             | Code | Meaning                                                                                  |
+| ---------------- | ---- | ---------------------------------------------------------------------------------------- |
+| default          | 0    | All sources hashed successfully.                                                          |
+| default          | 1    | Load, parse, or canonicalization failure (no partial results).                            |
+| `--compare-with` | 0    | Both sides canonicalize to the same hash. Stdout: `match: <hash>`.                        |
+| `--compare-with` | 1    | Hashes differ. Stdout: `<hash>  <source-spec>` for each side.                             |
+| `--compare-with` | 2    | Load, parse, or canonicalization failure on either side.                                  |
+
+### Config block
+
+`sparqly hash` reads the shared config keys (`sources`, `graphStrategy`,
+`verbose`, `quiet`) plus the hash-specific keys below from a top-level `hash:`
+block:
+
+```yaml
+hash:
+  sources:                          # string | string[] — array → multiple hashes
+    - "domain.ttl"
+    - "parts/**/*.ttl"
+  graphStrategy: none               # default | partial | full | none
+  json: false                       # JSON array output instead of <hash>  <source>
+  compareWith: "parts/**/*.ttl"     # if set, requires exactly one primary source
+```
+
+### Environment variables
+
+```
+SPARQLY_SOURCES               # shared
+SPARQLY_GRAPH_STRATEGY        # shared — accepts default | partial | full | none
+SPARQLY_VERBOSE               # shared
+SPARQLY_QUIET                 # shared
+SPARQLY_HASH_JSON             # hash-specific
+SPARQLY_HASH_COMPARE_WITH     # hash-specific
+```
+
+### Precedence
+
+The same precedence chain applies as for `query` and `serve`: built-in
+defaults → config file shared keys → config file `hash:` block → environment
+variables → CLI flags. Pass `--print-config` to see the resolved configuration
+annotated with where each value came from.
 
 ## Workspace layout
 

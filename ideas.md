@@ -2,8 +2,24 @@
 - health / stats apis and pages
 - file streaming
 - mutating queries
-- remote sparql endpoints
+- remote sparql endpoints as source
 - incremental rebuild of store in watch mode
-- standalone comile binary (with bun)
+- standalone compile binary (with bun)
 - terminal table in cli mode
 - other output formats
+- file output instead of just stdout
+- add prefixes to output
+- semantic diff
+- literal lexical-form normalization — `sparqly hash` (PRD #21) uses RDFC-1.0, which canonicalizes blank nodes and statement order but does not normalize literals, so `"01"^^xsd:integer` and `"1"^^xsd:integer` hash differently. Same for `"1.0"` vs `"1.00"`, language tag casing, etc. Add a normalization pass (numeric/date lexical forms, language-tag case) so semantically-equal literals hash equal.
+- docs (md or website with github pages)
+- mcp?
+- merge/split files
+- ontology / shacl / skos views
+- add refactor to do-work
+- mutable files + rdf\* for file line number
+- file formatting / output formatting
+  - inverse positioning (sh:property link next to property shape instead of )
+- ontology to shacl
+- linting
+  - duplicated triples (either in file or across graphs)
+- Actual readme + documentat/ion, + a nice svg icon + favicon
