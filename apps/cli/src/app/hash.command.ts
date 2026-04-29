@@ -13,6 +13,7 @@ import { runWithConfig, type EffectiveOptions } from './config';
 interface HashOptions {
   sources?: string[];
   graphStrategy?: string;
+  json?: boolean;
   verbose?: boolean;
   quiet?: boolean;
   config?: string;
@@ -29,6 +30,7 @@ export class HashCommand extends CommandRunner {
   async run(passedParams: string[], options: HashOptions = {}): Promise<void> {
     const cliOverrides: Partial<EffectiveOptions> = {};
     if (options.sources !== undefined) cliOverrides.sources = options.sources;
+    if (options.json !== undefined) cliOverrides.json = options.json;
     if (options.verbose !== undefined) cliOverrides.verbose = options.verbose;
     if (options.quiet !== undefined) cliOverrides.quiet = options.quiet;
 
@@ -66,7 +68,7 @@ export class HashCommand extends CommandRunner {
       : [effective.sources];
     const graphStrategy: GraphStrategy | undefined = effective.graphStrategy;
 
-    const lines: string[] = [];
+    const results: Array<{ source: string; hash: string }> = [];
     for (const spec of sourceSpecs) {
       try {
         const loadStart = Date.now();
@@ -93,7 +95,7 @@ export class HashCommand extends CommandRunner {
           `Canonicalized + hashed '${spec}' in ${Date.now() - canonStart}ms`,
         );
 
-        lines.push(`${hash}  ${spec}\n`);
+        results.push({ source: spec, hash });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         process.stderr.write(`error: ${message}\n`);
@@ -102,8 +104,12 @@ export class HashCommand extends CommandRunner {
       }
     }
 
-    for (const line of lines) {
-      process.stdout.write(line);
+    if (effective.json) {
+      process.stdout.write(`${JSON.stringify(results)}\n`);
+    } else {
+      for (const { hash, source } of results) {
+        process.stdout.write(`${hash}  ${source}\n`);
+      }
     }
   }
 
@@ -123,6 +129,15 @@ export class HashCommand extends CommandRunner {
   })
   parseGraphStrategy(value: string): string {
     return value;
+  }
+
+  @Option({
+    flags: '--json',
+    description:
+      'Emit a JSON array of { source, hash } objects in input order instead of the default <hash>  <source-spec> lines.',
+  })
+  parseJson(): boolean {
+    return true;
   }
 
   @Option({ flags: '-v, --verbose', description: 'Verbose logging' })

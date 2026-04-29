@@ -48,6 +48,7 @@ const HASH_ONLY_FIELDS: Record<string, FieldDef> = {
   sources: {
     schema: z.union([z.string(), z.array(z.string()).min(1)]),
   },
+  json: { schema: coercedBoolean, default: false },
 };
 
 export type CommandName = 'query' | 'serve' | 'hash';
@@ -64,6 +65,7 @@ export interface EffectiveOptions {
   port?: number;
   watch?: boolean;
   watchDebounce?: number;
+  json?: boolean;
 }
 
 function shapeOf(

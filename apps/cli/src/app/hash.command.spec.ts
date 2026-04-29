@@ -308,6 +308,120 @@ describe('HashCommand.run', () => {
     });
   });
 
+  describe('--json output format', () => {
+    it('--json prints a JSON array of {source, hash} for a single source', async () => {
+      const file = join(dir, 'a.ttl');
+      await writeFile(
+        file,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+
+      const cmd = new HashCommand();
+      await cmd.run([file], { json: true, quiet: true });
+
+      const out = stdoutText();
+      expect(out.endsWith('\n')).toBe(true);
+      const parsed = JSON.parse(out);
+      expect(Array.isArray(parsed)).toBe(true);
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0].source).toBe(file);
+      expect(parsed[0].hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(process.exitCode).toBeFalsy();
+    });
+
+    it('--json preserves input order for multiple --sources', async () => {
+      const a = join(dir, 'a.ttl');
+      const b = join(dir, 'b.ttl');
+      await writeFile(
+        a,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+      await writeFile(
+        b,
+        '@prefix ex: <http://example.org/> . ex:c ex:q ex:d .\n',
+      );
+
+      const cmd = new HashCommand();
+      await cmd.run([], { sources: [b, a], json: true, quiet: true });
+
+      const parsed = JSON.parse(stdoutText());
+      expect(parsed).toHaveLength(2);
+      expect(parsed[0].source).toBe(b);
+      expect(parsed[1].source).toBe(a);
+      expect(parsed[0].hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(parsed[1].hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(process.exitCode).toBeFalsy();
+    });
+
+    it('SPARQLY_HASH_JSON=true is equivalent to --json', async () => {
+      const file = join(dir, 'env.ttl');
+      await writeFile(
+        file,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+
+      const original = process.env['SPARQLY_HASH_JSON'];
+      process.env['SPARQLY_HASH_JSON'] = 'true';
+      try {
+        const cmd = new HashCommand();
+        await cmd.run([file], { quiet: true });
+      } finally {
+        if (original === undefined) delete process.env['SPARQLY_HASH_JSON'];
+        else process.env['SPARQLY_HASH_JSON'] = original;
+      }
+
+      const parsed = JSON.parse(stdoutText());
+      expect(Array.isArray(parsed)).toBe(true);
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0].source).toBe(file);
+      expect(parsed[0].hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(process.exitCode).toBeFalsy();
+    });
+
+    it('hash.json: true in the config file is equivalent to --json', async () => {
+      const file = join(dir, 'data.ttl');
+      await writeFile(
+        file,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+      const configPath = join(dir, 'sparqly.config.yaml');
+      await writeFile(
+        configPath,
+        ['hash:', `  sources: "${file}"`, '  json: true', ''].join('\n'),
+      );
+
+      const cmd = new HashCommand();
+      await cmd.run([], { config: configPath, quiet: true });
+
+      const parsed = JSON.parse(stdoutText());
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0].source).toBe(file);
+      expect(parsed[0].hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(process.exitCode).toBeFalsy();
+    });
+
+    it('writes nothing to stdout when a source fails to parse under --json', async () => {
+      const good = join(dir, 'good.ttl');
+      const bad = join(dir, 'broken.ttl');
+      await writeFile(
+        good,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+      await writeFile(bad, 'this is not valid turtle <<<');
+
+      const cmd = new HashCommand();
+      await cmd.run([], {
+        sources: [good, bad],
+        json: true,
+        quiet: true,
+      });
+
+      expect(process.exitCode).toBe(1);
+      expect(stdoutText()).toBe('');
+      expect(stderrText()).toMatch(/broken\.ttl/);
+    });
+  });
+
   describe('multiple --sources', () => {
     it('prints one line per --sources flag in input order', async () => {
       const a = join(dir, 'a.ttl');
