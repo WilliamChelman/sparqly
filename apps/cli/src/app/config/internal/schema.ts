@@ -44,7 +44,9 @@ const SERVE_ONLY_FIELDS: Record<string, FieldDef> = {
   watchDebounce: { schema: coercedInt, default: 250 },
 };
 
-export type CommandName = 'query' | 'serve';
+const HASH_ONLY_FIELDS: Record<string, FieldDef> = {};
+
+export type CommandName = 'query' | 'serve' | 'hash';
 
 export interface EffectiveOptions {
   sources?: string;
@@ -91,6 +93,10 @@ export const SERVE_BLOCK_KEYS: ReadonlyArray<string> = [
   ...SHARED_KEYS,
   ...Object.keys(SERVE_ONLY_FIELDS),
 ];
+export const HASH_BLOCK_KEYS: ReadonlyArray<string> = [
+  ...SHARED_KEYS,
+  ...Object.keys(HASH_ONLY_FIELDS),
+];
 
 const sharedShape = shapeOf(SHARED_FIELDS);
 
@@ -101,24 +107,47 @@ export const queryBlockSchema = z
 export const serveBlockSchema = z
   .object({ ...sharedShape, ...shapeOf(SERVE_ONLY_FIELDS) })
   .passthrough();
+export const hashBlockSchema = z
+  .object({ ...sharedShape, ...shapeOf(HASH_ONLY_FIELDS) })
+  .passthrough();
 export const fileConfigSchema = z
   .object({
     ...sharedShape,
     query: queryBlockSchema.optional(),
     serve: serveBlockSchema.optional(),
+    hash: hashBlockSchema.optional(),
   })
   .passthrough();
 
 export function defaultsFor(command: CommandName): Partial<EffectiveOptions> {
-  return command === 'query'
-    ? defaultsOf(SHARED_FIELDS, QUERY_ONLY_FIELDS)
-    : defaultsOf(SHARED_FIELDS, SERVE_ONLY_FIELDS);
+  switch (command) {
+    case 'query':
+      return defaultsOf(SHARED_FIELDS, QUERY_ONLY_FIELDS);
+    case 'serve':
+      return defaultsOf(SHARED_FIELDS, SERVE_ONLY_FIELDS);
+    case 'hash':
+      return defaultsOf(SHARED_FIELDS, HASH_ONLY_FIELDS);
+  }
 }
 
 export function blockKeysFor(command: CommandName): ReadonlyArray<string> {
-  return command === 'query' ? QUERY_BLOCK_KEYS : SERVE_BLOCK_KEYS;
+  switch (command) {
+    case 'query':
+      return QUERY_BLOCK_KEYS;
+    case 'serve':
+      return SERVE_BLOCK_KEYS;
+    case 'hash':
+      return HASH_BLOCK_KEYS;
+  }
 }
 
 export function blockSchemaFor(command: CommandName): z.ZodTypeAny {
-  return command === 'query' ? queryBlockSchema : serveBlockSchema;
+  switch (command) {
+    case 'query':
+      return queryBlockSchema;
+    case 'serve':
+      return serveBlockSchema;
+    case 'hash':
+      return hashBlockSchema;
+  }
 }

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ConfigError } from './errors';
 import {
   fileConfigSchema,
+  HASH_BLOCK_KEYS,
   QUERY_BLOCK_KEYS,
   SERVE_BLOCK_KEYS,
   SHARED_KEYS,
@@ -19,6 +20,7 @@ export interface FileConfigBlocks {
   shared: Record<string, unknown>;
   queryBlock: Record<string, unknown>;
   serveBlock: Record<string, unknown>;
+  hashBlock: Record<string, unknown>;
   filepath: string | null;
 }
 
@@ -32,9 +34,11 @@ const TOP_LEVEL_KNOWN: ReadonlySet<string> = new Set([
   ...SHARED_KEYS,
   'query',
   'serve',
+  'hash',
 ]);
 const QUERY_KNOWN: ReadonlySet<string> = new Set(QUERY_BLOCK_KEYS);
 const SERVE_KNOWN: ReadonlySet<string> = new Set(SERVE_BLOCK_KEYS);
+const HASH_KNOWN: ReadonlySet<string> = new Set(HASH_BLOCK_KEYS);
 
 export async function loadFileConfig(
   options: LoadFileConfigOptions = {},
@@ -64,7 +68,13 @@ export async function loadFileConfig(
   }
 
   if (!result || result.isEmpty) {
-    return { shared: {}, queryBlock: {}, serveBlock: {}, filepath: null };
+    return {
+      shared: {},
+      queryBlock: {},
+      serveBlock: {},
+      hashBlock: {},
+      filepath: null,
+    };
   }
 
   const raw = result.config;
@@ -99,6 +109,15 @@ export async function loadFileConfig(
       warn,
     );
   }
+  const hashRaw = (raw as Record<string, unknown>).hash;
+  if (hashRaw && typeof hashRaw === 'object' && !Array.isArray(hashRaw)) {
+    warnUnknownKeys(
+      hashRaw as Record<string, unknown>,
+      HASH_KNOWN,
+      `${result.filepath} (hash)`,
+      warn,
+    );
+  }
 
   const data = parsed.data as Record<string, unknown>;
   return {
@@ -110,6 +129,10 @@ export async function loadFileConfig(
     serveBlock: pickKnown(
       (data.serve as Record<string, unknown> | undefined) ?? {},
       SERVE_BLOCK_KEYS,
+    ),
+    hashBlock: pickKnown(
+      (data.hash as Record<string, unknown> | undefined) ?? {},
+      HASH_BLOCK_KEYS,
     ),
     filepath: result.filepath,
   };

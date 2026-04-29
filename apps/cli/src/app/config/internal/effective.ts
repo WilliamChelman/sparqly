@@ -31,7 +31,16 @@ const LAYERS: ReadonlyArray<Layer> = [
   { source: 'file', read: (i) => i.file.shared },
   {
     source: 'file',
-    read: (i) => (i.command === 'query' ? i.file.queryBlock : i.file.serveBlock),
+    read: (i) => {
+      switch (i.command) {
+        case 'query':
+          return i.file.queryBlock;
+        case 'serve':
+          return i.file.serveBlock;
+        case 'hash':
+          return i.file.hashBlock;
+      }
+    },
   },
   { source: 'env', read: (i) => i.env },
   {

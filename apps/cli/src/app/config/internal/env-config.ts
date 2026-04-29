@@ -13,7 +13,7 @@ export function readEnv(
 ): Record<string, unknown> {
   const blockKeys = blockKeysFor(command);
   const blockSchema = blockSchemaFor(command);
-  const prefix = command === 'query' ? 'SPARQLY_QUERY_' : 'SPARQLY_SERVE_';
+  const prefix = `SPARQLY_${command.toUpperCase()}_`;
 
   const raw: Record<string, unknown> = {};
   const sourceEnvName: Record<string, string> = {};

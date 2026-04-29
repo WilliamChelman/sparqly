@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
+import { HashCommand } from './hash.command';
 import { QueryCommand } from './query.command';
 import { ServeCommand } from './serve.command';
 
 @Module({
-  providers: [QueryCommand, ServeCommand],
+  providers: [HashCommand, QueryCommand, ServeCommand],
 })
 export class AppModule {}
