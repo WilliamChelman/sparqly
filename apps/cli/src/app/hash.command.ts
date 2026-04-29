@@ -14,6 +14,7 @@ interface HashOptions {
   sources?: string[];
   graphStrategy?: string;
   json?: boolean;
+  compareWith?: string;
   verbose?: boolean;
   quiet?: boolean;
   config?: string;
@@ -31,15 +32,19 @@ export class HashCommand extends CommandRunner {
     const cliOverrides: Partial<EffectiveOptions> = {};
     if (options.sources !== undefined) cliOverrides.sources = options.sources;
     if (options.json !== undefined) cliOverrides.json = options.json;
+    if (options.compareWith !== undefined)
+      cliOverrides.compareWith = options.compareWith;
     if (options.verbose !== undefined) cliOverrides.verbose = options.verbose;
     if (options.quiet !== undefined) cliOverrides.quiet = options.quiet;
+
+    const errorExit = options.compareWith !== undefined ? 2 : 1;
 
     if (options.graphStrategy !== undefined) {
       if (!isGraphStrategy(options.graphStrategy)) {
         process.stderr.write(
           `error: unknown --graph-strategy '${options.graphStrategy}' (expected ${GRAPH_STRATEGIES.join(', ')})\n`,
         );
-        process.exitCode = 1;
+        process.exitCode = errorExit;
         return;
       }
       cliOverrides.graphStrategy = options.graphStrategy;
@@ -53,53 +58,63 @@ export class HashCommand extends CommandRunner {
 
   private async execute(effective: EffectiveOptions): Promise<void> {
     const logger = new Logger('sparqly');
+    const isCompareMode = effective.compareWith !== undefined;
+    const errorExit = isCompareMode ? 2 : 1;
 
-    if (
-      effective.sources === undefined ||
-      (Array.isArray(effective.sources) && effective.sources.length === 0)
-    ) {
+    const sourceSpecs =
+      effective.sources === undefined
+        ? []
+        : Array.isArray(effective.sources)
+          ? effective.sources
+          : [effective.sources];
+    const graphStrategy: GraphStrategy | undefined = effective.graphStrategy;
+
+    if (isCompareMode) {
+      if (sourceSpecs.length !== 1) {
+        process.stderr.write(
+          'error: --compare-with requires exactly one primary source\n',
+        );
+        process.exitCode = errorExit;
+        return;
+      }
+    } else if (sourceSpecs.length === 0) {
       process.stderr.write('error: a sources glob is required\n');
+      process.exitCode = errorExit;
+      return;
+    }
+
+    if (isCompareMode) {
+      const compareSpec = effective.compareWith as string;
+      let primary: { source: string; hash: string };
+      let secondary: { source: string; hash: string };
+      try {
+        primary = await this.hashSource(sourceSpecs[0], graphStrategy, logger);
+        secondary = await this.hashSource(compareSpec, graphStrategy, logger);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`error: ${message}\n`);
+        process.exitCode = errorExit;
+        return;
+      }
+
+      if (primary.hash === secondary.hash) {
+        process.stdout.write(`match: ${primary.hash}\n`);
+        return;
+      }
+      process.stdout.write(`${primary.hash}  ${primary.source}\n`);
+      process.stdout.write(`${secondary.hash}  ${secondary.source}\n`);
       process.exitCode = 1;
       return;
     }
 
-    const sourceSpecs = Array.isArray(effective.sources)
-      ? effective.sources
-      : [effective.sources];
-    const graphStrategy: GraphStrategy | undefined = effective.graphStrategy;
-
     const results: Array<{ source: string; hash: string }> = [];
     for (const spec of sourceSpecs) {
       try {
-        const loadStart = Date.now();
-        const { store, files } = await loadRdf({
-          sources: spec,
-          graphStrategy,
-        });
-        logger.log(
-          `Loaded ${files.length} file(s) (${store.size} quads) for '${spec}' in ${
-            Date.now() - loadStart
-          }ms`,
-        );
-
-        const canonStart = Date.now();
-        const canonical = await rdfCanonize.canonize(
-          store.getQuads(null, null, null, null),
-          {
-            algorithm: 'RDFC-1.0',
-            format: 'application/n-quads',
-          },
-        );
-        const hash = createHash('sha256').update(canonical).digest('hex');
-        logger.log(
-          `Canonicalized + hashed '${spec}' in ${Date.now() - canonStart}ms`,
-        );
-
-        results.push({ source: spec, hash });
+        results.push(await this.hashSource(spec, graphStrategy, logger));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         process.stderr.write(`error: ${message}\n`);
-        process.exitCode = 1;
+        process.exitCode = errorExit;
         return;
       }
     }
@@ -111,6 +126,32 @@ export class HashCommand extends CommandRunner {
         process.stdout.write(`${hash}  ${source}\n`);
       }
     }
+  }
+
+  private async hashSource(
+    spec: string,
+    graphStrategy: GraphStrategy | undefined,
+    logger: Logger,
+  ): Promise<{ source: string; hash: string }> {
+    const loadStart = Date.now();
+    const { store, files } = await loadRdf({ sources: spec, graphStrategy });
+    logger.log(
+      `Loaded ${files.length} file(s) (${store.size} quads) for '${spec}' in ${
+        Date.now() - loadStart
+      }ms`,
+    );
+
+    const canonStart = Date.now();
+    const canonical = await rdfCanonize.canonize(
+      store.getQuads(null, null, null, null),
+      { algorithm: 'RDFC-1.0', format: 'application/n-quads' },
+    );
+    const hash = createHash('sha256').update(canonical).digest('hex');
+    logger.log(
+      `Canonicalized + hashed '${spec}' in ${Date.now() - canonStart}ms`,
+    );
+
+    return { source: spec, hash };
   }
 
   @Option({
@@ -134,10 +175,19 @@ export class HashCommand extends CommandRunner {
   @Option({
     flags: '--json',
     description:
-      'Emit a JSON array of { source, hash } objects in input order instead of the default <hash>  <source-spec> lines.',
+      'Emit a JSON array of { source, hash } objects in input order instead of the default <hash>  <source-spec> lines. Not applicable in --compare-with mode.',
   })
   parseJson(): boolean {
     return true;
+  }
+
+  @Option({
+    flags: '--compare-with <source>',
+    description:
+      "Hash a second source spec (file path or glob) with the same loader options and compare against the primary source. Exit 0 on match (stdout 'match: <hash>'), 1 on mismatch (stdout shows both labeled hashes), 2 on error. Requires exactly one primary source.",
+  })
+  parseCompareWith(value: string): string {
+    return value;
   }
 
   @Option({ flags: '-v, --verbose', description: 'Verbose logging' })

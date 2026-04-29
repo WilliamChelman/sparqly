@@ -308,6 +308,253 @@ describe('HashCommand.run', () => {
     });
   });
 
+  describe('--compare-with mode', () => {
+    async function writeDomain(path: string): Promise<void> {
+      await writeFile(
+        path,
+        [
+          '@prefix ex: <http://example.org/> .',
+          'ex:a ex:p ex:b .',
+          'ex:c ex:q ex:d .',
+          'ex:e ex:r ex:f .',
+          '',
+        ].join('\n'),
+      );
+    }
+
+    async function writeCleanSplit(partsDir: string): Promise<void> {
+      await mkdir(partsDir);
+      await writeFile(
+        join(partsDir, 'one.ttl'),
+        '@prefix ex: <http://example.org/> . ex:c ex:q ex:d .\n',
+      );
+      await writeFile(
+        join(partsDir, 'two.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+      await writeFile(
+        join(partsDir, 'three.ttl'),
+        '@prefix ex: <http://example.org/> . ex:e ex:r ex:f .\n',
+      );
+    }
+
+    it('prints "match: <hash>" and exits 0 on a clean split', async () => {
+      const single = join(dir, 'domain.ttl');
+      await writeDomain(single);
+      const partsDir = join(dir, 'parts');
+      await writeCleanSplit(partsDir);
+      const partsGlob = join(partsDir, '*.ttl');
+
+      const cmd = new HashCommand();
+      await cmd.run([single], { compareWith: partsGlob, quiet: true });
+
+      const out = stdoutText();
+      expect(out).toMatch(/^match: [0-9a-f]{64}\n$/);
+      expect(process.exitCode).toBeFalsy();
+    });
+
+    it('prints both labeled hashes and exits 1 on mismatch', async () => {
+      const single = join(dir, 'domain.ttl');
+      await writeDomain(single);
+
+      const driftDir = join(dir, 'drift');
+      await mkdir(driftDir);
+      await writeFile(
+        join(driftDir, 'one.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+      await writeFile(
+        join(driftDir, 'two.ttl'),
+        '@prefix ex: <http://example.org/> . ex:c ex:q ex:d .\n',
+      );
+      const driftGlob = join(driftDir, '*.ttl');
+
+      const cmd = new HashCommand();
+      await cmd.run([single], { compareWith: driftGlob, quiet: true });
+
+      const out = stdoutText();
+      const lines = out.split('\n').filter((l) => l.length > 0);
+      expect(lines).toHaveLength(2);
+      expect(lines[0]).toMatch(
+        new RegExp(`^[0-9a-f]{64} {2}${escapeRe(single)}$`),
+      );
+      expect(lines[1]).toMatch(
+        new RegExp(`^[0-9a-f]{64} {2}${escapeRe(driftGlob)}$`),
+      );
+      const hashA = lines[0].split('  ')[0];
+      const hashB = lines[1].split('  ')[0];
+      expect(hashA).not.toBe(hashB);
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('exits 2 when the primary source fails to parse', async () => {
+      const bad = join(dir, 'broken.ttl');
+      await writeFile(bad, 'this is not valid turtle <<<');
+      const good = join(dir, 'good.ttl');
+      await writeFile(
+        good,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+
+      const cmd = new HashCommand();
+      await cmd.run([bad], { compareWith: good, quiet: true });
+
+      expect(process.exitCode).toBe(2);
+      expect(stdoutText()).toBe('');
+      expect(stderrText()).toMatch(/broken\.ttl/);
+    });
+
+    it('exits 2 when --compare-with source fails to parse', async () => {
+      const good = join(dir, 'good.ttl');
+      await writeFile(
+        good,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+      const bad = join(dir, 'broken.ttl');
+      await writeFile(bad, 'this is not valid turtle <<<');
+
+      const cmd = new HashCommand();
+      await cmd.run([good], { compareWith: bad, quiet: true });
+
+      expect(process.exitCode).toBe(2);
+      expect(stdoutText()).toBe('');
+      expect(stderrText()).toMatch(/broken\.ttl/);
+    });
+
+    it('exits 2 when no primary source is provided', async () => {
+      const compareTarget = join(dir, 'a.ttl');
+      await writeFile(
+        compareTarget,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+
+      const cmd = new HashCommand();
+      await cmd.run([], { compareWith: compareTarget, quiet: true });
+
+      expect(process.exitCode).toBe(2);
+      expect(stdoutText()).toBe('');
+      expect(stderrText()).toMatch(/--compare-with.*one primary source/);
+    });
+
+    it('exits 2 when multiple primary sources are provided', async () => {
+      const a = join(dir, 'a.ttl');
+      const b = join(dir, 'b.ttl');
+      await writeFile(
+        a,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+      await writeFile(
+        b,
+        '@prefix ex: <http://example.org/> . ex:c ex:q ex:d .\n',
+      );
+
+      const cmd = new HashCommand();
+      await cmd.run([], { sources: [a, b], compareWith: a, quiet: true });
+
+      expect(process.exitCode).toBe(2);
+      expect(stdoutText()).toBe('');
+      expect(stderrText()).toMatch(/--compare-with.*one primary source/);
+    });
+
+    it('applies --graph-strategy=none to both sides so a .trig matches the same .ttl', async () => {
+      const trig = join(dir, 'data.trig');
+      await writeFile(
+        trig,
+        [
+          '@prefix ex: <http://example.org/> .',
+          'ex:g1 { ex:a ex:p ex:b . }',
+          'ex:g2 { ex:c ex:q ex:d . }',
+          '',
+        ].join('\n'),
+      );
+      const ttl = join(dir, 'data.ttl');
+      await writeFile(
+        ttl,
+        [
+          '@prefix ex: <http://example.org/> .',
+          'ex:a ex:p ex:b .',
+          'ex:c ex:q ex:d .',
+          '',
+        ].join('\n'),
+      );
+
+      const cmd = new HashCommand();
+      await cmd.run([trig], {
+        compareWith: ttl,
+        graphStrategy: 'none',
+        quiet: true,
+      });
+
+      expect(stdoutText()).toMatch(/^match: [0-9a-f]{64}\n$/);
+      expect(process.exitCode).toBeFalsy();
+    });
+
+    it('exits 2 on an unknown --graph-strategy value', async () => {
+      const a = join(dir, 'a.ttl');
+      await writeFile(
+        a,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+
+      const cmd = new HashCommand();
+      await cmd.run([a], {
+        compareWith: a,
+        graphStrategy: 'bogus',
+        quiet: true,
+      });
+
+      expect(process.exitCode).toBe(2);
+      expect(stderrText()).toMatch(/unknown.*--graph-strategy/i);
+    });
+
+    it('SPARQLY_HASH_COMPARE_WITH env triggers compare mode', async () => {
+      const single = join(dir, 'domain.ttl');
+      await writeDomain(single);
+      const partsDir = join(dir, 'parts');
+      await writeCleanSplit(partsDir);
+      const partsGlob = join(partsDir, '*.ttl');
+
+      const original = process.env['SPARQLY_HASH_COMPARE_WITH'];
+      process.env['SPARQLY_HASH_COMPARE_WITH'] = partsGlob;
+      try {
+        const cmd = new HashCommand();
+        await cmd.run([single], { quiet: true });
+      } finally {
+        if (original === undefined)
+          delete process.env['SPARQLY_HASH_COMPARE_WITH'];
+        else process.env['SPARQLY_HASH_COMPARE_WITH'] = original;
+      }
+
+      expect(stdoutText()).toMatch(/^match: [0-9a-f]{64}\n$/);
+      expect(process.exitCode).toBeFalsy();
+    });
+
+    it('hash.compareWith in the config file triggers compare mode', async () => {
+      const single = join(dir, 'domain.ttl');
+      await writeDomain(single);
+      const partsDir = join(dir, 'parts');
+      await writeCleanSplit(partsDir);
+      const partsGlob = join(partsDir, '*.ttl');
+
+      const configPath = join(dir, 'sparqly.config.yaml');
+      await writeFile(
+        configPath,
+        [
+          'hash:',
+          `  sources: "${single}"`,
+          `  compareWith: "${partsGlob}"`,
+          '',
+        ].join('\n'),
+      );
+
+      const cmd = new HashCommand();
+      await cmd.run([], { config: configPath, quiet: true });
+
+      expect(stdoutText()).toMatch(/^match: [0-9a-f]{64}\n$/);
+      expect(process.exitCode).toBeFalsy();
+    });
+  });
+
   describe('--json output format', () => {
     it('--json prints a JSON array of {source, hash} for a single source', async () => {
       const file = join(dir, 'a.ttl');

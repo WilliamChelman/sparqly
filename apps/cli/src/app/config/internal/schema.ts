@@ -49,6 +49,7 @@ const HASH_ONLY_FIELDS: Record<string, FieldDef> = {
     schema: z.union([z.string(), z.array(z.string()).min(1)]),
   },
   json: { schema: coercedBoolean, default: false },
+  compareWith: { schema: z.string() },
 };
 
 export type CommandName = 'query' | 'serve' | 'hash';
@@ -66,6 +67,7 @@ export interface EffectiveOptions {
   watch?: boolean;
   watchDebounce?: number;
   json?: boolean;
+  compareWith?: string;
 }
 
 function shapeOf(
