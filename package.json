@@ -19,7 +19,7 @@
     "build:web": "nx build web",
     "test": "nx run-many -t test",
     "lint": "nx run-many -t lint",
-    "check": "nx run-many -t build lint test",
+    "check": "nx run-many -t build lint test e2e",
     "sparqly": "nx build cli --no-tui && node dist/apps/cli/main.js"
   },
   "devDependencies": {

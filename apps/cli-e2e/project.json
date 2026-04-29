@@ -1,0 +1,21 @@
+{
+  "name": "cli-e2e",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/cli-e2e/src",
+  "projectType": "application",
+  "implicitDependencies": ["cli"],
+  "tags": [],
+  "targets": {
+    "e2e": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["^build"],
+      "inputs": ["default", "^production"],
+      "outputs": [],
+      "cache": true,
+      "options": {
+        "command": "vitest run --config e2e.config.mts",
+        "cwd": "apps/cli-e2e"
+      }
+    }
+  }
+}
