@@ -45,6 +45,7 @@ export async function loadFileConfig(
 ): Promise<FileConfigBlocks> {
   const explorer = cosmiconfig('sparqly', {
     searchPlaces: SEARCH_PLACES,
+    searchStrategy: 'global',
     stopDir: options.stopDir,
   });
 
