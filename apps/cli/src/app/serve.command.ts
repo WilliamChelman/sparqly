@@ -107,7 +107,7 @@ export class ServeCommand extends CommandRunner {
   @Option({
     flags: '--graph-strategy <strategy>',
     description:
-      "Named-graph strategy: 'default', 'partial', or 'full' (see `query --help`)",
+      "Named-graph strategy: 'default', 'partial', 'full', or 'none' (see `query --help`)",
   })
   parseGraphStrategy(value: string): string {
     return value;

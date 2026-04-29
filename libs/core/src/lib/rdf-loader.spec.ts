@@ -290,6 +290,34 @@ describe('loadRdf', () => {
     expect(graphs).toEqual(new Set([`file://${a}`, `file://${b}`]));
   });
 
+  it('graphStrategy=none: flattens declared graph IRIs from quad-format files into the default graph', async () => {
+    await writeFile(
+      join(dir, 'a.trig'),
+      '@prefix ex: <http://example.org/> .\nex:g1 { ex:a ex:p ex:b . }\nex:g2 { ex:c ex:p ex:d . }\n',
+    );
+    const { store } = await loadRdf({
+      sources: join(dir, '*.trig'),
+      graphStrategy: 'none',
+    });
+    expect(store.size).toBe(2);
+    for (const quad of store.getQuads(null, null, null, null)) {
+      expect(quad.graph.termType).toBe('DefaultGraph');
+    }
+  });
+
+  it('graphStrategy=none: leaves triple-format quads in the default graph', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const { store } = await loadRdf({
+      sources: join(dir, '*.ttl'),
+      graphStrategy: 'none',
+    });
+    const [quad] = store.getQuads(null, null, null, null);
+    expect(quad.graph.termType).toBe('DefaultGraph');
+  });
+
   it('graphStrategy=full: gives each file its own named graph', async () => {
     const a = join(dir, 'a.ttl');
     const b = join(dir, 'b.ttl');

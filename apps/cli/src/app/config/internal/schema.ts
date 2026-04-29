@@ -24,7 +24,7 @@ interface FieldDef {
 const SHARED_FIELDS: Record<string, FieldDef> = {
   sources: { schema: z.string() },
   graphStrategy: {
-    schema: z.enum(['default', 'partial', 'full']),
+    schema: z.enum(['default', 'partial', 'full', 'none']),
     default: 'default',
   },
   mutable: { schema: coercedBoolean, default: false },
@@ -48,7 +48,7 @@ export type CommandName = 'query' | 'serve';
 
 export interface EffectiveOptions {
   sources?: string;
-  graphStrategy?: 'default' | 'partial' | 'full';
+  graphStrategy?: 'default' | 'partial' | 'full' | 'none';
   mutable?: boolean;
   verbose?: boolean;
   quiet?: boolean;

@@ -57,7 +57,7 @@ that is exposed as a CLI flag is also expressible in the config file.
 ```yaml
 # sparqly.config.yaml — full example
 sources: "data/**/*.ttl"
-graphStrategy: default     # default | partial | full
+graphStrategy: default     # default | partial | full | none
 mutable: false
 verbose: false
 quiet: false

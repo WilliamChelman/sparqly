@@ -189,7 +189,7 @@ export class QueryCommand extends CommandRunner {
   @Option({
     flags: '--graph-strategy <strategy>',
     description:
-      "Named-graph strategy: 'default' (triples merge into the default graph, quads keep declared graphs), 'partial' (triples land in their file:// graph, quads keep declared graphs), or 'full' (every file lands in its own file:// graph)",
+      "Named-graph strategy: 'default' (triples merge into the default graph, quads keep declared graphs), 'partial' (triples land in their file:// graph, quads keep declared graphs), 'full' (every file lands in its own file:// graph), or 'none' (all graph names are stripped — every statement lands in the default graph)",
   })
   parseGraphStrategy(value: string): string {
     return value;

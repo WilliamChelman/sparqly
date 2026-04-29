@@ -1,15 +1,16 @@
 import { createReadStream } from 'node:fs';
 import { extname } from 'node:path';
-import { DataFactory, Store, type Quad } from 'n3';
+import { DataFactory, Store, type DefaultGraph, type NamedNode, type Quad } from 'n3';
 import { rdfParser } from 'rdf-parse';
 import { glob } from 'tinyglobby';
 
-export type GraphStrategy = 'default' | 'partial' | 'full';
+export type GraphStrategy = 'default' | 'partial' | 'full' | 'none';
 
 export const GRAPH_STRATEGIES: ReadonlyArray<GraphStrategy> = [
   'default',
   'partial',
   'full',
+  'none',
 ];
 
 export function isGraphStrategy(value: string): value is GraphStrategy {
@@ -77,6 +78,19 @@ function contentTypeFor(file: string): string | undefined {
   return EXTENSION_TO_CONTENT_TYPE[extname(file).toLowerCase()];
 }
 
+function targetGraph(
+  quad: Quad,
+  strategy: GraphStrategy,
+  fileGraph: NamedNode,
+): NamedNode | DefaultGraph | undefined {
+  if (strategy === 'none') return DataFactory.defaultGraph();
+  if (strategy === 'full') return fileGraph;
+  if (strategy === 'partial' && quad.graph.termType === 'DefaultGraph') {
+    return fileGraph;
+  }
+  return undefined;
+}
+
 function parseFileInto(
   file: string,
   contentType: string,
@@ -90,12 +104,9 @@ function parseFileInto(
     rdfParser
       .parse(stream, { contentType, baseIRI: `file://${file}` })
       .on('data', (quad: Quad) => {
-        const isTripleQuad = quad.graph.termType === 'DefaultGraph';
-        const overrideGraph =
-          strategy === 'full' ||
-          (strategy === 'partial' && isTripleQuad);
-        const out = overrideGraph
-          ? DataFactory.quad(quad.subject, quad.predicate, quad.object, fileGraph)
+        const target = targetGraph(quad, strategy, fileGraph);
+        const out = target
+          ? DataFactory.quad(quad.subject, quad.predicate, quad.object, target)
           : quad;
         store.addQuad(out);
       })
