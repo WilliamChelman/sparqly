@@ -57,4 +57,44 @@ describe('sparqly query — input paths', () => {
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toMatch(/only one query source/);
   });
+
+  it('rejects -q combined with --query-file', async () => {
+    const scratch = await mkdtemp(join(tmpdir(), 'sparqly-q-file-'));
+    try {
+      const queryPath = join(scratch, 'q.rq');
+      await writeFile(queryPath, SELECT_ALL);
+
+      const result = await runCli([
+        'query',
+        sources,
+        '-q',
+        SELECT_ALL,
+        '--query-file',
+        queryPath,
+      ]);
+
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toMatch(/only one query source/);
+    } finally {
+      await rm(scratch, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects --query-file combined with piped stdin', async () => {
+    const scratch = await mkdtemp(join(tmpdir(), 'sparqly-q-file-'));
+    try {
+      const queryPath = join(scratch, 'q.rq');
+      await writeFile(queryPath, SELECT_ALL);
+
+      const result = await runCli(
+        ['query', sources, '--query-file', queryPath],
+        { stdin: SELECT_ALL },
+      );
+
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toMatch(/only one query source/);
+    } finally {
+      await rm(scratch, { recursive: true, force: true });
+    }
+  });
 });

@@ -178,13 +178,20 @@ describe('QueryEngine.execute', () => {
       });
     }
 
-    it('SELECT is unaffected by mutable=true', async () => {
-      const engine = new QueryEngine(exampleStore());
-      const result = await engine.execute(
-        'SELECT ?s WHERE { ?s ?p ?o }',
-        { mutable: true },
-      );
-      expect(result.format).toBe('json');
-    });
+    it.each([
+      { verb: 'SELECT', query: 'SELECT ?s WHERE { ?s ?p ?o }' },
+      { verb: 'ASK', query: 'ASK WHERE { ?s ?p ?o }' },
+      { verb: 'CONSTRUCT', query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }' },
+      { verb: 'DESCRIBE', query: 'DESCRIBE <http://example.org/a>' },
+    ])(
+      '$verb passes the guard regardless of the mutable flag',
+      async ({ query }) => {
+        const engine = new QueryEngine(exampleStore());
+        await expect(engine.execute(query)).resolves.toBeDefined();
+        await expect(
+          engine.execute(query, { mutable: true }),
+        ).resolves.toBeDefined();
+      },
+    );
   });
 });
