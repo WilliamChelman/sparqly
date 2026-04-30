@@ -1,7 +1,11 @@
 import { Logger } from '@nestjs/common';
-import { Parser, type Term } from 'n3';
 import { Command, CommandRunner, Option } from 'nest-commander';
-import { canonicalizeRdf, type GraphStrategy } from 'core';
+import {
+  canonicalizeRdf,
+  diffCanonicalStatements,
+  formatRdfDiff,
+  type GraphStrategy,
+} from 'core';
 import { runWithConfig, type EffectiveOptions } from './config';
 import { DIFF_FORMATS, type DiffFormat } from './config/internal/schema';
 import { exitCodeFor, isAdapterFailure } from './cli-errors';
@@ -76,29 +80,9 @@ export class DiffCommand extends CommandRunner {
       return;
     }
 
-    const leftSet = new Set(leftStatements);
-    const rightSet = new Set(rightStatements);
-    const removed = leftStatements.filter((s) => !rightSet.has(s)).sort();
-    const added = rightStatements.filter((s) => !leftSet.has(s)).sort();
-
-    let body: string;
-    if (format === 'json') {
-      const json = {
-        added: added.map(parseStatement),
-        removed: removed.map(parseStatement),
-      };
-      body = `${JSON.stringify(json)}\n`;
-    } else if (format === 'rdf-patch') {
-      const parts: string[] = [];
-      for (const s of removed) parts.push(`D ${s}\n`);
-      for (const s of added) parts.push(`A ${s}\n`);
-      body = parts.join('');
-    } else {
-      const parts: string[] = [];
-      for (const s of removed) parts.push(`- ${s}\n`);
-      for (const s of added) parts.push(`+ ${s}\n`);
-      body = parts.join('');
-    }
+    const diff = diffCanonicalStatements(leftStatements, rightStatements);
+    const body = formatRdfDiff(diff, format);
+    const { added, removed } = diff;
 
     if (effective.out !== undefined) {
       try {
@@ -199,49 +183,4 @@ export class DiffCommand extends CommandRunner {
   parsePrintConfig(): boolean {
     return true;
   }
-}
-
-interface StatementJson {
-  s: TermJson;
-  p: TermJson;
-  o: TermJson;
-  g?: TermJson;
-}
-
-interface TermJson {
-  termType: string;
-  value: string;
-  datatype?: string;
-  language?: string;
-}
-
-function parseStatement(line: string): StatementJson {
-  const parser = new Parser({ format: 'application/n-quads' });
-  const quads = parser.parse(line);
-  if (quads.length !== 1) {
-    throw new Error(`expected exactly one quad, got ${quads.length}: ${line}`);
-  }
-  const q = quads[0];
-  const out: StatementJson = {
-    s: termToJson(q.subject),
-    p: termToJson(q.predicate),
-    o: termToJson(q.object),
-  };
-  if (q.graph.termType !== 'DefaultGraph') {
-    out.g = termToJson(q.graph);
-  }
-  return out;
-}
-
-function termToJson(term: Term): TermJson {
-  const out: TermJson = { termType: term.termType, value: term.value };
-  if (term.termType === 'Literal') {
-    const lit = term as Term & {
-      language?: string;
-      datatype?: { value: string };
-    };
-    if (lit.language && lit.language.length > 0) out.language = lit.language;
-    if (lit.datatype && lit.datatype.value) out.datatype = lit.datatype.value;
-  }
-  return out;
 }

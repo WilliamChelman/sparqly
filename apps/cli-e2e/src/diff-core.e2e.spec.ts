@@ -199,6 +199,32 @@ describe('sparqly diff — core properties', () => {
       expect(result.exitCode).toBe(2);
       expect(result.stderr).toMatch(/two source specs/);
     });
+
+    it('exits 2 when more than two positional arguments are given', async () => {
+      const result = await runCli([
+        'diff',
+        '--quiet',
+        'x.ttl',
+        'y.ttl',
+        'z.ttl',
+      ]);
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toMatch(/at most two/);
+    });
+
+    it('exits 2 on an unknown --graph-strategy value', async () => {
+      const result = await runCli([
+        'diff',
+        '--quiet',
+        '--graph-strategy=bogus',
+        diffFixture('domain.ttl'),
+        diffFixture('domain.ttl'),
+      ]);
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toMatch(/unknown.*--graph-strategy/i);
+    });
   });
 
   describe('config integration', () => {
@@ -254,6 +280,21 @@ describe('sparqly diff — core properties', () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('# sparqly diff --print-config');
       expect(result.stdout).toMatch(/format\s*:\s*"rdf-patch"\s+# flag/);
+    });
+
+    it('--print-config annotates the default format=human when no flag is given', async () => {
+      const result = await runCli([
+        'diff',
+        '--print-config',
+        '--quiet',
+        'x.ttl',
+        'y.ttl',
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toMatch(/format\s*:\s*"human"\s+# default/);
+      expect(result.stdout).toMatch(/left\s*:\s*"x\.ttl"\s+# flag/);
+      expect(result.stdout).toMatch(/right\s*:\s*"y\.ttl"\s+# flag/);
     });
   });
 });
