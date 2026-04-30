@@ -1,11 +1,10 @@
 import { createHash } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import { Command, CommandRunner, Option } from 'nest-commander';
-import * as rdfCanonize from 'rdf-canonize';
 import {
+  canonicalizeRdf,
   GRAPH_STRATEGIES,
   isGraphStrategy,
-  loadRdf,
   type GraphStrategy,
 } from 'core';
 import { runWithConfig, type EffectiveOptions } from './config';
@@ -133,22 +132,14 @@ export class HashCommand extends CommandRunner {
     graphStrategy: GraphStrategy | undefined,
     logger: Logger,
   ): Promise<{ source: string; hash: string }> {
-    const loadStart = Date.now();
-    const { store, files } = await loadRdf({ sources: spec, graphStrategy });
+    const start = Date.now();
+    const { store, files, canonicalText } = await canonicalizeRdf({
+      sources: spec,
+      graphStrategy,
+    });
+    const hash = createHash('sha256').update(canonicalText).digest('hex');
     logger.log(
-      `Loaded ${files.length} file(s) (${store.size} quads) for '${spec}' in ${
-        Date.now() - loadStart
-      }ms`,
-    );
-
-    const canonStart = Date.now();
-    const canonical = await rdfCanonize.canonize(
-      store.getQuads(null, null, null, null),
-      { algorithm: 'RDFC-1.0', format: 'application/n-quads' },
-    );
-    const hash = createHash('sha256').update(canonical).digest('hex');
-    logger.log(
-      `Canonicalized + hashed '${spec}' in ${Date.now() - canonStart}ms`,
+      `Loaded ${files.length} file(s) (${store.size} quads), canonicalized + hashed '${spec}' in ${Date.now() - start}ms`,
     );
 
     return { source: spec, hash };

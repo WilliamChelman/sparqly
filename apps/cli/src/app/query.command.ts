@@ -8,6 +8,7 @@ import {
   isSparqlFormat,
   loadRdf,
   type GraphStrategy,
+  type SparqlFormat,
 } from 'core';
 import { runWithConfig, type EffectiveOptions } from './config';
 
@@ -115,7 +116,10 @@ export class QueryCommand extends CommandRunner {
     }
 
     const graphStrategy: GraphStrategy | undefined = effective.graphStrategy;
-    const format = effective.format;
+    const format =
+      effective.format !== undefined && isSparqlFormat(effective.format)
+        ? (effective.format as SparqlFormat)
+        : undefined;
     const mutable = effective.mutable === true;
 
     try {

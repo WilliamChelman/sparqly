@@ -42,12 +42,23 @@ sparqly hash domain.ttl --compare-with "parts/**/*.ttl"
 # match: 4f3c…a1
 ```
 
+When `hash --compare-with` reports a mismatch, see exactly which triples
+drifted with `sparqly diff`:
+
+```sh
+sparqly diff domain.ttl "parts/**/*.ttl"
+# - <http://example.org/c> <http://example.org/q> <http://example.org/d> .
+# + <http://example.org/c> <http://example.org/q> <http://example.org/d2> .
+# # +1 -1                                          (on stderr)
+```
+
 ## Configuration file
 
-All three commands (`sparqly query`, `sparqly serve`, `sparqly hash`) read a
-shared config file so you don't have to repeat `--sources`, `--graph-strategy`,
-`--port`, etc. on every invocation. The CLI walks up parent directories from
-the current working directory looking for the first match of:
+All four commands (`sparqly query`, `sparqly serve`, `sparqly hash`,
+`sparqly diff`) read a shared config file so you don't have to repeat
+`--sources`, `--graph-strategy`, `--port`, etc. on every invocation. The CLI
+walks up parent directories from the current working directory looking for the
+first match of:
 
 - `sparqly.config.yaml`
 - `sparqly.config.yml`
@@ -59,9 +70,9 @@ or unparseable `--config` path is a hard error.
 ### Schema
 
 The file has shared defaults at the top level plus optional `query:`,
-`serve:`, and `hash:` blocks that override those defaults for one command.
-Every option that is exposed as a CLI flag is also expressible in the config
-file.
+`serve:`, `hash:`, and `diff:` blocks that override those defaults for one
+command. Every option that is exposed as a CLI flag is also expressible in the
+config file.
 
 ```yaml
 # sparqly.config.yaml — full example
@@ -92,6 +103,13 @@ hash:
   graphStrategy: none               # flatten quads to triples for hashing
   json: false
   # compareWith: "parts/**/*.ttl"   # requires exactly one primary source
+
+diff:
+  left: "domain.ttl"                # string or array of source specs
+  right:                            # one side may be a glob, the other a single file
+    - "parts/**/*.ttl"
+  format: human                     # human | json | rdf-patch
+  graphStrategy: default            # default | partial | full | none
 ```
 
 `graphStrategy: none` is new: it strips graph names from quad-bearing formats
@@ -110,9 +128,9 @@ earlier ones:
 | ---------- | --------------------------------------------------------------------------------------- |
 | 1 (lowest) | Built-in defaults                                                                        |
 | 2          | Config file — top-level shared keys                                                      |
-| 3          | Config file — `query:` / `serve:` / `hash:` block (for the active command)               |
+| 3          | Config file — `query:` / `serve:` / `hash:` / `diff:` block (for the active command)     |
 | 4          | Environment variables                                                                    |
-| 5 (highest) | CLI flags (and the positional `[glob]` argument, which sets `sources`)                  |
+| 5 (highest) | CLI flags (and positional arguments)                                                    |
 
 Environment variables follow a predictable contract:
 
@@ -253,15 +271,114 @@ defaults → config file shared keys → config file `hash:` block → environme
 variables → CLI flags. Pass `--print-config` to see the resolved configuration
 annotated with where each value came from.
 
+## `sparqly diff`
+
+`sparqly diff <left> <right>` is the natural follow-up to `hash --compare-with`:
+when the hashes differ, `diff` shows you exactly which triples or quads drifted.
+Both sides are loaded through the same RDF loader and canonicalized via
+[RDFC-1.0](https://www.w3.org/TR/rdf-canon/), so the diff is invariant under
+blank-node relabeling, statement ordering, prefix declarations, and whitespace.
+
+By convention:
+
+- **added** = statements present in `<right>` but not in `<left>`
+- **removed** = statements present in `<left>` but not in `<right>`
+
+The diff is a pure set difference over canonical N-Quads — no move/rename
+detection, no fuzzy matching, no SHACL-aware equivalence.
+
+> **Known limitation.** RDFC-1.0 does not normalize literal lexical forms, so
+> `"01"^^xsd:integer` vs `"1"^^xsd:integer`, `"1.0"` vs `"1.00"`, or
+> language-tag casing will appear as both an addition and a removal even though
+> they denote the same value. Tracked in `ideas.md` (shared with `hash`).
+
+### Synopsis
+
+```sh
+sparqly diff [left] [right]
+            [--left <source>] [--right <source>]
+            [--graph-strategy <default|partial|full|none>]
+            [-f, --format <human|json|rdf-patch>]
+            [--config <path>] [--print-config]
+            [-v, --verbose] [--quiet]
+```
+
+Each side may be a single file path or a glob, and accepts the same RDF
+formats as the rest of the CLI (Turtle, N-Triples, N-Quads, TriG, JSON-LD,
+RDF/XML).
+
+### Output formats
+
+| Flag                    | Output                                                                                                                                    |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| (default) `--format human` | `- <s> <p> <o> [g] .` for removals, `+ <s> <p> <o> [g] .` for additions, in canonical N-Triples / N-Quads order. Removals first.        |
+| `--format json`         | A single JSON object `{"added": [...], "removed": [...]}`. Each statement is `{ s, p, o, g? }`; each term is `{ termType, value, datatype?, language? }`. |
+| `--format rdf-patch`    | Standard [RDF Patch](https://afs.github.io/rdf-patch/) text format with `D` markers for deletions and `A` markers for additions.          |
+
+A trailing `# +<additions> -<removals>` summary line is written to **stderr**
+after the diff body, regardless of format. stdout stays cleanly parseable;
+suppress the summary with `--quiet` when you need pure machine-consumable
+output.
+
+### Exit codes
+
+| Code | Meaning                                                                              |
+| ---- | ------------------------------------------------------------------------------------ |
+| 0    | Sources are semantically identical (no added or removed statements).                  |
+| 1    | Sources differ. The diff is on stdout.                                                |
+| 2    | Load, parse, or canonicalization error on either side. Error message on stderr.       |
+
+### Graph strategy
+
+`diff` honors the shared `graphStrategy` option just like `query`, `serve`, and
+`hash`. The default keeps graph names as part of statement identity for quad
+sources, so `<s,p,o,g1>` and `<s,p,o,g2>` are reported as one removal + one
+addition. With `--graph-strategy=none`, graph names are stripped before diffing
+— useful when comparing a quad source against a triples source.
+
+### Config block
+
+`sparqly diff` reads the shared config keys (`graphStrategy`, `verbose`,
+`quiet`) plus the diff-specific keys below from a top-level `diff:` block:
+
+```yaml
+diff:
+  left:                             # string | string[]
+    - "domain.ttl"
+  right: "parts/**/*.ttl"
+  format: human                     # human | json | rdf-patch
+  graphStrategy: default            # default | partial | full | none
+```
+
+### Environment variables
+
+```
+SPARQLY_GRAPH_STRATEGY        # shared
+SPARQLY_VERBOSE               # shared
+SPARQLY_QUIET                 # shared
+SPARQLY_DIFF_LEFT             # diff-specific
+SPARQLY_DIFF_RIGHT            # diff-specific
+SPARQLY_DIFF_FORMAT           # diff-specific — accepts human | json | rdf-patch
+SPARQLY_DIFF_GRAPH_STRATEGY   # diff-specific
+```
+
+### Precedence
+
+The same precedence chain applies as for the other commands: built-in defaults
+→ config file shared keys → config file `diff:` block → environment variables
+→ CLI flags (and the positional `[left] [right]` arguments). Pass
+`--print-config` to see the resolved configuration annotated with where each
+value came from.
+
 ## Workspace layout
 
 This is an Nx monorepo managed with pnpm.
 
 | Path            | Kind          | Purpose                                                                          |
 | --------------- | ------------- | -------------------------------------------------------------------------------- |
-| `apps/cli`      | NestJS app    | `sparqly` bin — `nest-commander` entry point, dispatches `query` and `serve`.    |
+| `apps/cli`      | NestJS app    | `sparqly` bin — `nest-commander` entry point, dispatches `query`, `serve`, `hash`, and `diff`. |
 | `apps/web`      | Angular app   | Browser playground (Angular 21 + Tailwind 4) hosting an embedded YASGUI.         |
-| `libs/core`     | TypeScript    | Comunica wrapper, n3.js store, RDF loader, immutability guard.                   |
+| `libs/core`     | TypeScript    | Comunica wrapper, n3.js store, RDF loader, RDFC-1.0 canonicalizer, immutability guard. |
 | `libs/domain`   | TypeScript    | DTOs and types shared between the server and the web app.                        |
 | `libs/server`   | TypeScript    | NestJS HTTP module (`ServerModule`, `/api/sparql`) that only boots under `serve`. |
 

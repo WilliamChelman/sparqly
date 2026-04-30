@@ -2,6 +2,7 @@ import { cosmiconfig, type CosmiconfigResult } from 'cosmiconfig';
 import { z } from 'zod';
 import { ConfigError } from './errors';
 import {
+  DIFF_BLOCK_KEYS,
   fileConfigSchema,
   HASH_BLOCK_KEYS,
   QUERY_BLOCK_KEYS,
@@ -21,6 +22,7 @@ export interface FileConfigBlocks {
   queryBlock: Record<string, unknown>;
   serveBlock: Record<string, unknown>;
   hashBlock: Record<string, unknown>;
+  diffBlock: Record<string, unknown>;
   filepath: string | null;
 }
 
@@ -35,10 +37,12 @@ const TOP_LEVEL_KNOWN: ReadonlySet<string> = new Set([
   'query',
   'serve',
   'hash',
+  'diff',
 ]);
 const QUERY_KNOWN: ReadonlySet<string> = new Set(QUERY_BLOCK_KEYS);
 const SERVE_KNOWN: ReadonlySet<string> = new Set(SERVE_BLOCK_KEYS);
 const HASH_KNOWN: ReadonlySet<string> = new Set(HASH_BLOCK_KEYS);
+const DIFF_KNOWN: ReadonlySet<string> = new Set(DIFF_BLOCK_KEYS);
 
 export async function loadFileConfig(
   options: LoadFileConfigOptions = {},
@@ -74,6 +78,7 @@ export async function loadFileConfig(
       queryBlock: {},
       serveBlock: {},
       hashBlock: {},
+      diffBlock: {},
       filepath: null,
     };
   }
@@ -119,6 +124,15 @@ export async function loadFileConfig(
       warn,
     );
   }
+  const diffRaw = (raw as Record<string, unknown>).diff;
+  if (diffRaw && typeof diffRaw === 'object' && !Array.isArray(diffRaw)) {
+    warnUnknownKeys(
+      diffRaw as Record<string, unknown>,
+      DIFF_KNOWN,
+      `${result.filepath} (diff)`,
+      warn,
+    );
+  }
 
   const data = parsed.data as Record<string, unknown>;
   return {
@@ -134,6 +148,10 @@ export async function loadFileConfig(
     hashBlock: pickKnown(
       (data.hash as Record<string, unknown> | undefined) ?? {},
       HASH_BLOCK_KEYS,
+    ),
+    diffBlock: pickKnown(
+      (data.diff as Record<string, unknown> | undefined) ?? {},
+      DIFF_BLOCK_KEYS,
     ),
     filepath: result.filepath,
   };

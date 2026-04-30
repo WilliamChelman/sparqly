@@ -39,6 +39,8 @@ const LAYERS: ReadonlyArray<Layer> = [
           return i.file.serveBlock;
         case 'hash':
           return i.file.hashBlock;
+        case 'diff':
+          return i.file.diffBlock;
       }
     },
   },

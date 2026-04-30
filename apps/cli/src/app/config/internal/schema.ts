@@ -52,7 +52,16 @@ const HASH_ONLY_FIELDS: Record<string, FieldDef> = {
   compareWith: { schema: z.string() },
 };
 
-export type CommandName = 'query' | 'serve' | 'hash';
+const DIFF_ONLY_FIELDS: Record<string, FieldDef> = {
+  left: { schema: z.union([z.string(), z.array(z.string()).min(1)]) },
+  right: { schema: z.union([z.string(), z.array(z.string()).min(1)]) },
+  format: {
+    schema: z.enum(['human', 'json', 'rdf-patch']),
+    default: 'human',
+  },
+};
+
+export type CommandName = 'query' | 'serve' | 'hash' | 'diff';
 
 export interface EffectiveOptions {
   sources?: string | string[];
@@ -62,12 +71,14 @@ export interface EffectiveOptions {
   quiet?: boolean;
   query?: string;
   queryFile?: string;
-  format?: 'json' | 'turtle';
+  format?: 'json' | 'turtle' | 'human' | 'rdf-patch';
   port?: number;
   watch?: boolean;
   watchDebounce?: number;
   json?: boolean;
   compareWith?: string;
+  left?: string | string[];
+  right?: string | string[];
 }
 
 function shapeOf(
@@ -104,6 +115,9 @@ export const SERVE_BLOCK_KEYS: ReadonlyArray<string> = [
 export const HASH_BLOCK_KEYS: ReadonlyArray<string> = Array.from(
   new Set([...SHARED_KEYS, ...Object.keys(HASH_ONLY_FIELDS)]),
 );
+export const DIFF_BLOCK_KEYS: ReadonlyArray<string> = Array.from(
+  new Set([...SHARED_KEYS, ...Object.keys(DIFF_ONLY_FIELDS)]),
+);
 
 const sharedShape = shapeOf(SHARED_FIELDS);
 
@@ -117,12 +131,16 @@ export const serveBlockSchema = z
 export const hashBlockSchema = z
   .object({ ...sharedShape, ...shapeOf(HASH_ONLY_FIELDS) })
   .passthrough();
+export const diffBlockSchema = z
+  .object({ ...sharedShape, ...shapeOf(DIFF_ONLY_FIELDS) })
+  .passthrough();
 export const fileConfigSchema = z
   .object({
     ...sharedShape,
     query: queryBlockSchema.optional(),
     serve: serveBlockSchema.optional(),
     hash: hashBlockSchema.optional(),
+    diff: diffBlockSchema.optional(),
   })
   .passthrough();
 
@@ -134,6 +152,8 @@ export function defaultsFor(command: CommandName): Partial<EffectiveOptions> {
       return defaultsOf(SHARED_FIELDS, SERVE_ONLY_FIELDS);
     case 'hash':
       return defaultsOf(SHARED_FIELDS, HASH_ONLY_FIELDS);
+    case 'diff':
+      return defaultsOf(SHARED_FIELDS, DIFF_ONLY_FIELDS);
   }
 }
 
@@ -145,6 +165,8 @@ export function blockKeysFor(command: CommandName): ReadonlyArray<string> {
       return SERVE_BLOCK_KEYS;
     case 'hash':
       return HASH_BLOCK_KEYS;
+    case 'diff':
+      return DIFF_BLOCK_KEYS;
   }
 }
 
@@ -156,5 +178,7 @@ export function blockSchemaFor(command: CommandName): z.ZodTypeAny {
       return serveBlockSchema;
     case 'hash':
       return hashBlockSchema;
+    case 'diff':
+      return diffBlockSchema;
   }
 }
