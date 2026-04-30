@@ -9,6 +9,7 @@ import {
 } from 'core';
 import { runWithConfig, type EffectiveOptions } from './config';
 import { exitCodeFor, isAdapterFailure } from './cli-errors';
+import { writeOutputToFile } from './output';
 import { queryAdapter, type QueryRawOptions } from './query.adapter';
 
 interface QueryOptions extends QueryRawOptions {
@@ -112,8 +113,16 @@ export class QueryCommand extends CommandRunner {
       const result = await engine.execute(query, { format, mutable });
       logger.log(`Query executed in ${Date.now() - queryStart}ms`);
 
-      process.stdout.write(result.body);
-      if (!result.body.endsWith('\n')) process.stdout.write('\n');
+      const body = result.body.endsWith('\n') ? result.body : `${result.body}\n`;
+      if (effective.out !== undefined) {
+        await writeOutputToFile({
+          out: effective.out,
+          cwd: process.cwd(),
+          body,
+        });
+      } else {
+        process.stdout.write(body);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       process.stderr.write(`error: ${message}\n`);
@@ -198,6 +207,15 @@ export class QueryCommand extends CommandRunner {
   @Option({ flags: '--quiet', description: 'Suppress non-result output' })
   parseQuiet(): boolean {
     return true;
+  }
+
+  @Option({
+    flags: '-o, --out <path>',
+    description:
+      'Write the result body to <path> (CWD-relative) instead of stdout. Creates parent directories, silently overwrites, and replaces symlinks at the target.',
+  })
+  parseOut(value: string): string {
+    return value;
   }
 
   @Option({

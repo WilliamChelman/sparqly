@@ -34,6 +34,7 @@ const SHARED_FIELDS: Record<string, FieldDef> = {
   mutable: { schema: coercedBoolean, default: false },
   verbose: { schema: coercedBoolean, default: false },
   quiet: { schema: coercedBoolean, default: false },
+  out: { schema: z.string() },
 };
 
 const QUERY_ONLY_FIELDS: Record<string, FieldDef> = {
@@ -76,6 +77,7 @@ export interface EffectiveOptions {
   query?: string;
   queryFile?: string;
   format?: 'json' | 'turtle' | 'human' | 'rdf-patch';
+  out?: string;
   port?: number;
   watch?: boolean;
   watchDebounce?: number;

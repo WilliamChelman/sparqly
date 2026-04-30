@@ -54,6 +54,37 @@ sparqly diff domain.ttl "parts/**/*.ttl"
 # # +1 -1                                          (on stderr)
 ```
 
+## Redirecting output to a file (`--out`)
+
+`sparqly query` accepts `-o, --out <path>` to write the result body to a file
+instead of stdout. The bytes written to the file are identical to what would
+have gone to stdout; logger output stays on stderr.
+
+```sh
+sparqly query "data/**/*.ttl" -q 'SELECT * WHERE { ?s ?p ?o } LIMIT 10' \
+  --out results/run.json
+```
+
+Behavior:
+
+- **Path resolution.** `<path>` is resolved against the current working
+  directory regardless of where it was set (CLI flag, `SPARQLY_OUT` /
+  `SPARQLY_QUERY_OUT`, or `out:` in `sparqly.config.yaml`).
+- **Parent directories.** Created automatically (`mkdir -p` semantics).
+- **Existing file.** Silently overwritten — no `--force` flag.
+- **Atomic write.** Content is written to a sibling `<path>.tmp.<random>`
+  and then renamed; readers never observe a partial file.
+- **Symlinks.** A symlink at the target is replaced by the rename. There is
+  no symlink-following behavior.
+- **`--out -`.** Rejected with a clear error; pipe stdout instead.
+- **Existing directory at `<path>`.** Rejected with a clear error.
+- **`--print-config`.** Always writes to stdout, even when `out` is set.
+
+`out` also resolves through the standard config layer — it can be set as a
+top-level shared key or inside the `query:` block of `sparqly.config.yaml`,
+or via the `SPARQLY_OUT` / `SPARQLY_QUERY_OUT` environment variables, with
+the same precedence as every other option.
+
 ## Configuration file
 
 All four commands (`sparqly query`, `sparqly serve`, `sparqly hash`,

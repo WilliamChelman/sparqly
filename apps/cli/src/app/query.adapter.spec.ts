@@ -55,6 +55,12 @@ describe('queryAdapter', () => {
     expect('mutable' in result.cliOverrides).toBe(false);
   });
 
+  it('passes --out through as cliOverrides.out', () => {
+    const result = queryAdapter([], { out: 'result.json' });
+    if (isAdapterFailure(result)) throw new Error('expected ok');
+    expect(result.cliOverrides.out).toBe('result.json');
+  });
+
   it('rejects an unknown --graph-strategy with the canonical phrasing', () => {
     const result = queryAdapter([], { graphStrategy: 'bogus' });
 

@@ -15,6 +15,7 @@ export interface QueryRawOptions {
   immutable?: boolean;
   verbose?: boolean;
   quiet?: boolean;
+  out?: string;
 }
 
 export function queryAdapter(
@@ -30,6 +31,7 @@ export function queryAdapter(
     raw.graphStrategy = options.graphStrategy;
   if (options.verbose !== undefined) raw.verbose = options.verbose;
   if (options.quiet !== undefined) raw.quiet = options.quiet;
+  if (options.out !== undefined) raw.out = options.out;
   const mutable = mutableFromCli(options);
   if (mutable !== undefined) raw.mutable = mutable;
 
