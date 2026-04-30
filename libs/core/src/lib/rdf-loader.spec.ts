@@ -318,6 +318,38 @@ describe('loadRdf', () => {
     expect(quad.graph.termType).toBe('DefaultGraph');
   });
 
+  it('captures per-file prefixes declared in turtle source', async () => {
+    const file = join(dir, 'a.ttl');
+    await writeFile(
+      file,
+      [
+        '@prefix ex: <http://example.org/> .',
+        '@prefix dct: <http://purl.org/dc/terms/> .',
+        'ex:a ex:p ex:b .',
+      ].join('\n'),
+    );
+    const result = await loadRdf({ sources: join(dir, '*.ttl') });
+    expect(result.prefixes[file]).toEqual({
+      ex: 'http://example.org/',
+      dct: 'http://purl.org/dc/terms/',
+    });
+  });
+
+  it('captures per-file prefixes from trig source', async () => {
+    const file = join(dir, 'a.trig');
+    await writeFile(
+      file,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:g { ex:a ex:p ex:b . }',
+      ].join('\n'),
+    );
+    const result = await loadRdf({ sources: join(dir, '*.trig') });
+    expect(result.prefixes[file]).toEqual({
+      ex: 'http://example.org/',
+    });
+  });
+
   it('graphStrategy=full: gives each file its own named graph', async () => {
     const a = join(dir, 'a.ttl');
     const b = join(dir, 'b.ttl');

@@ -21,6 +21,8 @@ export interface LoadOptions {
 export interface LoadResult {
   store: Store;
   files: string[];
+  /** Prefixes declared in each parsed file, keyed by absolute file path. */
+  prefixes: Record<string, Record<string, string>>;
 }
 
 const EXTENSION_TO_CONTENT_TYPE: Record<string, string> = {
@@ -53,6 +55,7 @@ export async function loadRdf(options: LoadOptions): Promise<LoadResult> {
 
   const strategy: GraphStrategy = options.graphStrategy ?? 'default';
   const store = new Store();
+  const prefixes: Record<string, Record<string, string>> = {};
 
   for (const file of files) {
     const contentType = contentTypeFor(file);
@@ -60,14 +63,14 @@ export async function loadRdf(options: LoadOptions): Promise<LoadResult> {
       throw new Error(`Unsupported file extension: ${file}`);
     }
     try {
-      await parseFileInto(file, contentType, store, strategy);
+      prefixes[file] = await parseFileInto(file, contentType, store, strategy);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(`Failed to parse ${file}: ${message}`);
     }
   }
 
-  return { store, files };
+  return { store, files, prefixes };
 }
 
 function contentTypeFor(file: string): string | undefined {
@@ -92,8 +95,9 @@ function parseFileInto(
   contentType: string,
   store: Store,
   strategy: GraphStrategy,
-): Promise<void> {
+): Promise<Record<string, string>> {
   const fileGraph = DataFactory.namedNode(`file://${file}`);
+  const filePrefixes: Record<string, string> = {};
   return new Promise((resolve, reject) => {
     const stream = createReadStream(file);
     stream.on('error', reject);
@@ -106,7 +110,10 @@ function parseFileInto(
           : quad;
         store.addQuad(out);
       })
+      .on('prefix', (prefix: string, iri: NamedNode) => {
+        if (prefix && iri?.value) filePrefixes[prefix] = iri.value;
+      })
       .on('error', reject)
-      .on('end', resolve);
+      .on('end', () => resolve(filePrefixes));
   });
 }

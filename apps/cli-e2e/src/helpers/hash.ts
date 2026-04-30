@@ -5,6 +5,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 const HASH_FIXTURES = resolve(HERE, '../../fixtures/hash');
 const DIFF_FIXTURES = resolve(HERE, '../../fixtures/diff');
+const FORMAT_FIXTURES = resolve(HERE, '../../fixtures/format');
 
 export function hashFixture(...segments: string[]): string {
   return resolve(HASH_FIXTURES, ...segments);
@@ -12,6 +13,10 @@ export function hashFixture(...segments: string[]): string {
 
 export function diffFixture(...segments: string[]): string {
   return resolve(DIFF_FIXTURES, ...segments);
+}
+
+export function formatFixture(...segments: string[]): string {
+  return resolve(FORMAT_FIXTURES, ...segments);
 }
 
 export function leadingHash(line: string): string {
