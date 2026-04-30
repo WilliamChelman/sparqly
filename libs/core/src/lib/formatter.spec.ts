@@ -279,6 +279,112 @@ describe('formatRdf', () => {
     });
   });
 
+  describe('anonymous blank node inlining', () => {
+    it('inlines a single-use blank-node object as `[ ... ]`', () => {
+      const ex = 'http://example.org/';
+      const b = DataFactory.blankNode('x');
+      const triples = [
+        quad(namedNode(ex + 's'), namedNode(ex + 'p'), b),
+        quad(b, namedNode(ex + 'q'), namedNode(ex + 'o')),
+      ];
+      const out = formatRdf(triples, 'turtle', { prefixes: { ex } });
+
+      expect(out).toMatch(/ex:s\s+ex:p\s+\[/);
+      expect(out).toContain('ex:q ex:o');
+      expect(out).not.toMatch(/_:\w+\s+ex:q/);
+      const parsed = new Parser({ format: 'text/turtle' }).parse(out);
+      expect(parsed).toHaveLength(2);
+    });
+
+    it('keeps a labeled blank node when it is referenced more than once', () => {
+      const ex = 'http://example.org/';
+      const b = DataFactory.blankNode('shared');
+      const triples = [
+        quad(namedNode(ex + 's1'), namedNode(ex + 'p'), b),
+        quad(namedNode(ex + 's2'), namedNode(ex + 'p'), b),
+        quad(b, namedNode(ex + 'q'), namedNode(ex + 'o')),
+      ];
+      const out = formatRdf(triples, 'turtle', { prefixes: { ex } });
+
+      expect(out).toMatch(/_:\w+/);
+      expect(out).not.toMatch(/ex:p\s*\[/);
+      const parsed = new Parser({ format: 'text/turtle' }).parse(out);
+      expect(parsed).toHaveLength(3);
+    });
+
+    it('inlines a single-use blank node with no own properties as `[]`', () => {
+      const ex = 'http://example.org/';
+      const b = DataFactory.blankNode('lonely');
+      const triples = [
+        quad(namedNode(ex + 's'), namedNode(ex + 'p'), b),
+      ];
+      const out = formatRdf(triples, 'turtle', { prefixes: { ex } });
+
+      expect(out).toMatch(/ex:s\s+ex:p\s+\[\s*\]/);
+      expect(out).not.toMatch(/_:\w+/);
+      const parsed = new Parser({ format: 'text/turtle' }).parse(out);
+      expect(parsed).toHaveLength(1);
+    });
+
+    it('inlines nested single-use blank nodes', () => {
+      const ex = 'http://example.org/';
+      const b1 = DataFactory.blankNode('a');
+      const b2 = DataFactory.blankNode('b');
+      const triples = [
+        quad(namedNode(ex + 's'), namedNode(ex + 'p'), b1),
+        quad(b1, namedNode(ex + 'q'), b2),
+        quad(b2, namedNode(ex + 'r'), namedNode(ex + 'o')),
+      ];
+      const out = formatRdf(triples, 'turtle', { prefixes: { ex } });
+
+      expect(out).not.toMatch(/_:\w+/);
+      expect(out).toMatch(/ex:s\s+ex:p\s+\[/);
+      expect(out).toMatch(/ex:q\s+\[/);
+      expect(out).toContain('ex:r ex:o');
+      const parsed = new Parser({ format: 'text/turtle' }).parse(out);
+      expect(parsed).toHaveLength(3);
+    });
+
+    it('does not inline a list head — list compaction wins', () => {
+      const turtle = [
+        '@prefix ex: <http://example.org/> .',
+        '',
+        'ex:s ex:p ( ex:a ex:b ) .',
+        '',
+      ].join('\n');
+      const quads = new Parser({ format: 'text/turtle' }).parse(turtle);
+      const out = formatRdf(quads, 'turtle', {
+        prefixes: { ex: 'http://example.org/' },
+      });
+
+      expect(out).toMatch(/\(\s*ex:a\s+ex:b\s*\)/);
+      expect(out).not.toContain('rdf:first');
+      expect(out).not.toContain('rdf:rest');
+      // No stray `_:` labels and no inline brackets `[`
+      expect(out).not.toMatch(/_:\w+/);
+      expect(out).not.toMatch(/ex:p\s+\[/);
+    });
+
+    it('emits objects of the same predicate in alphabetical order', () => {
+      const ex = 'http://example.org/';
+      const triples = [
+        quad(namedNode(ex + 's'), namedNode(ex + 'p'), namedNode(ex + 'z')),
+        quad(namedNode(ex + 's'), namedNode(ex + 'p'), namedNode(ex + 'a')),
+        quad(namedNode(ex + 's'), namedNode(ex + 'p'), namedNode(ex + 'm')),
+      ];
+      const out = formatRdf(triples, 'turtle', { prefixes: { ex } });
+
+      const aIdx = out.indexOf('ex:a');
+      const mIdx = out.indexOf('ex:m');
+      const zIdx = out.indexOf('ex:z');
+      expect(aIdx).toBeGreaterThan(-1);
+      expect(mIdx).toBeGreaterThan(-1);
+      expect(zIdx).toBeGreaterThan(-1);
+      expect(aIdx).toBeLessThan(mIdx);
+      expect(mIdx).toBeLessThan(zIdx);
+    });
+  });
+
   describe('@base handling', () => {
     it('emits @base and shortens matching absolute IRIs to relative form', () => {
       const out = formatRdf(
@@ -441,6 +547,16 @@ const TRIG_CORPUS: ReadonlyArray<{ name: string; trig: string }> = [
       '',
     ].join('\n'),
   },
+  {
+    name: 'anonymous-bn-in-named-graph',
+    trig: [
+      '@prefix ex: <http://example.org/> .',
+      '',
+      'ex:g1 { ex:s ex:p [ ex:q ex:o ] . }',
+      'ex:g2 { ex:t ex:p _:shared . _:shared ex:r ex:x . _:other ex:r ex:y . _:shared ex:r2 _:other . }',
+      '',
+    ].join('\n'),
+  },
 ];
 
 const TURTLE_CORPUS: ReadonlyArray<{ name: string; turtle: string }> = [
@@ -521,6 +637,44 @@ const TURTLE_CORPUS: ReadonlyArray<{ name: string; turtle: string }> = [
       'ex:s ex:p _:h .',
       '_:h rdf:first ex:a ; rdf:rest _:t .',
       '_:t rdf:first ex:b ; rdf:rest rdf:nil ; ex:extra ex:x .',
+      '',
+    ].join('\n'),
+  },
+  {
+    name: 'single-use-blank-node',
+    turtle: [
+      '@prefix ex: <http://example.org/> .',
+      '',
+      'ex:s ex:p [ ex:q ex:o ; ex:r "hello" ] .',
+      '',
+    ].join('\n'),
+  },
+  {
+    name: 'multi-ref-blank-node',
+    turtle: [
+      '@prefix ex: <http://example.org/> .',
+      '',
+      'ex:s1 ex:p _:shared .',
+      'ex:s2 ex:p _:shared .',
+      '_:shared ex:q ex:o .',
+      '',
+    ].join('\n'),
+  },
+  {
+    name: 'nested-anonymous-blank-nodes',
+    turtle: [
+      '@prefix ex: <http://example.org/> .',
+      '',
+      'ex:s ex:p [ ex:q [ ex:r ex:o ] ; ex:s ex:t ] .',
+      '',
+    ].join('\n'),
+  },
+  {
+    name: 'rdf-type-with-anonymous-bn',
+    turtle: [
+      '@prefix ex: <http://example.org/> .',
+      '',
+      'ex:s a ex:Thing ; ex:p [ a ex:Inner ; ex:q ex:o ] .',
       '',
     ].join('\n'),
   },

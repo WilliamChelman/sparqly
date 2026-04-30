@@ -23,17 +23,17 @@ export function formatRdf(
   const { lists, consumed } = detectLists(list);
   const remaining = list.filter((q) => !consumed.has(q));
 
-  const usedPrefixes = pickUsedPrefixes(remaining, config.prefixes);
-  const sorted = [...remaining].sort(compareQuads);
-
   const writer = new Writer({
     format: SERIALIZATION_TO_FORMAT[serialization],
-    prefixes: usedPrefixes,
+    prefixes: pickUsedPrefixes(remaining, config.prefixes),
     baseIRI: config.base,
     lists,
   } as ConstructorParameters<typeof Writer>[0] & {
     lists: Record<string, Term[]>;
   });
+
+  const inlined = inlineSingleUseBlankNodes(remaining, writer, lists);
+  const sorted = [...inlined].sort(compareQuads);
   for (const q of sorted) writer.addQuad(q);
 
   let body = '';
@@ -229,6 +229,97 @@ function detectListsInGraph(
       for (const cq of consumedHere) consumed.add(cq);
     }
   }
+}
+
+function inlineSingleUseBlankNodes(
+  quads: ReadonlyArray<Quad>,
+  writer: Writer,
+  lists: Record<string, Term[]>,
+): Quad[] {
+  const incomingByObject = new Map<string, Quad[]>();
+  const outgoingBySubject = new Map<string, { graphKey: string; quads: Quad[] }>();
+  const blankAsGraph = new Set<string>();
+
+  for (const q of quads) {
+    if (q.object.termType === 'BlankNode') {
+      const k = q.object.value;
+      let arr = incomingByObject.get(k);
+      if (!arr) incomingByObject.set(k, (arr = []));
+      arr.push(q);
+    }
+    if (q.subject.termType === 'BlankNode') {
+      const label = q.subject.value;
+      const gk = termKey(q.graph);
+      const existing = outgoingBySubject.get(label);
+      if (!existing) {
+        outgoingBySubject.set(label, { graphKey: gk, quads: [q] });
+      } else if (existing.graphKey === gk) {
+        existing.quads.push(q);
+      } else {
+        existing.graphKey = '__multi__';
+      }
+    }
+    if (q.graph.termType === 'BlankNode') blankAsGraph.add(q.graph.value);
+  }
+
+  const candidates = new Set<string>();
+  for (const [label, refs] of incomingByObject) {
+    if (refs.length !== 1) continue;
+    if (blankAsGraph.has(label)) continue;
+    if (lists[label]) continue;
+    const out = outgoingBySubject.get(label);
+    if (out && out.graphKey === '__multi__') continue;
+    if (out && out.graphKey !== termKey(refs[0].graph)) continue;
+    candidates.add(label);
+  }
+
+  const inlineTerm = new Map<string, Term>();
+  const buildInline = (label: string): Term => {
+    const cached = inlineTerm.get(label);
+    if (cached) return cached;
+    const out = outgoingBySubject.get(label);
+    const items: { predicate: Term; object: Term }[] = [];
+    if (out && out.graphKey !== '__multi__') {
+      const sortedOut = [...out.quads].sort(
+        (a, b) =>
+          comparePredicate(a.predicate, b.predicate) ||
+          compareTerm(a.object, b.object),
+      );
+      for (const q of sortedOut) {
+        let object: Term = q.object;
+        if (q.object.termType === 'BlankNode' && candidates.has(q.object.value)) {
+          object = buildInline(q.object.value);
+        }
+        items.push({ predicate: q.predicate, object });
+      }
+    }
+    const term = (writer as unknown as {
+      blank(items: { predicate: Term; object: Term }[]): Term;
+    }).blank(items);
+    inlineTerm.set(label, term);
+    return term;
+  };
+  for (const label of candidates) buildInline(label);
+
+  const result: Quad[] = [];
+  for (const q of quads) {
+    if (q.subject.termType === 'BlankNode' && candidates.has(q.subject.value)) {
+      continue;
+    }
+    if (q.object.termType === 'BlankNode' && candidates.has(q.object.value)) {
+      result.push(
+        DataFactory.quad(
+          q.subject as Quad['subject'],
+          q.predicate as Quad['predicate'],
+          inlineTerm.get(q.object.value) as Quad['object'],
+          q.graph as Quad['graph'],
+        ),
+      );
+    } else {
+      result.push(q);
+    }
+  }
+  return result;
 }
 
 function compareQuads(a: Quad, b: Quad): number {
