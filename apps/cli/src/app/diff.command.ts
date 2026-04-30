@@ -6,6 +6,7 @@ import { runWithConfig, type EffectiveOptions } from './config';
 import { DIFF_FORMATS, type DiffFormat } from './config/internal/schema';
 import { exitCodeFor, isAdapterFailure } from './cli-errors';
 import { diffAdapter, type DiffRawOptions } from './diff.adapter';
+import { writeOutputToFile } from './output';
 
 interface DiffOptions extends DiffRawOptions {
   config?: string;
@@ -80,18 +81,40 @@ export class DiffCommand extends CommandRunner {
     const removed = leftStatements.filter((s) => !rightSet.has(s)).sort();
     const added = rightStatements.filter((s) => !leftSet.has(s)).sort();
 
+    let body: string;
     if (format === 'json') {
-      const body = {
+      const json = {
         added: added.map(parseStatement),
         removed: removed.map(parseStatement),
       };
-      process.stdout.write(`${JSON.stringify(body)}\n`);
+      body = `${JSON.stringify(json)}\n`;
     } else if (format === 'rdf-patch') {
-      for (const s of removed) process.stdout.write(`D ${s}\n`);
-      for (const s of added) process.stdout.write(`A ${s}\n`);
+      const parts: string[] = [];
+      for (const s of removed) parts.push(`D ${s}\n`);
+      for (const s of added) parts.push(`A ${s}\n`);
+      body = parts.join('');
     } else {
-      for (const s of removed) process.stdout.write(`- ${s}\n`);
-      for (const s of added) process.stdout.write(`+ ${s}\n`);
+      const parts: string[] = [];
+      for (const s of removed) parts.push(`- ${s}\n`);
+      for (const s of added) parts.push(`+ ${s}\n`);
+      body = parts.join('');
+    }
+
+    if (effective.out !== undefined) {
+      try {
+        await writeOutputToFile({
+          out: effective.out,
+          cwd: process.cwd(),
+          body,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`error: ${message}\n`);
+        process.exitCode = 2;
+        return;
+      }
+    } else {
+      process.stdout.write(body);
     }
 
     if (!quiet) {
@@ -148,6 +171,15 @@ export class DiffCommand extends CommandRunner {
   })
   parseQuiet(): boolean {
     return true;
+  }
+
+  @Option({
+    flags: '-o, --out <path>',
+    description:
+      'Write the diff body to <path> (CWD-relative) instead of stdout. The "# +N -M" summary still goes to stderr. Creates parent directories, silently overwrites, and replaces symlinks at the target.',
+  })
+  parseOut(value: string): string {
+    return value;
   }
 
   @Option({

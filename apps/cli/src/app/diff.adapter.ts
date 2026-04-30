@@ -8,6 +8,7 @@ export interface DiffRawOptions {
   format?: string;
   verbose?: boolean;
   quiet?: boolean;
+  out?: string;
 }
 
 export function diffAdapter(
@@ -35,6 +36,7 @@ export function diffAdapter(
   if (options.format !== undefined) raw.format = options.format;
   if (options.verbose !== undefined) raw.verbose = options.verbose;
   if (options.quiet !== undefined) raw.quiet = options.quiet;
+  if (options.out !== undefined) raw.out = options.out;
 
   const parsed = blockSchemaFor('diff').safeParse(raw);
   if (!parsed.success) {

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -428,6 +428,86 @@ describe('DiffCommand.run', () => {
       expect(out).toMatch(/left\s*:\s*"x\.ttl"\s+# flag/);
       expect(out).toMatch(/right\s*:\s*"y\.ttl"\s+# flag/);
       expect(process.exitCode).toBeFalsy();
+    });
+  });
+
+  describe('--out', () => {
+    async function runWithDiff(
+      options: Parameters<DiffCommand['run']>[1] = {},
+    ): Promise<void> {
+      await writeFiles([
+        [
+          'left.ttl',
+          '@prefix ex: <http://example.org/> .\nex:a ex:p ex:b .\nex:c ex:q ex:d .\n',
+        ],
+        [
+          'right.ttl',
+          '@prefix ex: <http://example.org/> .\nex:a ex:p ex:b .\nex:e ex:r ex:f .\n',
+        ],
+      ]);
+      const cmd = new DiffCommand();
+      await cmd.run([join(dir, 'left.ttl'), join(dir, 'right.ttl')], options);
+    }
+
+    it('writes the human-format body to the file (byte-identical to stdout) and leaves stdout empty', async () => {
+      await runWithDiff({ quiet: true });
+      const stdoutBaseline = stdoutText();
+
+      stdout.mockClear();
+      stderr.mockClear();
+      process.exitCode = undefined;
+
+      const target = join(dir, 'patch.diff');
+      await runWithDiff({ out: target, quiet: true });
+
+      expect(stdoutText()).toBe('');
+      const written = await readFile(target, 'utf8');
+      expect(written).toBe(stdoutBaseline);
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('still writes the "# +N -M" summary to stderr when --out is set', async () => {
+      const target = join(dir, 'patch.diff');
+      await runWithDiff({ out: target });
+
+      expect(stderrText()).toContain('# +1 -1\n');
+    });
+
+    it('--quiet still suppresses the summary when --out is set', async () => {
+      const target = join(dir, 'patch.diff');
+      await runWithDiff({ out: target, quiet: true });
+
+      expect(stderrText()).not.toContain('# +');
+    });
+
+    it('byte-parity for --format json', async () => {
+      await runWithDiff({ format: 'json', quiet: true });
+      const stdoutBaseline = stdoutText();
+
+      stdout.mockClear();
+      stderr.mockClear();
+      process.exitCode = undefined;
+
+      const target = join(dir, 'patch.json');
+      await runWithDiff({ format: 'json', out: target, quiet: true });
+
+      expect(stdoutText()).toBe('');
+      expect(await readFile(target, 'utf8')).toBe(stdoutBaseline);
+    });
+
+    it('byte-parity for --format rdf-patch', async () => {
+      await runWithDiff({ format: 'rdf-patch', quiet: true });
+      const stdoutBaseline = stdoutText();
+
+      stdout.mockClear();
+      stderr.mockClear();
+      process.exitCode = undefined;
+
+      const target = join(dir, 'patch.rdfp');
+      await runWithDiff({ format: 'rdf-patch', out: target, quiet: true });
+
+      expect(stdoutText()).toBe('');
+      expect(await readFile(target, 'utf8')).toBe(stdoutBaseline);
     });
   });
 

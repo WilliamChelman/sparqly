@@ -29,6 +29,12 @@ describe('diffAdapter', () => {
     );
   });
 
+  it('passes --out through as cliOverrides.out', () => {
+    const result = diffAdapter(['a', 'b'], { out: 'patch.txt' });
+    if (isAdapterFailure(result)) throw new Error('expected ok');
+    expect(result.cliOverrides.out).toBe('patch.txt');
+  });
+
   it('rejects unknown --format with the canonical phrasing', () => {
     const result = diffAdapter([], { format: 'csv' });
     if (!isAdapterFailure(result)) throw new Error('expected error');
