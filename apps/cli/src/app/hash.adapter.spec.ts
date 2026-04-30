@@ -19,6 +19,26 @@ describe('hashAdapter', () => {
     expect(result.cliOverrides.compareWith).toBe('other/*.ttl');
   });
 
+  it('passes --out through as cliOverrides.out', () => {
+    const result = hashAdapter([], {
+      sources: ['a/*.ttl'],
+      out: 'hashes.txt',
+    });
+    if (isAdapterFailure(result)) throw new Error('expected ok');
+    expect(result.cliOverrides.out).toBe('hashes.txt');
+  });
+
+  it('rejects --out combined with --compare-with', () => {
+    const result = hashAdapter([], {
+      sources: ['a/*.ttl'],
+      compareWith: 'b/*.ttl',
+      out: 'hashes.txt',
+    });
+    if (!isAdapterFailure(result)) throw new Error('expected error');
+    expect(result.errors[0].kind).toBe('invalid');
+    expect(result.errors[0].message).toMatch(/--out.*--compare-with/);
+  });
+
   it('rejects unknown --graph-strategy', () => {
     const result = hashAdapter([], { graphStrategy: 'bogus' });
     if (!isAdapterFailure(result)) throw new Error('expected error');

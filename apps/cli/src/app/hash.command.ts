@@ -5,6 +5,7 @@ import { canonicalizeRdf, type GraphStrategy } from 'core';
 import { runWithConfig, type EffectiveOptions } from './config';
 import { exitCodeFor, isAdapterFailure } from './cli-errors';
 import { hashAdapter, type HashRawOptions } from './hash.adapter';
+import { writeOutputToFile } from './output';
 
 interface HashOptions extends HashRawOptions {
   config?: string;
@@ -104,12 +105,25 @@ export class HashCommand extends CommandRunner {
       }
     }
 
-    if (effective.json) {
-      process.stdout.write(`${JSON.stringify(results)}\n`);
-    } else {
-      for (const { hash, source } of results) {
-        process.stdout.write(`${hash}  ${source}\n`);
+    const body = effective.json
+      ? `${JSON.stringify(results)}\n`
+      : results.map(({ hash, source }) => `${hash}  ${source}\n`).join('');
+
+    if (effective.out !== undefined) {
+      try {
+        await writeOutputToFile({
+          out: effective.out,
+          cwd: process.cwd(),
+          body,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`error: ${message}\n`);
+        process.exitCode = errorExit;
+        return;
       }
+    } else {
+      process.stdout.write(body);
     }
   }
 
@@ -164,6 +178,15 @@ export class HashCommand extends CommandRunner {
       "Hash a second source spec (file path or glob) with the same loader options and compare against the primary source. Exit 0 on match (stdout 'match: <hash>'), 1 on mismatch (stdout shows both labeled hashes), 2 on error. Requires exactly one primary source.",
   })
   parseCompareWith(value: string): string {
+    return value;
+  }
+
+  @Option({
+    flags: '-o, --out <path>',
+    description:
+      'Write the hash output to <path> (CWD-relative) instead of stdout. Cannot be combined with --compare-with. Creates parent directories, silently overwrites, and replaces symlinks at the target.',
+  })
+  parseOut(value: string): string {
     return value;
   }
 

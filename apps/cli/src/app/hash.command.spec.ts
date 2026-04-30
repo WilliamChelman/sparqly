@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -666,6 +666,107 @@ describe('HashCommand.run', () => {
       expect(process.exitCode).toBe(1);
       expect(stdoutText()).toBe('');
       expect(stderrText()).toMatch(/broken\.ttl/);
+    });
+  });
+
+  describe('--out', () => {
+    it('writes the default <hash>  <source> line to the file (byte-identical to stdout) and leaves stdout empty', async () => {
+      const file = join(dir, 'data.ttl');
+      await writeFile(
+        file,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+
+      const cmdBaseline = new HashCommand();
+      await cmdBaseline.run([file], { quiet: true });
+      const stdoutBaseline = stdoutText();
+
+      stdout.mockClear();
+      stderr.mockClear();
+      process.exitCode = undefined;
+
+      const target = join(dir, 'hashes.txt');
+      const cmd = new HashCommand();
+      await cmd.run([file], { out: target, quiet: true });
+
+      expect(stdoutText()).toBe('');
+      const written = await readFile(target, 'utf8');
+      expect(written).toBe(stdoutBaseline);
+      expect(process.exitCode).toBeFalsy();
+    });
+
+    it('byte-parity for --json mode', async () => {
+      const file = join(dir, 'data.ttl');
+      await writeFile(
+        file,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+
+      const cmdBaseline = new HashCommand();
+      await cmdBaseline.run([file], { json: true, quiet: true });
+      const stdoutBaseline = stdoutText();
+
+      stdout.mockClear();
+      stderr.mockClear();
+      process.exitCode = undefined;
+
+      const target = join(dir, 'hashes.json');
+      const cmd = new HashCommand();
+      await cmd.run([file], { json: true, out: target, quiet: true });
+
+      expect(stdoutText()).toBe('');
+      expect(await readFile(target, 'utf8')).toBe(stdoutBaseline);
+      expect(process.exitCode).toBeFalsy();
+    });
+
+    it('writes all results in input order for multiple --sources', async () => {
+      const a = join(dir, 'a.ttl');
+      const b = join(dir, 'b.ttl');
+      await writeFile(
+        a,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+      await writeFile(
+        b,
+        '@prefix ex: <http://example.org/> . ex:c ex:q ex:d .\n',
+      );
+
+      const cmdBaseline = new HashCommand();
+      await cmdBaseline.run([], { sources: [b, a], quiet: true });
+      const stdoutBaseline = stdoutText();
+
+      stdout.mockClear();
+      stderr.mockClear();
+      process.exitCode = undefined;
+
+      const target = join(dir, 'multi.txt');
+      const cmd = new HashCommand();
+      await cmd.run([], { sources: [b, a], out: target, quiet: true });
+
+      expect(stdoutText()).toBe('');
+      const written = await readFile(target, 'utf8');
+      expect(written).toBe(stdoutBaseline);
+      const lines = written.split('\n').filter((l) => l.length > 0);
+      expect(lines).toHaveLength(2);
+      expect(lines[0].endsWith(`  ${b}`)).toBe(true);
+      expect(lines[1].endsWith(`  ${a}`)).toBe(true);
+      expect(process.exitCode).toBeFalsy();
+    });
+
+    it('rejects --out combined with --compare-with with exit 2 and clear error', async () => {
+      const a = join(dir, 'a.ttl');
+      await writeFile(
+        a,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+      );
+
+      const target = join(dir, 'compare.txt');
+      const cmd = new HashCommand();
+      await cmd.run([a], { compareWith: a, out: target, quiet: true });
+
+      expect(process.exitCode).toBe(2);
+      expect(stdoutText()).toBe('');
+      expect(stderrText()).toMatch(/--out.*--compare-with/);
     });
   });
 

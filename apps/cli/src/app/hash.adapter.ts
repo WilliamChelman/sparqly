@@ -8,6 +8,7 @@ export interface HashRawOptions {
   compareWith?: string;
   verbose?: boolean;
   quiet?: boolean;
+  out?: string;
 }
 
 export function hashAdapter(
@@ -22,10 +23,22 @@ export function hashAdapter(
   if (options.compareWith !== undefined) raw.compareWith = options.compareWith;
   if (options.verbose !== undefined) raw.verbose = options.verbose;
   if (options.quiet !== undefined) raw.quiet = options.quiet;
+  if (options.out !== undefined) raw.out = options.out;
 
   const parsed = blockSchemaFor('hash').safeParse(raw);
   if (!parsed.success) {
     return { errors: formatZodIssues(parsed.error.issues, raw) };
+  }
+  if (options.out !== undefined && options.compareWith !== undefined) {
+    return {
+      errors: [
+        {
+          kind: 'invalid',
+          message:
+            '--out cannot be combined with --compare-with (compare-mode output is verdict-tied to the exit code)',
+        },
+      ],
+    };
   }
   return { cliOverrides: parsed.data as Partial<EffectiveOptions> };
 }
