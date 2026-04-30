@@ -65,7 +65,7 @@ export async function createServer(
   }
 
   const watcher = options.watch
-    ? startWatcher({
+    ? await startWatcher({
         sources: options.sources,
         graphStrategy: options.graphStrategy,
         storeRef,
@@ -102,7 +102,9 @@ interface StartWatcherOptions {
   debounceMs: number;
 }
 
-function startWatcher(opts: StartWatcherOptions): WatcherHandle {
+async function startWatcher(
+  opts: StartWatcherOptions,
+): Promise<WatcherHandle> {
   const patterns = Array.isArray(opts.sources) ? opts.sources : [opts.sources];
   const baseDirs = Array.from(
     new Set(patterns.map((p) => globBase(p))),
@@ -111,6 +113,20 @@ function startWatcher(opts: StartWatcherOptions): WatcherHandle {
   const watcher = chokidar.watch(baseDirs, {
     ignoreInitial: true,
     persistent: true,
+    awaitWriteFinish: { stabilityThreshold: 50, pollInterval: 10 },
+  });
+
+  await new Promise<void>((resolveReady, rejectReady) => {
+    const onReady = (): void => {
+      watcher.off('error', onError);
+      resolveReady();
+    };
+    const onError = (err: unknown): void => {
+      watcher.off('ready', onReady);
+      rejectReady(err instanceof Error ? err : new Error(String(err)));
+    };
+    watcher.once('ready', onReady);
+    watcher.once('error', onError);
   });
 
   let pending: NodeJS.Timeout | undefined;
