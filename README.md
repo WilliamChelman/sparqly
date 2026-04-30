@@ -1,3 +1,5 @@
+<img src="assets/icon.svg" alt="sparqly" width="96" align="left" />
+
 # sparqly
 
 RDF CLI with SPARQL query and an embedded YASGUI playground.

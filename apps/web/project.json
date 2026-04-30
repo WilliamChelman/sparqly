@@ -17,7 +17,8 @@
           {
             "glob": "**/*",
             "input": "apps/web/public"
-          }
+          },
+          "assets/icon.svg"
         ],
         "styles": ["apps/web/src/styles.css"],
         "allowedCommonJsDependencies": ["@triply/yasgui"]
