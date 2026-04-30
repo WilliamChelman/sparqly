@@ -1,6 +1,6 @@
-<img src="assets/icon.svg" alt="sparqly" width="96" align="left" />
+<img src="assets/icon.svg" alt="sparqly" width="96" />
 
-# sparqly
+# Sparqly
 
 RDF CLI with SPARQL query and an embedded YASGUI playground.
 
@@ -78,8 +78,8 @@ config file.
 
 ```yaml
 # sparqly.config.yaml — full example
-sources: "data/**/*.ttl"
-graphStrategy: default     # default | partial | full | none
+sources: 'data/**/*.ttl'
+graphStrategy: default # default | partial | full | none
 mutable: false
 verbose: false
 quiet: false
@@ -89,29 +89,29 @@ query:
     SELECT ?s ?p ?o
     WHERE { ?s ?p ?o }
     LIMIT 10
-  queryFile: ./queries/default.rq   # mutually exclusive with `query`
-  format: json                      # json | turtle
+  queryFile: ./queries/default.rq # mutually exclusive with `query`
+  format: json # json | turtle
 
 serve:
   port: 3000
   watch: true
   watchDebounce: 250
-  mutable: true                     # overrides shared `mutable: false` for `serve`
+  mutable: true # overrides shared `mutable: false` for `serve`
 
 hash:
-  sources:                          # may be a string or an array of source specs
-    - "domain.ttl"
-    - "parts/**/*.ttl"
-  graphStrategy: none               # flatten quads to triples for hashing
+  sources: # may be a string or an array of source specs
+    - 'domain.ttl'
+    - 'parts/**/*.ttl'
+  graphStrategy: none # flatten quads to triples for hashing
   json: false
   # compareWith: "parts/**/*.ttl"   # requires exactly one primary source
 
 diff:
-  left: "domain.ttl"                # string or array of source specs
-  right:                            # one side may be a glob, the other a single file
-    - "parts/**/*.ttl"
-  format: human                     # human | json | rdf-patch
-  graphStrategy: default            # default | partial | full | none
+  left: 'domain.ttl' # string or array of source specs
+  right: # one side may be a glob, the other a single file
+    - 'parts/**/*.ttl'
+  format: human # human | json | rdf-patch
+  graphStrategy: default # default | partial | full | none
 ```
 
 `graphStrategy: none` is new: it strips graph names from quad-bearing formats
@@ -126,13 +126,13 @@ JSON is supported with the same shape (`sparqly.config.json`).
 Values are merged from lowest to highest priority — later sources override
 earlier ones:
 
-| Priority   | Source                                                                                  |
-| ---------- | --------------------------------------------------------------------------------------- |
-| 1 (lowest) | Built-in defaults                                                                        |
-| 2          | Config file — top-level shared keys                                                      |
-| 3          | Config file — `query:` / `serve:` / `hash:` / `diff:` block (for the active command)     |
-| 4          | Environment variables                                                                    |
-| 5 (highest) | CLI flags (and positional arguments)                                                    |
+| Priority    | Source                                                                               |
+| ----------- | ------------------------------------------------------------------------------------ |
+| 1 (lowest)  | Built-in defaults                                                                    |
+| 2           | Config file — top-level shared keys                                                  |
+| 3           | Config file — `query:` / `serve:` / `hash:` / `diff:` block (for the active command) |
+| 4           | Environment variables                                                                |
+| 5 (highest) | CLI flags (and positional arguments)                                                 |
 
 Environment variables follow a predictable contract:
 
@@ -231,13 +231,13 @@ sparqly hash --sources domain.ttl --sources "vocab/**/*.ttl" --json
 
 ### Exit codes
 
-| Mode             | Code | Meaning                                                                                  |
-| ---------------- | ---- | ---------------------------------------------------------------------------------------- |
-| default          | 0    | All sources hashed successfully.                                                          |
-| default          | 1    | Load, parse, or canonicalization failure (no partial results).                            |
-| `--compare-with` | 0    | Both sides canonicalize to the same hash. Stdout: `match: <hash>`.                        |
-| `--compare-with` | 1    | Hashes differ. Stdout: `<hash>  <source-spec>` for each side.                             |
-| `--compare-with` | 2    | Load, parse, or canonicalization failure on either side.                                  |
+| Mode             | Code | Meaning                                                            |
+| ---------------- | ---- | ------------------------------------------------------------------ |
+| default          | 0    | All sources hashed successfully.                                   |
+| default          | 1    | Load, parse, or canonicalization failure (no partial results).     |
+| `--compare-with` | 0    | Both sides canonicalize to the same hash. Stdout: `match: <hash>`. |
+| `--compare-with` | 1    | Hashes differ. Stdout: `<hash>  <source-spec>` for each side.      |
+| `--compare-with` | 2    | Load, parse, or canonicalization failure on either side.           |
 
 ### Config block
 
@@ -247,12 +247,12 @@ block:
 
 ```yaml
 hash:
-  sources:                          # string | string[] — array → multiple hashes
-    - "domain.ttl"
-    - "parts/**/*.ttl"
-  graphStrategy: none               # default | partial | full | none
-  json: false                       # JSON array output instead of <hash>  <source>
-  compareWith: "parts/**/*.ttl"     # if set, requires exactly one primary source
+  sources: # string | string[] — array → multiple hashes
+    - 'domain.ttl'
+    - 'parts/**/*.ttl'
+  graphStrategy: none # default | partial | full | none
+  json: false # JSON array output instead of <hash>  <source>
+  compareWith: 'parts/**/*.ttl' # if set, requires exactly one primary source
 ```
 
 ### Environment variables
@@ -311,11 +311,11 @@ RDF/XML).
 
 ### Output formats
 
-| Flag                    | Output                                                                                                                                    |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| (default) `--format human` | `- <s> <p> <o> [g] .` for removals, `+ <s> <p> <o> [g] .` for additions, in canonical N-Triples / N-Quads order. Removals first.        |
-| `--format json`         | A single JSON object `{"added": [...], "removed": [...]}`. Each statement is `{ s, p, o, g? }`; each term is `{ termType, value, datatype?, language? }`. |
-| `--format rdf-patch`    | Standard [RDF Patch](https://afs.github.io/rdf-patch/) text format with `D` markers for deletions and `A` markers for additions.          |
+| Flag                       | Output                                                                                                                                                    |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| (default) `--format human` | `- <s> <p> <o> [g] .` for removals, `+ <s> <p> <o> [g] .` for additions, in canonical N-Triples / N-Quads order. Removals first.                          |
+| `--format json`            | A single JSON object `{"added": [...], "removed": [...]}`. Each statement is `{ s, p, o, g? }`; each term is `{ termType, value, datatype?, language? }`. |
+| `--format rdf-patch`       | Standard [RDF Patch](https://afs.github.io/rdf-patch/) text format with `D` markers for deletions and `A` markers for additions.                          |
 
 A trailing `# +<additions> -<removals>` summary line is written to **stderr**
 after the diff body, regardless of format. stdout stays cleanly parseable;
@@ -324,11 +324,11 @@ output.
 
 ### Exit codes
 
-| Code | Meaning                                                                              |
-| ---- | ------------------------------------------------------------------------------------ |
-| 0    | Sources are semantically identical (no added or removed statements).                  |
-| 1    | Sources differ. The diff is on stdout.                                                |
-| 2    | Load, parse, or canonicalization error on either side. Error message on stderr.       |
+| Code | Meaning                                                                         |
+| ---- | ------------------------------------------------------------------------------- |
+| 0    | Sources are semantically identical (no added or removed statements).            |
+| 1    | Sources differ. The diff is on stdout.                                          |
+| 2    | Load, parse, or canonicalization error on either side. Error message on stderr. |
 
 ### Graph strategy
 
@@ -345,11 +345,11 @@ addition. With `--graph-strategy=none`, graph names are stripped before diffing
 
 ```yaml
 diff:
-  left:                             # string | string[]
-    - "domain.ttl"
-  right: "parts/**/*.ttl"
-  format: human                     # human | json | rdf-patch
-  graphStrategy: default            # default | partial | full | none
+  left: # string | string[]
+    - 'domain.ttl'
+  right: 'parts/**/*.ttl'
+  format: human # human | json | rdf-patch
+  graphStrategy: default # default | partial | full | none
 ```
 
 ### Environment variables
@@ -376,13 +376,13 @@ value came from.
 
 This is an Nx monorepo managed with pnpm.
 
-| Path            | Kind          | Purpose                                                                          |
-| --------------- | ------------- | -------------------------------------------------------------------------------- |
-| `apps/cli`      | NestJS app    | `sparqly` bin — `nest-commander` entry point, dispatches `query`, `serve`, `hash`, and `diff`. |
-| `apps/web`      | Angular app   | Browser playground (Angular 21 + Tailwind 4) hosting an embedded YASGUI.         |
-| `libs/core`     | TypeScript    | Comunica wrapper, n3.js store, RDF loader, RDFC-1.0 canonicalizer, immutability guard. |
-| `libs/domain`   | TypeScript    | DTOs and types shared between the server and the web app.                        |
-| `libs/server`   | TypeScript    | NestJS HTTP module (`ServerModule`, `/api/sparql`) that only boots under `serve`. |
+| Path          | Kind        | Purpose                                                                                        |
+| ------------- | ----------- | ---------------------------------------------------------------------------------------------- |
+| `apps/cli`    | NestJS app  | `sparqly` bin — `nest-commander` entry point, dispatches `query`, `serve`, `hash`, and `diff`. |
+| `apps/web`    | Angular app | Browser playground (Angular 21 + Tailwind 4) hosting an embedded YASGUI.                       |
+| `libs/core`   | TypeScript  | Comunica wrapper, n3.js store, RDF loader, RDFC-1.0 canonicalizer, immutability guard.         |
+| `libs/domain` | TypeScript  | DTOs and types shared between the server and the web app.                                      |
+| `libs/server` | TypeScript  | NestJS HTTP module (`ServerModule`, `/api/sparql`) that only boots under `serve`.              |
 
 ## Prerequisites
 
