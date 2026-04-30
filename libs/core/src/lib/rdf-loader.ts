@@ -4,18 +4,14 @@ import { DataFactory, Store, type DefaultGraph, type NamedNode, type Quad } from
 import { rdfParser } from 'rdf-parse';
 import { glob } from 'tinyglobby';
 
-export type GraphStrategy = 'default' | 'partial' | 'full' | 'none';
-
-export const GRAPH_STRATEGIES: ReadonlyArray<GraphStrategy> = [
+export const GRAPH_STRATEGIES = [
   'default',
   'partial',
   'full',
   'none',
-];
+] as const;
 
-export function isGraphStrategy(value: string): value is GraphStrategy {
-  return (GRAPH_STRATEGIES as ReadonlyArray<string>).includes(value);
-}
+export type GraphStrategy = (typeof GRAPH_STRATEGIES)[number];
 
 export interface LoadOptions {
   sources: string | string[];

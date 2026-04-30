@@ -2,14 +2,14 @@ import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import type { Store } from 'n3';
 import { assertImmutable, detectQueryType } from './immutability';
 
-export type SparqlFormat = 'json' | 'turtle';
+export const SUPPORTED_FORMATS = ['json', 'turtle'] as const;
+
+export type SparqlFormat = (typeof SUPPORTED_FORMATS)[number];
 
 const FORMAT_TO_MIME: Record<SparqlFormat, string> = {
   json: 'application/sparql-results+json',
   turtle: 'text/turtle',
 };
-
-const SUPPORTED_FORMATS: ReadonlyArray<SparqlFormat> = ['json', 'turtle'];
 
 export interface ExecuteOptions {
   format?: SparqlFormat;
@@ -20,10 +20,6 @@ export interface ExecuteResult {
   body: string;
   format: SparqlFormat;
   contentType: string;
-}
-
-export function isSparqlFormat(value: string): value is SparqlFormat {
-  return (SUPPORTED_FORMATS as ReadonlyArray<string>).includes(value);
 }
 
 export type StoreSource = Store | (() => Store);

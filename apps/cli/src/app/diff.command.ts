@@ -1,28 +1,13 @@
 import { Logger } from '@nestjs/common';
 import { Parser, type Term } from 'n3';
 import { Command, CommandRunner, Option } from 'nest-commander';
-import {
-  canonicalizeRdf,
-  GRAPH_STRATEGIES,
-  isGraphStrategy,
-  type GraphStrategy,
-} from 'core';
+import { canonicalizeRdf, type GraphStrategy } from 'core';
 import { runWithConfig, type EffectiveOptions } from './config';
+import { DIFF_FORMATS, type DiffFormat } from './config/internal/schema';
+import { exitCodeFor, isAdapterFailure } from './cli-errors';
+import { diffAdapter, type DiffRawOptions } from './diff.adapter';
 
-const DIFF_FORMATS = ['human', 'json', 'rdf-patch'] as const;
-type DiffFormat = (typeof DIFF_FORMATS)[number];
-
-function isDiffFormat(value: string): value is DiffFormat {
-  return (DIFF_FORMATS as ReadonlyArray<string>).includes(value);
-}
-
-interface DiffOptions {
-  left?: string;
-  right?: string;
-  graphStrategy?: string;
-  format?: string;
-  verbose?: boolean;
-  quiet?: boolean;
+interface DiffOptions extends DiffRawOptions {
   config?: string;
   printConfig?: boolean;
 }
@@ -35,46 +20,22 @@ interface DiffOptions {
 })
 export class DiffCommand extends CommandRunner {
   async run(passedParams: string[], options: DiffOptions = {}): Promise<void> {
-    if (passedParams.length > 2) {
-      process.stderr.write(
-        `error: diff takes at most two positional arguments (got ${passedParams.length})\n`,
-      );
-      process.exitCode = 2;
+    const adapted = diffAdapter(passedParams, options);
+    if (isAdapterFailure(adapted)) {
+      for (const err of adapted.errors) {
+        process.stderr.write(`error: ${err.message}\n`);
+      }
+      process.exitCode = exitCodeFor('diff');
       return;
     }
 
-    const cliOverrides: Partial<EffectiveOptions> = {};
-    if (passedParams[0] !== undefined) cliOverrides.left = passedParams[0];
-    if (passedParams[1] !== undefined) cliOverrides.right = passedParams[1];
-    if (options.left !== undefined) cliOverrides.left = options.left;
-    if (options.right !== undefined) cliOverrides.right = options.right;
-    if (options.verbose !== undefined) cliOverrides.verbose = options.verbose;
-    if (options.quiet !== undefined) cliOverrides.quiet = options.quiet;
-
-    if (options.graphStrategy !== undefined) {
-      if (!isGraphStrategy(options.graphStrategy)) {
-        process.stderr.write(
-          `error: unknown --graph-strategy '${options.graphStrategy}' (expected ${GRAPH_STRATEGIES.join(', ')})\n`,
-        );
-        process.exitCode = 2;
-        return;
-      }
-      cliOverrides.graphStrategy = options.graphStrategy;
-    }
-
-    if (options.format !== undefined) {
-      if (!isDiffFormat(options.format)) {
-        process.stderr.write(
-          `error: unknown --format '${options.format}' (expected ${DIFF_FORMATS.join(', ')})\n`,
-        );
-        process.exitCode = 2;
-        return;
-      }
-      cliOverrides.format = options.format;
-    }
-
     await runWithConfig(
-      { command: 'diff', passedParams: [], options, cliOverrides },
+      {
+        command: 'diff',
+        passedParams: [],
+        options,
+        cliOverrides: adapted.cliOverrides,
+      },
       (effective) => this.execute(effective),
     );
   }
@@ -169,8 +130,7 @@ export class DiffCommand extends CommandRunner {
 
   @Option({
     flags: '-f, --format <format>',
-    description:
-      "Output format: 'human' (default; '+'/'-' lines), 'json' ({added,removed} object), or 'rdf-patch' (standard RDF Patch with A/D markers).",
+    description: `Output format: ${DIFF_FORMATS.map((f) => `'${f}'`).join(', ')}.`,
   })
   parseFormat(value: string): string {
     return value;

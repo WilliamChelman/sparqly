@@ -1,26 +1,14 @@
 import { join } from 'node:path';
 import { Command, CommandRunner, Option } from 'nest-commander';
-import {
-  GRAPH_STRATEGIES,
-  isGraphStrategy,
-  type GraphStrategy,
-} from 'core';
+import { type GraphStrategy } from 'core';
 import { createServer } from 'server';
 import { runWithConfig, type EffectiveOptions } from './config';
-import { mutableFromCli } from './query.command';
+import { exitCodeFor, isAdapterFailure } from './cli-errors';
+import { serveAdapter, type ServeRawOptions } from './serve.adapter';
 
 const WEB_BUNDLE_DIR = join(__dirname, 'web');
 
-interface ServeOptions {
-  sources?: string;
-  port?: number;
-  graphStrategy?: string;
-  mutable?: boolean;
-  immutable?: boolean;
-  verbose?: boolean;
-  quiet?: boolean;
-  watch?: boolean;
-  watchDebounce?: number;
+interface ServeOptions extends ServeRawOptions {
   config?: string;
   printConfig?: boolean;
 }
@@ -32,30 +20,22 @@ interface ServeOptions {
 })
 export class ServeCommand extends CommandRunner {
   async run(passedParams: string[], options: ServeOptions = {}): Promise<void> {
-    const cliOverrides: Partial<EffectiveOptions> = {};
-    if (options.sources !== undefined) cliOverrides.sources = options.sources;
-    if (options.port !== undefined) cliOverrides.port = options.port;
-    if (options.watch !== undefined) cliOverrides.watch = options.watch;
-    if (options.watchDebounce !== undefined)
-      cliOverrides.watchDebounce = options.watchDebounce;
-    if (options.verbose !== undefined) cliOverrides.verbose = options.verbose;
-    if (options.quiet !== undefined) cliOverrides.quiet = options.quiet;
-
-    if (options.graphStrategy !== undefined) {
-      if (!isGraphStrategy(options.graphStrategy)) {
-        process.stderr.write(
-          `error: unknown --graph-strategy '${options.graphStrategy}' (expected ${GRAPH_STRATEGIES.join(', ')})\n`,
-        );
-        process.exitCode = 1;
-        return;
+    const adapted = serveAdapter(passedParams, options);
+    if (isAdapterFailure(adapted)) {
+      for (const err of adapted.errors) {
+        process.stderr.write(`error: ${err.message}\n`);
       }
-      cliOverrides.graphStrategy = options.graphStrategy;
+      process.exitCode = exitCodeFor('serve');
+      return;
     }
-    const cliMutable = mutableFromCli(options);
-    if (cliMutable !== undefined) cliOverrides.mutable = cliMutable;
 
     await runWithConfig(
-      { command: 'serve', passedParams, options, cliOverrides },
+      {
+        command: 'serve',
+        passedParams,
+        options,
+        cliOverrides: adapted.cliOverrides,
+      },
       (effective) => this.execute(effective),
     );
   }

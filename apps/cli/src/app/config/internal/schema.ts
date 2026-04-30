@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import { GRAPH_STRATEGIES, SUPPORTED_FORMATS } from 'core';
+
+export const DIFF_FORMATS = ['human', 'json', 'rdf-patch'] as const;
+export type DiffFormat = (typeof DIFF_FORMATS)[number];
 
 const coercedBoolean = z.preprocess((v) => {
   if (typeof v === 'string') {
@@ -24,7 +28,7 @@ interface FieldDef {
 const SHARED_FIELDS: Record<string, FieldDef> = {
   sources: { schema: z.string() },
   graphStrategy: {
-    schema: z.enum(['default', 'partial', 'full', 'none']),
+    schema: z.enum(GRAPH_STRATEGIES),
     default: 'default',
   },
   mutable: { schema: coercedBoolean, default: false },
@@ -35,7 +39,7 @@ const SHARED_FIELDS: Record<string, FieldDef> = {
 const QUERY_ONLY_FIELDS: Record<string, FieldDef> = {
   query: { schema: z.string() },
   queryFile: { schema: z.string() },
-  format: { schema: z.enum(['json', 'turtle']) },
+  format: { schema: z.enum(SUPPORTED_FORMATS) },
 };
 
 const SERVE_ONLY_FIELDS: Record<string, FieldDef> = {
@@ -56,7 +60,7 @@ const DIFF_ONLY_FIELDS: Record<string, FieldDef> = {
   left: { schema: z.union([z.string(), z.array(z.string()).min(1)]) },
   right: { schema: z.union([z.string(), z.array(z.string()).min(1)]) },
   format: {
-    schema: z.enum(['human', 'json', 'rdf-patch']),
+    schema: z.enum(DIFF_FORMATS),
     default: 'human',
   },
 };
