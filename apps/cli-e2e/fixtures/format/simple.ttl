@@ -1,0 +1,6 @@
+@prefix ex: <http://example.org/> .
+@prefix unused: <http://other.example/> .
+
+ex:c ex:p ex:d .
+ex:a ex:p ex:b .
+ex:a a ex:Thing .
