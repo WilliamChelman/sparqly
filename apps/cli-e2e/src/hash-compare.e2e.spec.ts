@@ -130,4 +130,20 @@ describe('sparqly hash --compare-with', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toMatch(/^match: [0-9a-f]{64}\n$/);
   });
+
+  it('exits 2 on an unknown --graph-strategy value', async () => {
+    const single = hashFixture('domain.ttl');
+
+    const result = await runCli([
+      'hash',
+      '--quiet',
+      '--graph-strategy=bogus',
+      single,
+      '--compare-with',
+      single,
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toMatch(/unknown.*--graph-strategy/i);
+  });
 });

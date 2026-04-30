@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
 import { hashFixture, leadingHash } from './helpers/hash';
 
@@ -69,5 +72,54 @@ describe('sparqly hash — core properties', () => {
     expect(ttlPlain.exitCode).toBe(0);
     expect(leadingHash(withNone.stdout)).toBe(leadingHash(ttlPlain.stdout));
     expect(leadingHash(withoutNone.stdout)).not.toBe(leadingHash(ttlPlain.stdout));
+  });
+});
+
+describe('sparqly hash — argv and flag validation', () => {
+  let scratch: string;
+
+  beforeEach(async () => {
+    scratch = await mkdtemp(join(tmpdir(), 'sparqly-hash-argv-'));
+  });
+
+  afterEach(async () => {
+    await rm(scratch, { recursive: true, force: true });
+  });
+
+  it('exits non-zero when the glob matches no files (no stdout)', async () => {
+    const result = await runCli([
+      'hash',
+      '--quiet',
+      join(scratch, 'nope-*.ttl'),
+    ]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toMatch(/no files/i);
+  });
+
+  it('exits non-zero on an unknown --graph-strategy value', async () => {
+    const result = await runCli([
+      'hash',
+      '--quiet',
+      '--graph-strategy=bogus',
+      join(scratch, '*.ttl'),
+    ]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/unknown.*--graph-strategy/i);
+  });
+
+  it('exits non-zero when no sources are provided', async () => {
+    const result = await runCli(['hash', '--quiet'], {
+      env: {
+        SPARQLY_HASH_SOURCES: undefined,
+        SPARQLY_HASH_COMPARE_WITH: undefined,
+      },
+      cwd: scratch,
+    });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/sources/i);
   });
 });
