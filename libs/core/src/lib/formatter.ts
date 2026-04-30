@@ -5,6 +5,13 @@ export type FormatSerialization = 'turtle' | 'trig';
 export interface ResolvedFormatterConfig {
   prefixes: Record<string, string>;
   base?: string;
+  /**
+   * Predicate IRIs (or CURIEs resolvable against `prefixes`) whose triples
+   * are emitted next to the object's description block instead of the
+   * subject's, so a `(s, p, o)` reference reads top-down with `o`'s own
+   * block immediately below it. Only applies when `o` is a NamedNode.
+   */
+  objectAnchoredPredicates?: ReadonlyArray<string>;
 }
 
 const SERIALIZATION_TO_FORMAT: Record<FormatSerialization, string> = {
@@ -33,8 +40,27 @@ export function formatRdf(
   });
 
   const inlined = inlineSingleUseBlankNodes(remaining, writer, lists);
-  const sorted = [...inlined].sort(compareQuads);
-  for (const q of sorted) writer.addQuad(q);
+  const anchorIris = resolveAnchorIris(
+    config.objectAnchoredPredicates,
+    config.prefixes,
+  );
+  const sorted = [...inlined].sort((a, b) => compareForEmission(a, b, anchorIris));
+  let prevBlock: string | null = null;
+  let prevGraphKey: string | null = null;
+  for (const q of sorted) {
+    const gk = termKey(q.graph);
+    const bk = blockKey(q, anchorIris);
+    // The N3 Writer joins consecutive same-subject quads with `;`. When a
+    // block boundary falls across two same-subject quads (a normal triple
+    // followed by an object-anchored one with the same subject) we have to
+    // force a paragraph break ourselves so the anchored line stands alone.
+    if (prevBlock !== null && prevGraphKey === gk && prevBlock !== bk) {
+      forceSubjectBreak(writer);
+    }
+    writer.addQuad(q);
+    prevBlock = bk;
+    prevGraphKey = gk;
+  }
 
   let body = '';
   writer.end((error, result) => {
@@ -325,6 +351,73 @@ function inlineSingleUseBlankNodes(
 function compareQuads(a: Quad, b: Quad): number {
   return (
     compareTerm(a.graph, b.graph) ||
+    compareTerm(a.subject, b.subject) ||
+    comparePredicate(a.predicate, b.predicate) ||
+    compareTerm(a.object, b.object)
+  );
+}
+
+function resolveAnchorIris(
+  predicates: ReadonlyArray<string> | undefined,
+  prefixes: Record<string, string>,
+): Set<string> {
+  if (!predicates || predicates.length === 0) return new Set();
+  const out = new Set<string>();
+  for (const value of predicates) {
+    const colonIdx = value.indexOf(':');
+    if (colonIdx === -1) {
+      out.add(value);
+      continue;
+    }
+    const prefix = value.slice(0, colonIdx);
+    const ns = prefixes[prefix];
+    out.add(ns ? ns + value.slice(colonIdx + 1) : value);
+  }
+  return out;
+}
+
+function isAnchored(q: Quad, anchorIris: Set<string>): boolean {
+  if (anchorIris.size === 0) return false;
+  if (q.predicate.termType !== 'NamedNode') return false;
+  if (q.object.termType !== 'NamedNode') return false;
+  return anchorIris.has(q.predicate.value);
+}
+
+function blockKey(q: Quad, anchorIris: Set<string>): string {
+  return isAnchored(q, anchorIris)
+    ? `A:${termKey(q.object)}`
+    : `N:${termKey(q.subject)}`;
+}
+
+function forceSubjectBreak(writer: Writer): void {
+  const w = writer as unknown as {
+    _subject: Term | null;
+    _write(s: string, done?: unknown): void;
+  };
+  if (w._subject !== null) {
+    w._write('.\n');
+    w._subject = null;
+  }
+}
+
+function compareForEmission(
+  a: Quad,
+  b: Quad,
+  anchorIris: Set<string>,
+): number {
+  const graphCmp = compareTerm(a.graph, b.graph);
+  if (graphCmp !== 0) return graphCmp;
+  const aAnchored = isAnchored(a, anchorIris);
+  const bAnchored = isAnchored(b, anchorIris);
+  const aPrimary = aAnchored ? a.object : a.subject;
+  const bPrimary = bAnchored ? b.object : b.subject;
+  const primaryCmp = compareTerm(aPrimary, bPrimary);
+  if (primaryCmp !== 0) return primaryCmp;
+  // Same anchor target — anchored references are emitted before the
+  // target's own outgoing block so the reference and its description sit
+  // next to each other in the output.
+  if (aAnchored !== bAnchored) return aAnchored ? -1 : 1;
+  return (
     compareTerm(a.subject, b.subject) ||
     comparePredicate(a.predicate, b.predicate) ||
     compareTerm(a.object, b.object)

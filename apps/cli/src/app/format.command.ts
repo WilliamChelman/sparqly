@@ -46,6 +46,7 @@ export class FormatCommand extends CommandRunner {
     const positional = effective.sources;
     const configPrefixes = effective.prefixes ?? {};
     const base = effective.base;
+    const objectAnchoredPredicates = effective.objectAnchoredPredicates;
     const mode: 'stdout' | 'write' | 'check' = effective.write
       ? 'write'
       : effective.check
@@ -65,6 +66,7 @@ export class FormatCommand extends CommandRunner {
         mode,
         configPrefixes,
         base,
+        objectAnchoredPredicates,
         logger,
       });
       return;
@@ -85,7 +87,11 @@ export class FormatCommand extends CommandRunner {
         const out = formatRdf(
           store.getQuads(null, null, null, null),
           serialization,
-          { prefixes: merged, base: resolvedBase },
+          {
+            prefixes: merged,
+            base: resolvedBase,
+            objectAnchoredPredicates,
+          },
         );
         process.stdout.write(out.endsWith('\n') ? out : `${out}\n`);
       } catch (err) {
@@ -120,6 +126,7 @@ export class FormatCommand extends CommandRunner {
       const out = formatRdf(quads, serialization, {
         prefixes: merged,
         base: resolvedBase,
+        objectAnchoredPredicates,
       });
       process.stdout.write(out.endsWith('\n') ? out : `${out}\n`);
     } catch (err) {
@@ -134,6 +141,7 @@ export class FormatCommand extends CommandRunner {
     mode: 'write' | 'check';
     configPrefixes: Record<string, string>;
     base: string | undefined;
+    objectAnchoredPredicates: string[] | undefined;
     logger: Logger;
   }): Promise<void> {
     const errorExit = args.mode === 'check' ? 2 : 1;
@@ -163,7 +171,11 @@ export class FormatCommand extends CommandRunner {
         const formattedRaw = formatRdf(
           fileStore.getQuads(null, null, null, null),
           serialization,
-          { prefixes: fileMerged, base: resolvedBase },
+          {
+            prefixes: fileMerged,
+            base: resolvedBase,
+            objectAnchoredPredicates: args.objectAnchoredPredicates,
+          },
         );
         const formatted = formattedRaw.endsWith('\n')
           ? formattedRaw

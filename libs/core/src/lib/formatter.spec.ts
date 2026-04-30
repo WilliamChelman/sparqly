@@ -128,6 +128,8 @@ describe('formatRdf', () => {
     });
 
     for (const fixture of TURTLE_CORPUS) {
+      const objectAnchoredPredicates = fixture.objectAnchoredPredicates;
+
       it(`is idempotent for ${fixture.name}`, () => {
         const base = parseBase(fixture.turtle);
         const quads1 = new Parser({
@@ -137,6 +139,7 @@ describe('formatRdf', () => {
         const out1 = formatRdf(quads1, 'turtle', {
           prefixes: parsePrefixes(fixture.turtle),
           base,
+          objectAnchoredPredicates,
         });
         const quads2 = new Parser({
           format: 'text/turtle',
@@ -145,6 +148,7 @@ describe('formatRdf', () => {
         const out2 = formatRdf(quads2, 'turtle', {
           prefixes: parsePrefixes(out1),
           base: parseBase(out1),
+          objectAnchoredPredicates,
         });
         expect(out2).toBe(out1);
       });
@@ -158,6 +162,7 @@ describe('formatRdf', () => {
         const out = formatRdf(original, 'turtle', {
           prefixes: parsePrefixes(fixture.turtle),
           base,
+          objectAnchoredPredicates,
         });
         const formatted = new Parser({
           format: 'text/turtle',
@@ -385,6 +390,175 @@ describe('formatRdf', () => {
     });
   });
 
+  describe('object-anchored predicates', () => {
+    const SH = 'http://www.w3.org/ns/shacl#';
+    const ex = 'http://example.org/';
+
+    it('emits the anchored triple immediately before the object\'s description block', () => {
+      const triples = [
+        quad(
+          namedNode(ex + 'NS'),
+          namedNode(SH + 'property'),
+          namedNode(ex + 'PropShape'),
+        ),
+        quad(
+          namedNode(ex + 'NS'),
+          namedNode('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'),
+          namedNode(SH + 'NodeShape'),
+        ),
+        quad(
+          namedNode(ex + 'PropShape'),
+          namedNode(SH + 'path'),
+          namedNode(ex + 'name'),
+        ),
+        quad(
+          namedNode(ex + 'PropShape'),
+          namedNode('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'),
+          namedNode(SH + 'PropertyShape'),
+        ),
+      ];
+      const out = formatRdf(triples, 'turtle', {
+        prefixes: { ex, sh: SH },
+        objectAnchoredPredicates: [SH + 'property'],
+      });
+
+      // The anchored triple is a standalone top-level triple — not inlined.
+      expect(out).toMatch(/ex:NS\s+sh:property\s+ex:PropShape\s*\./);
+      // Object keeps its own description block.
+      expect(out).toMatch(/ex:PropShape\s+a\s+sh:PropertyShape/);
+      // No `[…]` inlining of the property shape.
+      expect(out).not.toMatch(/sh:property\s+\[/);
+      // The anchored line precedes the object's block.
+      const anchorIdx = out.search(/ex:NS\s+sh:property/);
+      const blockIdx = out.search(/ex:PropShape\s+a/);
+      expect(anchorIdx).toBeGreaterThan(-1);
+      expect(blockIdx).toBeGreaterThan(-1);
+      expect(anchorIdx).toBeLessThan(blockIdx);
+    });
+
+    it('accepts CURIEs in the predicate list when the prefix is configured', () => {
+      const triples = [
+        quad(
+          namedNode(ex + 'NS'),
+          namedNode(SH + 'property'),
+          namedNode(ex + 'PropShape'),
+        ),
+        quad(
+          namedNode(ex + 'PropShape'),
+          namedNode(SH + 'path'),
+          namedNode(ex + 'name'),
+        ),
+      ];
+      const out = formatRdf(triples, 'turtle', {
+        prefixes: { ex, sh: SH },
+        objectAnchoredPredicates: ['sh:property'],
+      });
+
+      const anchorIdx = out.search(/ex:NS\s+sh:property\s+ex:PropShape/);
+      const blockIdx = out.search(/ex:PropShape\s+sh:path/);
+      expect(anchorIdx).toBeGreaterThan(-1);
+      expect(blockIdx).toBeGreaterThan(-1);
+      expect(anchorIdx).toBeLessThan(blockIdx);
+    });
+
+    it('does not anchor when the object is a blank node — falls back to default placement', () => {
+      const b = DataFactory.blankNode('p');
+      const triples = [
+        quad(namedNode(ex + 'NS'), namedNode(SH + 'property'), b),
+        quad(b, namedNode(SH + 'path'), namedNode(ex + 'name')),
+      ];
+      const out = formatRdf(triples, 'turtle', {
+        prefixes: { ex, sh: SH },
+        objectAnchoredPredicates: [SH + 'property'],
+      });
+
+      // Single-use blank-node inlining still applies — the property shape
+      // becomes an inline `[ … ]` under ex:NS.
+      expect(out).toMatch(/ex:NS\s+sh:property\s+\[/);
+      expect(out).toMatch(/sh:path\s+ex:name/);
+      expect(out).not.toMatch(/_:\w+/);
+    });
+
+    it('chains: an anchored object that is itself an anchor source places its own anchor next', () => {
+      // ex:A sh:property ex:B ; ex:B sh:property ex:C
+      const triples = [
+        quad(
+          namedNode(ex + 'A'),
+          namedNode(SH + 'property'),
+          namedNode(ex + 'B'),
+        ),
+        quad(
+          namedNode(ex + 'A'),
+          namedNode(SH + 'targetClass'),
+          namedNode(ex + 'X'),
+        ),
+        quad(
+          namedNode(ex + 'B'),
+          namedNode(SH + 'property'),
+          namedNode(ex + 'C'),
+        ),
+        quad(namedNode(ex + 'B'), namedNode(SH + 'path'), namedNode(ex + 'p1')),
+        quad(namedNode(ex + 'C'), namedNode(SH + 'path'), namedNode(ex + 'p2')),
+      ];
+      const out = formatRdf(triples, 'turtle', {
+        prefixes: { ex, sh: SH },
+        objectAnchoredPredicates: [SH + 'property'],
+      });
+
+      const aBlock = out.search(/ex:A\s+sh:targetClass/);
+      const aProp = out.search(/ex:A\s+sh:property\s+ex:B/);
+      const bBlock = out.search(/ex:B\s+sh:path/);
+      const bProp = out.search(/ex:B\s+sh:property\s+ex:C/);
+      const cBlock = out.search(/ex:C\s+sh:path/);
+      expect(aBlock).toBeGreaterThan(-1);
+      expect(aProp).toBeGreaterThan(-1);
+      expect(bBlock).toBeGreaterThan(-1);
+      expect(bProp).toBeGreaterThan(-1);
+      expect(cBlock).toBeGreaterThan(-1);
+      expect(aBlock).toBeLessThan(aProp);
+      expect(aProp).toBeLessThan(bBlock);
+      expect(bBlock).toBeLessThan(bProp);
+      expect(bProp).toBeLessThan(cBlock);
+    });
+
+    it('groups multiple anchored references to the same object together, before the object\'s block', () => {
+      const triples = [
+        quad(
+          namedNode(ex + 'NS1'),
+          namedNode(SH + 'property'),
+          namedNode(ex + 'PropShape'),
+        ),
+        quad(
+          namedNode(ex + 'NS2'),
+          namedNode(SH + 'property'),
+          namedNode(ex + 'PropShape'),
+        ),
+        quad(
+          namedNode(ex + 'PropShape'),
+          namedNode(SH + 'path'),
+          namedNode(ex + 'name'),
+        ),
+      ];
+      const out = formatRdf(triples, 'turtle', {
+        prefixes: { ex, sh: SH },
+        objectAnchoredPredicates: [SH + 'property'],
+      });
+
+      const ns1 = out.search(/ex:NS1\s+sh:property\s+ex:PropShape/);
+      const ns2 = out.search(/ex:NS2\s+sh:property\s+ex:PropShape/);
+      const block = out.search(/ex:PropShape\s+sh:path/);
+      expect(ns1).toBeGreaterThan(-1);
+      expect(ns2).toBeGreaterThan(-1);
+      expect(block).toBeGreaterThan(-1);
+      expect(ns1).toBeLessThan(ns2);
+      expect(ns2).toBeLessThan(block);
+
+      // No duplication of the description.
+      const matches = [...out.matchAll(/sh:path\s+ex:name/g)];
+      expect(matches).toHaveLength(1);
+    });
+  });
+
   describe('@base handling', () => {
     it('emits @base and shortens matching absolute IRIs to relative form', () => {
       const out = formatRdf(
@@ -559,7 +733,11 @@ const TRIG_CORPUS: ReadonlyArray<{ name: string; trig: string }> = [
   },
 ];
 
-const TURTLE_CORPUS: ReadonlyArray<{ name: string; turtle: string }> = [
+const TURTLE_CORPUS: ReadonlyArray<{
+  name: string;
+  turtle: string;
+  objectAnchoredPredicates?: string[];
+}> = [
   {
     name: 'simple-prefix',
     turtle: [
@@ -687,6 +865,34 @@ const TURTLE_CORPUS: ReadonlyArray<{ name: string; turtle: string }> = [
       // chain points at a NamedNode that is not rdf:nil — must stay raw
       'ex:s ex:p _:h .',
       '_:h rdf:first ex:a ; rdf:rest ex:notNil .',
+      '',
+    ].join('\n'),
+  },
+  {
+    name: 'shacl-named-property-shapes-anchored',
+    objectAnchoredPredicates: ['http://www.w3.org/ns/shacl#property'],
+    turtle: [
+      '@prefix ex: <http://example.org/> .',
+      '@prefix sh: <http://www.w3.org/ns/shacl#> .',
+      '',
+      'ex:NS a sh:NodeShape ;',
+      '  sh:property ex:NameProp ;',
+      '  sh:property ex:AgeProp .',
+      'ex:NameProp a sh:PropertyShape ; sh:path ex:name .',
+      'ex:AgeProp a sh:PropertyShape ; sh:path ex:age .',
+      '',
+    ].join('\n'),
+  },
+  {
+    name: 'shacl-shared-named-property-shape-anchored',
+    objectAnchoredPredicates: ['http://www.w3.org/ns/shacl#property'],
+    turtle: [
+      '@prefix ex: <http://example.org/> .',
+      '@prefix sh: <http://www.w3.org/ns/shacl#> .',
+      '',
+      'ex:NS1 sh:property ex:Shared .',
+      'ex:NS2 sh:property ex:Shared .',
+      'ex:Shared sh:path ex:name .',
       '',
     ].join('\n'),
   },
