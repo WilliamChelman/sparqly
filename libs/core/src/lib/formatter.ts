@@ -4,6 +4,7 @@ export type FormatSerialization = 'turtle' | 'trig';
 
 export interface ResolvedFormatterConfig {
   prefixes: Record<string, string>;
+  base?: string;
 }
 
 const SERIALIZATION_TO_FORMAT: Record<FormatSerialization, string> = {
@@ -25,15 +26,16 @@ export function formatRdf(
   const writer = new Writer({
     format: SERIALIZATION_TO_FORMAT[serialization],
     prefixes: usedPrefixes,
+    baseIRI: config.base,
   });
   for (const q of sorted) writer.addQuad(q);
 
-  let output = '';
+  let body = '';
   writer.end((error, result) => {
     if (error) throw error;
-    output = result;
+    body = result;
   });
-  return output;
+  return config.base ? `@base <${config.base}>.\n${body}` : body;
 }
 
 function pickUsedPrefixes(

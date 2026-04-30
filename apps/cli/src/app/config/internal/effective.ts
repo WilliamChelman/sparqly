@@ -41,6 +41,8 @@ const LAYERS: ReadonlyArray<Layer> = [
           return i.file.hashBlock;
         case 'diff':
           return i.file.diffBlock;
+        case 'format':
+          return i.file.formatBlock;
       }
     },
   },
@@ -53,13 +55,26 @@ const LAYERS: ReadonlyArray<Layer> = [
   { source: 'flag', read: (i) => i.cliOverrides as Record<string, unknown> },
 ];
 
+const DEEP_MERGE_KEYS: ReadonlySet<string> = new Set(['prefixes']);
+
 export function merge(input: MergeInput): MergeResult {
   const merged: Record<string, unknown> = {};
   const sources: Record<string, ConfigSource> = {};
   for (const layer of LAYERS) {
     for (const [key, value] of Object.entries(layer.read(input))) {
       if (value === undefined) continue;
-      merged[key] = value;
+      if (
+        DEEP_MERGE_KEYS.has(key) &&
+        isPlainObject(merged[key]) &&
+        isPlainObject(value)
+      ) {
+        merged[key] = {
+          ...(merged[key] as Record<string, unknown>),
+          ...(value as Record<string, unknown>),
+        };
+      } else {
+        merged[key] = value;
+      }
       sources[key] = layer.source;
     }
   }
@@ -67,6 +82,12 @@ export function merge(input: MergeInput): MergeResult {
     effective: merged as EffectiveOptions,
     sources: sources as Partial<Record<keyof EffectiveOptions, ConfigSource>>,
   };
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return (
+    typeof v === 'object' && v !== null && !Array.isArray(v)
+  );
 }
 
 export function formatPrintConfig(input: {

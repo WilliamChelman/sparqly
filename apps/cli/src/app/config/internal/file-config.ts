@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ConfigError } from './errors';
 import {
   DIFF_BLOCK_KEYS,
+  FORMAT_BLOCK_KEYS,
   fileConfigSchema,
   HASH_BLOCK_KEYS,
   QUERY_BLOCK_KEYS,
@@ -23,6 +24,7 @@ export interface FileConfigBlocks {
   serveBlock: Record<string, unknown>;
   hashBlock: Record<string, unknown>;
   diffBlock: Record<string, unknown>;
+  formatBlock: Record<string, unknown>;
   filepath: string | null;
 }
 
@@ -38,11 +40,13 @@ const TOP_LEVEL_KNOWN: ReadonlySet<string> = new Set([
   'serve',
   'hash',
   'diff',
+  'format',
 ]);
 const QUERY_KNOWN: ReadonlySet<string> = new Set(QUERY_BLOCK_KEYS);
 const SERVE_KNOWN: ReadonlySet<string> = new Set(SERVE_BLOCK_KEYS);
 const HASH_KNOWN: ReadonlySet<string> = new Set(HASH_BLOCK_KEYS);
 const DIFF_KNOWN: ReadonlySet<string> = new Set(DIFF_BLOCK_KEYS);
+const FORMAT_KNOWN: ReadonlySet<string> = new Set(FORMAT_BLOCK_KEYS);
 
 export async function loadFileConfig(
   options: LoadFileConfigOptions = {},
@@ -79,6 +83,7 @@ export async function loadFileConfig(
       serveBlock: {},
       hashBlock: {},
       diffBlock: {},
+      formatBlock: {},
       filepath: null,
     };
   }
@@ -133,6 +138,15 @@ export async function loadFileConfig(
       warn,
     );
   }
+  const formatRaw = (raw as Record<string, unknown>).format;
+  if (formatRaw && typeof formatRaw === 'object' && !Array.isArray(formatRaw)) {
+    warnUnknownKeys(
+      formatRaw as Record<string, unknown>,
+      FORMAT_KNOWN,
+      `${result.filepath} (format)`,
+      warn,
+    );
+  }
 
   const data = parsed.data as Record<string, unknown>;
   return {
@@ -152,6 +166,10 @@ export async function loadFileConfig(
     diffBlock: pickKnown(
       (data.diff as Record<string, unknown> | undefined) ?? {},
       DIFF_BLOCK_KEYS,
+    ),
+    formatBlock: pickKnown(
+      (data.format as Record<string, unknown> | undefined) ?? {},
+      FORMAT_BLOCK_KEYS,
     ),
     filepath: result.filepath,
   };

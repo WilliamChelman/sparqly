@@ -129,27 +129,40 @@ describe('formatRdf', () => {
 
     for (const fixture of TURTLE_CORPUS) {
       it(`is idempotent for ${fixture.name}`, () => {
-        const quads1 = new Parser({ format: 'text/turtle' }).parse(
-          fixture.turtle,
-        );
+        const base = parseBase(fixture.turtle);
+        const quads1 = new Parser({
+          format: 'text/turtle',
+          baseIRI: base,
+        }).parse(fixture.turtle);
         const out1 = formatRdf(quads1, 'turtle', {
           prefixes: parsePrefixes(fixture.turtle),
+          base,
         });
-        const quads2 = new Parser({ format: 'text/turtle' }).parse(out1);
+        const quads2 = new Parser({
+          format: 'text/turtle',
+          baseIRI: base,
+        }).parse(out1);
         const out2 = formatRdf(quads2, 'turtle', {
           prefixes: parsePrefixes(out1),
+          base: parseBase(out1),
         });
         expect(out2).toBe(out1);
       });
 
       it(`round-trips through canonicalization for ${fixture.name}`, async () => {
-        const original = new Parser({ format: 'text/turtle' }).parse(
-          fixture.turtle,
-        );
+        const base = parseBase(fixture.turtle);
+        const original = new Parser({
+          format: 'text/turtle',
+          baseIRI: base,
+        }).parse(fixture.turtle);
         const out = formatRdf(original, 'turtle', {
           prefixes: parsePrefixes(fixture.turtle),
+          base,
         });
-        const formatted = new Parser({ format: 'text/turtle' }).parse(out);
+        const formatted = new Parser({
+          format: 'text/turtle',
+          baseIRI: base,
+        }).parse(out);
         const [originalCanon, formattedCanon] = await Promise.all([
           canonize(original, {
             algorithm: 'RDFC-1.0',
@@ -163,6 +176,63 @@ describe('formatRdf', () => {
         expect(formattedCanon).toBe(originalCanon);
       });
     }
+  });
+
+  describe('@base handling', () => {
+    it('emits @base and shortens matching absolute IRIs to relative form', () => {
+      const out = formatRdf(
+        [
+          quad(
+            namedNode('http://example.org/a'),
+            namedNode('http://example.org/p'),
+            namedNode('http://example.org/b'),
+          ),
+        ],
+        'turtle',
+        { prefixes: {}, base: 'http://example.org/' },
+      );
+
+      expect(out).toMatch(/^@base <http:\/\/example\.org\/>\s*\.$/m);
+      expect(out).not.toContain('<http://example.org/a>');
+      expect(out).toContain('<a>');
+      expect(out).toContain('<p>');
+      expect(out).toContain('<b>');
+      const parsed = new Parser({
+        format: 'text/turtle',
+        baseIRI: 'http://example.org/',
+      }).parse(out);
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0].subject.value).toBe('http://example.org/a');
+    });
+
+    it('round-trips through canonicalization when a base is configured', async () => {
+      const original = [
+        quad(
+          namedNode('http://example.org/a'),
+          namedNode('http://example.org/p'),
+          namedNode('http://example.org/b'),
+        ),
+      ];
+      const out = formatRdf(original, 'turtle', {
+        prefixes: {},
+        base: 'http://example.org/',
+      });
+      const formatted = new Parser({
+        format: 'text/turtle',
+        baseIRI: 'http://example.org/',
+      }).parse(out);
+      const [originalCanon, formattedCanon] = await Promise.all([
+        canonize(original, {
+          algorithm: 'RDFC-1.0',
+          format: 'application/n-quads',
+        }),
+        canonize(formatted, {
+          algorithm: 'RDFC-1.0',
+          format: 'application/n-quads',
+        }),
+      ]);
+      expect(formattedCanon).toBe(originalCanon);
+    });
   });
 
   describe('trig output', () => {
@@ -306,7 +376,23 @@ const TURTLE_CORPUS: ReadonlyArray<{ name: string; turtle: string }> = [
       '',
     ].join('\n'),
   },
+  {
+    name: 'with-base',
+    turtle: [
+      '@base <http://example.org/> .',
+      '@prefix ex: <http://example.org/> .',
+      '',
+      '<a> ex:p <b> .',
+      '<c> ex:p <d> .',
+      '',
+    ].join('\n'),
+  },
 ];
+
+function parseBase(text: string): string | undefined {
+  const match = text.match(/^@base\s+<([^>]+)>\s*\.$/m);
+  return match ? match[1] : undefined;
+}
 
 function parsePrefixes(
   text: string,

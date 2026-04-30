@@ -130,6 +130,58 @@ describe('loadConfig', () => {
     });
   });
 
+  describe('top-level prefixes and base', () => {
+    it('reads top-level prefixes (Record<string,string>) and base (string) from the file', async () => {
+      await writeFile(
+        join(dir, 'sparqly.config.yaml'),
+        [
+          'base: "http://example.org/"',
+          'prefixes:',
+          '  ex: "http://example.org/"',
+          '  foaf: "http://xmlns.com/foaf/0.1/"',
+          '',
+        ].join('\n'),
+      );
+      const loaded = await loadConfig({
+        command: 'query',
+        cliOverrides: {},
+        env: {},
+        cwd: dir,
+      });
+      const eff = unwrap(loaded).effective;
+      expect(eff.base).toBe('http://example.org/');
+      expect(eff.prefixes).toEqual({
+        ex: 'http://example.org/',
+        foaf: 'http://xmlns.com/foaf/0.1/',
+      });
+    });
+
+    it('CLI prefixes merge with file prefixes (CLI wins per name)', async () => {
+      await writeFile(
+        join(dir, 'sparqly.config.yaml'),
+        [
+          'prefixes:',
+          '  ex: "http://example.org/"',
+          '  foaf: "http://xmlns.com/foaf/0.1/"',
+          '',
+        ].join('\n'),
+      );
+      const loaded = await loadConfig({
+        command: 'query',
+        cliOverrides: {
+          prefixes: { ex: 'http://override.example/', cli: 'http://cli/' },
+        },
+        env: {},
+        cwd: dir,
+      });
+      expect(unwrap(loaded).effective.prefixes).toEqual({
+        ex: 'http://override.example/',
+        foaf: 'http://xmlns.com/foaf/0.1/',
+        cli: 'http://cli/',
+      });
+    });
+  });
+
   describe('error paths', () => {
     it('returns null, writes to stderr, and sets exitCode = 1 on a malformed file', async () => {
       await writeFile(join(dir, 'sparqly.config.yaml'), 'graphStrategy: 42\n');

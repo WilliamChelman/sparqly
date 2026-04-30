@@ -38,6 +38,8 @@ const FIELD_TO_FLAG: Record<string, string> = {
   right: '--right',
   verbose: '--verbose',
   quiet: '--quiet',
+  prefixes: '--prefix',
+  base: '--base',
 };
 
 export function formatZodIssues(
