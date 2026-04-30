@@ -6,16 +6,31 @@ export interface FormatRawOptions {
   prefix?: string[];
   verbose?: boolean;
   quiet?: boolean;
+  write?: boolean;
+  check?: boolean;
 }
 
 export function formatAdapter(
   _passedParams: string[],
   options: FormatRawOptions,
 ): AdapterResult<Partial<EffectiveOptions>> {
+  if (options.write && options.check) {
+    return {
+      errors: [
+        {
+          kind: 'invalid',
+          message: '--write and --check are mutually exclusive',
+        },
+      ],
+    };
+  }
+
   const raw: Record<string, unknown> = {};
   if (options.sources !== undefined) raw.sources = options.sources;
   if (options.verbose !== undefined) raw.verbose = options.verbose;
   if (options.quiet !== undefined) raw.quiet = options.quiet;
+  if (options.write !== undefined) raw.write = options.write;
+  if (options.check !== undefined) raw.check = options.check;
 
   const prefixEntries = options.prefix ?? [];
   const prefixes: Record<string, string> = {};

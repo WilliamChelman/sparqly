@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { Parser, type Quad } from 'n3';
 import { Command, CommandRunner, Option } from 'nest-commander';
 import { formatRdf, loadRdf, type FormatSerialization } from 'core';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { runWithConfig, type EffectiveOptions } from './config';
 import { exitCodeFor, isAdapterFailure } from './cli-errors';
@@ -46,6 +46,29 @@ export class FormatCommand extends CommandRunner {
     const positional = effective.sources;
     const configPrefixes = effective.prefixes ?? {};
     const base = effective.base;
+    const mode: 'stdout' | 'write' | 'check' = effective.write
+      ? 'write'
+      : effective.check
+        ? 'check'
+        : 'stdout';
+
+    if (mode !== 'stdout') {
+      if (typeof positional !== 'string' || positional.length === 0) {
+        process.stderr.write(
+          `error: --${mode} requires a glob (stdin is not supported in --${mode} mode)\n`,
+        );
+        process.exitCode = mode === 'check' ? 2 : 1;
+        return;
+      }
+      await this.processPerFile({
+        glob: positional,
+        mode,
+        configPrefixes,
+        base,
+        logger,
+      });
+      return;
+    }
 
     if (typeof positional === 'string' && positional.length > 0) {
       try {
@@ -106,6 +129,69 @@ export class FormatCommand extends CommandRunner {
     }
   }
 
+  private async processPerFile(args: {
+    glob: string;
+    mode: 'write' | 'check';
+    configPrefixes: Record<string, string>;
+    base: string | undefined;
+    logger: Logger;
+  }): Promise<void> {
+    const errorExit = args.mode === 'check' ? 2 : 1;
+    let load;
+    try {
+      load = await loadRdf({ sources: args.glob });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`error: ${message}\n`);
+      process.exitCode = errorExit;
+      return;
+    }
+    const { files, prefixes: perFilePrefixes } = load;
+    args.logger.log(`Loaded ${files.length} file(s) in --${args.mode} mode`);
+
+    const unformatted: string[] = [];
+    for (const file of files) {
+      try {
+        const { store: fileStore } = await loadRdf({ sources: file });
+        const serialization = inferSerialization([file]);
+        const fileMerged = mergePrefixes(
+          { [file]: perFilePrefixes[file] ?? {} },
+          args.configPrefixes,
+        );
+        const original = await readFile(file, 'utf8');
+        const resolvedBase = args.base ?? extractBase(original);
+        const formattedRaw = formatRdf(
+          fileStore.getQuads(null, null, null, null),
+          serialization,
+          { prefixes: fileMerged, base: resolvedBase },
+        );
+        const formatted = formattedRaw.endsWith('\n')
+          ? formattedRaw
+          : `${formattedRaw}\n`;
+
+        if (args.mode === 'write') {
+          if (formatted !== original) {
+            await writeFile(file, formatted);
+          }
+        } else if (formatted !== original) {
+          unformatted.push(file);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`error: ${message}\n`);
+        process.exitCode = errorExit;
+        return;
+      }
+    }
+
+    if (args.mode === 'check') {
+      for (const path of unformatted) {
+        process.stdout.write(`${path}\n`);
+      }
+      if (unformatted.length > 0) process.exitCode = 1;
+    }
+  }
+
   @Option({
     flags: '--prefix <name=iri>',
     description:
@@ -113,6 +199,24 @@ export class FormatCommand extends CommandRunner {
   })
   parsePrefix(value: string, previous: string[] = []): string[] {
     return [...previous, value];
+  }
+
+  @Option({
+    flags: '--write',
+    description:
+      'Rewrite each matched file in place with the formatted output. Mutually exclusive with --check.',
+  })
+  parseWrite(): boolean {
+    return true;
+  }
+
+  @Option({
+    flags: '--check',
+    description:
+      'Print the paths of unformatted files to stdout and exit non-zero (0 = all formatted, 1 = needs format, 2 = error). Does not mutate files. Mutually exclusive with --write.',
+  })
+  parseCheck(): boolean {
+    return true;
   }
 
   @Option({ flags: '-v, --verbose', description: 'Verbose logging' })

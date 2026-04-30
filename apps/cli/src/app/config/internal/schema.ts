@@ -68,7 +68,10 @@ const DIFF_ONLY_FIELDS: Record<string, FieldDef> = {
   },
 };
 
-const FORMAT_ONLY_FIELDS: Record<string, FieldDef> = {};
+const FORMAT_ONLY_FIELDS: Record<string, FieldDef> = {
+  write: { schema: coercedBoolean },
+  check: { schema: coercedBoolean },
+};
 
 export type CommandName = 'query' | 'serve' | 'hash' | 'diff' | 'format';
 
@@ -91,6 +94,8 @@ export interface EffectiveOptions {
   right?: string | string[];
   prefixes?: Record<string, string>;
   base?: string;
+  write?: boolean;
+  check?: boolean;
 }
 
 function shapeOf(
