@@ -2,26 +2,16 @@ import { readFile } from 'node:fs/promises';
 import { Logger } from '@nestjs/common';
 import { Command, CommandRunner, Option } from 'nest-commander';
 import {
-  GRAPH_STRATEGIES,
   QueryEngine,
-  isGraphStrategy,
-  isSparqlFormat,
   loadRdf,
   type GraphStrategy,
   type SparqlFormat,
 } from 'core';
 import { runWithConfig, type EffectiveOptions } from './config';
+import { exitCodeFor, isAdapterFailure } from './cli-errors';
+import { queryAdapter, type QueryRawOptions } from './query.adapter';
 
-interface QueryOptions {
-  sources?: string;
-  query?: string;
-  queryFile?: string;
-  format?: string;
-  graphStrategy?: string;
-  mutable?: boolean;
-  immutable?: boolean;
-  verbose?: boolean;
-  quiet?: boolean;
+interface QueryOptions extends QueryRawOptions {
   config?: string;
   printConfig?: boolean;
 }
@@ -33,39 +23,22 @@ interface QueryOptions {
 })
 export class QueryCommand extends CommandRunner {
   async run(passedParams: string[], options: QueryOptions = {}): Promise<void> {
-    const cliOverrides: Partial<EffectiveOptions> = {};
-    if (options.sources !== undefined) cliOverrides.sources = options.sources;
-    if (options.query !== undefined) cliOverrides.query = options.query;
-    if (options.queryFile !== undefined)
-      cliOverrides.queryFile = options.queryFile;
-    if (options.verbose !== undefined) cliOverrides.verbose = options.verbose;
-    if (options.quiet !== undefined) cliOverrides.quiet = options.quiet;
-
-    if (options.format !== undefined) {
-      if (!isSparqlFormat(options.format)) {
-        process.stderr.write(
-          `error: unknown --format '${options.format}' (expected 'json' or 'turtle')\n`,
-        );
-        process.exitCode = 1;
-        return;
+    const adapted = queryAdapter(passedParams, options);
+    if (isAdapterFailure(adapted)) {
+      for (const err of adapted.errors) {
+        process.stderr.write(`error: ${err.message}\n`);
       }
-      cliOverrides.format = options.format;
+      process.exitCode = exitCodeFor('query');
+      return;
     }
-    if (options.graphStrategy !== undefined) {
-      if (!isGraphStrategy(options.graphStrategy)) {
-        process.stderr.write(
-          `error: unknown --graph-strategy '${options.graphStrategy}' (expected ${GRAPH_STRATEGIES.join(', ')})\n`,
-        );
-        process.exitCode = 1;
-        return;
-      }
-      cliOverrides.graphStrategy = options.graphStrategy;
-    }
-    const cliMutable = mutableFromCli(options);
-    if (cliMutable !== undefined) cliOverrides.mutable = cliMutable;
 
     await runWithConfig(
-      { command: 'query', passedParams, options, cliOverrides },
+      {
+        command: 'query',
+        passedParams,
+        options,
+        cliOverrides: adapted.cliOverrides,
+      },
       (effective) => this.execute(effective),
     );
   }
@@ -117,7 +90,7 @@ export class QueryCommand extends CommandRunner {
 
     const graphStrategy: GraphStrategy | undefined = effective.graphStrategy;
     const format =
-      effective.format !== undefined && isSparqlFormat(effective.format)
+      effective.format === 'json' || effective.format === 'turtle'
         ? (effective.format as SparqlFormat)
         : undefined;
     const mutable = effective.mutable === true;
@@ -244,13 +217,4 @@ export class QueryCommand extends CommandRunner {
   parsePrintConfig(): boolean {
     return true;
   }
-}
-
-export function mutableFromCli(options: {
-  mutable?: boolean;
-  immutable?: boolean;
-}): boolean | undefined {
-  if (options.mutable === true) return true;
-  if (options.immutable !== undefined) return options.immutable === false;
-  return undefined;
 }

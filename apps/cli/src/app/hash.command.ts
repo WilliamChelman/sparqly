@@ -1,21 +1,12 @@
 import { createHash } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import { Command, CommandRunner, Option } from 'nest-commander';
-import {
-  canonicalizeRdf,
-  GRAPH_STRATEGIES,
-  isGraphStrategy,
-  type GraphStrategy,
-} from 'core';
+import { canonicalizeRdf, type GraphStrategy } from 'core';
 import { runWithConfig, type EffectiveOptions } from './config';
+import { exitCodeFor, isAdapterFailure } from './cli-errors';
+import { hashAdapter, type HashRawOptions } from './hash.adapter';
 
-interface HashOptions {
-  sources?: string[];
-  graphStrategy?: string;
-  json?: boolean;
-  compareWith?: string;
-  verbose?: boolean;
-  quiet?: boolean;
+interface HashOptions extends HashRawOptions {
   config?: string;
   printConfig?: boolean;
 }
@@ -28,29 +19,24 @@ interface HashOptions {
 })
 export class HashCommand extends CommandRunner {
   async run(passedParams: string[], options: HashOptions = {}): Promise<void> {
-    const cliOverrides: Partial<EffectiveOptions> = {};
-    if (options.sources !== undefined) cliOverrides.sources = options.sources;
-    if (options.json !== undefined) cliOverrides.json = options.json;
-    if (options.compareWith !== undefined)
-      cliOverrides.compareWith = options.compareWith;
-    if (options.verbose !== undefined) cliOverrides.verbose = options.verbose;
-    if (options.quiet !== undefined) cliOverrides.quiet = options.quiet;
-
-    const errorExit = options.compareWith !== undefined ? 2 : 1;
-
-    if (options.graphStrategy !== undefined) {
-      if (!isGraphStrategy(options.graphStrategy)) {
-        process.stderr.write(
-          `error: unknown --graph-strategy '${options.graphStrategy}' (expected ${GRAPH_STRATEGIES.join(', ')})\n`,
-        );
-        process.exitCode = errorExit;
-        return;
+    const adapted = hashAdapter(passedParams, options);
+    if (isAdapterFailure(adapted)) {
+      for (const err of adapted.errors) {
+        process.stderr.write(`error: ${err.message}\n`);
       }
-      cliOverrides.graphStrategy = options.graphStrategy;
+      process.exitCode = exitCodeFor('hash', {
+        hashCompareMode: options.compareWith !== undefined,
+      });
+      return;
     }
 
     await runWithConfig(
-      { command: 'hash', passedParams, options, cliOverrides },
+      {
+        command: 'hash',
+        passedParams,
+        options,
+        cliOverrides: adapted.cliOverrides,
+      },
       (effective) => this.execute(effective),
     );
   }
