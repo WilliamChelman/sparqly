@@ -21,7 +21,10 @@ export async function startServe(
   options: ServeOptions = {},
 ): Promise<ServeHandle> {
   const port = await getFreePort();
-  const env: NodeJS.ProcessEnv = { ...process.env };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    NODE_NO_WARNINGS: '1',
+  };
   if (options.env) {
     for (const [key, value] of Object.entries(options.env)) {
       if (value === undefined) delete env[key];
