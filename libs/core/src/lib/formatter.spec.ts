@@ -178,6 +178,107 @@ describe('formatRdf', () => {
     }
   });
 
+  describe('rdf list compaction', () => {
+    it('renders a well-formed rdf:first/rdf:rest/rdf:nil chain as ( ... )', () => {
+      const turtle = [
+        '@prefix ex: <http://example.org/> .',
+        '',
+        'ex:s ex:p ( ex:a ex:b ex:c ) .',
+        '',
+      ].join('\n');
+      const quads = new Parser({ format: 'text/turtle' }).parse(turtle);
+      const out = formatRdf(quads, 'turtle', {
+        prefixes: { ex: 'http://example.org/' },
+      });
+
+      expect(out).toMatch(/\(\s*ex:a\s+ex:b\s+ex:c\s*\)/);
+      expect(out).not.toContain('rdf:first');
+      expect(out).not.toContain('rdf:rest');
+    });
+
+    it('keeps raw rdf:first/rdf:rest triples when the head is referenced more than once', () => {
+      const rdfFirst = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#first';
+      const rdfRest = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#rest';
+      const rdfNil = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#nil';
+      const ex = 'http://example.org/';
+      const head = DataFactory.blankNode('head');
+      const tail = DataFactory.blankNode('tail');
+      const triples = [
+        // two external references to the head — disqualifies compaction
+        quad(namedNode(ex + 's1'), namedNode(ex + 'p'), head),
+        quad(namedNode(ex + 's2'), namedNode(ex + 'p'), head),
+        // well-formed two-element list
+        quad(head, namedNode(rdfFirst), namedNode(ex + 'a')),
+        quad(head, namedNode(rdfRest), tail),
+        quad(tail, namedNode(rdfFirst), namedNode(ex + 'b')),
+        quad(tail, namedNode(rdfRest), namedNode(rdfNil)),
+      ];
+      const out = formatRdf(triples, 'turtle', { prefixes: { ex } });
+      expect(out).toContain('first');
+      expect(out).toContain('rest');
+      expect(out).not.toMatch(/\(\s*ex:a\s+ex:b\s*\)/);
+    });
+
+    it('keeps raw triples when an intermediate node carries an extra predicate', () => {
+      const rdfFirst = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#first';
+      const rdfRest = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#rest';
+      const rdfNil = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#nil';
+      const ex = 'http://example.org/';
+      const head = DataFactory.blankNode('h');
+      const tail = DataFactory.blankNode('t');
+      const triples = [
+        quad(namedNode(ex + 's'), namedNode(ex + 'p'), head),
+        quad(head, namedNode(rdfFirst), namedNode(ex + 'a')),
+        quad(head, namedNode(rdfRest), tail),
+        // tail has rdf:first, rdf:rest, AND an extra predicate
+        quad(tail, namedNode(rdfFirst), namedNode(ex + 'b')),
+        quad(tail, namedNode(rdfRest), namedNode(rdfNil)),
+        quad(tail, namedNode(ex + 'extra'), namedNode(ex + 'x')),
+      ];
+      const out = formatRdf(triples, 'turtle', { prefixes: { ex } });
+      expect(out).toContain('first');
+      expect(out).toContain('rest');
+      expect(out).not.toMatch(/\(\s*ex:a\s+ex:b\s*\)/);
+    });
+
+    it('matches the golden snapshot for a well-formed list', () => {
+      const turtle = [
+        '@prefix ex: <http://example.org/> .',
+        '',
+        'ex:s ex:p ( ex:a ex:b ex:c ) .',
+        '',
+      ].join('\n');
+      const quads = new Parser({ format: 'text/turtle' }).parse(turtle);
+      const out = formatRdf(quads, 'turtle', {
+        prefixes: { ex: 'http://example.org/' },
+      });
+
+      expect(out).toMatchInlineSnapshot(`
+        "@prefix ex: <http://example.org/>.
+
+        ex:s ex:p (ex:a ex:b ex:c).
+        "
+      `);
+    });
+
+    it('keeps raw triples when the chain does not terminate in rdf:nil', () => {
+      const rdfFirst = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#first';
+      const rdfRest = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#rest';
+      const ex = 'http://example.org/';
+      const head = DataFactory.blankNode('h');
+      const triples = [
+        quad(namedNode(ex + 's'), namedNode(ex + 'p'), head),
+        quad(head, namedNode(rdfFirst), namedNode(ex + 'a')),
+        // rest points at a NamedNode that is NOT rdf:nil
+        quad(head, namedNode(rdfRest), namedNode(ex + 'notNil')),
+      ];
+      const out = formatRdf(triples, 'turtle', { prefixes: { ex } });
+      expect(out).toContain('first');
+      expect(out).toContain('rest');
+      expect(out).not.toMatch(/\(\s*ex:a\s*\)/);
+    });
+  });
+
   describe('@base handling', () => {
     it('emits @base and shortens matching absolute IRIs to relative form', () => {
       const out = formatRdf(
@@ -384,6 +485,54 @@ const TURTLE_CORPUS: ReadonlyArray<{ name: string; turtle: string }> = [
       '',
       '<a> ex:p <b> .',
       '<c> ex:p <d> .',
+      '',
+    ].join('\n'),
+  },
+  {
+    name: 'well-formed-list',
+    turtle: [
+      '@prefix ex: <http://example.org/> .',
+      '',
+      'ex:s ex:p ( ex:a ex:b ex:c ) .',
+      '',
+    ].join('\n'),
+  },
+  {
+    name: 'list-with-shared-head',
+    turtle: [
+      '@prefix ex: <http://example.org/> .',
+      '@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .',
+      '',
+      // head is referenced twice — must stay raw
+      'ex:s1 ex:p _:h .',
+      'ex:s2 ex:p _:h .',
+      '_:h rdf:first ex:a ; rdf:rest _:t .',
+      '_:t rdf:first ex:b ; rdf:rest rdf:nil .',
+      '',
+    ].join('\n'),
+  },
+  {
+    name: 'list-with-extra-predicate-on-tail',
+    turtle: [
+      '@prefix ex: <http://example.org/> .',
+      '@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .',
+      '',
+      // tail node carries an extra predicate — must stay raw
+      'ex:s ex:p _:h .',
+      '_:h rdf:first ex:a ; rdf:rest _:t .',
+      '_:t rdf:first ex:b ; rdf:rest rdf:nil ; ex:extra ex:x .',
+      '',
+    ].join('\n'),
+  },
+  {
+    name: 'list-not-terminated-by-nil',
+    turtle: [
+      '@prefix ex: <http://example.org/> .',
+      '@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .',
+      '',
+      // chain points at a NamedNode that is not rdf:nil — must stay raw
+      'ex:s ex:p _:h .',
+      '_:h rdf:first ex:a ; rdf:rest ex:notNil .',
       '',
     ].join('\n'),
   },
