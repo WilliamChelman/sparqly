@@ -1,53 +1,38 @@
 import type { ZodError } from 'zod';
 import { ConfigError } from './errors';
-import {
-  blockKeysFor,
-  blockSchemaFor,
-  SHARED_KEYS,
-  type CommandName,
-} from './schema';
+import { blockSchemaFromFields } from '../../runner/field';
+import type { CommandSpec } from '../../runner/spec';
 
 export function readEnv(
-  command: CommandName,
+  spec: CommandSpec,
   env: NodeJS.ProcessEnv,
 ): Record<string, unknown> {
-  const blockKeys = blockKeysFor(command);
-  const blockSchema = blockSchemaFor(command);
-  const prefix = `SPARQLY_${command.toUpperCase()}_`;
-
   const raw: Record<string, unknown> = {};
   const sourceEnvName: Record<string, string> = {};
 
-  for (const key of SHARED_KEYS) {
-    const envName = `SPARQLY_${toUpperSnake(key)}`;
-    if (env[envName] !== undefined) {
-      raw[key] = env[envName];
-      sourceEnvName[key] = envName;
-    }
-  }
-  for (const key of blockKeys) {
-    const envName = `${prefix}${toUpperSnake(key)}`;
-    if (env[envName] !== undefined) {
-      raw[key] = env[envName];
-      sourceEnvName[key] = envName;
+  for (const field of spec.fields) {
+    if (field.env === undefined) continue;
+    const names = typeof field.env === 'string' ? [field.env] : field.env;
+    for (const name of names) {
+      const value = env[name];
+      if (value === undefined) continue;
+      raw[field.key] = value;
+      sourceEnvName[field.key] = name;
     }
   }
 
-  const parsed = blockSchema.safeParse(raw);
+  const schema = blockSchemaFromFields(spec.fields);
+  const parsed = schema.safeParse(raw);
   if (!parsed.success) {
     throw new ConfigError(formatEnvError(parsed.error, sourceEnvName));
   }
 
   const out: Record<string, unknown> = {};
-  for (const key of blockKeys) {
-    const value = (parsed.data as Record<string, unknown>)[key];
-    if (value !== undefined) out[key] = value;
+  for (const field of spec.fields) {
+    const value = (parsed.data as Record<string, unknown>)[field.key];
+    if (value !== undefined) out[field.key] = value;
   }
   return out;
-}
-
-function toUpperSnake(camel: string): string {
-  return camel.replace(/[A-Z]/g, (c) => `_${c}`).toUpperCase();
 }
 
 function formatEnvError(

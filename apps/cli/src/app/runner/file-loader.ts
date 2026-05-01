@@ -4,14 +4,6 @@ import type { FileLayers } from './runner';
 
 export type BlockKey = 'query' | 'serve' | 'hash' | 'diff' | 'format';
 
-const BLOCK_FIELDS: Record<BlockKey, keyof Awaited<ReturnType<typeof loadFileConfig>>> = {
-  query: 'queryBlock',
-  serve: 'serveBlock',
-  hash: 'hashBlock',
-  diff: 'diffBlock',
-  format: 'formatBlock',
-};
-
 export function makeFileLoader(commandName: BlockKey) {
   return async (
     configPath: string | undefined,
@@ -19,10 +11,9 @@ export function makeFileLoader(commandName: BlockKey) {
   ): Promise<FileLayers> => {
     try {
       const file = await loadFileConfig({ cwd, configPath });
-      const blockKey = BLOCK_FIELDS[commandName];
       return {
         fileTop: file.shared,
-        fileBlock: file[blockKey] as Record<string, unknown>,
+        fileBlock: file.blocks[commandName] ?? {},
         filepath: file.filepath,
       };
     } catch (err) {

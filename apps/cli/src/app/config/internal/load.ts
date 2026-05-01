@@ -1,14 +1,15 @@
 import { Logger } from '@nestjs/common';
+import { COMMAND_REGISTRY } from '../../commands/registry';
 import { configureLogger } from '../../logging';
 import { readEnv } from './env-config';
 import { ConfigError } from './errors';
 import { loadFileConfig } from './file-config';
 import { formatPrintConfig, merge } from './effective';
-import type { CommandName, EffectiveOptions } from './schema';
+import type { CommandName } from './schema';
 
 export interface LoadConfigInput<C extends CommandName> {
   command: C;
-  cliOverrides: Partial<EffectiveOptions>;
+  cliOverrides: Record<string, unknown>;
   positionalSources?: string;
   configPath?: string;
   env?: NodeJS.ProcessEnv;
@@ -16,7 +17,7 @@ export interface LoadConfigInput<C extends CommandName> {
 }
 
 export interface LoadedConfig {
-  effective: EffectiveOptions;
+  effective: Record<string, unknown>;
   filepath: string | null;
   printConfig: string;
 }
@@ -27,11 +28,14 @@ export async function loadConfig<C extends CommandName>(
   const env = input.env ?? process.env;
   const cwd = input.cwd ?? process.cwd();
 
+  const spec = COMMAND_REGISTRY.get(input.command);
+  if (!spec) throw new Error(`unknown command: ${input.command}`);
+
   let file;
   let envLayer;
   try {
     file = await loadFileConfig({ cwd, configPath: input.configPath });
-    envLayer = readEnv(input.command, env);
+    envLayer = readEnv(spec, env);
   } catch (err) {
     if (err instanceof ConfigError) {
       process.stderr.write(`error: ${err.message}\n`);
@@ -42,23 +46,23 @@ export async function loadConfig<C extends CommandName>(
   }
 
   const result = merge({
-    command: input.command,
+    spec,
     file,
     env: envLayer,
     cliOverrides: input.cliOverrides,
     positionalSources: input.positionalSources,
   });
   const printConfig = formatPrintConfig({
-    command: input.command,
+    spec,
     result,
     filepath: file.filepath,
   });
 
   configureLogger({
-    verbose: result.effective.verbose,
-    quiet: result.effective.quiet,
+    verbose: result.effective.verbose === true,
+    quiet: result.effective.quiet === true,
   });
-  if (file.filepath && result.effective.verbose) {
+  if (file.filepath && result.effective.verbose === true) {
     new Logger('sparqly').log(`Loaded config from ${file.filepath}`);
   }
 
@@ -73,7 +77,7 @@ export interface RunWithConfigInput<C extends CommandName> {
   command: C;
   passedParams: string[];
   options: { config?: string; printConfig?: boolean };
-  cliOverrides: Partial<EffectiveOptions>;
+  cliOverrides: Record<string, unknown>;
   env?: NodeJS.ProcessEnv;
   cwd?: string;
   stdout?: NodeJS.WritableStream;
@@ -83,7 +87,7 @@ export interface RunWithConfigInput<C extends CommandName> {
 export async function runWithConfig<C extends CommandName>(
   input: RunWithConfigInput<C>,
   handler: (
-    effective: EffectiveOptions,
+    effective: Record<string, unknown>,
     filepath: string | null,
   ) => void | Promise<void>,
 ): Promise<void> {

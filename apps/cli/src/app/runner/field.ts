@@ -15,6 +15,7 @@ export interface FieldDescriptor {
   readonly flags?: ReadonlyArray<FieldFlag>;
   readonly env?: string | ReadonlyArray<string>;
   readonly merge?: 'replace' | 'deep';
+  readonly shared?: boolean;
 }
 
 export function blockSchemaFromFields(

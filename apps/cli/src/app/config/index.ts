@@ -1,4 +1,4 @@
-export type { CommandName, EffectiveOptions } from './internal/schema';
+export type { CommandName } from './internal/schema';
 export type {
   LoadConfigInput,
   LoadedConfig,

@@ -1,15 +1,8 @@
 import { cosmiconfig, type CosmiconfigResult } from 'cosmiconfig';
 import { z } from 'zod';
 import { ConfigError } from './errors';
-import {
-  DIFF_BLOCK_KEYS,
-  FORMAT_BLOCK_KEYS,
-  fileConfigSchema,
-  HASH_BLOCK_KEYS,
-  QUERY_BLOCK_KEYS,
-  SERVE_BLOCK_KEYS,
-  SHARED_KEYS,
-} from './schema';
+import { COMMAND_REGISTRY } from '../../commands/registry';
+import { blockSchemaFromFields } from '../../runner/field';
 
 export interface LoadFileConfigOptions {
   cwd?: string;
@@ -19,13 +12,9 @@ export interface LoadFileConfigOptions {
 }
 
 export interface FileConfigBlocks {
-  shared: Record<string, unknown>;
-  queryBlock: Record<string, unknown>;
-  serveBlock: Record<string, unknown>;
-  hashBlock: Record<string, unknown>;
-  diffBlock: Record<string, unknown>;
-  formatBlock: Record<string, unknown>;
-  filepath: string | null;
+  readonly shared: Record<string, unknown>;
+  readonly blocks: Record<string, Record<string, unknown>>;
+  readonly filepath: string | null;
 }
 
 const SEARCH_PLACES = [
@@ -34,19 +23,57 @@ const SEARCH_PLACES = [
   'sparqly.config.json',
 ];
 
-const TOP_LEVEL_KNOWN: ReadonlySet<string> = new Set([
-  ...SHARED_KEYS,
-  'query',
-  'serve',
-  'hash',
-  'diff',
-  'format',
-]);
-const QUERY_KNOWN: ReadonlySet<string> = new Set(QUERY_BLOCK_KEYS);
-const SERVE_KNOWN: ReadonlySet<string> = new Set(SERVE_BLOCK_KEYS);
-const HASH_KNOWN: ReadonlySet<string> = new Set(HASH_BLOCK_KEYS);
-const DIFF_KNOWN: ReadonlySet<string> = new Set(DIFF_BLOCK_KEYS);
-const FORMAT_KNOWN: ReadonlySet<string> = new Set(FORMAT_BLOCK_KEYS);
+interface BlockMeta {
+  readonly fileBlockName: string;
+  readonly knownKeys: ReadonlySet<string>;
+  readonly schema: z.ZodTypeAny;
+}
+
+const BLOCK_METAS: ReadonlyArray<BlockMeta> = (() => {
+  const out: BlockMeta[] = [];
+  for (const spec of COMMAND_REGISTRY.values()) {
+    out.push({
+      fileBlockName: spec.fileBlockName ?? spec.name,
+      knownKeys: new Set(spec.fields.map((f) => f.key)),
+      schema: blockSchemaFromFields(spec.fields),
+    });
+  }
+  return out;
+})();
+
+const SHARED_KEY_UNION: ReadonlySet<string> = (() => {
+  const out = new Set<string>();
+  for (const spec of COMMAND_REGISTRY.values()) {
+    for (const f of spec.fields) {
+      if (f.shared === true) out.add(f.key);
+    }
+  }
+  return out;
+})();
+
+const TOP_LEVEL_KNOWN: ReadonlySet<string> = (() => {
+  const out = new Set<string>(SHARED_KEY_UNION);
+  for (const meta of BLOCK_METAS) out.add(meta.fileBlockName);
+  return out;
+})();
+
+const fileConfigSchema = (() => {
+  const sharedShape: Record<string, z.ZodTypeAny> = {};
+  const seen = new Set<string>();
+  for (const spec of COMMAND_REGISTRY.values()) {
+    for (const f of spec.fields) {
+      if (f.shared !== true) continue;
+      if (seen.has(f.key)) continue;
+      seen.add(f.key);
+      sharedShape[f.key] = f.schema.optional();
+    }
+  }
+  const blockShape: Record<string, z.ZodTypeAny> = {};
+  for (const meta of BLOCK_METAS) {
+    blockShape[meta.fileBlockName] = meta.schema.optional();
+  }
+  return z.object({ ...sharedShape, ...blockShape }).passthrough();
+})();
 
 export async function loadFileConfig(
   options: LoadFileConfigOptions = {},
@@ -77,15 +104,7 @@ export async function loadFileConfig(
   }
 
   if (!result || result.isEmpty) {
-    return {
-      shared: {},
-      queryBlock: {},
-      serveBlock: {},
-      hashBlock: {},
-      diffBlock: {},
-      formatBlock: {},
-      filepath: null,
-    };
+    return { shared: {}, blocks: emptyBlocks(), filepath: null };
   }
 
   const raw = result.config;
@@ -101,83 +120,49 @@ export async function loadFileConfig(
   }
 
   const warn = options.warn ?? defaultWarn;
-  warnUnknownKeys(raw, TOP_LEVEL_KNOWN, result.filepath, warn);
-  const queryRaw = (raw as Record<string, unknown>).query;
-  if (queryRaw && typeof queryRaw === 'object' && !Array.isArray(queryRaw)) {
-    warnUnknownKeys(
-      queryRaw as Record<string, unknown>,
-      QUERY_KNOWN,
-      `${result.filepath} (query)`,
-      warn,
-    );
-  }
-  const serveRaw = (raw as Record<string, unknown>).serve;
-  if (serveRaw && typeof serveRaw === 'object' && !Array.isArray(serveRaw)) {
-    warnUnknownKeys(
-      serveRaw as Record<string, unknown>,
-      SERVE_KNOWN,
-      `${result.filepath} (serve)`,
-      warn,
-    );
-  }
-  const hashRaw = (raw as Record<string, unknown>).hash;
-  if (hashRaw && typeof hashRaw === 'object' && !Array.isArray(hashRaw)) {
-    warnUnknownKeys(
-      hashRaw as Record<string, unknown>,
-      HASH_KNOWN,
-      `${result.filepath} (hash)`,
-      warn,
-    );
-  }
-  const diffRaw = (raw as Record<string, unknown>).diff;
-  if (diffRaw && typeof diffRaw === 'object' && !Array.isArray(diffRaw)) {
-    warnUnknownKeys(
-      diffRaw as Record<string, unknown>,
-      DIFF_KNOWN,
-      `${result.filepath} (diff)`,
-      warn,
-    );
-  }
-  const formatRaw = (raw as Record<string, unknown>).format;
-  if (formatRaw && typeof formatRaw === 'object' && !Array.isArray(formatRaw)) {
-    warnUnknownKeys(
-      formatRaw as Record<string, unknown>,
-      FORMAT_KNOWN,
-      `${result.filepath} (format)`,
-      warn,
-    );
+  warnUnknownKeys(
+    raw as Record<string, unknown>,
+    TOP_LEVEL_KNOWN,
+    result.filepath,
+    warn,
+  );
+  for (const meta of BLOCK_METAS) {
+    const blockRaw = (raw as Record<string, unknown>)[meta.fileBlockName];
+    if (blockRaw && typeof blockRaw === 'object' && !Array.isArray(blockRaw)) {
+      warnUnknownKeys(
+        blockRaw as Record<string, unknown>,
+        meta.knownKeys,
+        `${result.filepath} (${meta.fileBlockName})`,
+        warn,
+      );
+    }
   }
 
   const data = parsed.data as Record<string, unknown>;
+  const blocks: Record<string, Record<string, unknown>> = {};
+  for (const meta of BLOCK_METAS) {
+    blocks[meta.fileBlockName] = pickKnown(
+      (data[meta.fileBlockName] as Record<string, unknown> | undefined) ?? {},
+      meta.knownKeys,
+    );
+  }
+
   return {
-    shared: pickKnown(data, SHARED_KEYS),
-    queryBlock: pickKnown(
-      (data.query as Record<string, unknown> | undefined) ?? {},
-      QUERY_BLOCK_KEYS,
-    ),
-    serveBlock: pickKnown(
-      (data.serve as Record<string, unknown> | undefined) ?? {},
-      SERVE_BLOCK_KEYS,
-    ),
-    hashBlock: pickKnown(
-      (data.hash as Record<string, unknown> | undefined) ?? {},
-      HASH_BLOCK_KEYS,
-    ),
-    diffBlock: pickKnown(
-      (data.diff as Record<string, unknown> | undefined) ?? {},
-      DIFF_BLOCK_KEYS,
-    ),
-    formatBlock: pickKnown(
-      (data.format as Record<string, unknown> | undefined) ?? {},
-      FORMAT_BLOCK_KEYS,
-    ),
+    shared: pickKnown(data, SHARED_KEY_UNION),
+    blocks,
     filepath: result.filepath,
   };
 }
 
+function emptyBlocks(): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const meta of BLOCK_METAS) out[meta.fileBlockName] = {};
+  return out;
+}
+
 function pickKnown(
   source: Record<string, unknown>,
-  keys: ReadonlyArray<string>,
+  keys: ReadonlySet<string>,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const key of keys) {

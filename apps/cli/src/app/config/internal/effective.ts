@@ -1,24 +1,20 @@
-import {
-  blockKeysFor,
-  defaultsFor,
-  type CommandName,
-  type EffectiveOptions,
-} from './schema';
+import { defaultsFromFields } from '../../runner/field';
+import type { CommandSpec } from '../../runner/spec';
 import type { FileConfigBlocks } from './file-config';
 
 export type ConfigSource = 'default' | 'file' | 'env' | 'flag';
 
 export interface MergeInput {
-  command: CommandName;
+  spec: CommandSpec;
   file: FileConfigBlocks;
   env: Record<string, unknown>;
-  cliOverrides: Partial<EffectiveOptions>;
+  cliOverrides: Record<string, unknown>;
   positionalSources?: string;
 }
 
 export interface MergeResult {
-  effective: EffectiveOptions;
-  sources: Partial<Record<keyof EffectiveOptions, ConfigSource>>;
+  effective: Record<string, unknown>;
+  sources: Record<string, ConfigSource>;
 }
 
 interface Layer {
@@ -27,24 +23,11 @@ interface Layer {
 }
 
 const LAYERS: ReadonlyArray<Layer> = [
-  { source: 'default', read: (i) => defaultsFor(i.command) },
+  { source: 'default', read: (i) => defaultsFromFields(i.spec.fields) },
   { source: 'file', read: (i) => i.file.shared },
   {
     source: 'file',
-    read: (i) => {
-      switch (i.command) {
-        case 'query':
-          return i.file.queryBlock;
-        case 'serve':
-          return i.file.serveBlock;
-        case 'hash':
-          return i.file.hashBlock;
-        case 'diff':
-          return i.file.diffBlock;
-        case 'format':
-          return i.file.formatBlock;
-      }
-    },
+    read: (i) => i.file.blocks[i.spec.fileBlockName ?? i.spec.name] ?? {},
   },
   { source: 'env', read: (i) => i.env },
   {
@@ -52,7 +35,7 @@ const LAYERS: ReadonlyArray<Layer> = [
     read: (i) =>
       i.positionalSources !== undefined ? { sources: i.positionalSources } : {},
   },
-  { source: 'flag', read: (i) => i.cliOverrides as Record<string, unknown> },
+  { source: 'flag', read: (i) => i.cliOverrides },
 ];
 
 const DEEP_MERGE_KEYS: ReadonlySet<string> = new Set(['prefixes']);
@@ -78,36 +61,29 @@ export function merge(input: MergeInput): MergeResult {
       sources[key] = layer.source;
     }
   }
-  return {
-    effective: merged as EffectiveOptions,
-    sources: sources as Partial<Record<keyof EffectiveOptions, ConfigSource>>,
-  };
+  return { effective: merged, sources };
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return (
-    typeof v === 'object' && v !== null && !Array.isArray(v)
-  );
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
 export function formatPrintConfig(input: {
-  command: CommandName;
+  spec: CommandSpec;
   result: MergeResult;
   filepath: string | null;
 }): string {
-  const { command, result, filepath } = input;
-  const orderedKeys = blockKeysFor(command);
+  const { spec, result, filepath } = input;
+  const orderedKeys = spec.fields.map((f) => f.key);
 
   const entries: Array<{ key: string; valueStr: string; source: ConfigSource }> =
     [];
   for (const key of orderedKeys) {
-    const source = result.sources[key as keyof EffectiveOptions];
+    const source = result.sources[key];
     if (source === undefined) continue;
     entries.push({
       key,
-      valueStr: formatValue(
-        (result.effective as Record<string, unknown>)[key],
-      ),
+      valueStr: formatValue(result.effective[key]),
       source,
     });
   }
@@ -116,7 +92,7 @@ export function formatPrintConfig(input: {
   const valueWidth = Math.max(0, ...entries.map((e) => e.valueStr.length));
 
   const lines: string[] = [];
-  lines.push(`# sparqly ${command} --print-config`);
+  lines.push(`# sparqly ${spec.name} --print-config`);
   lines.push(`# config file: ${filepath ?? '(none)'}`);
   for (const e of entries) {
     lines.push(
