@@ -5,3 +5,4 @@ export * from './lib/diff';
 export * from './lib/immutability';
 export * from './lib/formatter';
 export * from './lib/parse-rdf-string';
+export * from './lib/parse-sparql-prefixes';

@@ -3,7 +3,10 @@ import { Logger } from '@nestjs/common';
 import { Command, CommandRunner, Option } from 'nest-commander';
 import {
   QueryEngine,
+  formatRdf,
   loadRdf,
+  parseRdfString,
+  parseSparqlPrefixes,
   type GraphStrategy,
   type SparqlFormat,
 } from 'core';
@@ -113,7 +116,11 @@ export class QueryCommand extends CommandRunner {
       const result = await engine.execute(query, { format, mutable });
       logger.log(`Query executed in ${Date.now() - queryStart}ms`);
 
-      const body = result.body.endsWith('\n') ? result.body : `${result.body}\n`;
+      const rendered =
+        result.format === 'turtle'
+          ? formatTurtleResult(result.body, query, effective)
+          : result.body;
+      const body = rendered.endsWith('\n') ? rendered : `${rendered}\n`;
       if (effective.out !== undefined) {
         await writeOutputToFile({
           out: effective.out,
@@ -235,4 +242,17 @@ export class QueryCommand extends CommandRunner {
   parsePrintConfig(): boolean {
     return true;
   }
+}
+
+function formatTurtleResult(
+  body: string,
+  query: string,
+  effective: EffectiveOptions,
+): string {
+  const { quads } = parseRdfString(body, { format: 'turtle' });
+  const prefixes: Record<string, string> = {
+    ...(effective.prefixes ?? {}),
+    ...parseSparqlPrefixes(query),
+  };
+  return formatRdf(quads, 'turtle', { prefixes, base: effective.base });
 }
