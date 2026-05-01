@@ -4,6 +4,8 @@ export interface FieldFlag {
   readonly spec: string;
   readonly description: string;
   readonly parse?: (value: string, previous: unknown) => unknown;
+  readonly attributeName?: string;
+  readonly preset?: string;
 }
 
 export interface FieldDescriptor {
@@ -12,6 +14,7 @@ export interface FieldDescriptor {
   readonly default?: unknown;
   readonly flags?: ReadonlyArray<FieldFlag>;
   readonly env?: string | ReadonlyArray<string>;
+  readonly merge?: 'replace' | 'deep';
 }
 
 export function blockSchemaFromFields(

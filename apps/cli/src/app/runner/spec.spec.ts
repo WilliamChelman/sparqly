@@ -35,7 +35,7 @@ describe('CommandSpec', () => {
       name: 'test',
       description: 'test command',
       fields: [sourcesField, graphStrategyField],
-      handler: async () => {},
+      handler: async () => undefined,
       exitCode: () => 1,
     };
 
@@ -54,7 +54,7 @@ describe('CommandSpec', () => {
       name: 'hash',
       description: 'hash',
       fields: [],
-      handler: async () => {},
+      handler: async () => undefined,
       exitCode: () => 1,
     };
     expect(spec.fileBlockName ?? spec.name).toBe('hash');

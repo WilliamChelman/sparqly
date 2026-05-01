@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { CommandFactory } from 'nest-commander';
 import { AppModule } from './app/app.module';
 import { COMMAND_REGISTRY } from './app/commands/registry';
-import { makeFileLoader } from './app/runner/file-loader';
+import { makeFileLoader, type BlockKey } from './app/runner/file-loader';
 import { registerSpec } from './app/runner/runner';
 
 async function bootstrap() {
@@ -15,7 +15,7 @@ async function bootstrap() {
     registerSpec(program, spec, {
       env: process.env,
       cwd: process.cwd(),
-      loadFile: makeFileLoader(spec.name as 'hash'),
+      loadFile: makeFileLoader(spec.name as BlockKey),
     });
     await program.parseAsync(process.argv);
     return;

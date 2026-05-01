@@ -28,14 +28,33 @@ export function mergeLayers(
       { source: 'flag', layer: layers.cli },
     ];
 
+  const deepMergeKeys = new Set(
+    fields.filter((f) => f.merge === 'deep').map((f) => f.key),
+  );
+
   const config: Record<string, unknown> = {};
   const sources: Record<string, ConfigSource> = {};
   for (const { source, layer } of ordered) {
     for (const [key, value] of Object.entries(layer)) {
       if (value === undefined) continue;
-      config[key] = value;
+      if (
+        deepMergeKeys.has(key) &&
+        isPlainObject(config[key]) &&
+        isPlainObject(value)
+      ) {
+        config[key] = {
+          ...(config[key] as Record<string, unknown>),
+          ...(value as Record<string, unknown>),
+        };
+      } else {
+        config[key] = value;
+      }
       sources[key] = source;
     }
   }
   return { config, sources };
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }

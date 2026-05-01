@@ -100,3 +100,71 @@ export function outFieldFor(commandName: string): FieldDescriptor {
 }
 
 export const coercedBooleanSchema = coercedBoolean;
+
+const coercedInt = z.preprocess((v) => {
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return v;
+}, z.number().int());
+
+export const coercedIntSchema = coercedInt;
+
+export function mutableFieldsFor(
+  commandName: string,
+): ReadonlyArray<FieldDescriptor> {
+  const upper = commandName.toUpperCase();
+  return [
+    {
+      key: 'mutable',
+      schema: coercedBoolean,
+      default: false,
+      env: ['SPARQLY_MUTABLE', `SPARQLY_${upper}_MUTABLE`],
+      flags: [
+        {
+          spec: '--mutable',
+          description:
+            'Allow mutating queries (UPDATE/INSERT/DELETE/LOAD). Alias for --immutable=false. Default: mutating queries are rejected.',
+          attributeName: 'mutable',
+          parse: () => true,
+        },
+        {
+          spec: '--immutable [value]',
+          description:
+            'Reject mutating queries (default: true). Pass --immutable=false to opt in; equivalent to --mutable.',
+          attributeName: 'mutable',
+          preset: 'true',
+          parse: (value: string) => value === 'false',
+        },
+      ],
+    },
+  ];
+}
+
+export const prefixesField: FieldDescriptor = {
+  key: 'prefixes',
+  schema: z.record(z.string(), z.string()),
+  merge: 'deep',
+};
+
+export const baseField: FieldDescriptor = {
+  key: 'base',
+  schema: z.string(),
+};
+
+export const prefixField: FieldDescriptor = {
+  key: 'prefix',
+  schema: z.array(z.string()),
+  flags: [
+    {
+      spec: '--prefix <name=iri>',
+      description:
+        'Add or override a prefix mapping (repeatable, highest precedence). Example: --prefix ex=http://example.org/',
+      parse: (value, prev) => [
+        ...((prev as string[] | undefined) ?? []),
+        value,
+      ],
+    },
+  ],
+};

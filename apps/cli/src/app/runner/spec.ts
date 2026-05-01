@@ -1,3 +1,4 @@
+import type { z } from 'zod';
 import type { FieldDescriptor } from './field';
 
 export interface PositionalDescriptor {
@@ -18,4 +19,5 @@ export interface CommandSpec<TConfig = Record<string, unknown>> {
     context?: { readonly rawConfig?: Record<string, unknown> },
   ) => number;
   readonly fileBlockName?: string;
+  readonly refine?: (schema: z.ZodTypeAny) => z.ZodTypeAny;
 }

@@ -1,4 +1,6 @@
-import type { Command } from 'commander';
+import { Logger } from '@nestjs/common';
+import { Option, type Command } from 'commander';
+import { configureLogger } from '../logging';
 import type { FieldDescriptor } from './field';
 import { blockSchemaFromFields } from './field';
 import { mergeLayers, type ConfigSource } from './merge';
@@ -38,6 +40,9 @@ export function registerSpec<T extends Record<string, unknown>>(
     .command(positionalArgs ? `${spec.name} ${positionalArgs}` : spec.name)
     .description(spec.description);
 
+  const positionalsCount = (spec.positionals ?? []).length;
+  const allowsVariadic = (spec.positionals ?? []).some((p) => p.variadic);
+
   applyFieldFlags(sub, spec.fields);
   sub.option('--config <path>', 'Path to a sparqly.config.{yaml,yml,json} file.');
   sub.option('--print-config', 'Print the fully-merged effective configuration and exit.');
@@ -48,6 +53,18 @@ export function registerSpec<T extends Record<string, unknown>>(
       const commanderInstance = args[args.length - 1] as Command;
       const optsBag = commanderInstance.opts() as Record<string, unknown>;
       const positionalValues = args.slice(0, -2) as unknown[];
+
+      if (
+        positionalsCount > 0 &&
+        !allowsVariadic &&
+        commanderInstance.args.length > positionalsCount
+      ) {
+        throw new Error(
+          `${spec.name} takes at most ${numberWord(positionalsCount)} positional argument${
+            positionalsCount === 1 ? '' : 's'
+          } (got ${commanderInstance.args.length})`,
+        );
+      }
 
       const cli: Record<string, unknown> = {};
       for (const f of spec.fields) {
@@ -75,11 +92,20 @@ export function registerSpec<T extends Record<string, unknown>>(
       });
       rawConfig = merged.config;
 
-      const validated = blockSchemaFromFields(spec.fields).safeParse(
-        merged.config,
-      );
+      const baseSchema = blockSchemaFromFields(spec.fields);
+      const finalSchema = spec.refine ? spec.refine(baseSchema) : baseSchema;
+      const validated = finalSchema.safeParse(merged.config);
       if (!validated.success) {
         throw new Error(formatIssues(validated.error.issues, spec.fields, merged.config));
+      }
+
+      const data = validated.data as Record<string, unknown>;
+      configureLogger({
+        verbose: data.verbose === true,
+        quiet: data.quiet === true,
+      });
+      if (fileLayers.filepath && data.verbose === true) {
+        new Logger('sparqly').log(`Loaded config from ${fileLayers.filepath}`);
       }
 
       if (optsBag.printConfig) {
@@ -110,19 +136,32 @@ export function registerSpec<T extends Record<string, unknown>>(
   return sub;
 }
 
+class AliasedOption extends Option {
+  constructor(
+    flags: string,
+    description: string,
+    private readonly attrName: string,
+  ) {
+    super(flags, description);
+  }
+  override attributeName(): string {
+    return this.attrName;
+  }
+}
+
 function applyFieldFlags(
   sub: Command,
   fields: ReadonlyArray<FieldDescriptor>,
 ): void {
   for (const f of fields) {
     for (const flag of f.flags ?? []) {
-      if (flag.parse) {
-        sub.option(flag.spec, flag.description, (value, prev) =>
-          flag.parse!(value, prev),
-        );
-      } else {
-        sub.option(flag.spec, flag.description);
-      }
+      const opt = flag.attributeName
+        ? new AliasedOption(flag.spec, flag.description, flag.attributeName)
+        : new Option(flag.spec, flag.description);
+      if (flag.preset !== undefined) opt.preset(flag.preset);
+      const parse = flag.parse;
+      if (parse) opt.argParser((value, prev) => parse(value, prev));
+      sub.addOption(opt);
     }
   }
 }
@@ -180,6 +219,10 @@ function formatValue(value: unknown): string {
   if (typeof value === 'string') return JSON.stringify(value);
   if (Array.isArray(value)) return JSON.stringify(value);
   return String(value);
+}
+
+function numberWord(n: number): string {
+  return n === 2 ? 'two' : String(n);
 }
 
 function flagFor(field: FieldDescriptor): string {

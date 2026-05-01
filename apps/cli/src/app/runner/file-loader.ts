@@ -2,7 +2,7 @@ import { ConfigError } from '../config/internal/errors';
 import { loadFileConfig } from '../config/internal/file-config';
 import type { FileLayers } from './runner';
 
-type BlockKey = 'query' | 'serve' | 'hash' | 'diff' | 'format';
+export type BlockKey = 'query' | 'serve' | 'hash' | 'diff' | 'format';
 
 const BLOCK_FIELDS: Record<BlockKey, keyof Awaited<ReturnType<typeof loadFileConfig>>> = {
   query: 'queryBlock',
