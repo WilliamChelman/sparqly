@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
 import { formatFixture } from './helpers/hash';
@@ -19,19 +20,17 @@ describe('sparqly format — config prefixes', () => {
   it('config prefixes win over input-file prefixes; orphan input IRIs go full form', async () => {
     await writeFile(
       join(dir, 'sparqly.config.yaml'),
-      [
-        'prefixes:',
-        '  ex: "http://override.example/"',
-        '',
-      ].join('\n'),
+      dedent`
+        prefixes:
+          ex: "http://override.example/"
+      ` + '\n',
     );
     await writeFile(
       join(dir, 'data.ttl'),
-      [
-        '@prefix ex: <http://example.org/> .',
-        'ex:a ex:p ex:b .',
-        '',
-      ].join('\n'),
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b .
+      ` + '\n',
     );
 
     const result = await runCli(['format', 'data.ttl'], { cwd: dir });
@@ -49,18 +48,14 @@ describe('sparqly format — config prefixes', () => {
   it('config prefixes apply when input file declares no matching prefix', async () => {
     await writeFile(
       join(dir, 'sparqly.config.yaml'),
-      [
-        'prefixes:',
-        '  ex: "http://example.org/"',
-        '',
-      ].join('\n'),
+      dedent`
+        prefixes:
+          ex: "http://example.org/"
+      ` + '\n',
     );
     await writeFile(
       join(dir, 'data.ttl'),
-      [
-        '<http://example.org/a> <http://example.org/p> <http://example.org/b> .',
-        '',
-      ].join('\n'),
+      '<http://example.org/a> <http://example.org/p> <http://example.org/b> .\n',
     );
 
     const result = await runCli(['format', 'data.ttl'], { cwd: dir });
@@ -85,14 +80,11 @@ describe('sparqly format — config base', () => {
   it('emits @base from config and shortens matching IRIs to relative form', async () => {
     await writeFile(
       join(dir, 'sparqly.config.yaml'),
-      ['base: "http://example.org/"', ''].join('\n'),
+      'base: "http://example.org/"\n',
     );
     await writeFile(
       join(dir, 'data.ttl'),
-      [
-        '<http://example.org/a> <http://example.org/p> <http://example.org/b> .',
-        '',
-      ].join('\n'),
+      '<http://example.org/a> <http://example.org/p> <http://example.org/b> .\n',
     );
 
     const result = await runCli(['format', 'data.ttl'], { cwd: dir });
@@ -109,11 +101,10 @@ describe('sparqly format — config base', () => {
   it("honors the input file's @base when config has no base", async () => {
     await writeFile(
       join(dir, 'data.ttl'),
-      [
-        '@base <http://example.org/> .',
-        '<a> <p> <b> .',
-        '',
-      ].join('\n'),
+      dedent`
+        @base <http://example.org/> .
+        <a> <p> <b> .
+      ` + '\n',
     );
 
     const result = await runCli(['format', 'data.ttl'], { cwd: dir });
@@ -130,15 +121,14 @@ describe('sparqly format — config base', () => {
   it('config base wins over the input file @base', async () => {
     await writeFile(
       join(dir, 'sparqly.config.yaml'),
-      ['base: "http://config.example/"', ''].join('\n'),
+      'base: "http://config.example/"\n',
     );
     await writeFile(
       join(dir, 'data.ttl'),
-      [
-        '@base <http://file.example/> .',
-        '<a> <p> <b> .',
-        '',
-      ].join('\n'),
+      dedent`
+        @base <http://file.example/> .
+        <a> <p> <b> .
+      ` + '\n',
     );
 
     const result = await runCli(['format', 'data.ttl'], { cwd: dir });
@@ -155,22 +145,20 @@ describe('sparqly format — config base', () => {
   it('round-trips: parsing the formatted output yields the same triples', async () => {
     await writeFile(
       join(dir, 'sparqly.config.yaml'),
-      [
-        'base: "http://example.org/"',
-        'prefixes:',
-        '  rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#"',
-        '',
-      ].join('\n'),
+      dedent`
+        base: "http://example.org/"
+        prefixes:
+          rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+      ` + '\n',
     );
     await writeFile(
       join(dir, 'data.ttl'),
-      [
-        '<http://example.org/a>',
-        '  <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>',
-        '  <http://example.org/Thing> ;',
-        '  <http://example.org/p> <http://example.org/b> .',
-        '',
-      ].join('\n'),
+      dedent`
+        <http://example.org/a>
+          <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>
+          <http://example.org/Thing> ;
+          <http://example.org/p> <http://example.org/b> .
+      ` + '\n',
     );
 
     const result = await runCli(['format', 'data.ttl'], { cwd: dir });
@@ -205,18 +193,14 @@ describe('sparqly format — --prefix CLI flag', () => {
   it('CLI --prefix wins over config prefixes for the same name', async () => {
     await writeFile(
       join(dir, 'sparqly.config.yaml'),
-      [
-        'prefixes:',
-        '  ex: "http://config.example/"',
-        '',
-      ].join('\n'),
+      dedent`
+        prefixes:
+          ex: "http://config.example/"
+      ` + '\n',
     );
     await writeFile(
       join(dir, 'data.ttl'),
-      [
-        '<http://cli.example/a> <http://cli.example/p> <http://cli.example/b> .',
-        '',
-      ].join('\n'),
+      '<http://cli.example/a> <http://cli.example/p> <http://cli.example/b> .\n',
     );
 
     const result = await runCli(
@@ -231,10 +215,8 @@ describe('sparqly format — --prefix CLI flag', () => {
   });
 
   it('repeatable --prefix name=<iri> introduces a CURIE for matching IRIs', async () => {
-    const stdin = [
-      '<http://other.example/a> <http://other.example/p> <http://other.example/b> .',
-      '',
-    ].join('\n');
+    const stdin =
+      '<http://other.example/a> <http://other.example/p> <http://other.example/b> .\n';
 
     const result = await runCli(
       ['format', '--prefix', 'oth=http://other.example/'],

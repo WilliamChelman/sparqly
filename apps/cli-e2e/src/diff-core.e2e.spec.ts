@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
 import { diffFixture, nonEmptyLines } from './helpers/hash';
@@ -232,12 +233,11 @@ describe('sparqly diff — core properties', () => {
       const configPath = join(scratch, 'sparqly.config.yaml');
       await writeFile(
         configPath,
-        [
-          'diff:',
-          `  left: "${diffFixture('domain.ttl')}"`,
-          `  right: "${diffFixture('parts/*.ttl')}"`,
-          '',
-        ].join('\n'),
+        dedent`
+          diff:
+            left: "${diffFixture('domain.ttl')}"
+            right: "${diffFixture('parts/*.ttl')}"
+        ` + '\n',
       );
 
       const result = await runCli([

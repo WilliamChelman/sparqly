@@ -1,6 +1,7 @@
 import { copyFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { queryFixture } from './helpers/fixtures';
 import { startServe, type ServeHandle } from './helpers/serve';
@@ -58,7 +59,10 @@ describe('sparqly serve — watch mode', () => {
 
       await writeFile(
         dataPath,
-        '@prefix ex: <http://example.org/> .\nex:dave ex:name "Dave" .\n',
+        dedent`
+          @prefix ex: <http://example.org/> .
+          ex:dave ex:name "Dave" .
+        ` + '\n',
       );
       await new Promise((r) => setTimeout(r, 600));
 
@@ -77,7 +81,10 @@ describe('sparqly serve — watch mode', () => {
 
       await writeFile(
         dataPath,
-        '@prefix ex: <http://example.org/> .\nex:dave ex:name "Dave" .\n',
+        dedent`
+          @prefix ex: <http://example.org/> .
+          ex:dave ex:name "Dave" .
+        ` + '\n',
       );
 
       const after = await eventuallyContains(handle, 'Dave');
@@ -101,7 +108,10 @@ describe('sparqly serve — watch mode', () => {
       for (const name of ['One', 'Two', 'Three', 'Four']) {
         await writeFile(
           dataPath,
-          `@prefix ex: <http://example.org/> .\nex:x ex:name "${name}" .\n`,
+          dedent`
+            @prefix ex: <http://example.org/> .
+            ex:x ex:name "${name}" .
+          ` + '\n',
         );
         await new Promise((r) => setTimeout(r, 50));
       }

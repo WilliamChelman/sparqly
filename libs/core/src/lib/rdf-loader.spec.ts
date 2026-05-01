@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadRdf } from './rdf-loader';
 import { QueryEngine } from './query-engine';
@@ -96,7 +97,14 @@ describe('loadRdf', () => {
   it('loads RDF/XML files', async () => {
     await writeFile(
       join(dir, 'a.rdf'),
-      `<?xml version="1.0"?>\n<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:ex="http://example.org/">\n  <rdf:Description rdf:about="http://example.org/a">\n    <ex:p rdf:resource="http://example.org/b"/>\n  </rdf:Description>\n</rdf:RDF>\n`,
+      dedent`
+        <?xml version="1.0"?>
+        <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:ex="http://example.org/">
+          <rdf:Description rdf:about="http://example.org/a">
+            <ex:p rdf:resource="http://example.org/b"/>
+          </rdf:Description>
+        </rdf:RDF>
+      ` + '\n',
     );
     const { store } = await loadRdf({ sources: join(dir, '*.rdf') });
     expect(store.size).toBe(1);
@@ -121,7 +129,14 @@ describe('loadRdf', () => {
     );
     await writeFile(
       join(dir, 'd.rdf'),
-      `<?xml version="1.0"?>\n<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:ex="http://example.org/">\n  <rdf:Description rdf:about="http://example.org/g">\n    <ex:p rdf:resource="http://example.org/h"/>\n  </rdf:Description>\n</rdf:RDF>\n`,
+      dedent`
+        <?xml version="1.0"?>
+        <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:ex="http://example.org/">
+          <rdf:Description rdf:about="http://example.org/g">
+            <ex:p rdf:resource="http://example.org/h"/>
+          </rdf:Description>
+        </rdf:RDF>
+      ` + '\n',
     );
 
     const { store, files } = await loadRdf({ sources: join(dir, '*') });
@@ -293,7 +308,11 @@ describe('loadRdf', () => {
   it('graphStrategy=none: flattens declared graph IRIs from quad-format files into the default graph', async () => {
     await writeFile(
       join(dir, 'a.trig'),
-      '@prefix ex: <http://example.org/> .\nex:g1 { ex:a ex:p ex:b . }\nex:g2 { ex:c ex:p ex:d . }\n',
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:g1 { ex:a ex:p ex:b . }
+        ex:g2 { ex:c ex:p ex:d . }
+      ` + '\n',
     );
     const { store } = await loadRdf({
       sources: join(dir, '*.trig'),
@@ -322,11 +341,11 @@ describe('loadRdf', () => {
     const file = join(dir, 'a.ttl');
     await writeFile(
       file,
-      [
-        '@prefix ex: <http://example.org/> .',
-        '@prefix dct: <http://purl.org/dc/terms/> .',
-        'ex:a ex:p ex:b .',
-      ].join('\n'),
+      dedent`
+        @prefix ex: <http://example.org/> .
+        @prefix dct: <http://purl.org/dc/terms/> .
+        ex:a ex:p ex:b .
+      `,
     );
     const result = await loadRdf({ sources: join(dir, '*.ttl') });
     expect(result.prefixes[file]).toEqual({
@@ -339,10 +358,10 @@ describe('loadRdf', () => {
     const file = join(dir, 'a.trig');
     await writeFile(
       file,
-      [
-        '@prefix ex: <http://example.org/> .',
-        'ex:g { ex:a ex:p ex:b . }',
-      ].join('\n'),
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:g { ex:a ex:p ex:b . }
+      `,
     );
     const result = await loadRdf({ sources: join(dir, '*.trig') });
     expect(result.prefixes[file]).toEqual({

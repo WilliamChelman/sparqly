@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
 
@@ -55,7 +56,11 @@ describe('config file — precedence chain', () => {
     const configPath = join(scratch, 'sparqly.config.yaml');
     await writeFile(
       configPath,
-      ['mutable: true', 'query:', '  mutable: false', ''].join('\n'),
+      dedent`
+        mutable: true
+        query:
+          mutable: false
+      ` + '\n',
     );
 
     const result = await runCli(

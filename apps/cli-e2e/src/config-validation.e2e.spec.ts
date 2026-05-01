@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
 
@@ -29,7 +30,10 @@ describe('config file — validation policy', () => {
     const configPath = join(scratch, 'sparqly.config.yaml');
     await writeFile(
       configPath,
-      ['serve:', '  port: "abc"', ''].join('\n'),
+      dedent`
+        serve:
+          port: "abc"
+      ` + '\n',
     );
 
     const result = await runCli(
@@ -47,7 +51,10 @@ describe('config file — validation policy', () => {
     const configPath = join(scratch, 'sparqly.config.yaml');
     await writeFile(
       configPath,
-      ['bogusTop: 1', 'sources: "data/**/*.ttl"', ''].join('\n'),
+      dedent`
+        bogusTop: 1
+        sources: "data/**/*.ttl"
+      ` + '\n',
     );
 
     const result = await runCli(

@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
 import { escapeRe, hashFixture, hashLineRe, nonEmptyLines } from './helpers/hash';
@@ -26,7 +27,13 @@ describe('sparqly hash — config file + env precedence + --print-config', () =>
   it('reads sources from the hash: block when no CLI/env override is given', async () => {
     const single = hashFixture('domain.ttl');
     const configPath = join(scratch, 'sparqly.config.yaml');
-    await writeFile(configPath, ['hash:', `  sources: "${single}"`, ''].join('\n'));
+    await writeFile(
+      configPath,
+      dedent`
+        hash:
+          sources: "${single}"
+      ` + '\n',
+    );
 
     const result = await runCli(['hash', '--quiet', '--config', configPath], {
       env: CLEARED_ENV,
@@ -44,7 +51,10 @@ describe('sparqly hash — config file + env precedence + --print-config', () =>
     const configPath = join(scratch, 'sparqly.config.yaml');
     await writeFile(
       configPath,
-      ['hash:', `  sources: "${fromConfig}"`, ''].join('\n'),
+      dedent`
+        hash:
+          sources: "${fromConfig}"
+      ` + '\n',
     );
 
     const result = await runCli(['hash', '--quiet', '--config', configPath], {
@@ -64,7 +74,10 @@ describe('sparqly hash — config file + env precedence + --print-config', () =>
     const configPath = join(scratch, 'sparqly.config.yaml');
     await writeFile(
       configPath,
-      ['hash:', `  sources: "${fromConfig}"`, ''].join('\n'),
+      dedent`
+        hash:
+          sources: "${fromConfig}"
+      ` + '\n',
     );
 
     const result = await runCli(
@@ -90,7 +103,11 @@ describe('sparqly hash — config file + env precedence + --print-config', () =>
     const configPath = join(scratch, 'sparqly.config.yaml');
     await writeFile(
       configPath,
-      ['hash:', `  sources: "${single}"`, '  json: true', ''].join('\n'),
+      dedent`
+        hash:
+          sources: "${single}"
+          json: true
+      ` + '\n',
     );
 
     const result = await runCli(['hash', '--quiet', '--config', configPath], {
@@ -125,12 +142,11 @@ describe('sparqly hash — config file + env precedence + --print-config', () =>
     const configPath = join(scratch, 'sparqly.config.yaml');
     await writeFile(
       configPath,
-      [
-        'hash:',
-        `  sources: "${single}"`,
-        `  compareWith: "${partsGlob}"`,
-        '',
-      ].join('\n'),
+      dedent`
+        hash:
+          sources: "${single}"
+          compareWith: "${partsGlob}"
+      ` + '\n',
     );
 
     const result = await runCli(['hash', '--quiet', '--config', configPath], {
@@ -146,7 +162,10 @@ describe('sparqly hash — config file + env precedence + --print-config', () =>
     const configPath = join(scratch, 'sparqly.config.yaml');
     await writeFile(
       configPath,
-      ['hash:', `  sources: "${single}"`, ''].join('\n'),
+      dedent`
+        hash:
+          sources: "${single}"
+      ` + '\n',
     );
 
     const result = await runCli(
@@ -199,7 +218,12 @@ describe('sparqly hash — config file + env precedence + --print-config', () =>
     const configPath = join(scratch, 'sparqly.config.yaml');
     await writeFile(
       configPath,
-      ['hash:', '  sources:', `    - "${a}"`, `    - "${b}"`, ''].join('\n'),
+      dedent`
+        hash:
+          sources:
+            - "${a}"
+            - "${b}"
+      ` + '\n',
     );
 
     const result = await runCli(['hash', '--quiet', '--config', configPath], {

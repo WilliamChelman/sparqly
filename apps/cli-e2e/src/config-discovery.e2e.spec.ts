@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
 
@@ -34,7 +35,10 @@ describe('config file — discovery and explicit --config', () => {
       const sources = `${scratch}/data/**/*.ttl`;
       await writeFile(
         join(scratch, filename),
-        ['query:', `  sources: "${sources}"`, ''].join('\n'),
+        dedent`
+          query:
+            sources: "${sources}"
+        ` + '\n',
       );
 
       const result = await runCli(['query', '--print-config'], {
@@ -71,7 +75,10 @@ describe('config file — discovery and explicit --config', () => {
     const filepath = join(scratch, 'sparqly.config.yaml');
     await writeFile(
       filepath,
-      ['query:', `  sources: "${scratch}/x/**/*.ttl"`, ''].join('\n'),
+      dedent`
+        query:
+          sources: "${scratch}/x/**/*.ttl"
+      ` + '\n',
     );
 
     const result = await runCli(['query', '--print-config', '--verbose'], {
@@ -88,12 +95,18 @@ describe('config file — discovery and explicit --config', () => {
     const explicitSources = `${scratch}/explicit/**/*.ttl`;
     await writeFile(
       join(scratch, 'sparqly.config.yaml'),
-      ['query:', `  sources: "${autoSources}"`, ''].join('\n'),
+      dedent`
+        query:
+          sources: "${autoSources}"
+      ` + '\n',
     );
     const explicitPath = join(scratch, 'explicit.yaml');
     await writeFile(
       explicitPath,
-      ['query:', `  sources: "${explicitSources}"`, ''].join('\n'),
+      dedent`
+        query:
+          sources: "${explicitSources}"
+      ` + '\n',
     );
 
     const result = await runCli(

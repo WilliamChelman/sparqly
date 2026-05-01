@@ -1,18 +1,15 @@
-import { DataFactory, Store } from 'n3';
+import { Store } from 'n3';
 import { describe, expect, it } from 'vitest';
 import { QueryEngine } from './query-engine';
-
-const { namedNode, quad } = DataFactory;
+import { ttl } from './test/turtle';
 
 function exampleStore(): Store {
+  const { quads } = ttl`
+    @prefix ex: <http://example.org/> .
+    ex:a ex:p ex:b .
+  `;
   const store = new Store();
-  store.addQuad(
-    quad(
-      namedNode('http://example.org/a'),
-      namedNode('http://example.org/p'),
-      namedNode('http://example.org/b'),
-    ),
-  );
+  store.addQuads(quads);
   return store;
 }
 

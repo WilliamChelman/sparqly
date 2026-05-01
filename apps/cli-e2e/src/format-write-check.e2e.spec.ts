@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
 
@@ -16,15 +17,14 @@ describe('sparqly format --write', () => {
   });
 
   it('rewrites a dirty file in place and exits 0', async () => {
-    const dirty = [
-      '@prefix ex: <http://example.org/> .',
-      '@prefix unused: <http://other.example/> .',
-      '',
-      'ex:c ex:p ex:d .',
-      'ex:a ex:p ex:b .',
-      'ex:a a ex:Thing .',
-      '',
-    ].join('\n');
+    const dirty = dedent`
+      @prefix ex: <http://example.org/> .
+      @prefix unused: <http://other.example/> .
+
+      ex:c ex:p ex:d .
+      ex:a ex:p ex:b .
+      ex:a a ex:Thing .
+    ` + '\n';
     const file = join(dir, 'data.ttl');
     await writeFile(file, dirty);
 
@@ -36,13 +36,14 @@ describe('sparqly format --write', () => {
     expect(result.stdout).toBe('');
     const after = await readFile(file, 'utf8');
     expect(after).not.toBe(dirty);
-    expect(after).toContain('@prefix ex: <http://example.org/>');
-    expect(after).not.toContain('@prefix unused:');
-    const aIdx = after.indexOf('ex:a');
-    const cIdx = after.indexOf('ex:c');
-    expect(aIdx).toBeGreaterThan(-1);
-    expect(cIdx).toBeGreaterThan(-1);
-    expect(aIdx).toBeLessThan(cIdx);
+    expect(after).toMatchInlineSnapshot(`
+      "@prefix ex: <http://example.org/>.
+
+      ex:a a ex:Thing;
+          ex:p ex:b.
+      ex:c ex:p ex:d.
+      "
+    `);
   });
 });
 
@@ -58,13 +59,12 @@ describe('sparqly format --check', () => {
   });
 
   it('exits 0 with no output when every matched file is already formatted', async () => {
-    const dirty = [
-      '@prefix ex: <http://example.org/> .',
-      '',
-      'ex:c ex:p ex:d .',
-      'ex:a ex:p ex:b .',
-      '',
-    ].join('\n');
+    const dirty = dedent`
+      @prefix ex: <http://example.org/> .
+
+      ex:c ex:p ex:d .
+      ex:a ex:p ex:b .
+    ` + '\n';
     const file = join(dir, 'data.ttl');
     await writeFile(file, dirty);
     // Format once via --write to produce a clean baseline.
@@ -92,14 +92,13 @@ describe('sparqly format --check', () => {
   });
 
   it('exits 1, lists unformatted file paths to stdout, and does not mutate files', async () => {
-    const dirty = [
-      '@prefix ex: <http://example.org/> .',
-      '@prefix unused: <http://other.example/> .',
-      '',
-      'ex:c ex:p ex:d .',
-      'ex:a ex:p ex:b .',
-      '',
-    ].join('\n');
+    const dirty = dedent`
+      @prefix ex: <http://example.org/> .
+      @prefix unused: <http://other.example/> .
+
+      ex:c ex:p ex:d .
+      ex:a ex:p ex:b .
+    ` + '\n';
     const file = join(dir, 'data.ttl');
     await writeFile(file, dirty);
 
