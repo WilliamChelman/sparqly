@@ -58,6 +58,7 @@
     "@vitest/coverage-v8": "~4.1.0",
     "angular-eslint": "^21.2.0",
     "conventional-changelog-conventionalcommits": "^9.3.1",
+    "dedent": "^1.7.2",
     "eslint": "^9.8.0",
     "eslint-config-prettier": "^10.0.0",
     "jsdom": "^27.1.0",

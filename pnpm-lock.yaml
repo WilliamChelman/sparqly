@@ -178,6 +178,9 @@ importers:
       conventional-changelog-conventionalcommits:
         specifier: ^9.3.1
         version: 9.3.1
+      dedent:
+        specifier: ^1.7.2
+        version: 1.7.2
       eslint:
         specifier: ^9.8.0
         version: 9.39.4

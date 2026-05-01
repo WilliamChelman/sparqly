@@ -1,3 +1,4 @@
+import dedent from 'dedent';
 import { describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
 import { formatFixture } from './helpers/hash';
@@ -14,24 +15,23 @@ describe('sparqly format — core happy path', () => {
   });
 
   it('reads turtle from stdin when no positional argument is supplied', async () => {
-    const turtle = [
-      '@prefix ex: <http://example.org/> .',
-      'ex:b ex:p ex:c .',
-      'ex:a ex:p ex:b .',
-      '',
-    ].join('\n');
+    const turtle = dedent`
+      @prefix ex: <http://example.org/> .
+      ex:b ex:p ex:c .
+      ex:a ex:p ex:b .
+    ` + '\n';
 
     const result = await runCli(['format'], { stdin: turtle });
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
-    expect(result.stdout).toContain('@prefix ex: <http://example.org/>');
-    expect(result.stdout).toContain('ex:a ex:p ex:b');
-    const aIdx = result.stdout.indexOf('ex:a ex:p');
-    const bIdx = result.stdout.indexOf('ex:b ex:p');
-    expect(aIdx).toBeGreaterThan(-1);
-    expect(bIdx).toBeGreaterThan(-1);
-    expect(aIdx).toBeLessThan(bIdx);
+    expect(result.stdout).toMatchInlineSnapshot(`
+      "@prefix ex: <http://example.org/>.
+
+      ex:a ex:p ex:b.
+      ex:b ex:p ex:c.
+      "
+    `);
   });
 
   it('errors when no glob is supplied and stdin is a TTY', async () => {

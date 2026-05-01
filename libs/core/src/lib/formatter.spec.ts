@@ -2,6 +2,8 @@ import { DataFactory, Parser } from 'n3';
 import { canonize } from 'rdf-canonize';
 import { describe, expect, it } from 'vitest';
 import { formatRdf } from './formatter';
+import { parseRdfString } from './parse-rdf-string';
+import { ttl } from './test/turtle';
 
 const { namedNode, quad } = DataFactory;
 
@@ -11,17 +13,11 @@ describe('formatRdf', () => {
   });
 
   it('emits an IRI in full <...> form when no configured prefix matches', () => {
-    const out = formatRdf(
-      [
-        quad(
-          namedNode('http://example.org/a'),
-          namedNode('http://example.org/p'),
-          namedNode('http://example.org/b'),
-        ),
-      ],
-      'turtle',
-      { prefixes: {} },
-    );
+    const { quads } = ttl`
+      @prefix ex: <http://example.org/> .
+      ex:a ex:p ex:b .
+    `;
+    const out = formatRdf(quads, 'turtle', { prefixes: {} });
 
     expect(out).toContain('<http://example.org/a>');
     expect(out).toContain('<http://example.org/p>');
@@ -32,17 +28,13 @@ describe('formatRdf', () => {
   });
 
   it('shortens IRIs to CURIEs when a configured prefix matches', () => {
-    const out = formatRdf(
-      [
-        quad(
-          namedNode('http://example.org/a'),
-          namedNode('http://example.org/p'),
-          namedNode('http://example.org/b'),
-        ),
-      ],
-      'turtle',
-      { prefixes: { ex: 'http://example.org/' } },
-    );
+    const { quads } = ttl`
+      @prefix ex: <http://example.org/> .
+      ex:a ex:p ex:b .
+    `;
+    const out = formatRdf(quads, 'turtle', {
+      prefixes: { ex: 'http://example.org/' },
+    });
 
     expect(out).toMatch(/^@prefix ex: <http:\/\/example\.org\/>\s*\.$/m);
     expect(out).toContain('ex:a');
@@ -52,22 +44,16 @@ describe('formatRdf', () => {
   });
 
   it('drops prefixes that are not used by any quad', () => {
-    const out = formatRdf(
-      [
-        quad(
-          namedNode('http://example.org/a'),
-          namedNode('http://example.org/p'),
-          namedNode('http://example.org/b'),
-        ),
-      ],
-      'turtle',
-      {
-        prefixes: {
-          ex: 'http://example.org/',
-          unused: 'http://other.example/',
-        },
+    const { quads } = ttl`
+      @prefix ex: <http://example.org/> .
+      ex:a ex:p ex:b .
+    `;
+    const out = formatRdf(quads, 'turtle', {
+      prefixes: {
+        ex: 'http://example.org/',
+        unused: 'http://other.example/',
       },
-    );
+    });
 
     expect(out).toContain('@prefix ex:');
     expect(out).not.toContain('@prefix unused:');
@@ -76,46 +62,44 @@ describe('formatRdf', () => {
 
   it('produces identical output regardless of input quad order', () => {
     const ex = 'http://example.org/';
-    const triples = [
-      quad(namedNode(ex + 'b'), namedNode(ex + 'p'), namedNode(ex + 'z')),
-      quad(namedNode(ex + 'a'), namedNode(ex + 'q'), namedNode(ex + 'y')),
-      quad(namedNode(ex + 'a'), namedNode(ex + 'p'), namedNode(ex + 'x')),
-      quad(namedNode(ex + 'b'), namedNode(ex + 'p'), namedNode(ex + 'a')),
-    ];
+    const { quads } = ttl`
+      @prefix ex: <http://example.org/> .
+      ex:b ex:p ex:z .
+      ex:a ex:q ex:y .
+      ex:a ex:p ex:x .
+      ex:b ex:p ex:a .
+    `;
 
-    const a = formatRdf(triples, 'turtle', { prefixes: { ex } });
-    const b = formatRdf([...triples].reverse(), 'turtle', { prefixes: { ex } });
+    const a = formatRdf(quads, 'turtle', { prefixes: { ex } });
+    const b = formatRdf([...quads].reverse(), 'turtle', { prefixes: { ex } });
 
     expect(a).toBe(b);
   });
 
   it('renders rdf:type as `a` and emits it before other predicates of the same subject', () => {
-    const ex = 'http://example.org/';
-    const rdfType = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
-    const out = formatRdf(
-      [
-        quad(namedNode(ex + 's'), namedNode(ex + 'p'), namedNode(ex + 'o')),
-        quad(namedNode(ex + 's'), namedNode(rdfType), namedNode(ex + 'T')),
-      ],
-      'turtle',
-      { prefixes: { ex } },
-    );
+    const { quads } = ttl`
+      @prefix ex: <http://example.org/> .
+      ex:s ex:p ex:o .
+      ex:s a ex:T .
+    `;
+    const out = formatRdf(quads, 'turtle', {
+      prefixes: { ex: 'http://example.org/' },
+    });
 
-    const aIdx = out.indexOf(' a ');
-    const pIdx = out.indexOf('ex:p');
-    expect(aIdx).toBeGreaterThan(-1);
-    expect(pIdx).toBeGreaterThan(-1);
-    expect(aIdx).toBeLessThan(pIdx);
-    expect(out).not.toContain('rdf:type');
+    expect(out).toMatchInlineSnapshot(`
+      "@prefix ex: <http://example.org/>.
+
+      ex:s a ex:T;
+          ex:p ex:o.
+      "
+    `);
   });
 
   describe('over the turtle corpus', () => {
     it('matches the golden snapshot for simple-prefix', () => {
       const fixture = TURTLE_CORPUS[0];
-      const quads = new Parser({ format: 'text/turtle' }).parse(fixture.turtle);
-      const out = formatRdf(quads, 'turtle', {
-        prefixes: parsePrefixes(fixture.turtle),
-      });
+      const { quads, prefixes } = parseRdfString(fixture.turtle);
+      const out = formatRdf(quads, 'turtle', { prefixes });
 
       expect(out).toMatchInlineSnapshot(`
         "@prefix ex: <http://example.org/>.
@@ -131,49 +115,35 @@ describe('formatRdf', () => {
       const objectAnchoredPredicates = fixture.objectAnchoredPredicates;
 
       it(`is idempotent for ${fixture.name}`, () => {
-        const base = parseBase(fixture.turtle);
-        const quads1 = new Parser({
-          format: 'text/turtle',
-          baseIRI: base,
-        }).parse(fixture.turtle);
-        const out1 = formatRdf(quads1, 'turtle', {
-          prefixes: parsePrefixes(fixture.turtle),
-          base,
+        const parsed1 = parseRdfString(fixture.turtle);
+        const out1 = formatRdf(parsed1.quads, 'turtle', {
+          prefixes: parsed1.prefixes,
+          base: parsed1.base,
           objectAnchoredPredicates,
         });
-        const quads2 = new Parser({
-          format: 'text/turtle',
-          baseIRI: base,
-        }).parse(out1);
-        const out2 = formatRdf(quads2, 'turtle', {
-          prefixes: parsePrefixes(out1),
-          base: parseBase(out1),
+        const parsed2 = parseRdfString(out1);
+        const out2 = formatRdf(parsed2.quads, 'turtle', {
+          prefixes: parsed2.prefixes,
+          base: parsed2.base,
           objectAnchoredPredicates,
         });
         expect(out2).toBe(out1);
       });
 
       it(`round-trips through canonicalization for ${fixture.name}`, async () => {
-        const base = parseBase(fixture.turtle);
-        const original = new Parser({
-          format: 'text/turtle',
-          baseIRI: base,
-        }).parse(fixture.turtle);
-        const out = formatRdf(original, 'turtle', {
-          prefixes: parsePrefixes(fixture.turtle),
-          base,
+        const parsed = parseRdfString(fixture.turtle);
+        const out = formatRdf(parsed.quads, 'turtle', {
+          prefixes: parsed.prefixes,
+          base: parsed.base,
           objectAnchoredPredicates,
         });
-        const formatted = new Parser({
-          format: 'text/turtle',
-          baseIRI: base,
-        }).parse(out);
+        const formatted = parseRdfString(out);
         const [originalCanon, formattedCanon] = await Promise.all([
-          canonize(original, {
+          canonize(parsed.quads, {
             algorithm: 'RDFC-1.0',
             format: 'application/n-quads',
           }),
-          canonize(formatted, {
+          canonize(formatted.quads, {
             algorithm: 'RDFC-1.0',
             format: 'application/n-quads',
           }),
@@ -185,13 +155,11 @@ describe('formatRdf', () => {
 
   describe('rdf list compaction', () => {
     it('renders a well-formed rdf:first/rdf:rest/rdf:nil chain as ( ... )', () => {
-      const turtle = [
-        '@prefix ex: <http://example.org/> .',
-        '',
-        'ex:s ex:p ( ex:a ex:b ex:c ) .',
-        '',
-      ].join('\n');
-      const quads = new Parser({ format: 'text/turtle' }).parse(turtle);
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+
+        ex:s ex:p ( ex:a ex:b ex:c ) .
+      `;
       const out = formatRdf(quads, 'turtle', {
         prefixes: { ex: 'http://example.org/' },
       });
@@ -247,13 +215,11 @@ describe('formatRdf', () => {
     });
 
     it('matches the golden snapshot for a well-formed list', () => {
-      const turtle = [
-        '@prefix ex: <http://example.org/> .',
-        '',
-        'ex:s ex:p ( ex:a ex:b ex:c ) .',
-        '',
-      ].join('\n');
-      const quads = new Parser({ format: 'text/turtle' }).parse(turtle);
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+
+        ex:s ex:p ( ex:a ex:b ex:c ) .
+      `;
       const out = formatRdf(quads, 'turtle', {
         prefixes: { ex: 'http://example.org/' },
       });
@@ -286,13 +252,14 @@ describe('formatRdf', () => {
 
   describe('anonymous blank node inlining', () => {
     it('inlines a single-use blank-node object as `[ ... ]`', () => {
-      const ex = 'http://example.org/';
-      const b = DataFactory.blankNode('x');
-      const triples = [
-        quad(namedNode(ex + 's'), namedNode(ex + 'p'), b),
-        quad(b, namedNode(ex + 'q'), namedNode(ex + 'o')),
-      ];
-      const out = formatRdf(triples, 'turtle', { prefixes: { ex } });
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+
+        ex:s ex:p [ ex:q ex:o ] .
+      `;
+      const out = formatRdf(quads, 'turtle', {
+        prefixes: { ex: 'http://example.org/' },
+      });
 
       expect(out).toMatch(/ex:s\s+ex:p\s+\[/);
       expect(out).toContain('ex:q ex:o');
@@ -302,14 +269,16 @@ describe('formatRdf', () => {
     });
 
     it('keeps a labeled blank node when it is referenced more than once', () => {
-      const ex = 'http://example.org/';
-      const b = DataFactory.blankNode('shared');
-      const triples = [
-        quad(namedNode(ex + 's1'), namedNode(ex + 'p'), b),
-        quad(namedNode(ex + 's2'), namedNode(ex + 'p'), b),
-        quad(b, namedNode(ex + 'q'), namedNode(ex + 'o')),
-      ];
-      const out = formatRdf(triples, 'turtle', { prefixes: { ex } });
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+
+        ex:s1 ex:p _:shared .
+        ex:s2 ex:p _:shared .
+        _:shared ex:q ex:o .
+      `;
+      const out = formatRdf(quads, 'turtle', {
+        prefixes: { ex: 'http://example.org/' },
+      });
 
       expect(out).toMatch(/_:\w+/);
       expect(out).not.toMatch(/ex:p\s*\[/);
@@ -318,12 +287,14 @@ describe('formatRdf', () => {
     });
 
     it('inlines a single-use blank node with no own properties as `[]`', () => {
-      const ex = 'http://example.org/';
-      const b = DataFactory.blankNode('lonely');
-      const triples = [
-        quad(namedNode(ex + 's'), namedNode(ex + 'p'), b),
-      ];
-      const out = formatRdf(triples, 'turtle', { prefixes: { ex } });
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+
+        ex:s ex:p [] .
+      `;
+      const out = formatRdf(quads, 'turtle', {
+        prefixes: { ex: 'http://example.org/' },
+      });
 
       expect(out).toMatch(/ex:s\s+ex:p\s+\[\s*\]/);
       expect(out).not.toMatch(/_:\w+/);
@@ -332,15 +303,14 @@ describe('formatRdf', () => {
     });
 
     it('inlines nested single-use blank nodes', () => {
-      const ex = 'http://example.org/';
-      const b1 = DataFactory.blankNode('a');
-      const b2 = DataFactory.blankNode('b');
-      const triples = [
-        quad(namedNode(ex + 's'), namedNode(ex + 'p'), b1),
-        quad(b1, namedNode(ex + 'q'), b2),
-        quad(b2, namedNode(ex + 'r'), namedNode(ex + 'o')),
-      ];
-      const out = formatRdf(triples, 'turtle', { prefixes: { ex } });
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+
+        ex:s ex:p [ ex:q [ ex:r ex:o ] ] .
+      `;
+      const out = formatRdf(quads, 'turtle', {
+        prefixes: { ex: 'http://example.org/' },
+      });
 
       expect(out).not.toMatch(/_:\w+/);
       expect(out).toMatch(/ex:s\s+ex:p\s+\[/);
@@ -351,13 +321,11 @@ describe('formatRdf', () => {
     });
 
     it('does not inline a list head — list compaction wins', () => {
-      const turtle = [
-        '@prefix ex: <http://example.org/> .',
-        '',
-        'ex:s ex:p ( ex:a ex:b ) .',
-        '',
-      ].join('\n');
-      const quads = new Parser({ format: 'text/turtle' }).parse(turtle);
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+
+        ex:s ex:p ( ex:a ex:b ) .
+      `;
       const out = formatRdf(quads, 'turtle', {
         prefixes: { ex: 'http://example.org/' },
       });
@@ -371,22 +339,22 @@ describe('formatRdf', () => {
     });
 
     it('emits objects of the same predicate in alphabetical order', () => {
-      const ex = 'http://example.org/';
-      const triples = [
-        quad(namedNode(ex + 's'), namedNode(ex + 'p'), namedNode(ex + 'z')),
-        quad(namedNode(ex + 's'), namedNode(ex + 'p'), namedNode(ex + 'a')),
-        quad(namedNode(ex + 's'), namedNode(ex + 'p'), namedNode(ex + 'm')),
-      ];
-      const out = formatRdf(triples, 'turtle', { prefixes: { ex } });
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+        ex:s ex:p ex:z .
+        ex:s ex:p ex:a .
+        ex:s ex:p ex:m .
+      `;
+      const out = formatRdf(quads, 'turtle', {
+        prefixes: { ex: 'http://example.org/' },
+      });
 
-      const aIdx = out.indexOf('ex:a');
-      const mIdx = out.indexOf('ex:m');
-      const zIdx = out.indexOf('ex:z');
-      expect(aIdx).toBeGreaterThan(-1);
-      expect(mIdx).toBeGreaterThan(-1);
-      expect(zIdx).toBeGreaterThan(-1);
-      expect(aIdx).toBeLessThan(mIdx);
-      expect(mIdx).toBeLessThan(zIdx);
+      expect(out).toMatchInlineSnapshot(`
+        "@prefix ex: <http://example.org/>.
+
+        ex:s ex:p ex:a, ex:m, ex:z.
+        "
+      `);
     });
   });
 
@@ -395,79 +363,60 @@ describe('formatRdf', () => {
     const ex = 'http://example.org/';
 
     it('emits the anchored triple immediately before the object\'s description block', () => {
-      const triples = [
-        quad(
-          namedNode(ex + 'NS'),
-          namedNode(SH + 'property'),
-          namedNode(ex + 'PropShape'),
-        ),
-        quad(
-          namedNode(ex + 'NS'),
-          namedNode('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'),
-          namedNode(SH + 'NodeShape'),
-        ),
-        quad(
-          namedNode(ex + 'PropShape'),
-          namedNode(SH + 'path'),
-          namedNode(ex + 'name'),
-        ),
-        quad(
-          namedNode(ex + 'PropShape'),
-          namedNode('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'),
-          namedNode(SH + 'PropertyShape'),
-        ),
-      ];
-      const out = formatRdf(triples, 'turtle', {
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        ex:NS sh:property ex:PropShape .
+        ex:NS a sh:NodeShape .
+        ex:PropShape sh:path ex:name .
+        ex:PropShape a sh:PropertyShape .
+      `;
+      const out = formatRdf(quads, 'turtle', {
         prefixes: { ex, sh: SH },
         objectAnchoredPredicates: [SH + 'property'],
       });
 
-      // The anchored triple is a standalone top-level triple — not inlined.
-      expect(out).toMatch(/ex:NS\s+sh:property\s+ex:PropShape\s*\./);
-      // Object keeps its own description block.
-      expect(out).toMatch(/ex:PropShape\s+a\s+sh:PropertyShape/);
-      // No `[…]` inlining of the property shape.
-      expect(out).not.toMatch(/sh:property\s+\[/);
-      // The anchored line precedes the object's block.
-      const anchorIdx = out.search(/ex:NS\s+sh:property/);
-      const blockIdx = out.search(/ex:PropShape\s+a/);
-      expect(anchorIdx).toBeGreaterThan(-1);
-      expect(blockIdx).toBeGreaterThan(-1);
-      expect(anchorIdx).toBeLessThan(blockIdx);
+      expect(out).toMatchInlineSnapshot(`
+        "@prefix ex: <http://example.org/>.
+        @prefix sh: <http://www.w3.org/ns/shacl#>.
+
+        ex:NS a sh:NodeShape.
+        ex:NS sh:property ex:PropShape.
+        ex:PropShape a sh:PropertyShape;
+            sh:path ex:name.
+        "
+      `);
     });
 
     it('accepts CURIEs in the predicate list when the prefix is configured', () => {
-      const triples = [
-        quad(
-          namedNode(ex + 'NS'),
-          namedNode(SH + 'property'),
-          namedNode(ex + 'PropShape'),
-        ),
-        quad(
-          namedNode(ex + 'PropShape'),
-          namedNode(SH + 'path'),
-          namedNode(ex + 'name'),
-        ),
-      ];
-      const out = formatRdf(triples, 'turtle', {
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        ex:NS sh:property ex:PropShape .
+        ex:PropShape sh:path ex:name .
+      `;
+      const out = formatRdf(quads, 'turtle', {
         prefixes: { ex, sh: SH },
         objectAnchoredPredicates: ['sh:property'],
       });
 
-      const anchorIdx = out.search(/ex:NS\s+sh:property\s+ex:PropShape/);
-      const blockIdx = out.search(/ex:PropShape\s+sh:path/);
-      expect(anchorIdx).toBeGreaterThan(-1);
-      expect(blockIdx).toBeGreaterThan(-1);
-      expect(anchorIdx).toBeLessThan(blockIdx);
+      expect(out).toMatchInlineSnapshot(`
+        "@prefix ex: <http://example.org/>.
+        @prefix sh: <http://www.w3.org/ns/shacl#>.
+
+        ex:NS sh:property ex:PropShape.
+        ex:PropShape sh:path ex:name.
+        "
+      `);
     });
 
     it('does not anchor when the object is a blank node — falls back to default placement', () => {
-      const b = DataFactory.blankNode('p');
-      const triples = [
-        quad(namedNode(ex + 'NS'), namedNode(SH + 'property'), b),
-        quad(b, namedNode(SH + 'path'), namedNode(ex + 'name')),
-      ];
-      const out = formatRdf(triples, 'turtle', {
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        ex:NS sh:property [ sh:path ex:name ] .
+      `;
+      const out = formatRdf(quads, 'turtle', {
         prefixes: { ex, sh: SH },
         objectAnchoredPredicates: [SH + 'property'],
       });
@@ -480,78 +429,55 @@ describe('formatRdf', () => {
     });
 
     it('chains: an anchored object that is itself an anchor source places its own anchor next', () => {
-      // ex:A sh:property ex:B ; ex:B sh:property ex:C
-      const triples = [
-        quad(
-          namedNode(ex + 'A'),
-          namedNode(SH + 'property'),
-          namedNode(ex + 'B'),
-        ),
-        quad(
-          namedNode(ex + 'A'),
-          namedNode(SH + 'targetClass'),
-          namedNode(ex + 'X'),
-        ),
-        quad(
-          namedNode(ex + 'B'),
-          namedNode(SH + 'property'),
-          namedNode(ex + 'C'),
-        ),
-        quad(namedNode(ex + 'B'), namedNode(SH + 'path'), namedNode(ex + 'p1')),
-        quad(namedNode(ex + 'C'), namedNode(SH + 'path'), namedNode(ex + 'p2')),
-      ];
-      const out = formatRdf(triples, 'turtle', {
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        ex:A sh:property ex:B .
+        ex:A sh:targetClass ex:X .
+        ex:B sh:property ex:C .
+        ex:B sh:path ex:p1 .
+        ex:C sh:path ex:p2 .
+      `;
+      const out = formatRdf(quads, 'turtle', {
         prefixes: { ex, sh: SH },
         objectAnchoredPredicates: [SH + 'property'],
       });
 
-      const aBlock = out.search(/ex:A\s+sh:targetClass/);
-      const aProp = out.search(/ex:A\s+sh:property\s+ex:B/);
-      const bBlock = out.search(/ex:B\s+sh:path/);
-      const bProp = out.search(/ex:B\s+sh:property\s+ex:C/);
-      const cBlock = out.search(/ex:C\s+sh:path/);
-      expect(aBlock).toBeGreaterThan(-1);
-      expect(aProp).toBeGreaterThan(-1);
-      expect(bBlock).toBeGreaterThan(-1);
-      expect(bProp).toBeGreaterThan(-1);
-      expect(cBlock).toBeGreaterThan(-1);
-      expect(aBlock).toBeLessThan(aProp);
-      expect(aProp).toBeLessThan(bBlock);
-      expect(bBlock).toBeLessThan(bProp);
-      expect(bProp).toBeLessThan(cBlock);
+      expect(out).toMatchInlineSnapshot(`
+        "@prefix ex: <http://example.org/>.
+        @prefix sh: <http://www.w3.org/ns/shacl#>.
+
+        ex:A sh:targetClass ex:X.
+        ex:A sh:property ex:B.
+        ex:B sh:path ex:p1.
+        ex:B sh:property ex:C.
+        ex:C sh:path ex:p2.
+        "
+      `);
     });
 
     it('groups multiple anchored references to the same object together, before the object\'s block', () => {
-      const triples = [
-        quad(
-          namedNode(ex + 'NS1'),
-          namedNode(SH + 'property'),
-          namedNode(ex + 'PropShape'),
-        ),
-        quad(
-          namedNode(ex + 'NS2'),
-          namedNode(SH + 'property'),
-          namedNode(ex + 'PropShape'),
-        ),
-        quad(
-          namedNode(ex + 'PropShape'),
-          namedNode(SH + 'path'),
-          namedNode(ex + 'name'),
-        ),
-      ];
-      const out = formatRdf(triples, 'turtle', {
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        ex:NS1 sh:property ex:PropShape .
+        ex:NS2 sh:property ex:PropShape .
+        ex:PropShape sh:path ex:name .
+      `;
+      const out = formatRdf(quads, 'turtle', {
         prefixes: { ex, sh: SH },
         objectAnchoredPredicates: [SH + 'property'],
       });
 
-      const ns1 = out.search(/ex:NS1\s+sh:property\s+ex:PropShape/);
-      const ns2 = out.search(/ex:NS2\s+sh:property\s+ex:PropShape/);
-      const block = out.search(/ex:PropShape\s+sh:path/);
-      expect(ns1).toBeGreaterThan(-1);
-      expect(ns2).toBeGreaterThan(-1);
-      expect(block).toBeGreaterThan(-1);
-      expect(ns1).toBeLessThan(ns2);
-      expect(ns2).toBeLessThan(block);
+      expect(out).toMatchInlineSnapshot(`
+        "@prefix ex: <http://example.org/>.
+        @prefix sh: <http://www.w3.org/ns/shacl#>.
+
+        ex:NS1 sh:property ex:PropShape.
+        ex:NS2 sh:property ex:PropShape.
+        ex:PropShape sh:path ex:name.
+        "
+      `);
 
       // No duplication of the description.
       const matches = [...out.matchAll(/sh:path\s+ex:name/g)];
@@ -561,17 +487,14 @@ describe('formatRdf', () => {
 
   describe('@base handling', () => {
     it('emits @base and shortens matching absolute IRIs to relative form', () => {
-      const out = formatRdf(
-        [
-          quad(
-            namedNode('http://example.org/a'),
-            namedNode('http://example.org/p'),
-            namedNode('http://example.org/b'),
-          ),
-        ],
-        'turtle',
-        { prefixes: {}, base: 'http://example.org/' },
-      );
+      const { quads } = ttl`
+        @base <http://example.org/> .
+        <a> <p> <b> .
+      `;
+      const out = formatRdf(quads, 'turtle', {
+        prefixes: {},
+        base: 'http://example.org/',
+      });
 
       expect(out).toMatch(/^@base <http:\/\/example\.org\/>\s*\.$/m);
       expect(out).not.toContain('<http://example.org/a>');
@@ -587,13 +510,10 @@ describe('formatRdf', () => {
     });
 
     it('round-trips through canonicalization when a base is configured', async () => {
-      const original = [
-        quad(
-          namedNode('http://example.org/a'),
-          namedNode('http://example.org/p'),
-          namedNode('http://example.org/b'),
-        ),
-      ];
+      const { quads: original } = ttl`
+        @base <http://example.org/> .
+        <a> <p> <b> .
+      `;
       const out = formatRdf(original, 'turtle', {
         prefixes: {},
         base: 'http://example.org/',
@@ -618,35 +538,34 @@ describe('formatRdf', () => {
 
   describe('trig output', () => {
     it('orders graph blocks alphabetically by graph IRI', () => {
-      const trig = [
-        '@prefix ex: <http://example.org/> .',
-        '',
-        'ex:gZ { ex:s ex:p ex:o . }',
-        'ex:gA { ex:s ex:p ex:o . }',
-        'ex:gM { ex:s ex:p ex:o . }',
-        '',
-      ].join('\n');
-      const quads = new Parser({ format: 'application/trig' }).parse(trig);
-      const out = formatRdf(quads, 'trig', {
-        prefixes: parsePrefixes(trig, 'application/trig'),
-      });
+      const { quads, prefixes } = ttl`
+        @prefix ex: <http://example.org/> .
 
-      const aIdx = out.indexOf('ex:gA');
-      const mIdx = out.indexOf('ex:gM');
-      const zIdx = out.indexOf('ex:gZ');
-      expect(aIdx).toBeGreaterThan(-1);
-      expect(mIdx).toBeGreaterThan(-1);
-      expect(zIdx).toBeGreaterThan(-1);
-      expect(aIdx).toBeLessThan(mIdx);
-      expect(mIdx).toBeLessThan(zIdx);
+        ex:gZ { ex:s ex:p ex:o . }
+        ex:gA { ex:s ex:p ex:o . }
+        ex:gM { ex:s ex:p ex:o . }
+      `;
+      const out = formatRdf(quads, 'trig', { prefixes });
+
+      expect(out).toMatchInlineSnapshot(`
+        "@prefix ex: <http://example.org/>.
+
+        ex:gA {
+        ex:s ex:p ex:o
+        }
+        ex:gM {
+        ex:s ex:p ex:o
+        }
+        ex:gZ {
+        ex:s ex:p ex:o
+        }
+        "
+      `);
     });
 
     it('matches the golden snapshot for two-named-graphs', () => {
-      const trig = TRIG_CORPUS[0].trig;
-      const quads = new Parser({ format: 'application/trig' }).parse(trig);
-      const out = formatRdf(quads, 'trig', {
-        prefixes: parsePrefixes(trig, 'application/trig'),
-      });
+      const { quads, prefixes } = parseRdfString(TRIG_CORPUS[0].trig);
+      const out = formatRdf(quads, 'trig', { prefixes });
 
       expect(out).toMatchInlineSnapshot(`
         "@prefix ex: <http://example.org/>.
@@ -663,33 +582,29 @@ describe('formatRdf', () => {
 
     for (const fixture of TRIG_CORPUS) {
       it(`is idempotent for ${fixture.name}`, () => {
-        const quads1 = new Parser({ format: 'application/trig' }).parse(
-          fixture.trig,
-        );
-        const out1 = formatRdf(quads1, 'trig', {
-          prefixes: parsePrefixes(fixture.trig, 'application/trig'),
+        const parsed1 = parseRdfString(fixture.trig);
+        const out1 = formatRdf(parsed1.quads, 'trig', {
+          prefixes: parsed1.prefixes,
         });
-        const quads2 = new Parser({ format: 'application/trig' }).parse(out1);
-        const out2 = formatRdf(quads2, 'trig', {
-          prefixes: parsePrefixes(out1, 'application/trig'),
+        const parsed2 = parseRdfString(out1);
+        const out2 = formatRdf(parsed2.quads, 'trig', {
+          prefixes: parsed2.prefixes,
         });
         expect(out2).toBe(out1);
       });
 
       it(`round-trips through canonicalization for ${fixture.name}`, async () => {
-        const original = new Parser({ format: 'application/trig' }).parse(
-          fixture.trig,
-        );
-        const out = formatRdf(original, 'trig', {
-          prefixes: parsePrefixes(fixture.trig, 'application/trig'),
+        const parsed = parseRdfString(fixture.trig);
+        const out = formatRdf(parsed.quads, 'trig', {
+          prefixes: parsed.prefixes,
         });
-        const formatted = new Parser({ format: 'application/trig' }).parse(out);
+        const formatted = parseRdfString(out);
         const [originalCanon, formattedCanon] = await Promise.all([
-          canonize(original, {
+          canonize(parsed.quads, {
             algorithm: 'RDFC-1.0',
             format: 'application/n-quads',
           }),
-          canonize(formatted, {
+          canonize(formatted.quads, {
             algorithm: 'RDFC-1.0',
             format: 'application/n-quads',
           }),
@@ -897,20 +812,3 @@ const TURTLE_CORPUS: ReadonlyArray<{
     ].join('\n'),
   },
 ];
-
-function parseBase(text: string): string | undefined {
-  const match = text.match(/^@base\s+<([^>]+)>\s*\.$/m);
-  return match ? match[1] : undefined;
-}
-
-function parsePrefixes(
-  text: string,
-  format: 'text/turtle' | 'application/trig' = 'text/turtle',
-): Record<string, string> {
-  const prefixes: Record<string, string> = {};
-  const parser = new Parser({ format });
-  parser.parse(text, undefined, (prefix, iri) => {
-    if (prefix && iri) prefixes[prefix] = (iri as { value: string }).value;
-  });
-  return prefixes;
-}
