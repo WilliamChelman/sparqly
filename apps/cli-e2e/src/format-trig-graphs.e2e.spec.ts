@@ -12,12 +12,15 @@ describe('sparqly format — TriG named graph sorting', () => {
       "@prefix ex: <http://example.org/>.
 
       ex:dflt ex:p ex:o.
+
       ex:gA {
       ex:s ex:p ex:o
       }
+
       ex:gM {
       ex:s ex:p ex:o
       }
+
       ex:gZ {
       ex:s ex:p ex:o
       }

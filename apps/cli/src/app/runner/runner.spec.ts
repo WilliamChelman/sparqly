@@ -1,0 +1,115 @@
+import { Command } from 'commander';
+import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import { GRAPH_STRATEGIES } from 'core';
+import type { FieldDescriptor } from './field';
+import { registerSpec } from './runner';
+import type { CommandSpec } from './spec';
+
+function makeProgram(): Command {
+  return new Command('sparqly').exitOverride();
+}
+
+const sourcesField: FieldDescriptor = {
+  key: 'sources',
+  schema: z.union([z.string(), z.array(z.string()).min(1)]),
+  flags: [
+    {
+      spec: '-s, --sources <glob>',
+      description: 'sources glob (repeatable)',
+      parse: (value, prev) => [...((prev as string[] | undefined) ?? []), value],
+    },
+  ],
+};
+
+const graphStrategyField: FieldDescriptor = {
+  key: 'graphStrategy',
+  schema: z.enum(GRAPH_STRATEGIES),
+  default: 'default',
+  flags: [{ spec: '--graph-strategy <strategy>', description: 'gs' }],
+};
+
+const jsonField: FieldDescriptor = {
+  key: 'json',
+  schema: z.boolean(),
+  default: false,
+  flags: [{ spec: '--json', description: 'json' }],
+};
+
+describe('registerSpec', () => {
+  it('parses argv and calls handler with merged config (defaults + cli)', async () => {
+    let received: unknown;
+    const spec: CommandSpec<Record<string, unknown>> = {
+      name: 'demo',
+      description: 'demo',
+      fields: [sourcesField, graphStrategyField, jsonField],
+      positionals: [{ field: 'sources', name: 'glob' }],
+      handler: (config) => {
+        received = config;
+      },
+      exitCode: () => 1,
+    };
+
+    const program = makeProgram();
+    registerSpec(program, spec, { env: {}, cwd: process.cwd() });
+    await program.parseAsync(
+      ['demo', 'a/*.ttl', '--graph-strategy', 'full', '--json'],
+      { from: 'user' },
+    );
+
+    expect(received).toEqual({
+      sources: 'a/*.ttl',
+      graphStrategy: 'full',
+      json: true,
+    });
+  });
+
+  it('repeated --sources flag accumulates into an array, beating positional', async () => {
+    let received: Record<string, unknown> | undefined;
+    const spec: CommandSpec = {
+      name: 'demo',
+      description: 'demo',
+      fields: [sourcesField, graphStrategyField, jsonField],
+      positionals: [{ field: 'sources', name: 'glob' }],
+      handler: (config) => {
+        received = config as Record<string, unknown>;
+      },
+      exitCode: () => 1,
+    };
+
+    const program = makeProgram();
+    registerSpec(program, spec, { env: {}, cwd: process.cwd() });
+    await program.parseAsync(
+      ['demo', '-s', 'a/*.ttl', '-s', 'b/*.ttl'],
+      { from: 'user' },
+    );
+
+    expect(received?.sources).toEqual(['a/*.ttl', 'b/*.ttl']);
+  });
+
+  it('reads env via SPARQLY_<COMMAND>_<KEY>', async () => {
+    let received: Record<string, unknown> | undefined;
+    const spec: CommandSpec = {
+      name: 'demo',
+      description: 'demo',
+      fields: [
+        { ...sourcesField, env: 'SPARQLY_DEMO_SOURCES' },
+        graphStrategyField,
+      ],
+      positionals: [{ field: 'sources', name: 'glob' }],
+      handler: (config) => {
+        received = config as Record<string, unknown>;
+      },
+      exitCode: () => 1,
+    };
+
+    const program = makeProgram();
+    registerSpec(program, spec, {
+      env: { SPARQLY_DEMO_SOURCES: 'env/*.ttl' },
+      cwd: process.cwd(),
+    });
+    await program.parseAsync(['demo'], { from: 'user' });
+
+    expect(received?.sources).toBe('env/*.ttl');
+  });
+});

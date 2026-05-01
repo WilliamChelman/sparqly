@@ -41,6 +41,7 @@ describe('sparqly format --write', () => {
 
       ex:a a ex:Thing;
           ex:p ex:b.
+
       ex:c ex:p ex:d.
       "
     `);

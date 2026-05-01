@@ -1,0 +1,79 @@
+import { Command } from 'commander';
+import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import type { FieldDescriptor } from './field';
+import { registerSpec } from './runner';
+import type { CommandSpec } from './spec';
+
+const sourcesField: FieldDescriptor = {
+  key: 'sources',
+  schema: z.string(),
+  flags: [{ spec: '-s, --sources <glob>', description: 'sources' }],
+};
+
+function makeProgram(): Command {
+  return new Command('sparqly').exitOverride();
+}
+
+describe('runner meta-flags', () => {
+  it('--print-config short-circuits before handler and writes formatted config', async () => {
+    let handlerCalled = false;
+    const stdoutChunks: string[] = [];
+    const spec: CommandSpec = {
+      name: 'demo',
+      description: 'demo',
+      fields: [sourcesField],
+      positionals: [{ field: 'sources', name: 'glob' }],
+      handler: () => {
+        handlerCalled = true;
+      },
+      exitCode: () => 1,
+    };
+
+    const program = makeProgram();
+    registerSpec(program, spec, {
+      env: {},
+      cwd: process.cwd(),
+      stdout: { write: (c: string) => stdoutChunks.push(c) },
+    });
+    await program.parseAsync(
+      ['demo', 'a/*.ttl', '--print-config'],
+      { from: 'user' },
+    );
+
+    expect(handlerCalled).toBe(false);
+    const out = stdoutChunks.join('');
+    expect(out).toContain('# sparqly demo --print-config');
+    expect(out).toContain('sources: "a/*.ttl"');
+    expect(out).toContain('# flag');
+  });
+
+  it('--config flag is accepted and routed to file loader', async () => {
+    let received: { fileTopUsed: boolean } | undefined;
+    const spec: CommandSpec = {
+      name: 'demo',
+      description: 'demo',
+      fields: [sourcesField],
+      handler: (config) => {
+        received = { fileTopUsed: (config as Record<string, unknown>).sources === 'from-file' };
+      },
+      exitCode: () => 1,
+    };
+
+    const program = makeProgram();
+    registerSpec(program, spec, {
+      env: {},
+      cwd: process.cwd(),
+      loadFile: async (configPath) => {
+        expect(configPath).toBe('/tmp/explicit.yaml');
+        return { fileTop: { sources: 'from-file' }, fileBlock: {}, filepath: configPath };
+      },
+    });
+    await program.parseAsync(
+      ['demo', '--config', '/tmp/explicit.yaml'],
+      { from: 'user' },
+    );
+
+    expect(received?.fileTopUsed).toBe(true);
+  });
+});

@@ -29,6 +29,7 @@ describe('sparqly format — core happy path', () => {
       "@prefix ex: <http://example.org/>.
 
       ex:a ex:p ex:b.
+
       ex:b ex:p ex:c.
       "
     `);
