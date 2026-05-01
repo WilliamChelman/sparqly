@@ -95,6 +95,55 @@ describe('formatRdf', () => {
     `);
   });
 
+  describe('blank lines between groups', () => {
+    it('inserts a blank line between two adjacent subject blocks in turtle', () => {
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b .
+        ex:c ex:p ex:d .
+      `;
+      const out = formatRdf(quads, 'turtle', {
+        prefixes: { ex: 'http://example.org/' },
+      });
+
+      expect(out).toMatch(/ex:b\.\n\nex:c/);
+    });
+
+    it('inserts a blank line between two trig graph blocks', () => {
+      const { quads, prefixes } = ttl`
+        @prefix ex: <http://example.org/> .
+        ex:gA { ex:s ex:p ex:o . }
+        ex:gB { ex:s ex:p ex:o . }
+      `;
+      const out = formatRdf(quads, 'trig', { prefixes });
+
+      expect(out).toMatch(/}\n\nex:gB \{/);
+    });
+
+    it('inserts a blank line between two subject blocks inside a trig named graph', () => {
+      const { quads, prefixes } = ttl`
+        @prefix ex: <http://example.org/> .
+        ex:g { ex:a ex:p ex:b . ex:c ex:p ex:d . }
+      `;
+      const out = formatRdf(quads, 'trig', { prefixes });
+
+      expect(out).toMatch(/ex:b\.\n\nex:c/);
+    });
+
+    it('keeps exactly one blank line after @prefix — no double-up before the first group', () => {
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b .
+      `;
+      const out = formatRdf(quads, 'turtle', {
+        prefixes: { ex: 'http://example.org/' },
+      });
+
+      expect(out).not.toMatch(/\n\n\n/);
+      expect(out).toMatch(/@prefix ex: <[^>]+>\.\n\nex:a/);
+    });
+  });
+
   describe('over the turtle corpus', () => {
     it('matches the golden snapshot for simple-prefix', () => {
       const fixture = TURTLE_CORPUS[0];
@@ -106,6 +155,7 @@ describe('formatRdf', () => {
 
         ex:a a ex:Thing;
             ex:p ex:b.
+
         ex:c ex:p ex:d.
         "
       `);
@@ -338,6 +388,77 @@ describe('formatRdf', () => {
       expect(out).not.toMatch(/ex:p\s+\[/);
     });
 
+    it('inlines a single-use blank node that appears as a list element', () => {
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+
+        ex:s ex:p ( [ ex:q ex:o ] ex:b ) .
+      `;
+      const out = formatRdf(quads, 'turtle', {
+        prefixes: { ex: 'http://example.org/' },
+      });
+
+      expect(out).toMatch(/\(\s*\[[^\]]*ex:q\s+ex:o[^\]]*\]\s+ex:b\s*\)/);
+      expect(out).not.toMatch(/_:\w+/);
+      const parsed = new Parser({ format: 'text/turtle' }).parse(out);
+      // 1 outer triple + 5 list-expansion triples (3 cons cells + the
+      // BN's own predicate + the second element).
+      expect(parsed).toHaveLength(6);
+    });
+
+    it('keeps a multi-referenced blank node labeled when it appears as a list element', () => {
+      const rdfFirst = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#first';
+      const rdfRest = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#rest';
+      const rdfNil = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#nil';
+      const ex = 'http://example.org/';
+      const head = DataFactory.blankNode('h');
+      const shared = DataFactory.blankNode('shared');
+      const triples = [
+        // The shared BN appears once as a list element AND once as an
+        // ordinary object — total ref count is 2, so it must NOT inline.
+        quad(namedNode(ex + 's'), namedNode(ex + 'p'), head),
+        quad(namedNode(ex + 'other'), namedNode(ex + 'sees'), shared),
+        quad(head, namedNode(rdfFirst), shared),
+        quad(head, namedNode(rdfRest), namedNode(rdfNil)),
+        quad(shared, namedNode(ex + 'q'), namedNode(ex + 'o')),
+      ];
+      const out = formatRdf(triples, 'turtle', { prefixes: { ex } });
+
+      expect(out).toMatch(/_:\w+/);
+      // The list still compacts (head is single-use), but the shared BN
+      // stays as a labeled `_:shared` reference within `( … )`.
+      expect(out).not.toMatch(/\(\s*\[/);
+    });
+
+    it('inlines nested list-inside-bn-inside-list', () => {
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+
+        ex:s ex:p ( [ ex:q ( ex:x ex:y ) ] ) .
+      `;
+      const out = formatRdf(quads, 'turtle', {
+        prefixes: { ex: 'http://example.org/' },
+      });
+
+      expect(out).not.toMatch(/_:\w+/);
+      // Outer list contains an inline BN whose ex:q value is the inner list.
+      expect(out).toMatch(/\(\s*\[[^\]]*ex:q\s*\(\s*ex:x\s+ex:y\s*\)[^\]]*\]\s*\)/);
+    });
+
+    it('renders an empty single-use blank-node list element as `[]`', () => {
+      const { quads } = ttl`
+        @prefix ex: <http://example.org/> .
+
+        ex:s ex:p ( [] ex:b ) .
+      `;
+      const out = formatRdf(quads, 'turtle', {
+        prefixes: { ex: 'http://example.org/' },
+      });
+
+      expect(out).toMatch(/\(\s*\[\s*\]\s+ex:b\s*\)/);
+      expect(out).not.toMatch(/_:\w+/);
+    });
+
     it('emits objects of the same predicate in alphabetical order', () => {
       const { quads } = ttl`
         @prefix ex: <http://example.org/> .
@@ -381,6 +502,7 @@ describe('formatRdf', () => {
         @prefix sh: <http://www.w3.org/ns/shacl#>.
 
         ex:NS a sh:NodeShape.
+
         ex:NS sh:property ex:PropShape.
         ex:PropShape a sh:PropertyShape;
             sh:path ex:name.
@@ -448,8 +570,10 @@ describe('formatRdf', () => {
         @prefix sh: <http://www.w3.org/ns/shacl#>.
 
         ex:A sh:targetClass ex:X.
+
         ex:A sh:property ex:B.
         ex:B sh:path ex:p1.
+
         ex:B sh:property ex:C.
         ex:C sh:path ex:p2.
         "
@@ -536,6 +660,116 @@ describe('formatRdf', () => {
     });
   });
 
+  describe('multiline string literals', () => {
+    it('renders a literal containing a newline as a triple-quoted multiline string', () => {
+      const { quads, prefixes } = ttl`
+        @prefix ex: <http://example.org/> .
+        ex:s ex:p """line1
+        line2""" .
+      `;
+      const out = formatRdf(quads, 'turtle', { prefixes });
+
+      expect(out).toContain('"""line1\nline2"""');
+      expect(out).not.toMatch(/"line1\\nline2"/);
+    });
+
+    it('keeps single-line strings in single-quoted form', () => {
+      const { quads, prefixes } = ttl`
+        @prefix ex: <http://example.org/> .
+        ex:s ex:p "hello world" .
+      `;
+      const out = formatRdf(quads, 'turtle', { prefixes });
+
+      expect(out).toContain('"hello world"');
+      expect(out).not.toContain('"""');
+    });
+
+    it('preserves a language tag on a multiline literal', () => {
+      const { quads, prefixes } = ttl`
+        @prefix ex: <http://example.org/> .
+        ex:s ex:p """bonjour
+        le monde"""@fr .
+      `;
+      const out = formatRdf(quads, 'turtle', { prefixes });
+
+      expect(out).toContain('"""bonjour\nle monde"""@fr');
+    });
+
+    it('escapes backslashes inside the multiline body', () => {
+      const { quads, prefixes } = ttl`
+        @prefix ex: <http://example.org/> .
+        ex:s ex:p """first
+        second \\ third""" .
+      `;
+      const out = formatRdf(quads, 'turtle', { prefixes });
+
+      expect(out).toContain('"""first\nsecond \\\\ third"""');
+    });
+
+    it('escapes embedded triple-quote sequences in the body', () => {
+      const { quads, prefixes } = ttl`
+        @prefix ex: <http://example.org/> .
+        ex:s ex:p """a
+        b \"\"\" c""" .
+      `;
+      const out = formatRdf(quads, 'turtle', { prefixes });
+
+      expect(out).toContain('a\nb ""\\" c');
+      const parsed = new Parser({ format: 'text/turtle' }).parse(out);
+      expect(parsed[0].object.value).toBe('a\nb """ c');
+    });
+
+    it('escapes a trailing quote so it cannot merge with the closing terminator', () => {
+      const { quads, prefixes } = ttl`
+        @prefix ex: <http://example.org/> .
+        ex:s ex:p """line1
+        line2\"""" .
+      `;
+      const out = formatRdf(quads, 'turtle', { prefixes });
+
+      const parsed = new Parser({ format: 'text/turtle' }).parse(out);
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0].object.value).toBe('line1\nline2"');
+    });
+
+    it('round-trips through canonicalization for a multiline literal', async () => {
+      const { quads, prefixes } = ttl`
+        @prefix ex: <http://example.org/> .
+        ex:s ex:p """first
+        second
+        third""" .
+      `;
+      const out = formatRdf(quads, 'turtle', { prefixes });
+      const reparsed = new Parser({ format: 'text/turtle' }).parse(out);
+
+      const [originalCanon, formattedCanon] = await Promise.all([
+        canonize(quads, {
+          algorithm: 'RDFC-1.0',
+          format: 'application/n-quads',
+        }),
+        canonize(reparsed, {
+          algorithm: 'RDFC-1.0',
+          format: 'application/n-quads',
+        }),
+      ]);
+      expect(formattedCanon).toBe(originalCanon);
+    });
+
+    it('emits a multiline literal inside an inlined blank node', () => {
+      const { quads, prefixes } = ttl`
+        @prefix ex: <http://example.org/> .
+        ex:s ex:p [ ex:q """alpha
+        beta""" ] .
+      `;
+      const out = formatRdf(quads, 'turtle', { prefixes });
+
+      expect(out).toContain('"""alpha\nbeta"""');
+      expect(out).toMatch(/ex:p\s+\[/);
+      const parsed = new Parser({ format: 'text/turtle' }).parse(out);
+      expect(parsed).toHaveLength(2);
+    });
+  });
+
   describe('trig output', () => {
     it('orders graph blocks alphabetically by graph IRI', () => {
       const { quads, prefixes } = ttl`
@@ -553,9 +787,11 @@ describe('formatRdf', () => {
         ex:gA {
         ex:s ex:p ex:o
         }
+
         ex:gM {
         ex:s ex:p ex:o
         }
+
         ex:gZ {
         ex:s ex:p ex:o
         }
@@ -578,12 +814,15 @@ describe('formatRdf', () => {
         "@prefix ex: <http://example.org/>.
 
         ex:dflt ex:p ex:o.
+
         ex:gA {
         ex:s ex:p ex:o
         }
+
         ex:gM {
         ex:s ex:p ex:o
         }
+
         ex:gZ {
         ex:s ex:p ex:o
         }
@@ -601,6 +840,7 @@ describe('formatRdf', () => {
         ex:g1 {
         ex:a ex:p ex:b
         }
+
         ex:g2 {
         ex:c ex:q ex:d
         }
@@ -619,9 +859,11 @@ describe('formatRdf', () => {
         ex:gA {
         ex:s ex:p ex:o
         }
+
         ex:gM {
         ex:s ex:p ex:o
         }
+
         ex:gZ {
         ex:s ex:p ex:o
         }
@@ -638,12 +880,15 @@ describe('formatRdf', () => {
         "@prefix ex: <http://example.org/>.
 
         ex:dflt ex:p ex:o.
+
         ex:gA {
         ex:s ex:p ex:o
         }
+
         ex:gM {
         ex:s ex:p ex:o
         }
+
         ex:gZ {
         ex:s ex:p ex:o
         }

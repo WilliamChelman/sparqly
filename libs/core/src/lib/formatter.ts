@@ -27,7 +27,7 @@ export function formatRdf(
   const list = normalizeBlankLabels(Array.from(quads));
   if (list.length === 0) return '';
 
-  const { lists, consumed } = detectLists(list);
+  const { lists, consumed, listGraphs } = detectLists(list);
   const remaining = list.filter((q) => !consumed.has(q));
 
   const writer = new Writer({
@@ -38,8 +38,9 @@ export function formatRdf(
   } as ConstructorParameters<typeof Writer>[0] & {
     lists: Record<string, Term[]>;
   });
+  installMultilineLiteralEncoder(writer);
 
-  const inlined = inlineSingleUseBlankNodes(remaining, writer, lists);
+  const inlined = inlineSingleUseBlankNodes(remaining, writer, lists, listGraphs);
   const anchorIris = resolveAnchorIris(
     config.objectAnchoredPredicates,
     config.prefixes,
@@ -47,19 +48,27 @@ export function formatRdf(
   const sorted = [...inlined].sort((a, b) => compareForEmission(a, b, anchorIris));
   let prevBlock: string | null = null;
   let prevGraphKey: string | null = null;
+  let prevPrimaryKey: string | null = null;
   for (const q of sorted) {
     const gk = termKey(q.graph);
     const bk = blockKey(q, anchorIris);
-    // The N3 Writer joins consecutive same-subject quads with `;`. When a
-    // block boundary falls across two same-subject quads (a normal triple
-    // followed by an object-anchored one with the same subject) we have to
-    // force a paragraph break ourselves so the anchored line stands alone.
-    if (prevBlock !== null && prevGraphKey === gk && prevBlock !== bk) {
+    const pk = primaryKey(q, anchorIris);
+    if (prevBlock !== null && prevGraphKey !== gk) {
+      forceGraphBreak(writer);
+    } else if (prevBlock !== null && prevBlock !== bk) {
+      // The N3 Writer joins consecutive same-subject quads with `;`. When a
+      // block boundary falls across two same-subject quads (a normal triple
+      // followed by an object-anchored one with the same subject) we have to
+      // force a paragraph break ourselves so the anchored line stands alone.
       forceSubjectBreak(writer);
+      if (prevPrimaryKey !== pk) {
+        writeRaw(writer, '\n');
+      }
     }
     writer.addQuad(q);
     prevBlock = bk;
     prevGraphKey = gk;
+    prevPrimaryKey = pk;
   }
 
   let body = '';
@@ -128,6 +137,66 @@ function renderTerm(
 }
 
 const XSD_STRING = 'http://www.w3.org/2001/XMLSchema#string';
+const RDF_LANG_STRING =
+  'http://www.w3.org/1999/02/22-rdf-syntax-ns#langString';
+
+interface LiteralLike {
+  value: string;
+  language?: string;
+  datatype?: { value: string };
+}
+
+interface WriterInternals {
+  _encodeLiteral(literal: LiteralLike): string;
+  _encodeIriOrBlank(t: Term): string;
+}
+
+function installMultilineLiteralEncoder(writer: Writer): void {
+  const internals = writer as unknown as WriterInternals;
+  const fallback = internals._encodeLiteral.bind(writer);
+  internals._encodeLiteral = function (literal: LiteralLike): string {
+    if (!shouldEmitMultiline(literal)) return fallback(literal);
+    const body = `"""${escapeMultilineBody(literal.value)}"""`;
+    if (literal.language) return `${body}@${literal.language}`;
+    if (literal.datatype && literal.datatype.value !== XSD_STRING) {
+      const dt = internals._encodeIriOrBlank(
+        literal.datatype as unknown as Term,
+      );
+      return `${body}^^${dt}`;
+    }
+    return body;
+  };
+}
+
+function shouldEmitMultiline(literal: LiteralLike): boolean {
+  if (!literal.value.includes('\n')) return false;
+  if (literal.language) return true;
+  const dt = literal.datatype?.value;
+  return !dt || dt === XSD_STRING || dt === RDF_LANG_STRING;
+}
+
+function escapeMultilineBody(value: string): string {
+  const withBackslashes = value.replace(/\\/g, '\\\\');
+  let result = '';
+  let i = 0;
+  while (i < withBackslashes.length) {
+    const ch = withBackslashes[i];
+    if (ch !== '"') {
+      result += ch;
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < withBackslashes.length && withBackslashes[j] === '"') j++;
+    const runLen = j - i;
+    const atEnd = j === withBackslashes.length;
+    const raw = atEnd ? 0 : Math.min(runLen, 2);
+    const escaped = runLen - raw;
+    result += '"'.repeat(raw) + '\\"'.repeat(escaped);
+    i = j;
+  }
+  return result;
+}
 
 function escapeLiteral(value: string): string {
   return value
@@ -199,11 +268,13 @@ const RDF_NIL = `${RDF_NS}nil`;
 interface DetectedLists {
   lists: Record<string, Term[]>;
   consumed: Set<Quad>;
+  listGraphs: Record<string, string>;
 }
 
 function detectLists(quads: ReadonlyArray<Quad>): DetectedLists {
   const lists: Record<string, Term[]> = {};
   const consumed = new Set<Quad>();
+  const listGraphs: Record<string, string> = {};
 
   const byGraph = new Map<string, Quad[]>();
   for (const q of quads) {
@@ -212,16 +283,18 @@ function detectLists(quads: ReadonlyArray<Quad>): DetectedLists {
     if (!arr) byGraph.set(key, (arr = []));
     arr.push(q);
   }
-  for (const graphQuads of byGraph.values()) {
-    detectListsInGraph(graphQuads, lists, consumed);
+  for (const [graphKey, graphQuads] of byGraph) {
+    detectListsInGraph(graphQuads, graphKey, lists, consumed, listGraphs);
   }
-  return { lists, consumed };
+  return { lists, consumed, listGraphs };
 }
 
 function detectListsInGraph(
   quads: ReadonlyArray<Quad>,
+  graphKey: string,
   lists: Record<string, Term[]>,
   consumed: Set<Quad>,
+  listGraphs: Record<string, string>,
 ): void {
   const bySubject = new Map<string, Quad[]>();
   const byObject = new Map<string, Quad[]>();
@@ -320,6 +393,7 @@ function detectListsInGraph(
 
     if (ok) {
       lists[q.subject.value] = elements;
+      listGraphs[q.subject.value] = graphKey;
       for (const cq of consumedHere) consumed.add(cq);
     }
   }
@@ -329,6 +403,7 @@ function inlineSingleUseBlankNodes(
   quads: ReadonlyArray<Quad>,
   writer: Writer,
   lists: Record<string, Term[]>,
+  listGraphs: Record<string, string>,
 ): Quad[] {
   const incomingByObject = new Map<string, Quad[]>();
   const outgoingBySubject = new Map<string, { graphKey: string; quads: Quad[] }>();
@@ -356,14 +431,46 @@ function inlineSingleUseBlankNodes(
     if (q.graph.termType === 'BlankNode') blankAsGraph.add(q.graph.value);
   }
 
+  // Where each blank-node label appears as a list element. The list
+  // compaction itself counts as one incoming reference for the BN.
+  const listElemAppearances = new Map<
+    string,
+    { head: string; index: number; graphKey: string }[]
+  >();
+  for (const head of Object.keys(lists)) {
+    const elements = lists[head];
+    const graphKey = listGraphs[head];
+    for (let i = 0; i < elements.length; i++) {
+      const e = elements[i];
+      if (e.termType !== 'BlankNode') continue;
+      // A BN that is itself a list head will be pretty-printed as a sublist
+      // by the writer; skip — it isn't a single-use BN candidate.
+      if (lists[e.value]) continue;
+      let arr = listElemAppearances.get(e.value);
+      if (!arr) listElemAppearances.set(e.value, (arr = []));
+      arr.push({ head, index: i, graphKey });
+    }
+  }
+
   const candidates = new Set<string>();
   for (const [label, refs] of incomingByObject) {
     if (refs.length !== 1) continue;
+    if (listElemAppearances.has(label)) continue;
     if (blankAsGraph.has(label)) continue;
     if (lists[label]) continue;
     const out = outgoingBySubject.get(label);
     if (out && out.graphKey === '__multi__') continue;
     if (out && out.graphKey !== termKey(refs[0].graph)) continue;
+    candidates.add(label);
+  }
+  for (const [label, appearances] of listElemAppearances) {
+    if (appearances.length !== 1) continue;
+    if (incomingByObject.has(label)) continue;
+    if (blankAsGraph.has(label)) continue;
+    if (lists[label]) continue;
+    const out = outgoingBySubject.get(label);
+    if (out && out.graphKey === '__multi__') continue;
+    if (out && out.graphKey !== appearances[0].graphKey) continue;
     candidates.add(label);
   }
 
@@ -394,6 +501,17 @@ function inlineSingleUseBlankNodes(
     return term;
   };
   for (const label of candidates) buildInline(label);
+
+  // Swap inline terms into list elements so the writer emits `[ … ]` in place
+  // of `_:bN` when a candidate BN appeared as a list element.
+  for (const [label, appearances] of listElemAppearances) {
+    if (!candidates.has(label)) continue;
+    const term = inlineTerm.get(label);
+    if (!term) continue;
+    for (const { head, index } of appearances) {
+      lists[head][index] = term;
+    }
+  }
 
   const result: Quad[] = [];
   for (const q of quads) {
@@ -457,6 +575,10 @@ function blockKey(q: Quad, anchorIris: Set<string>): string {
     : `N:${termKey(q.subject)}`;
 }
 
+function primaryKey(q: Quad, anchorIris: Set<string>): string {
+  return isAnchored(q, anchorIris) ? termKey(q.object) : termKey(q.subject);
+}
+
 function forceSubjectBreak(writer: Writer): void {
   const w = writer as unknown as {
     _subject: Term | null;
@@ -466,6 +588,25 @@ function forceSubjectBreak(writer: Writer): void {
     w._write('.\n');
     w._subject = null;
   }
+}
+
+function writeRaw(writer: Writer, s: string): void {
+  (writer as unknown as { _write(s: string, done?: unknown): void })._write(s);
+}
+
+function forceGraphBreak(writer: Writer): void {
+  const w = writer as unknown as {
+    _subject: Term | null;
+    _graph: Term;
+    _inDefaultGraph: boolean;
+    _write(s: string, done?: unknown): void;
+  };
+  if (w._subject !== null) {
+    w._write(w._inDefaultGraph ? '.\n' : '\n}\n');
+    w._subject = null;
+    w._graph = DataFactory.defaultGraph();
+  }
+  w._write('\n');
 }
 
 function compareForEmission(
