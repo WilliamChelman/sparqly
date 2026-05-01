@@ -56,20 +56,26 @@ sparqly diff domain.ttl "parts/**/*.ttl"
 
 ## Redirecting output to a file (`--out`)
 
-`sparqly query` accepts `-o, --out <path>` to write the result body to a file
-instead of stdout. The bytes written to the file are identical to what would
-have gone to stdout; logger output stays on stderr.
+`sparqly query`, `sparqly format`, `sparqly diff`, and `sparqly hash` all
+accept `-o, --out <path>` to write the result body to a file instead of
+stdout. The bytes written to the file are identical to what would have gone
+to stdout; logger output stays on stderr.
 
 ```sh
 sparqly query "data/**/*.ttl" -q 'SELECT * WHERE { ?s ?p ?o } LIMIT 10' \
   --out results/run.json
+
+sparqly format "data/**/*.ttl" --out formatted.ttl
+
+sparqly diff domain.ttl parts/**/*.ttl --out patch.diff
+# stderr still gets the "# +N -M" summary
 ```
 
 Behavior:
 
 - **Path resolution.** `<path>` is resolved against the current working
   directory regardless of where it was set (CLI flag, `SPARQLY_OUT` /
-  `SPARQLY_QUERY_OUT`, or `out:` in `sparqly.config.yaml`).
+  `SPARQLY_<COMMAND>_OUT`, or `out:` in `sparqly.config.yaml`).
 - **Parent directories.** Created automatically (`mkdir -p` semantics).
 - **Existing file.** Silently overwritten — no `--force` flag.
 - **Atomic write.** Content is written to a sibling `<path>.tmp.<random>`
@@ -80,10 +86,21 @@ Behavior:
 - **Existing directory at `<path>`.** Rejected with a clear error.
 - **`--print-config`.** Always writes to stdout, even when `out` is set.
 
+Per-command notes:
+
+- **`format`.** `--out` only applies in stdout mode. It is rejected when
+  combined with `--write` or `--check`, both of which already do per-file
+  I/O.
+- **`hash`.** `--out` is rejected when combined with `--compare-with`, which
+  is a comparison mode rather than a body emitter.
+- **`diff`.** The trailing `# +N -M` summary still goes to stderr (suppress
+  it with `--quiet`); only the diff body is redirected.
+
 `out` also resolves through the standard config layer — it can be set as a
-top-level shared key or inside the `query:` block of `sparqly.config.yaml`,
-or via the `SPARQLY_OUT` / `SPARQLY_QUERY_OUT` environment variables, with
-the same precedence as every other option.
+top-level shared key or inside any per-command block (`query:`, `format:`,
+`diff:`, `hash:`) of `sparqly.config.yaml`, or via the `SPARQLY_OUT` /
+`SPARQLY_<COMMAND>_OUT` environment variables, with the same precedence as
+every other option.
 
 ## Configuration file
 

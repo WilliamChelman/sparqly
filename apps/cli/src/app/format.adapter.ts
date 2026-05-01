@@ -8,6 +8,7 @@ export interface FormatRawOptions {
   quiet?: boolean;
   write?: boolean;
   check?: boolean;
+  out?: string;
 }
 
 export function formatAdapter(
@@ -25,12 +26,24 @@ export function formatAdapter(
     };
   }
 
+  if (options.out !== undefined && (options.write || options.check)) {
+    return {
+      errors: [
+        {
+          kind: 'invalid',
+          message: '--out cannot be combined with --write or --check',
+        },
+      ],
+    };
+  }
+
   const raw: Record<string, unknown> = {};
   if (options.sources !== undefined) raw.sources = options.sources;
   if (options.verbose !== undefined) raw.verbose = options.verbose;
   if (options.quiet !== undefined) raw.quiet = options.quiet;
   if (options.write !== undefined) raw.write = options.write;
   if (options.check !== undefined) raw.check = options.check;
+  if (options.out !== undefined) raw.out = options.out;
 
   const prefixEntries = options.prefix ?? [];
   const prefixes: Record<string, string> = {};

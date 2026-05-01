@@ -11,6 +11,7 @@ import { extname } from 'node:path';
 import { runWithConfig, type EffectiveOptions } from './config';
 import { exitCodeFor, isAdapterFailure } from './cli-errors';
 import { formatAdapter, type FormatRawOptions } from './format.adapter';
+import { writeOutputToFile } from './output';
 
 interface FormatOptions extends FormatRawOptions {
   config?: string;
@@ -97,7 +98,8 @@ export class FormatCommand extends CommandRunner {
             objectAnchoredPredicates,
           },
         );
-        process.stdout.write(out.endsWith('\n') ? out : `${out}\n`);
+        const body = out.endsWith('\n') ? out : `${out}\n`;
+        await this.emit(body, effective.out);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         process.stderr.write(`error: ${message}\n`);
@@ -133,11 +135,20 @@ export class FormatCommand extends CommandRunner {
         base: resolvedBase,
         objectAnchoredPredicates,
       });
-      process.stdout.write(out.endsWith('\n') ? out : `${out}\n`);
+      const body = out.endsWith('\n') ? out : `${out}\n`;
+      await this.emit(body, effective.out);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       process.stderr.write(`error: failed to parse stdin: ${message}\n`);
       process.exitCode = 1;
+    }
+  }
+
+  private async emit(body: string, out: string | undefined): Promise<void> {
+    if (out !== undefined) {
+      await writeOutputToFile({ out, cwd: process.cwd(), body });
+    } else {
+      process.stdout.write(body);
     }
   }
 
@@ -244,6 +255,15 @@ export class FormatCommand extends CommandRunner {
   @Option({ flags: '--quiet', description: 'Suppress non-result output' })
   parseQuiet(): boolean {
     return true;
+  }
+
+  @Option({
+    flags: '-o, --out <path>',
+    description:
+      'Write the formatted body to <path> (CWD-relative) instead of stdout. Only applies in stdout mode (no --write/--check). Creates parent directories, silently overwrites, and replaces symlinks at the target.',
+  })
+  parseOut(value: string): string {
+    return value;
   }
 
   @Option({
