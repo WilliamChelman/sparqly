@@ -1,3 +1,7 @@
+---
+status: partially superseded by ADR-0002
+---
+
 # Zod block schemas validate both file config and CLI overrides
 
 The Zod block schemas in `apps/cli/src/app/config/internal/schema.ts` (`queryBlockSchema`, `serveBlockSchema`, `hashBlockSchema`, `diffBlockSchema`) are the single source of truth for the legal shape of `EffectiveOptions` per command. CLI-option adapters parse `cliOverrides` through the same block schema that validates the config file, so enum membership (`graphStrategy`, `format`, `mutable` coercion) is defined once.
