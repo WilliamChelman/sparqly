@@ -94,7 +94,7 @@ describe('sparqly diff --format=turtle', () => {
 
   it('source-file prefix wins over config when names conflict (turtle mode)', async () => {
     await writeFile(
-      join(dir, 'sparqly.config.yaml'),
+      join(dir, 'sparqly.diff.yaml'),
       dedent`
         prefixes:
           ex: "http://config.example/"
@@ -119,7 +119,15 @@ describe('sparqly diff --format=turtle', () => {
     );
 
     const result = await runCli(
-      ['diff', '--quiet', '--format=turtle', left, right],
+      [
+        'diff',
+        '--quiet',
+        '--format=turtle',
+        '--config',
+        join(dir, 'sparqly.diff.yaml'),
+        left,
+        right,
+      ],
       { cwd: dir },
     );
 
@@ -133,7 +141,7 @@ describe('sparqly diff --format=turtle', () => {
 
   it('source-file prefix wins over config when names conflict (human mode)', async () => {
     await writeFile(
-      join(dir, 'sparqly.config.yaml'),
+      join(dir, 'sparqly.diff.yaml'),
       dedent`
         prefixes:
           ex: "http://config.example/"
@@ -157,9 +165,17 @@ describe('sparqly diff --format=turtle', () => {
       ` + '\n',
     );
 
-    const result = await runCli(['diff', '--quiet', left, right], {
-      cwd: dir,
-    });
+    const result = await runCli(
+      [
+        'diff',
+        '--quiet',
+        '--config',
+        join(dir, 'sparqly.diff.yaml'),
+        left,
+        right,
+      ],
+      { cwd: dir },
+    );
 
     expect(result.exitCode).toBe(1);
     const lines = result.stdout.split('\n').filter((l) => l.length > 0);
@@ -168,7 +184,7 @@ describe('sparqly diff --format=turtle', () => {
 
   it('--format=json is unchanged: full IRIs, even when prefixes are configured', async () => {
     await writeFile(
-      join(dir, 'sparqly.config.yaml'),
+      join(dir, 'sparqly.diff.yaml'),
       dedent`
         prefixes:
           ex: "http://example.org/"
@@ -193,7 +209,15 @@ describe('sparqly diff --format=turtle', () => {
     );
 
     const result = await runCli(
-      ['diff', '--quiet', '--format=json', left, right],
+      [
+        'diff',
+        '--quiet',
+        '--format=json',
+        '--config',
+        join(dir, 'sparqly.diff.yaml'),
+        left,
+        right,
+      ],
       { cwd: dir },
     );
 
@@ -206,7 +230,7 @@ describe('sparqly diff --format=turtle', () => {
 
   it('--format=rdf-patch is unchanged: full IRIs, even when prefixes are configured', async () => {
     await writeFile(
-      join(dir, 'sparqly.config.yaml'),
+      join(dir, 'sparqly.diff.yaml'),
       dedent`
         prefixes:
           ex: "http://example.org/"
@@ -231,7 +255,15 @@ describe('sparqly diff --format=turtle', () => {
     );
 
     const result = await runCli(
-      ['diff', '--quiet', '--format=rdf-patch', left, right],
+      [
+        'diff',
+        '--quiet',
+        '--format=rdf-patch',
+        '--config',
+        join(dir, 'sparqly.diff.yaml'),
+        left,
+        right,
+      ],
       { cwd: dir },
     );
 

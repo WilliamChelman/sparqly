@@ -18,8 +18,9 @@ describe('sparqly format — config prefixes', () => {
   });
 
   it('config prefixes win over input-file prefixes; orphan input IRIs go full form', async () => {
+    const configPath = join(dir, 'sparqly.format.yaml');
     await writeFile(
-      join(dir, 'sparqly.config.yaml'),
+      configPath,
       dedent`
         prefixes:
           ex: "http://override.example/"
@@ -33,7 +34,10 @@ describe('sparqly format — config prefixes', () => {
       ` + '\n',
     );
 
-    const result = await runCli(['format', 'data.ttl'], { cwd: dir });
+    const result = await runCli(
+      ['format', '--config', configPath, 'data.ttl'],
+      { cwd: dir },
+    );
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
@@ -46,8 +50,9 @@ describe('sparqly format — config prefixes', () => {
   });
 
   it('config prefixes apply when input file declares no matching prefix', async () => {
+    const configPath = join(dir, 'sparqly.format.yaml');
     await writeFile(
-      join(dir, 'sparqly.config.yaml'),
+      configPath,
       dedent`
         prefixes:
           ex: "http://example.org/"
@@ -58,7 +63,10 @@ describe('sparqly format — config prefixes', () => {
       '<http://example.org/a> <http://example.org/p> <http://example.org/b> .\n',
     );
 
-    const result = await runCli(['format', 'data.ttl'], { cwd: dir });
+    const result = await runCli(
+      ['format', '--config', configPath, 'data.ttl'],
+      { cwd: dir },
+    );
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('@prefix ex: <http://example.org/>');
@@ -78,16 +86,17 @@ describe('sparqly format — config base', () => {
   });
 
   it('emits @base from config and shortens matching IRIs to relative form', async () => {
-    await writeFile(
-      join(dir, 'sparqly.config.yaml'),
-      'base: "http://example.org/"\n',
-    );
+    const configPath = join(dir, 'sparqly.format.yaml');
+    await writeFile(configPath, 'base: "http://example.org/"\n');
     await writeFile(
       join(dir, 'data.ttl'),
       '<http://example.org/a> <http://example.org/p> <http://example.org/b> .\n',
     );
 
-    const result = await runCli(['format', 'data.ttl'], { cwd: dir });
+    const result = await runCli(
+      ['format', '--config', configPath, 'data.ttl'],
+      { cwd: dir },
+    );
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
@@ -119,10 +128,8 @@ describe('sparqly format — config base', () => {
   });
 
   it('config base wins over the input file @base', async () => {
-    await writeFile(
-      join(dir, 'sparqly.config.yaml'),
-      'base: "http://config.example/"\n',
-    );
+    const configPath = join(dir, 'sparqly.format.yaml');
+    await writeFile(configPath, 'base: "http://config.example/"\n');
     await writeFile(
       join(dir, 'data.ttl'),
       dedent`
@@ -131,7 +138,10 @@ describe('sparqly format — config base', () => {
       ` + '\n',
     );
 
-    const result = await runCli(['format', 'data.ttl'], { cwd: dir });
+    const result = await runCli(
+      ['format', '--config', configPath, 'data.ttl'],
+      { cwd: dir },
+    );
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toMatch(
@@ -143,8 +153,9 @@ describe('sparqly format — config base', () => {
   });
 
   it('round-trips: parsing the formatted output yields the same triples', async () => {
+    const configPath = join(dir, 'sparqly.format.yaml');
     await writeFile(
-      join(dir, 'sparqly.config.yaml'),
+      configPath,
       dedent`
         base: "http://example.org/"
         prefixes:
@@ -161,7 +172,10 @@ describe('sparqly format — config base', () => {
       ` + '\n',
     );
 
-    const result = await runCli(['format', 'data.ttl'], { cwd: dir });
+    const result = await runCli(
+      ['format', '--config', configPath, 'data.ttl'],
+      { cwd: dir },
+    );
 
     expect(result.exitCode).toBe(0);
     const { Parser } = await import('n3');
@@ -191,8 +205,9 @@ describe('sparqly format — --prefix CLI flag', () => {
   });
 
   it('CLI --prefix wins over config prefixes for the same name', async () => {
+    const configPath = join(dir, 'sparqly.format.yaml');
     await writeFile(
-      join(dir, 'sparqly.config.yaml'),
+      configPath,
       dedent`
         prefixes:
           ex: "http://config.example/"
@@ -204,7 +219,14 @@ describe('sparqly format — --prefix CLI flag', () => {
     );
 
     const result = await runCli(
-      ['format', '--prefix', 'ex=http://cli.example/', 'data.ttl'],
+      [
+        'format',
+        '--config',
+        configPath,
+        '--prefix',
+        'ex=http://cli.example/',
+        'data.ttl',
+      ],
       { cwd: dir },
     );
 

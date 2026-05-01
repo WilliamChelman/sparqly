@@ -225,14 +225,13 @@ describe('sparqly diff — core properties', () => {
   });
 
   describe('config integration', () => {
-    it('reads diff.left and diff.right from --config', async () => {
-      const configPath = join(scratch, 'sparqly.config.yaml');
+    it('reads left and right from --config', async () => {
+      const configPath = join(scratch, 'sparqly.diff.yaml');
       await writeFile(
         configPath,
         dedent`
-          diff:
-            left: "${diffFixture('domain.ttl')}"
-            right: "${diffFixture('parts/*.ttl')}"
+          left: "${diffFixture('domain.ttl')}"
+          right: "${diffFixture('parts/*.ttl')}"
         ` + '\n',
       );
 

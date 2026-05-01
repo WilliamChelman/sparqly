@@ -1,7 +1,6 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
 
@@ -37,8 +36,8 @@ describe('config file — precedence chain', () => {
     await rm(scratch, { recursive: true, force: true });
   });
 
-  it('file shared value beats default (graphStrategy)', async () => {
-    const configPath = join(scratch, 'sparqly.config.yaml');
+  it('file value beats default (graphStrategy)', async () => {
+    const configPath = join(scratch, 'sparqly.query.yaml');
     await writeFile(configPath, 'graphStrategy: partial\n');
 
     const result = await runCli(
@@ -52,28 +51,8 @@ describe('config file — precedence chain', () => {
     );
   });
 
-  it('file query: block overrides file shared value for the query command', async () => {
-    const configPath = join(scratch, 'sparqly.config.yaml');
-    await writeFile(
-      configPath,
-      dedent`
-        mutable: true
-        query:
-          mutable: false
-      ` + '\n',
-    );
-
-    const result = await runCli(
-      ['query', '--print-config', '--config', configPath],
-      { cwd: scratch, env: CLEARED_ENV },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(sourceLine(result.stdout, 'mutable')).toMatch(/false.*# file/);
-  });
-
   it('SPARQLY_<KEY> env var beats file value', async () => {
-    const configPath = join(scratch, 'sparqly.config.yaml');
+    const configPath = join(scratch, 'sparqly.query.yaml');
     await writeFile(configPath, 'graphStrategy: partial\n');
 
     const result = await runCli(
@@ -122,7 +101,7 @@ describe('config file — precedence chain', () => {
   });
 
   it('positional [glob] beats sources from any lower tier', async () => {
-    const configPath = join(scratch, 'sparqly.config.yaml');
+    const configPath = join(scratch, 'sparqly.query.yaml');
     await writeFile(configPath, 'sources: "from-file/**/*.ttl"\n');
 
     const result = await runCli(

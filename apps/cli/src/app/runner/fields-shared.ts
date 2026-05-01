@@ -13,7 +13,6 @@ const coercedBoolean = z.preprocess((v) => {
 export const sourcesField: FieldDescriptor = {
   key: 'sources',
   schema: z.union([z.string(), z.array(z.string()).min(1)]),
-  shared: true,
   flags: [
     {
       spec: '-s, --sources <glob>',
@@ -41,7 +40,6 @@ export function graphStrategyFieldFor(commandName: string): FieldDescriptor {
     key: 'graphStrategy',
     schema: z.enum(GRAPH_STRATEGIES),
     default: 'default',
-    shared: true,
     env: ['SPARQLY_GRAPH_STRATEGY', `SPARQLY_${upper}_GRAPH_STRATEGY`],
     flags: [
       {
@@ -62,7 +60,6 @@ export function verbosityFieldsFor(
       key: 'verbose',
       schema: coercedBoolean,
       default: false,
-      shared: true,
       env: ['SPARQLY_VERBOSE', `SPARQLY_${upper}_VERBOSE`],
       flags: [
         {
@@ -75,7 +72,6 @@ export function verbosityFieldsFor(
       key: 'quiet',
       schema: coercedBoolean,
       default: false,
-      shared: true,
       env: ['SPARQLY_QUIET', `SPARQLY_${upper}_QUIET`],
       flags: [
         {
@@ -92,7 +88,6 @@ export function outFieldFor(commandName: string): FieldDescriptor {
   return {
     key: 'out',
     schema: z.string(),
-    shared: true,
     env: ['SPARQLY_OUT', `SPARQLY_${upper}_OUT`],
     flags: [
       {
@@ -125,7 +120,6 @@ export function mutableFieldsFor(
       key: 'mutable',
       schema: coercedBoolean,
       default: false,
-      shared: true,
       env: ['SPARQLY_MUTABLE', `SPARQLY_${upper}_MUTABLE`],
       flags: [
         {
@@ -151,14 +145,12 @@ export function mutableFieldsFor(
 export const prefixesField: FieldDescriptor = {
   key: 'prefixes',
   schema: z.record(z.string(), z.string()),
-  shared: true,
   merge: 'deep',
 };
 
 export const baseField: FieldDescriptor = {
   key: 'base',
   schema: z.string(),
-  shared: true,
 };
 
 export const prefixField: FieldDescriptor = {

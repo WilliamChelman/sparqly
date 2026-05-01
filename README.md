@@ -75,7 +75,8 @@ Behavior:
 
 - **Path resolution.** `<path>` is resolved against the current working
   directory regardless of where it was set (CLI flag, `SPARQLY_OUT` /
-  `SPARQLY_<COMMAND>_OUT`, or `out:` in `sparqly.config.yaml`).
+  `SPARQLY_<COMMAND>_OUT`, or `out:` in a `sparqly.<command>.yaml` config
+  file).
 - **Parent directories.** Created automatically (`mkdir -p` semantics).
 - **Existing file.** Silently overwritten — no `--force` flag.
 - **Atomic write.** Content is written to a sibling `<path>.tmp.<random>`
@@ -97,90 +98,90 @@ Per-command notes:
   it with `--quiet`); only the diff body is redirected.
 
 `out` also resolves through the standard config layer — it can be set as a
-top-level shared key or inside any per-command block (`query:`, `format:`,
-`diff:`, `hash:`) of `sparqly.config.yaml`, or via the `SPARQLY_OUT` /
-`SPARQLY_<COMMAND>_OUT` environment variables, with the same precedence as
-every other option.
+top-level `out:` key in the per-command config file (e.g. `sparqly.query.yaml`),
+or via the `SPARQLY_OUT` / `SPARQLY_<COMMAND>_OUT` environment variables, with
+the same precedence as every other option.
 
 ## Configuration file
 
-All four commands (`sparqly query`, `sparqly serve`, `sparqly hash`,
-`sparqly diff`) read a shared config file so you don't have to repeat
-`--sources`, `--graph-strategy`, `--port`, etc. on every invocation. The CLI
-walks up parent directories from the current working directory looking for the
-first match of:
+Each command reads its own per-command config file so you don't have to repeat
+`--sources`, `--graph-strategy`, `--port`, etc. on every invocation. There is
+**no auto-discovery**: a config file is loaded only when you point at one
+explicitly via `--config <path>` or the `SPARQLY_CONFIG` environment variable.
+`--config` wins when both are set; a missing, unreadable, or unparseable path
+is a hard error.
 
-- `sparqly.config.yaml`
-- `sparqly.config.yml`
-- `sparqly.config.json`
-
-Pass `--config <path>` to skip auto-discovery and pin a specific file. A missing
-or unparseable `--config` path is a hard error.
+The conventional filename is `sparqly.<command>.{yaml,yml,json}` (e.g.
+`sparqly.query.yaml`, `sparqly.diff.json`), but the runner does not enforce
+the name — `--config ./my-conf.yaml` works.
 
 ### Schema
 
-The file has shared defaults at the top level plus optional `query:`,
-`serve:`, `hash:`, and `diff:` blocks that override those defaults for one
-command. Every option that is exposed as a CLI flag is also expressible in the
-config file.
+Each file is **flat**: top-level keys map directly to that command's options.
+There is no `extends:`, no shared block, and no per-command sub-blocks. Unknown
+keys are a hard validation error. Every option exposed as a CLI flag for the
+command is expressible in the file.
 
 ```yaml
-# sparqly.config.yaml — full example
+# sparqly.query.yaml
 sources: 'data/**/*.ttl'
 graphStrategy: default # default | partial | full | none
 mutable: false
-verbose: false
-quiet: false
-
-query:
-  query: |
-    SELECT ?s ?p ?o
-    WHERE { ?s ?p ?o }
-    LIMIT 10
-  queryFile: ./queries/default.rq # mutually exclusive with `query`
-  format: json # json | turtle
-
-serve:
-  port: 3000
-  watch: true
-  watchDebounce: 250
-  mutable: true # overrides shared `mutable: false` for `serve`
-
-hash:
-  sources: # may be a string or an array of source specs
-    - 'domain.ttl'
-    - 'parts/**/*.ttl'
-  graphStrategy: none # flatten quads to triples for hashing
-  json: false
-  # compareWith: "parts/**/*.ttl"   # requires exactly one primary source
-
-diff:
-  left: 'domain.ttl' # string or array of source specs
-  right: # one side may be a glob, the other a single file
-    - 'parts/**/*.ttl'
-  format: human # human | json | rdf-patch
-  graphStrategy: default # default | partial | full | none
+query: |
+  SELECT ?s ?p ?o
+  WHERE { ?s ?p ?o }
+  LIMIT 10
+# queryFile: ./queries/default.rq  # mutually exclusive with `query`
+format: json # json | turtle
 ```
 
-`graphStrategy: none` is new: it strips graph names from quad-bearing formats
-(`.trig`, `.nq`) and places every statement in the default graph. It is part
-of the shared loader, so it works for `query` and `serve` too — useful when
-you want to coerce quad sources to triples regardless of command.
+```yaml
+# sparqly.serve.yaml
+sources: 'data/**/*.ttl'
+port: 3000
+watch: true
+watchDebounce: 250
+mutable: true
+```
 
-JSON is supported with the same shape (`sparqly.config.json`).
+```yaml
+# sparqly.hash.yaml
+sources: # may be a string or an array of source specs
+  - 'domain.ttl'
+  - 'parts/**/*.ttl'
+graphStrategy: none # flatten quads to triples for hashing
+json: false
+# compareWith: "parts/**/*.ttl"   # requires exactly one primary source
+```
+
+```yaml
+# sparqly.diff.yaml
+left: 'domain.ttl' # string or array of source specs
+right: # one side may be a glob, the other a single file
+  - 'parts/**/*.ttl'
+format: human # human | json | rdf-patch
+graphStrategy: default # default | partial | full | none
+```
+
+`graphStrategy: none` strips graph names from quad-bearing formats
+(`.trig`, `.nq`) and places every statement in the default graph. It works
+across `query`, `serve`, `hash`, and `diff` — useful when you want to coerce
+quad sources to triples regardless of command.
+
+JSON is supported with the same flat shape (e.g. `sparqly.query.json`); the
+extension dispatches the parser.
 
 ### Precedence
 
 Values are merged from lowest to highest priority — later sources override
 earlier ones:
 
-| Priority    | Source                                                                               |
-| ----------- | ------------------------------------------------------------------------------------ |
-| 1 (lowest)  | Built-in defaults                                                                    |
-| 2           | Config file — top-level shared keys                                                  |
-| 3           | Config file — `query:` / `serve:` / `hash:` / `diff:` block (for the active command) |
-| 4           | Environment variables                                                                |
-| 5 (highest) | CLI flags (and positional arguments)                                                 |
+| Priority    | Source                                |
+| ----------- | ------------------------------------- |
+| 1 (lowest)  | Built-in defaults                     |
+| 2           | Config file (`--config` / `SPARQLY_CONFIG`) |
+| 3           | Environment variables                 |
+| 4 (highest) | CLI flags (and positional arguments)  |
 
 Environment variables follow a predictable contract:
 
@@ -200,9 +201,9 @@ configuration, prints it annotated, and exits 0 without running the query or
 starting the server.
 
 ```sh
-sparqly query --print-config
+sparqly query --config ./sparqly.query.yaml --print-config
 # sparqly query --print-config
-# config file: /path/to/sparqly.config.yaml
+# config file: /path/to/sparqly.query.yaml
 sources       : "data/**/*.ttl"  # file
 graphStrategy : default          # default
 mutable       : true             # file

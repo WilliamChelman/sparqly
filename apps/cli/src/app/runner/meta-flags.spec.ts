@@ -49,13 +49,13 @@ describe('runner meta-flags', () => {
   });
 
   it('--config flag is accepted and routed to file loader', async () => {
-    let received: { fileTopUsed: boolean } | undefined;
+    let received: { fileUsed: boolean } | undefined;
     const spec: CommandSpec = {
       name: 'demo',
       description: 'demo',
       fields: [sourcesField],
       handler: (config) => {
-        received = { fileTopUsed: (config as Record<string, unknown>).sources === 'from-file' };
+        received = { fileUsed: (config as Record<string, unknown>).sources === 'from-file' };
       },
       exitCode: () => 1,
     };
@@ -66,7 +66,7 @@ describe('runner meta-flags', () => {
       cwd: process.cwd(),
       loadFile: async (configPath) => {
         expect(configPath).toBe('/tmp/explicit.yaml');
-        return { fileTop: { sources: 'from-file' }, fileBlock: {}, filepath: configPath };
+        return { data: { sources: 'from-file' }, filepath: configPath };
       },
     });
     await program.parseAsync(
@@ -74,6 +74,6 @@ describe('runner meta-flags', () => {
       { from: 'user' },
     );
 
-    expect(received?.fileTopUsed).toBe(true);
+    expect(received?.fileUsed).toBe(true);
   });
 });

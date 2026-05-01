@@ -4,8 +4,7 @@ import { defaultsFromFields } from './field';
 export type ConfigSource = 'default' | 'file' | 'env' | 'flag';
 
 export interface Layers {
-  readonly fileTop: Record<string, unknown>;
-  readonly fileBlock: Record<string, unknown>;
+  readonly file: Record<string, unknown>;
   readonly env: Record<string, unknown>;
   readonly cli: Record<string, unknown>;
 }
@@ -22,8 +21,7 @@ export function mergeLayers(
   const ordered: ReadonlyArray<{ source: ConfigSource; layer: Record<string, unknown> }> =
     [
       { source: 'default', layer: defaultsFromFields(fields) },
-      { source: 'file', layer: layers.fileTop },
-      { source: 'file', layer: layers.fileBlock },
+      { source: 'file', layer: layers.file },
       { source: 'env', layer: layers.env },
       { source: 'flag', layer: layers.cli },
     ];

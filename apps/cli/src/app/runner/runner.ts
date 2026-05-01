@@ -7,8 +7,7 @@ import { mergeLayers, type ConfigSource } from './merge';
 import type { CommandSpec } from './spec';
 
 export interface FileLayers {
-  readonly fileTop: Record<string, unknown>;
-  readonly fileBlock: Record<string, unknown>;
+  readonly data: Record<string, unknown>;
   readonly filepath: string | null;
 }
 
@@ -21,7 +20,7 @@ export interface RunnerContext {
   readonly cwd: string;
   readonly stdout?: WritableLike;
   readonly stderr?: WritableLike;
-  readonly loadFile?: (configPath: string | undefined, cwd: string) => Promise<FileLayers>;
+  readonly loadFile?: (configPath: string, cwd: string) => Promise<FileLayers>;
 }
 
 export function registerSpec<T extends Record<string, unknown>>(
@@ -78,15 +77,17 @@ export function registerSpec<T extends Record<string, unknown>>(
         cli[p.field] = v;
       });
 
-      const fileLayers: FileLayers = ctx.loadFile
-        ? await ctx.loadFile(optsBag.config as string | undefined, ctx.cwd)
-        : { fileTop: {}, fileBlock: {}, filepath: null };
+      const explicitConfigPath =
+        (optsBag.config as string | undefined) ?? ctx.env['SPARQLY_CONFIG'];
+      const fileLayers: FileLayers =
+        ctx.loadFile && explicitConfigPath !== undefined
+          ? await ctx.loadFile(explicitConfigPath, ctx.cwd)
+          : { data: {}, filepath: null };
 
       const env = readEnv(spec.fields, ctx.env);
 
       const merged = mergeLayers(spec.fields, {
-        fileTop: fileLayers.fileTop,
-        fileBlock: fileLayers.fileBlock,
+        file: fileLayers.data,
         env,
         cli,
       });

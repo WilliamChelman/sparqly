@@ -20,23 +20,22 @@ const port: FieldDescriptor = {
 
 describe('mergeLayers', () => {
   it('applies defaults when no other layer sets a key', () => {
-    const layers: Layers = { fileTop: {}, fileBlock: {}, env: {}, cli: {} };
+    const layers: Layers = { file: {}, env: {}, cli: {} };
     const out = mergeLayers([verbose, sources, port], layers);
     expect(out.config).toEqual({ verbose: false, port: 3000 });
     expect(out.sources.verbose).toBe('default');
     expect(out.sources.port).toBe('default');
   });
 
-  it('cli wins over env, env over file-block, file-block over file-top, file-top over default', () => {
+  it('cli wins over env, env over file, file over default', () => {
     const out = mergeLayers([verbose, sources, port], {
-      fileTop: { verbose: true, port: 8080, sources: 'top/*.ttl' },
-      fileBlock: { port: 9000, sources: 'block/*.ttl' },
+      file: { verbose: true, port: 8080, sources: 'file/*.ttl' },
       env: { sources: 'env/*.ttl' },
       cli: {},
     });
     expect(out.config).toEqual({
       verbose: true,
-      port: 9000,
+      port: 8080,
       sources: 'env/*.ttl',
     });
     expect(out.sources).toEqual({
@@ -48,8 +47,7 @@ describe('mergeLayers', () => {
 
   it('cli overrides everything', () => {
     const out = mergeLayers([verbose, sources, port], {
-      fileTop: {},
-      fileBlock: { port: 9000 },
+      file: { port: 9000 },
       env: { port: 7000 },
       cli: { port: 5000 },
     });
@@ -59,8 +57,7 @@ describe('mergeLayers', () => {
 
   it('skips undefined values from any layer', () => {
     const out = mergeLayers([sources], {
-      fileTop: {},
-      fileBlock: {},
+      file: {},
       env: { sources: undefined as unknown as string },
       cli: { sources: 'a/*.ttl' },
     });

@@ -49,14 +49,4 @@ describe('CommandSpec', () => {
     expect(defaultsFromFields(spec.fields)).toEqual({ graphStrategy: 'default' });
   });
 
-  it('declares fileBlockName defaulting to spec.name when absent', () => {
-    const spec: CommandSpec = {
-      name: 'hash',
-      description: 'hash',
-      fields: [],
-      handler: async () => undefined,
-      exitCode: () => 1,
-    };
-    expect(spec.fileBlockName ?? spec.name).toBe('hash');
-  });
 });

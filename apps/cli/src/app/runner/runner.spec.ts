@@ -112,4 +112,85 @@ describe('registerSpec', () => {
 
     expect(received?.sources).toBe('env/*.ttl');
   });
+
+  describe('config file resolution', () => {
+    function makeSpec(handler: (c: unknown) => void): CommandSpec<Record<string, unknown>> {
+      return {
+        name: 'demo',
+        description: 'demo',
+        fields: [sourcesField],
+        positionals: [{ field: 'sources', name: 'glob' }],
+        handler,
+        exitCode: () => 1,
+      };
+    }
+
+    it('passes --config <path> through to the file loader', async () => {
+      let received: string | undefined;
+      const spec = makeSpec(() => undefined);
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        loadFile: async (configPath) => {
+          received = configPath;
+          return { data: {}, filepath: null };
+        },
+      });
+      await program.parseAsync(['demo', '--config', '/explicit.yaml'], {
+        from: 'user',
+      });
+      expect(received).toBe('/explicit.yaml');
+    });
+
+    it('falls back to SPARQLY_CONFIG env var when --config is not given', async () => {
+      let received: string | undefined;
+      const spec = makeSpec(() => undefined);
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: { SPARQLY_CONFIG: '/from-env.yaml' },
+        cwd: '/cwd',
+        loadFile: async (configPath) => {
+          received = configPath;
+          return { data: {}, filepath: null };
+        },
+      });
+      await program.parseAsync(['demo'], { from: 'user' });
+      expect(received).toBe('/from-env.yaml');
+    });
+
+    it('--config overrides SPARQLY_CONFIG', async () => {
+      let received: string | undefined;
+      const spec = makeSpec(() => undefined);
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: { SPARQLY_CONFIG: '/from-env.yaml' },
+        cwd: '/cwd',
+        loadFile: async (configPath) => {
+          received = configPath;
+          return { data: {}, filepath: null };
+        },
+      });
+      await program.parseAsync(['demo', '--config', '/explicit.yaml'], {
+        from: 'user',
+      });
+      expect(received).toBe('/explicit.yaml');
+    });
+
+    it('does not invoke the file loader when neither --config nor SPARQLY_CONFIG is set', async () => {
+      let called = false;
+      const spec = makeSpec(() => undefined);
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        loadFile: async () => {
+          called = true;
+          return { data: {}, filepath: null };
+        },
+      });
+      await program.parseAsync(['demo', 'a/*.ttl'], { from: 'user' });
+      expect(called).toBe(false);
+    });
+  });
 });

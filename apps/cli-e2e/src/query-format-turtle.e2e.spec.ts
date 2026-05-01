@@ -56,8 +56,9 @@ describe('sparqly query --format=turtle (formatter integration)', () => {
   });
 
   it('prefers the query string PREFIX when it conflicts with config', async () => {
+    const configPath = join(dir, 'sparqly.query.yaml');
     await writeFile(
-      join(dir, 'sparqly.config.yaml'),
+      configPath,
       dedent`
         prefixes:
           ex: "http://config.example/"
@@ -77,6 +78,8 @@ describe('sparqly query --format=turtle (formatter integration)', () => {
         'query',
         data,
         '--format=turtle',
+        '--config',
+        configPath,
         '-q',
         dedent`
           PREFIX ex: <http://example.org/>
@@ -121,8 +124,9 @@ describe('sparqly query --format=turtle (formatter integration)', () => {
   });
 
   it('runs Turtle output through the formatter using config prefixes', async () => {
+    const configPath = join(dir, 'sparqly.query.yaml');
     await writeFile(
-      join(dir, 'sparqly.config.yaml'),
+      configPath,
       dedent`
         prefixes:
           ex: "http://example.org/"
@@ -142,6 +146,8 @@ describe('sparqly query --format=turtle (formatter integration)', () => {
         'query',
         data,
         '--format=turtle',
+        '--config',
+        configPath,
         '-q',
         'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       ],

@@ -18,6 +18,5 @@ export interface CommandSpec<TConfig = Record<string, unknown>> {
     error: unknown,
     context?: { readonly rawConfig?: Record<string, unknown> },
   ) => number;
-  readonly fileBlockName?: string;
   readonly refine?: (schema: z.ZodTypeAny) => z.ZodTypeAny;
 }

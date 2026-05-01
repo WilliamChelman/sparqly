@@ -89,8 +89,8 @@ describe('config — mutable canonicalization', () => {
     expect(mutableLine(result.stdout)).toMatch(/false.*# flag/);
   });
 
-  it('immutable key in the config file is rejected (warned as unknown, not applied)', async () => {
-    const configPath = join(scratch, 'sparqly.config.yaml');
+  it('immutable key in the config file is rejected with a strict-validation error', async () => {
+    const configPath = join(scratch, 'sparqly.query.yaml');
     await writeFile(configPath, 'immutable: true\n');
 
     const result = await runCli(
@@ -98,9 +98,10 @@ describe('config — mutable canonicalization', () => {
       { cwd: scratch, env: CLEARED_ENV },
     );
 
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toMatch(/warning:.*immutable/);
-    expect(mutableLine(result.stdout)).toMatch(/false.*# default/);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/error:/);
+    expect(result.stderr).toContain('immutable');
+    expect(result.stderr).toContain(configPath);
   });
 
   it('SPARQLY_IMMUTABLE env var is not accepted (mutable stays at default)', async () => {
