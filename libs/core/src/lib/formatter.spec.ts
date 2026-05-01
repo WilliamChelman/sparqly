@@ -1,7 +1,7 @@
 import { DataFactory, Parser } from 'n3';
 import { canonize } from 'rdf-canonize';
 import { describe, expect, it } from 'vitest';
-import { formatRdf } from './formatter';
+import { formatRdf, shortenNQuadLine } from './formatter';
 import { parseRdfString } from './parse-rdf-string';
 import { ttl } from './test/turtle';
 
@@ -683,6 +683,90 @@ describe('formatRdf', () => {
         expect(formattedCanon).toBe(originalCanon);
       });
     }
+  });
+});
+
+describe('shortenNQuadLine', () => {
+  it('shortens IRIs that match a configured prefix into CURIE form', () => {
+    const line =
+      '<http://example.org/a> <http://example.org/p> <http://example.org/b> .';
+
+    const out = shortenNQuadLine(line, {
+      prefixes: { ex: 'http://example.org/' },
+    });
+
+    expect(out).toBe('ex:a ex:p ex:b .');
+  });
+
+  it('leaves IRIs in <...> form when no configured prefix matches', () => {
+    const line =
+      '<http://example.org/a> <http://example.org/p> <http://example.org/b> .';
+
+    const out = shortenNQuadLine(line, { prefixes: {} });
+
+    expect(out).toBe(
+      '<http://example.org/a> <http://example.org/p> <http://example.org/b> .',
+    );
+  });
+
+  it('preserves language-tagged literals exactly', () => {
+    const line =
+      '<http://example.org/a> <http://example.org/label> "hi"@en .';
+
+    const out = shortenNQuadLine(line, {
+      prefixes: { ex: 'http://example.org/' },
+    });
+
+    expect(out).toBe('ex:a ex:label "hi"@en .');
+  });
+
+  it('renders the named graph as a fourth term when present', () => {
+    const line =
+      '<http://example.org/a> <http://example.org/p> <http://example.org/b> <http://example.org/g> .';
+
+    const out = shortenNQuadLine(line, {
+      prefixes: { ex: 'http://example.org/' },
+    });
+
+    expect(out).toBe('ex:a ex:p ex:b ex:g .');
+  });
+
+  it('renders rdf:type as `a`', () => {
+    const line =
+      '<http://example.org/a> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/Thing> .';
+
+    const out = shortenNQuadLine(line, {
+      prefixes: { ex: 'http://example.org/' },
+    });
+
+    expect(out).toBe('ex:a a ex:Thing .');
+  });
+
+  it('uses the longest matching prefix on conflict', () => {
+    const line =
+      '<http://example.org/foo/a> <http://example.org/foo/p> <http://example.org/b> .';
+
+    const out = shortenNQuadLine(line, {
+      prefixes: {
+        ex: 'http://example.org/',
+        foo: 'http://example.org/foo/',
+      },
+    });
+
+    expect(out).toBe('foo:a foo:p ex:b .');
+  });
+
+  it('preserves typed literals with their datatype IRI', () => {
+    const line =
+      '<http://example.org/a> <http://example.org/age> "42"^^<http://www.w3.org/2001/XMLSchema#integer> .';
+
+    const out = shortenNQuadLine(line, {
+      prefixes: { ex: 'http://example.org/' },
+    });
+
+    expect(out).toBe(
+      'ex:a ex:age "42"^^<http://www.w3.org/2001/XMLSchema#integer> .',
+    );
   });
 });
 

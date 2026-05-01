@@ -1,4 +1,4 @@
-import { DataFactory, Writer, type Quad, type Term } from 'n3';
+import { DataFactory, Parser, Writer, type Quad, type Term } from 'n3';
 
 export type FormatSerialization = 'turtle' | 'trig';
 
@@ -68,6 +68,74 @@ export function formatRdf(
     body = result;
   });
   return config.base ? `@base <${config.base}>.\n${body}` : body;
+}
+
+export interface ShortenNQuadLineConfig {
+  prefixes: Record<string, string>;
+}
+
+export function shortenNQuadLine(
+  line: string,
+  config: ShortenNQuadLineConfig,
+): string {
+  const trimmed = line.endsWith('\n') ? line.slice(0, -1) : line;
+  const parser = new Parser({ format: 'application/n-quads' });
+  const quads = parser.parse(trimmed);
+  if (quads.length !== 1) return line;
+  const q = quads[0];
+  const entries = Object.entries(config.prefixes);
+  const predicateText =
+    q.predicate.termType === 'NamedNode' && q.predicate.value === RDF_TYPE
+      ? 'a'
+      : renderTerm(q.predicate, entries);
+  const parts = [
+    renderTerm(q.subject, entries),
+    predicateText,
+    renderTerm(q.object, entries),
+  ];
+  if (q.graph.termType !== 'DefaultGraph') {
+    parts.push(renderTerm(q.graph, entries));
+  }
+  return `${parts.join(' ')} .`;
+}
+
+function renderTerm(
+  term: Term,
+  entries: ReadonlyArray<[string, string]>,
+): string {
+  if (term.termType === 'NamedNode') {
+    const match = bestPrefixEntryFor(term.value, entries);
+    if (match) {
+      const [name, ns] = match;
+      return `${name}:${term.value.slice(ns.length)}`;
+    }
+    return `<${term.value}>`;
+  }
+  if (term.termType === 'BlankNode') return `_:${term.value}`;
+  if (term.termType === 'Literal') {
+    const lit = term as Term & {
+      language?: string;
+      datatype?: { value: string };
+    };
+    const lex = `"${escapeLiteral(term.value)}"`;
+    if (lit.language) return `${lex}@${lit.language}`;
+    if (lit.datatype && lit.datatype.value !== XSD_STRING) {
+      return `${lex}^^<${lit.datatype.value}>`;
+    }
+    return lex;
+  }
+  return `<${term.value}>`;
+}
+
+const XSD_STRING = 'http://www.w3.org/2001/XMLSchema#string';
+
+function escapeLiteral(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
 }
 
 function pickUsedPrefixes(
@@ -463,14 +531,21 @@ function bestPrefixFor(
   entries: ReadonlyArray<[string, string]>,
 ): string | undefined {
   if (term.termType !== 'NamedNode') return undefined;
-  const iri = term.value;
-  let bestName: string | undefined;
+  return bestPrefixEntryFor(term.value, entries)?.[0];
+}
+
+function bestPrefixEntryFor(
+  iri: string,
+  entries: ReadonlyArray<[string, string]>,
+): [string, string] | undefined {
+  let best: [string, string] | undefined;
   let bestLength = -1;
-  for (const [name, prefIri] of entries) {
-    if (iri.startsWith(prefIri) && prefIri.length > bestLength) {
-      bestName = name;
-      bestLength = prefIri.length;
+  for (const entry of entries) {
+    const ns = entry[1];
+    if (iri.startsWith(ns) && ns.length > bestLength) {
+      best = entry;
+      bestLength = ns.length;
     }
   }
-  return bestName;
+  return best;
 }

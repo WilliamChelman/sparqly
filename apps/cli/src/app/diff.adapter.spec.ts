@@ -35,13 +35,20 @@ describe('diffAdapter', () => {
     expect(result.cliOverrides.out).toBe('patch.txt');
   });
 
-  it('rejects unknown --format with the canonical phrasing', () => {
+  it('rejects unknown --format with the canonical phrasing (turtle is now valid)', () => {
     const result = diffAdapter([], { format: 'csv' });
     if (!isAdapterFailure(result)) throw new Error('expected error');
     expect(result.errors[0]).toEqual({
       kind: 'unknown-flag',
-      message: "unknown --format 'csv' (expected human, json, rdf-patch)",
+      message:
+        "unknown --format 'csv' (expected human, json, rdf-patch, turtle)",
     });
+  });
+
+  it('accepts --format=turtle', () => {
+    const result = diffAdapter(['a', 'b'], { format: 'turtle' });
+    if (isAdapterFailure(result)) throw new Error('expected ok');
+    expect(result.cliOverrides.format).toBe('turtle');
   });
 
   it('rejects unknown --graph-strategy', () => {

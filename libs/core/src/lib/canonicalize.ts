@@ -10,6 +10,8 @@ export interface CanonicalizeOptions {
 export interface CanonicalizeResult {
   files: string[];
   store: Store;
+  /** Prefixes declared in each parsed file, keyed by absolute file path. */
+  prefixes: Record<string, Record<string, string>>;
   /** RDFC-1.0 canonical N-Quads, joined with '\n' and a trailing newline. */
   canonicalText: string;
   /** Canonical N-Quads statements, one element per quad, no trailing newline. */
@@ -19,7 +21,7 @@ export interface CanonicalizeResult {
 export async function canonicalizeRdf(
   options: CanonicalizeOptions,
 ): Promise<CanonicalizeResult> {
-  const { store, files } = await loadRdf({
+  const { store, files, prefixes } = await loadRdf({
     sources: options.sources,
     graphStrategy: options.graphStrategy,
   });
@@ -33,5 +35,5 @@ export async function canonicalizeRdf(
     .split('\n')
     .filter((line: string) => line.length > 0);
 
-  return { files, store, canonicalText, canonicalStatements };
+  return { files, store, prefixes, canonicalText, canonicalStatements };
 }

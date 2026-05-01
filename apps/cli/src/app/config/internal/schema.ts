@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { GRAPH_STRATEGIES, SUPPORTED_FORMATS } from 'core';
 
-export const DIFF_FORMATS = ['human', 'json', 'rdf-patch'] as const;
+export const DIFF_FORMATS = ['human', 'json', 'rdf-patch', 'turtle'] as const;
 export type DiffFormat = (typeof DIFF_FORMATS)[number];
 
 const coercedBoolean = z.preprocess((v) => {

@@ -1,10 +1,15 @@
 import { Logger } from '@nestjs/common';
 import { Command, CommandRunner, Option } from 'nest-commander';
+import { Parser } from 'n3';
 import {
   canonicalizeRdf,
   diffCanonicalStatements,
+  formatRdf,
   formatRdfDiff,
+  shortenNQuadLine,
+  type FormatSerialization,
   type GraphStrategy,
+  type RdfDiffResult,
 } from 'core';
 import { runWithConfig, type EffectiveOptions } from './config';
 import { DIFF_FORMATS, type DiffFormat } from './config/internal/schema';
@@ -62,6 +67,7 @@ export class DiffCommand extends CommandRunner {
 
     let leftStatements: string[];
     let rightStatements: string[];
+    let sourcePrefixes: Record<string, Record<string, string>>;
     try {
       const start = Date.now();
       const [leftResult, rightResult] = await Promise.all([
@@ -73,6 +79,7 @@ export class DiffCommand extends CommandRunner {
       );
       leftStatements = leftResult.canonicalStatements;
       rightStatements = rightResult.canonicalStatements;
+      sourcePrefixes = { ...leftResult.prefixes, ...rightResult.prefixes };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       process.stderr.write(`error: ${message}\n`);
@@ -81,7 +88,16 @@ export class DiffCommand extends CommandRunner {
     }
 
     const diff = diffCanonicalStatements(leftStatements, rightStatements);
-    const body = formatRdfDiff(diff, format);
+    const resolvedPrefixes = resolveDiffPrefixes(
+      effective.prefixes ?? {},
+      sourcePrefixes,
+    );
+    const body =
+      format === 'turtle'
+        ? renderTurtleBlocks(diff, resolvedPrefixes)
+        : format === 'human'
+          ? renderHumanShortened(diff, resolvedPrefixes)
+          : formatRdfDiff(diff, format);
     const { added, removed } = diff;
 
     if (effective.out !== undefined) {
@@ -183,4 +199,55 @@ export class DiffCommand extends CommandRunner {
   parsePrintConfig(): boolean {
     return true;
   }
+}
+
+function resolveDiffPrefixes(
+  configPrefixes: Record<string, string>,
+  sourcePrefixes: Record<string, Record<string, string>>,
+): Record<string, string> {
+  const merged: Record<string, string> = { ...configPrefixes };
+  for (const file of Object.keys(sourcePrefixes)) {
+    for (const [name, iri] of Object.entries(sourcePrefixes[file])) {
+      merged[name] = iri;
+    }
+  }
+  return merged;
+}
+
+function renderHumanShortened(
+  diff: RdfDiffResult,
+  prefixes: Record<string, string>,
+): string {
+  const parts: string[] = [];
+  for (const s of diff.removed)
+    parts.push(`- ${shortenNQuadLine(s, { prefixes })}\n`);
+  for (const s of diff.added)
+    parts.push(`+ ${shortenNQuadLine(s, { prefixes })}\n`);
+  return parts.join('');
+}
+
+function renderTurtleBlocks(
+  diff: RdfDiffResult,
+  prefixes: Record<string, string>,
+): string {
+  return (
+    `# --- removed ---\n${formatBlock(diff.removed, prefixes)}` +
+    `# --- added ---\n${formatBlock(diff.added, prefixes)}`
+  );
+}
+
+function formatBlock(
+  statements: ReadonlyArray<string>,
+  prefixes: Record<string, string>,
+): string {
+  if (statements.length === 0) return '';
+  const parser = new Parser({ format: 'application/n-quads' });
+  const quads = parser.parse(statements.join('\n'));
+  const serialization: FormatSerialization = quads.some(
+    (q) => q.graph.termType === 'NamedNode',
+  )
+    ? 'trig'
+    : 'turtle';
+  const out = formatRdf(quads, serialization, { prefixes });
+  return out.endsWith('\n') ? out : `${out}\n`;
 }

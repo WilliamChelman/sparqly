@@ -33,7 +33,7 @@ describe('sparqly diff — core properties', () => {
     expect(result.stderr).toBe('');
   });
 
-  it('exits 1 and prints an addition when the right side has an extra triple', async () => {
+  it('exits 1 and prints an addition when the right side has an extra triple (human mode shortens via source prefixes)', async () => {
     const left = diffFixture('domain.ttl');
     const right = diffFixture('added.ttl');
 
@@ -42,12 +42,10 @@ describe('sparqly diff — core properties', () => {
     expect(result.exitCode).toBe(1);
     const lines = nonEmptyLines(result.stdout);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatch(
-      /^\+ <http:\/\/example\.org\/g> <http:\/\/example\.org\/s> <http:\/\/example\.org\/h> \.$/,
-    );
+    expect(lines[0]).toBe('+ ex:g ex:s ex:h .');
   });
 
-  it('exits 1 and prints a removal when the right side is missing a triple', async () => {
+  it('exits 1 and prints a removal when the right side is missing a triple (human mode shortens via source prefixes)', async () => {
     const left = diffFixture('domain.ttl');
     const right = diffFixture('removed.ttl');
 
@@ -56,9 +54,7 @@ describe('sparqly diff — core properties', () => {
     expect(result.exitCode).toBe(1);
     const lines = nonEmptyLines(result.stdout);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatch(
-      /^- <http:\/\/example\.org\/c> <http:\/\/example\.org\/q> <http:\/\/example\.org\/d> \.$/,
-    );
+    expect(lines[0]).toBe('- ex:c ex:q ex:d .');
   });
 
   it('writes the "# +<added> -<removed>" summary to stderr by default', async () => {
@@ -108,9 +104,9 @@ describe('sparqly diff — core properties', () => {
     const lines = nonEmptyLines(result.stdout);
     expect(lines).toHaveLength(2);
     expect(lines[0]).toMatch(/^- /);
-    expect(lines[0]).toContain('<http://example.org/g1>');
+    expect(lines[0]).toContain('ex:g1');
     expect(lines[1]).toMatch(/^\+ /);
-    expect(lines[1]).toContain('<http://example.org/g2>');
+    expect(lines[1]).toContain('ex:g2');
   });
 
   describe('--format', () => {
