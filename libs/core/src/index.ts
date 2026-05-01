@@ -4,3 +4,4 @@ export * from './lib/canonicalize';
 export * from './lib/diff';
 export * from './lib/immutability';
 export * from './lib/formatter';
+export * from './lib/parse-rdf-string';

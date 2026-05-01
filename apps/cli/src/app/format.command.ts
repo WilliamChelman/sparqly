@@ -1,7 +1,11 @@
 import { Logger } from '@nestjs/common';
-import { Parser, type Quad } from 'n3';
 import { Command, CommandRunner, Option } from 'nest-commander';
-import { formatRdf, loadRdf, type FormatSerialization } from 'core';
+import {
+  formatRdf,
+  loadRdf,
+  parseRdfString,
+  type FormatSerialization,
+} from 'core';
 import { readFile, writeFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { runWithConfig, type EffectiveOptions } from './config';
@@ -112,7 +116,8 @@ export class FormatCommand extends CommandRunner {
     }
 
     try {
-      const { quads, prefixes: stdinPrefixes } = parseStdin(stdinText);
+      const { quads, prefixes: stdinPrefixes, base: stdinBase } =
+        parseRdfString(stdinText);
       const serialization: FormatSerialization = quads.some(
         (q) => q.graph.termType === 'NamedNode',
       )
@@ -122,7 +127,7 @@ export class FormatCommand extends CommandRunner {
         { stdin: stdinPrefixes },
         configPrefixes,
       );
-      const resolvedBase = base ?? extractBase(stdinText);
+      const resolvedBase = base ?? stdinBase;
       const out = formatRdf(quads, serialization, {
         prefixes: merged,
         base: resolvedBase,
@@ -167,7 +172,7 @@ export class FormatCommand extends CommandRunner {
           args.configPrefixes,
         );
         const original = await readFile(file, 'utf8');
-        const resolvedBase = args.base ?? extractBase(original);
+        const resolvedBase = args.base ?? parseRdfString(original).base;
         const formattedRaw = formatRdf(
           fileStore.getQuads(null, null, null, null),
           serialization,
@@ -260,17 +265,10 @@ export class FormatCommand extends CommandRunner {
   }
 }
 
-const BASE_DIRECTIVE_RE = /^\s*@base\s+<([^>]+)>\s*\.\s*$/im;
-
-function extractBase(text: string): string | undefined {
-  const match = text.match(BASE_DIRECTIVE_RE);
-  return match ? match[1] : undefined;
-}
-
 async function firstFileBase(files: string[]): Promise<string | undefined> {
   for (const file of files) {
     const text = await readFile(file, 'utf8');
-    const base = extractBase(text);
+    const { base } = parseRdfString(text);
     if (base) return base;
   }
   return undefined;
@@ -296,21 +294,6 @@ function mergePrefixes(
     merged[name] = iri;
   }
   return merged;
-}
-
-interface ParsedStdin {
-  quads: Quad[];
-  prefixes: Record<string, string>;
-}
-
-function parseStdin(text: string): ParsedStdin {
-  const prefixes: Record<string, string> = {};
-  const quads = new Parser().parse(text, null, (prefix, iri) => {
-    if (prefix && iri) {
-      prefixes[prefix] = (iri as { value: string }).value;
-    }
-  });
-  return { quads, prefixes };
 }
 
 async function readStdin(): Promise<string | null> {
