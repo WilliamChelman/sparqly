@@ -563,6 +563,34 @@ describe('formatRdf', () => {
       `);
     });
 
+    it('places the default graph in its conventional position before alphabetically-sorted named graphs', () => {
+      const { quads, prefixes } = ttl`
+        @prefix ex: <http://example.org/> .
+
+        ex:gZ { ex:s ex:p ex:o . }
+        ex:dflt ex:p ex:o .
+        ex:gA { ex:s ex:p ex:o . }
+        ex:gM { ex:s ex:p ex:o . }
+      `;
+      const out = formatRdf(quads, 'trig', { prefixes });
+
+      expect(out).toMatchInlineSnapshot(`
+        "@prefix ex: <http://example.org/>.
+
+        ex:dflt ex:p ex:o.
+        ex:gA {
+        ex:s ex:p ex:o
+        }
+        ex:gM {
+        ex:s ex:p ex:o
+        }
+        ex:gZ {
+        ex:s ex:p ex:o
+        }
+        "
+      `);
+    });
+
     it('matches the golden snapshot for two-named-graphs', () => {
       const { quads, prefixes } = parseRdfString(TRIG_CORPUS[0].trig);
       const out = formatRdf(quads, 'trig', { prefixes });
@@ -575,6 +603,49 @@ describe('formatRdf', () => {
         }
         ex:g2 {
         ex:c ex:q ex:d
+        }
+        "
+      `);
+    });
+
+    it('matches the golden snapshot for multi-named-graphs-out-of-order', () => {
+      const fixture = trigFixture('multi-named-graphs-out-of-order');
+      const { quads, prefixes } = parseRdfString(fixture.trig);
+      const out = formatRdf(quads, 'trig', { prefixes });
+
+      expect(out).toMatchInlineSnapshot(`
+        "@prefix ex: <http://example.org/>.
+
+        ex:gA {
+        ex:s ex:p ex:o
+        }
+        ex:gM {
+        ex:s ex:p ex:o
+        }
+        ex:gZ {
+        ex:s ex:p ex:o
+        }
+        "
+      `);
+    });
+
+    it('matches the golden snapshot for default-and-multiple-named-graphs-out-of-order', () => {
+      const fixture = trigFixture('default-and-multiple-named-graphs-out-of-order');
+      const { quads, prefixes } = parseRdfString(fixture.trig);
+      const out = formatRdf(quads, 'trig', { prefixes });
+
+      expect(out).toMatchInlineSnapshot(`
+        "@prefix ex: <http://example.org/>.
+
+        ex:dflt ex:p ex:o.
+        ex:gA {
+        ex:s ex:p ex:o
+        }
+        ex:gM {
+        ex:s ex:p ex:o
+        }
+        ex:gZ {
+        ex:s ex:p ex:o
         }
         "
       `);
@@ -615,6 +686,12 @@ describe('formatRdf', () => {
   });
 });
 
+function trigFixture(name: string): { name: string; trig: string } {
+  const found = TRIG_CORPUS.find((f) => f.name === name);
+  if (!found) throw new Error(`unknown trig fixture: ${name}`);
+  return found;
+}
+
 const TRIG_CORPUS: ReadonlyArray<{ name: string; trig: string }> = [
   {
     name: 'two-named-graphs',
@@ -633,6 +710,29 @@ const TRIG_CORPUS: ReadonlyArray<{ name: string; trig: string }> = [
       '',
       'ex:a ex:p ex:b .',
       'ex:g { ex:c ex:q ex:d . }',
+      '',
+    ].join('\n'),
+  },
+  {
+    name: 'multi-named-graphs-out-of-order',
+    trig: [
+      '@prefix ex: <http://example.org/> .',
+      '',
+      'ex:gZ { ex:s ex:p ex:o . }',
+      'ex:gA { ex:s ex:p ex:o . }',
+      'ex:gM { ex:s ex:p ex:o . }',
+      '',
+    ].join('\n'),
+  },
+  {
+    name: 'default-and-multiple-named-graphs-out-of-order',
+    trig: [
+      '@prefix ex: <http://example.org/> .',
+      '',
+      'ex:gZ { ex:s ex:p ex:o . }',
+      'ex:dflt ex:p ex:o .',
+      'ex:gA { ex:s ex:p ex:o . }',
+      'ex:gM { ex:s ex:p ex:o . }',
       '',
     ].join('\n'),
   },

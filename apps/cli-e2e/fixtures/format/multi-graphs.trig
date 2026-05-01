@@ -1,0 +1,6 @@
+@prefix ex: <http://example.org/> .
+
+ex:gZ { ex:s ex:p ex:o . }
+ex:dflt ex:p ex:o .
+ex:gA { ex:s ex:p ex:o . }
+ex:gM { ex:s ex:p ex:o . }
