@@ -8,7 +8,7 @@ import {
   coercedIntSchema,
   graphModeFieldFor,
   mutableFieldsFor,
-  sourcesFieldFor,
+  sourcesField,
   verbosityFieldsFor,
 } from '../runner/fields-shared';
 import type { CommandSpec } from '../runner/spec';
@@ -70,7 +70,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
   name: 'serve',
   description: 'Serve a W3C SPARQL Protocol endpoint at /api/sparql',
   fields: [
-    sourcesFieldFor('serve'),
+    sourcesField,
     portField,
     graphModeFieldFor('serve'),
     ...mutableFieldsFor('serve'),

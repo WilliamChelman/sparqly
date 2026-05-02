@@ -89,13 +89,16 @@ describe('registerSpec', () => {
 
   it('reads env via SPARQLY_<COMMAND>_<KEY>', async () => {
     let received: Record<string, unknown> | undefined;
+    const labelField: FieldDescriptor = {
+      key: 'label',
+      schema: z.string(),
+      env: 'SPARQLY_DEMO_LABEL',
+      flags: [{ spec: '--label <text>', description: 'label' }],
+    };
     const spec: CommandSpec = {
       name: 'demo',
       description: 'demo',
-      fields: [
-        { ...sourcesField, env: 'SPARQLY_DEMO_SOURCES' },
-        graphModeField,
-      ],
+      fields: [sourcesField, labelField],
       positionals: [{ field: 'sources', name: 'glob' }],
       handler: (config) => {
         received = config as Record<string, unknown>;
@@ -105,12 +108,12 @@ describe('registerSpec', () => {
 
     const program = makeProgram();
     registerSpec(program, spec, {
-      env: { SPARQLY_DEMO_SOURCES: 'env/*.ttl' },
+      env: { SPARQLY_DEMO_LABEL: 'from-env' },
       cwd: process.cwd(),
     });
-    await program.parseAsync(['demo'], { from: 'user' });
+    await program.parseAsync(['demo', 'a/*.ttl'], { from: 'user' });
 
-    expect(received?.sources).toBe('env/*.ttl');
+    expect(received?.label).toBe('from-env');
   });
 
   describe('config file resolution', () => {

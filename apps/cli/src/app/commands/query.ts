@@ -20,7 +20,7 @@ import {
   mutableFieldsFor,
   outFieldFor,
   prefixesField,
-  sourcesFieldFor,
+  sourcesField,
   verbosityFieldsFor,
 } from '../runner/fields-shared';
 import type { CommandSpec } from '../runner/spec';
@@ -79,7 +79,7 @@ export const querySpec: CommandSpec<QueryConfig> = {
   name: 'query',
   description: 'Run a SPARQL query against a glob of RDF files',
   fields: [
-    sourcesFieldFor('query'),
+    sourcesField,
     queryField,
     queryFileField,
     formatField,

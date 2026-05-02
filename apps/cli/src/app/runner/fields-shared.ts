@@ -26,14 +26,6 @@ export const sourcesField: FieldDescriptor = {
   ],
 };
 
-export function sourcesFieldFor(commandName: string): FieldDescriptor {
-  const upper = commandName.toUpperCase();
-  return {
-    ...sourcesField,
-    env: ['SPARQLY_SOURCES', `SPARQLY_${upper}_SOURCES`],
-  };
-}
-
 export function graphModeFieldFor(commandName: string): FieldDescriptor {
   const upper = commandName.toUpperCase();
   return {

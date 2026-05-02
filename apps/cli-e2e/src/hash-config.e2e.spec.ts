@@ -7,7 +7,6 @@ import { runCli } from './helpers/run-cli';
 import { hashFixture, hashLineRe, nonEmptyLines } from './helpers/hash';
 
 const CLEARED_ENV = {
-  SPARQLY_HASH_SOURCES: undefined,
   SPARQLY_HASH_JSON: undefined,
   SPARQLY_HASH_COMPARE_WITH: undefined,
   SPARQLY_HASH_GRAPH_MODE: undefined,
@@ -39,7 +38,7 @@ describe('sparqly hash — config file + env precedence', () => {
     expect(lines[0]).toMatch(hashLineRe(single));
   });
 
-  it('SPARQLY_HASH_SOURCES env overrides sources from the config file', async () => {
+  it('SPARQLY_HASH_SOURCES env is ignored; the config-file value still wins', async () => {
     const fromConfig = hashFixture('parts/one.ttl');
     const fromEnv = hashFixture('domain.ttl');
     const configPath = join(scratch, 'sparqly.hash.yaml');
@@ -52,12 +51,11 @@ describe('sparqly hash — config file + env precedence', () => {
     expect(result.exitCode).toBe(0);
     const lines = nonEmptyLines(result.stdout);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatch(hashLineRe(fromEnv));
+    expect(lines[0]).toMatch(hashLineRe(fromConfig));
   });
 
-  it('CLI --sources overrides both env and config', async () => {
+  it('CLI --sources overrides the config file', async () => {
     const fromConfig = hashFixture('parts/one.ttl');
-    const fromEnv = hashFixture('parts/two.ttl');
     const fromCli = hashFixture('domain.ttl');
     const configPath = join(scratch, 'sparqly.hash.yaml');
     await writeFile(configPath, `sources: "${fromConfig}"\n`);
@@ -71,7 +69,7 @@ describe('sparqly hash — config file + env precedence', () => {
         '--sources',
         fromCli,
       ],
-      { env: { ...CLEARED_ENV, SPARQLY_HASH_SOURCES: fromEnv } },
+      { env: CLEARED_ENV },
     );
 
     expect(result.exitCode).toBe(0);

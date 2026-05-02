@@ -9,7 +9,7 @@ import {
   coercedBooleanSchema,
   graphModeFieldFor,
   outFieldFor,
-  sourcesFieldFor,
+  sourcesField,
   verbosityFieldsFor,
 } from '../runner/fields-shared';
 import type { CommandSpec } from '../runner/spec';
@@ -71,7 +71,7 @@ export const hashSpec: CommandSpec<HashConfig> = {
   description:
     'Compute a stable SHA-256 over the canonicalized RDF content of one or more sources',
   fields: [
-    sourcesFieldFor('hash'),
+    sourcesField,
     graphModeFieldFor('hash'),
     jsonField,
     compareWithField,
