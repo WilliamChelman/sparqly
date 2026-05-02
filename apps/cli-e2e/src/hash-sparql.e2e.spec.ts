@@ -181,3 +181,176 @@ describe('sparqly hash — inline scoping query (anonymous view)', () => {
     expect(result.stderr).toMatch(/exactly one source|single source|one source/i);
   });
 });
+
+describe('sparqly hash --compare-with — per-side inline scoping', () => {
+  let primaryEndpoint: FakeSparqlEndpoint | undefined;
+  let secondaryEndpoint: FakeSparqlEndpoint | undefined;
+  let scratch: string;
+
+  const PRIMARY_BINDINGS = JSON.stringify({
+    head: { vars: ['s', 'p', 'o'] },
+    results: {
+      bindings: [
+        {
+          s: { type: 'uri', value: 'http://example.org/keep' },
+          p: { type: 'uri', value: 'http://example.org/p' },
+          o: { type: 'uri', value: 'http://example.org/v1' },
+        },
+        {
+          s: { type: 'uri', value: 'http://example.org/drop' },
+          p: { type: 'uri', value: 'http://example.org/p' },
+          o: { type: 'uri', value: 'http://example.org/v2' },
+        },
+      ],
+    },
+  });
+
+  const SECONDARY_BINDINGS = JSON.stringify({
+    head: { vars: ['s', 'p', 'o'] },
+    results: {
+      bindings: [
+        {
+          s: { type: 'uri', value: 'http://example.org/keep' },
+          p: { type: 'uri', value: 'http://example.org/p' },
+          o: { type: 'uri', value: 'http://example.org/v1' },
+        },
+        {
+          s: { type: 'uri', value: 'http://example.org/extra' },
+          p: { type: 'uri', value: 'http://example.org/p' },
+          o: { type: 'uri', value: 'http://example.org/v3' },
+        },
+      ],
+    },
+  });
+
+  const PRIMARY_SCOPE_QUERY =
+    'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }';
+  // The compare-with side has its own "extra" noise (different from primary's "drop"),
+  // so a working per-side scope must keep only ex:keep to match.
+  const SECONDARY_SCOPE_QUERY =
+    'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }';
+
+  beforeEach(async () => {
+    scratch = await mkdtemp(join(tmpdir(), 'sparqly-hash-compare-anon-view-'));
+  });
+
+  afterEach(async () => {
+    if (primaryEndpoint) await primaryEndpoint.close();
+    primaryEndpoint = undefined;
+    if (secondaryEndpoint) await secondaryEndpoint.close();
+    secondaryEndpoint = undefined;
+    await rm(scratch, { recursive: true, force: true });
+  });
+
+  it('--query and --compare-with-query scope each side independently and match on the kept slice', async () => {
+    primaryEndpoint = await startFakeSparqlEndpoint(() => ({
+      body: PRIMARY_BINDINGS,
+    }));
+    secondaryEndpoint = await startFakeSparqlEndpoint(() => ({
+      body: SECONDARY_BINDINGS,
+    }));
+
+    const result = await runCli([
+      'hash',
+      '--quiet',
+      '--query',
+      PRIMARY_SCOPE_QUERY,
+      primaryEndpoint.url,
+      '--compare-with',
+      secondaryEndpoint.url,
+      '--compare-with-query',
+      SECONDARY_SCOPE_QUERY,
+    ]);
+
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/^match: [0-9a-f]{64}\n$/);
+    expect(primaryEndpoint.requestCount()).toBeGreaterThan(0);
+    expect(secondaryEndpoint.requestCount()).toBeGreaterThan(0);
+  });
+
+  it('--compare-with-query-file behaves equivalently to --compare-with-query', async () => {
+    primaryEndpoint = await startFakeSparqlEndpoint(() => ({
+      body: PRIMARY_BINDINGS,
+    }));
+    secondaryEndpoint = await startFakeSparqlEndpoint(() => ({
+      body: SECONDARY_BINDINGS,
+    }));
+
+    const compareQueryPath = join(scratch, 'compare-scope.rq');
+    await writeFile(compareQueryPath, SECONDARY_SCOPE_QUERY);
+
+    const result = await runCli([
+      'hash',
+      '--quiet',
+      '--query',
+      PRIMARY_SCOPE_QUERY,
+      primaryEndpoint.url,
+      '--compare-with',
+      secondaryEndpoint.url,
+      '--compare-with-query-file',
+      compareQueryPath,
+    ]);
+
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/^match: [0-9a-f]{64}\n$/);
+  });
+
+  it('--compare-with-query and --compare-with-query-file are mutually exclusive', async () => {
+    const compareQueryPath = join(scratch, 'compare-scope.rq');
+    await writeFile(compareQueryPath, SECONDARY_SCOPE_QUERY);
+
+    const result = await runCli([
+      'hash',
+      '--quiet',
+      hashFixture('domain.ttl'),
+      '--compare-with',
+      hashFixture('domain.ttl'),
+      '--compare-with-query',
+      SECONDARY_SCOPE_QUERY,
+      '--compare-with-query-file',
+      compareQueryPath,
+    ]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(
+      /--compare-with-query.*--compare-with-query-file|mutually exclusive/i,
+    );
+  });
+
+  it('rejects --compare-with-query without --compare-with', async () => {
+    const result = await runCli([
+      'hash',
+      '--quiet',
+      hashFixture('domain.ttl'),
+      '--compare-with-query',
+      SECONDARY_SCOPE_QUERY,
+    ]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/--compare-with/);
+  });
+
+  it('accepts a SPARQL endpoint on the --compare-with side when --compare-with-query is provided', async () => {
+    primaryEndpoint = await startFakeSparqlEndpoint(() => ({
+      body: PRIMARY_BINDINGS,
+    }));
+    secondaryEndpoint = await startFakeSparqlEndpoint(() => ({
+      body: SECONDARY_BINDINGS,
+    }));
+
+    const result = await runCli([
+      'hash',
+      '--quiet',
+      '--query',
+      PRIMARY_SCOPE_QUERY,
+      primaryEndpoint.url,
+      '--compare-with',
+      secondaryEndpoint.url,
+      '--compare-with-query',
+      SECONDARY_SCOPE_QUERY,
+    ]);
+
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(secondaryEndpoint.requestCount()).toBeGreaterThan(0);
+  });
+});
