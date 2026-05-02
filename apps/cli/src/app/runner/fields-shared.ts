@@ -35,7 +35,19 @@ const sourceObjectSchema = z
     headers: z.record(z.string(), z.string()).optional(),
     timeoutMs: z.number().int().positive().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.endpoint === undefined) return;
+    for (const key of ['graphMode', 'graph'] as const) {
+      if (value[key] !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [key],
+          message: `\`${key}\` is not valid on endpoint sources; express endpoint graph behaviour through a view's query (see #78)`,
+        });
+      }
+    }
+  });
 
 const sourceSpecInputSchema = z.union([z.string(), sourceObjectSchema]);
 
