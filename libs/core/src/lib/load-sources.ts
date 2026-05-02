@@ -2,6 +2,10 @@ import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import { DataFactory, Store, type Quad } from 'n3';
+import {
+  buildEndpointContext,
+  describeEndpointError,
+} from './endpoint-http';
 import { validatePrefilter } from './prefilter-validate';
 import { loadRdf, type GraphMode, type LoadResult } from './rdf-loader';
 import {
@@ -126,8 +130,6 @@ export async function loadSources(
   return { store: merged, files: allFiles, prefixes: allPrefixes };
 }
 
-const DEFAULT_ENDPOINT_TIMEOUT_MS = 30000;
-
 async function loadEndpoint(
   engine: ComunicaQueryEngine,
   source: ParsedEndpointSource,
@@ -167,53 +169,6 @@ async function loadEndpoint(
       `endpoint ${source.endpoint}: ${describeEndpointError(err)}`,
     );
   }
-}
-
-function buildEndpointContext(
-  source: ParsedEndpointSource,
-): Record<string, unknown> {
-  const timeoutMs = source.timeoutMs ?? DEFAULT_ENDPOINT_TIMEOUT_MS;
-  const injectedHeaders = collectInjectedHeaders(source);
-  const ctx: Record<string, unknown> = {
-    sources: [{ type: 'sparql', value: source.endpoint }],
-    httpTimeout: timeoutMs,
-  };
-  if (Object.keys(injectedHeaders).length > 0) {
-    const baseFetch: typeof fetch = globalThis.fetch.bind(globalThis);
-    ctx['fetch'] = ((input, init) => {
-      const merged = new Headers(init?.headers ?? undefined);
-      for (const [k, v] of Object.entries(injectedHeaders)) merged.set(k, v);
-      return baseFetch(input, { ...init, headers: merged });
-    }) satisfies typeof fetch;
-  }
-  return ctx;
-}
-
-function collectInjectedHeaders(
-  source: ParsedEndpointSource,
-): Record<string, string> {
-  const headers: Record<string, string> = {};
-  if (source.headers) {
-    for (const [k, v] of Object.entries(source.headers)) headers[k] = v;
-  }
-  if (source.auth) {
-    if (source.auth.type === 'bearer') {
-      headers['Authorization'] = `Bearer ${source.auth.token}`;
-    } else {
-      const token = Buffer.from(
-        `${source.auth.username}:${source.auth.password}`,
-        'utf8',
-      ).toString('base64');
-      headers['Authorization'] = `Basic ${token}`;
-    }
-  }
-  return headers;
-}
-
-function describeEndpointError(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err);
-  // Comunica's HTTP error messages typically include the status code; pass through.
-  return message;
 }
 
 function applyGraphMode(

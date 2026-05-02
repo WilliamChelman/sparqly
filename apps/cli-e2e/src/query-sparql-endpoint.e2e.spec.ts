@@ -23,7 +23,7 @@ const SPARQL_JSON_TWO_BINDINGS = JSON.stringify({
   },
 });
 
-describe('sparqly query — materialized SPARQL endpoint source', () => {
+describe('sparqly query — SPARQL endpoint source', () => {
   let endpoint: FakeSparqlEndpoint | undefined;
 
   afterEach(async () => {
@@ -31,7 +31,7 @@ describe('sparqly query — materialized SPARQL endpoint source', () => {
     endpoint = undefined;
   });
 
-  it('loads from a remote endpoint URL and answers a SELECT against the materialized snapshot', async () => {
+  it('answers a SELECT against a single remote endpoint URL via pass-through federation', async () => {
     endpoint = await startFakeSparqlEndpoint(() => ({
       contentType: 'application/sparql-results+json',
       body: SPARQL_JSON_TWO_BINDINGS,

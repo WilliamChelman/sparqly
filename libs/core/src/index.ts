@@ -10,4 +10,5 @@ export * from './lib/source-spec';
 export * from './lib/resolve-source-references';
 export * from './lib/prefilter-validate';
 export * from './lib/load-sources';
+export * from './lib/load-query-sources';
 export * from './lib/env-substitute';
