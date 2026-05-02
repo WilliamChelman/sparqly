@@ -214,7 +214,7 @@ describe('parseSourceSpec — view cache block', () => {
       id: 'cached',
       from: ['raw'],
       query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      cache: { ttlMs: 60 * 60 * 1000 },
+      cache: { strategy: 'ttl', ttlMs: 60 * 60 * 1000 },
     });
   });
 
@@ -227,7 +227,7 @@ describe('parseSourceSpec — view cache block', () => {
         cache: { ttl: '5m', cacheDir: './tmp/my-cache' },
       }),
     ).toMatchObject({
-      cache: { ttlMs: 5 * 60 * 1000, cacheDir: './tmp/my-cache' },
+      cache: { strategy: 'ttl', ttlMs: 5 * 60 * 1000, cacheDir: './tmp/my-cache' },
     });
   });
 
@@ -239,19 +239,45 @@ describe('parseSourceSpec — view cache block', () => {
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: 1500 },
       }),
-    ).toMatchObject({ cache: { ttlMs: 1500 } });
+    ).toMatchObject({ cache: { strategy: 'ttl', ttlMs: 1500 } });
   });
 
-  it('rejects a cache block with no ttl (placeholder until #87 adds freshness/everlasting)', () => {
+  it('parses a freshness ASK probe as the cache strategy', () => {
+    expect(
+      parseSourceSpec({
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { freshness: 'ASK { ?s ?p ?o }' },
+      }),
+    ).toMatchObject({
+      cache: { strategy: 'freshness', freshness: 'ASK { ?s ?p ?o }' },
+    });
+  });
+
+  it('parses everlasting:true as the cache strategy', () => {
+    expect(
+      parseSourceSpec({
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { everlasting: true },
+      }),
+    ).toMatchObject({
+      cache: { strategy: 'everlasting' },
+    });
+  });
+
+  it('rejects a cache block declaring no strategy', () => {
     expect(() =>
       parseSourceSpec({
         id: 'cached',
         from: ['@raw'],
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        // @ts-expect-error — cache requires ttl in this slice
+        // @ts-expect-error — must declare exactly one strategy
         cache: {},
       }),
-    ).toThrow(/cache.*ttl.*required/i);
+    ).toThrow(/cache.*exactly one.*ttl.*freshness.*everlasting/i);
   });
 
   it('rejects an unparseable ttl duration string', () => {
@@ -265,16 +291,71 @@ describe('parseSourceSpec — view cache block', () => {
     ).toThrow(/cache.*ttl/i);
   });
 
+  it('rejects ttl + freshness combined', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h', freshness: 'ASK { ?s ?p ?o }' },
+      }),
+    ).toThrow(/cache.*exactly one.*ttl.*freshness.*everlasting/i);
+  });
+
+  it('rejects ttl + everlasting combined', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h', everlasting: true },
+      }),
+    ).toThrow(/cache.*exactly one.*ttl.*freshness.*everlasting/i);
+  });
+
+  it('rejects freshness + everlasting combined', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { freshness: 'ASK { ?s ?p ?o }', everlasting: true },
+      }),
+    ).toThrow(/cache.*exactly one.*ttl.*freshness.*everlasting/i);
+  });
+
+  it('rejects everlasting:false (must be true to opt into the strategy)', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { everlasting: false },
+      }),
+    ).toThrow(/everlasting.*true/i);
+  });
+
+  it('rejects an empty freshness ASK string', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { freshness: '' },
+      }),
+    ).toThrow(/freshness.*non-empty/i);
+  });
+
   it('rejects unknown keys on the cache block', () => {
     expect(() =>
       parseSourceSpec({
         id: 'cached',
         from: ['@raw'],
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        // @ts-expect-error — `freshness` lands in #87
-        cache: { ttl: '1h', freshness: 'ASK { ?s ?p ?o }' },
+        // @ts-expect-error — `bogus` is not a known cache key
+        cache: { ttl: '1h', bogus: true },
       }),
-    ).toThrow(/cache.*unknown.*freshness/i);
+    ).toThrow(/cache.*unknown.*bogus/i);
   });
 
   it('rejects a cache block on a non-view source (glob)', () => {

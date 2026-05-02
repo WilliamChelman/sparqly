@@ -38,10 +38,27 @@ export interface ParsedReferenceSource extends SourceSpecCommonFields {
   ref: string;
 }
 
-export interface ParsedViewCache {
+export interface ParsedViewCacheTtl {
+  strategy: 'ttl';
   ttlMs: number;
   cacheDir?: string;
 }
+
+export interface ParsedViewCacheFreshness {
+  strategy: 'freshness';
+  freshness: string;
+  cacheDir?: string;
+}
+
+export interface ParsedViewCacheEverlasting {
+  strategy: 'everlasting';
+  cacheDir?: string;
+}
+
+export type ParsedViewCache =
+  | ParsedViewCacheTtl
+  | ParsedViewCacheFreshness
+  | ParsedViewCacheEverlasting;
 
 export interface ParsedViewSource {
   kind: 'view';
@@ -54,6 +71,8 @@ export interface ParsedViewSource {
 
 export interface ViewCacheInput {
   ttl?: string | number;
+  freshness?: string;
+  everlasting?: boolean;
   cacheDir?: string;
 }
 
@@ -228,37 +247,76 @@ function parseView(input: SourceSpecObjectInput): ParsedViewSource {
   return out;
 }
 
-const KNOWN_CACHE_KEYS = new Set(['ttl', 'cacheDir']);
+const KNOWN_CACHE_KEYS = new Set([
+  'ttl',
+  'freshness',
+  'everlasting',
+  'cacheDir',
+]);
 
 function parseViewCache(viewId: string, raw: ViewCacheInput): ParsedViewCache {
   if (raw === null || typeof raw !== 'object') {
     throw new Error(
-      `view "${viewId}": \`cache\` must be an object with at least \`ttl\``,
+      `view "${viewId}": \`cache\` must be an object declaring exactly one of \`ttl\`, \`freshness\`, or \`everlasting\``,
     );
   }
   for (const key of Object.keys(raw)) {
     if (!KNOWN_CACHE_KEYS.has(key)) {
       throw new Error(
-        `view "${viewId}": unknown \`cache\` key "${key}" (other strategies land in #87)`,
+        `view "${viewId}": unknown \`cache\` key "${key}"`,
       );
     }
   }
-  if (raw.ttl === undefined) {
+  const declared: Array<'ttl' | 'freshness' | 'everlasting'> = [];
+  if (raw.ttl !== undefined) declared.push('ttl');
+  if (raw.freshness !== undefined) declared.push('freshness');
+  if (raw.everlasting !== undefined) declared.push('everlasting');
+  if (declared.length !== 1) {
     throw new Error(
-      `view "${viewId}": \`cache.ttl\` is required (other strategies in #87)`,
+      `view "${viewId}": \`cache\` must declare exactly one of \`ttl\`, \`freshness\`, or \`everlasting\` (got: ${
+        declared.length === 0 ? '<none>' : declared.join(', ')
+      })`,
     );
   }
-  const ttlMs = parseTtl(viewId, raw.ttl);
-  const out: ParsedViewCache = { ttlMs };
-  if (raw.cacheDir !== undefined) {
-    if (typeof raw.cacheDir !== 'string' || raw.cacheDir.length === 0) {
+  const cacheDir = parseCacheDir(viewId, raw.cacheDir);
+  if (declared[0] === 'ttl') {
+    const ttlMs = parseTtl(viewId, raw.ttl as string | number);
+    return cacheDir === undefined
+      ? { strategy: 'ttl', ttlMs }
+      : { strategy: 'ttl', ttlMs, cacheDir };
+  }
+  if (declared[0] === 'freshness') {
+    const freshness = raw.freshness as string;
+    if (typeof freshness !== 'string' || freshness.trim().length === 0) {
       throw new Error(
-        `view "${viewId}": \`cache.cacheDir\` must be a non-empty string`,
+        `view "${viewId}": \`cache.freshness\` must be a non-empty ASK query string`,
       );
     }
-    out.cacheDir = raw.cacheDir;
+    return cacheDir === undefined
+      ? { strategy: 'freshness', freshness }
+      : { strategy: 'freshness', freshness, cacheDir };
   }
-  return out;
+  if (raw.everlasting !== true) {
+    throw new Error(
+      `view "${viewId}": \`cache.everlasting\` must be \`true\` to opt into the everlasting strategy`,
+    );
+  }
+  return cacheDir === undefined
+    ? { strategy: 'everlasting' }
+    : { strategy: 'everlasting', cacheDir };
+}
+
+function parseCacheDir(
+  viewId: string,
+  raw: string | undefined,
+): string | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'string' || raw.length === 0) {
+    throw new Error(
+      `view "${viewId}": \`cache.cacheDir\` must be a non-empty string`,
+    );
+  }
+  return raw;
 }
 
 const TTL_PATTERN = /^(\d+)(ms|s|m|h|d)$/;
