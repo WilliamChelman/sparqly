@@ -437,7 +437,36 @@ describe('loadSources — per-source pipeline', () => {
   it('rejects an invalid prefilter (ASK) before any I/O', async () => {
     await expect(
       loadSources([{ glob: 'never-read/*.ttl', prefilter: 'ASK { ?s ?p ?o }' }]),
-    ).rejects.toThrow(/ASK.*not.*allowed.*prefilter/i);
+    ).rejects.toThrow(/ASK.*not.*allowed/i);
+  });
+
+  it('dispatches view sources through the view-resolver and merges their quads', async () => {
+    const a = join(dir, 'a.ttl');
+    await writeFile(
+      a,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:a ex:p ex:b .',
+        'ex:c ex:p ex:d .',
+      ].join('\n'),
+    );
+
+    const { store } = await loadSources([
+      { id: 'raw', glob: a },
+      {
+        id: 'derived',
+        from: ['@raw'],
+        query:
+          'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:r ?o } WHERE { ?s ex:p ?o }',
+      },
+    ]);
+
+    const predicates = new Set(
+      store.getQuads(null, null, null, null).map((q) => q.predicate.value),
+    );
+    expect(predicates.has('http://example.org/p')).toBe(true);
+    expect(predicates.has('http://example.org/r')).toBe(true);
+    expect(store.size).toBe(4);
   });
 
   it('per-source graph: IRI overrides the synthetic file:// graph IRI', async () => {

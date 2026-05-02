@@ -76,13 +76,129 @@ describe('parseSourceSpec — object form', () => {
         glob: 'data/*.ttl',
         endpoint: 'https://example.com/sparql',
       }),
-    ).toThrow(/exactly one of `glob:` or `endpoint:`/);
+    ).toThrow(/exactly one of `glob:`, `endpoint:`, or `from:`/);
   });
 
-  it('rejects an object with neither glob: nor endpoint:', () => {
+  it('rejects an object with no glob:, endpoint:, or from:', () => {
     expect(() => parseSourceSpec({ id: 'orphan' })).toThrow(
-      /exactly one of `glob:` or `endpoint:`/,
+      /exactly one of `glob:`, `endpoint:`, or `from:`/,
     );
+  });
+});
+
+describe('parseSourceSpec — view discriminant', () => {
+  it('parses a view with from refs, an inline query, and an id', () => {
+    expect(
+      parseSourceSpec({
+        id: 'filtered',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      }),
+    ).toEqual({
+      kind: 'view',
+      id: 'filtered',
+      from: ['raw'],
+      query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+    });
+  });
+
+  it('parses a view with queryFile instead of inline query', () => {
+    expect(
+      parseSourceSpec({
+        id: 'filtered',
+        from: ['@raw'],
+        queryFile: './scope.rq',
+      }),
+    ).toEqual({
+      kind: 'view',
+      id: 'filtered',
+      from: ['raw'],
+      queryFile: './scope.rq',
+    });
+  });
+
+  it('parses a view with multiple from refs', () => {
+    expect(
+      parseSourceSpec({
+        id: 'fanned',
+        from: ['@a', '@b'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      }),
+    ).toMatchObject({
+      kind: 'view',
+      from: ['a', 'b'],
+    });
+  });
+
+  it('rejects a view with both query and queryFile', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'filtered',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        queryFile: './scope.rq',
+      }),
+    ).toThrow(/`query`.*`queryFile`.*mutual/i);
+  });
+
+  it('rejects a view with neither query nor queryFile', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'filtered',
+        from: ['@raw'],
+      }),
+    ).toThrow(/view.*exactly one of `query`.*`queryFile`/i);
+  });
+
+  it('rejects a view without an id', () => {
+    expect(() =>
+      parseSourceSpec({
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      }),
+    ).toThrow(/view.*id.*required/i);
+  });
+
+  it('rejects a view with an empty from list', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'filtered',
+        from: [],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      }),
+    ).toThrow(/view.*from.*at least one/i);
+  });
+
+  it('rejects a from entry that is not a `@id` reference', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'filtered',
+        from: ['raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      }),
+    ).toThrow(/from.*ref.*@/i);
+  });
+
+  it('rejects a view that also declares glob:', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'mix',
+        from: ['@raw'],
+        glob: 'data/*.ttl',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      }),
+    ).toThrow(/exactly one of `glob:`, `endpoint:`, or `from:`/);
+  });
+
+  it('rejects a view that also declares endpoint:', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'mix',
+        from: ['@raw'],
+        endpoint: 'https://example.org/sparql',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      }),
+    ).toThrow(/exactly one of `glob:`, `endpoint:`, or `from:`/);
   });
 });
 

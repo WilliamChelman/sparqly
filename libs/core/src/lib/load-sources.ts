@@ -6,15 +6,17 @@ import {
   buildEndpointContext,
   describeEndpointError,
 } from './endpoint-http';
-import { validatePrefilter } from './prefilter-validate';
+import { validateViewQuery } from './view-query-validate';
 import { loadRdf, type GraphMode, type LoadResult } from './rdf-loader';
 import {
   parseSourceSpecs,
   type ParseSourceSpecsContext,
   type ParsedEndpointSource,
   type ParsedGlobSource,
+  type ParsedViewSource,
   type SourceSpecInput,
 } from './source-spec';
+import { resolveView } from './view-resolver';
 
 export const NOT_SUPPORTED_TRACKING_URL =
   'https://github.com/WilliamChelman/sparqly/issues/60';
@@ -41,13 +43,14 @@ export async function loadSources(
   for (let i = 0; i < parsed.length; i++) {
     const source = parsed[i];
     if (source.kind === 'reference') continue;
+    if (source.kind === 'view') continue;
     if (source.prefilter !== undefined) {
-      validatePrefilter(source.prefilter);
+      validateViewQuery(source.prefilter);
       resolvedPrefilters.set(i, source.prefilter);
     } else if (source.prefilterFile !== undefined) {
       const path = resolvePath(process.cwd(), source.prefilterFile);
       const query = await readFile(path, 'utf8');
-      validatePrefilter(query);
+      validateViewQuery(query);
       resolvedPrefilters.set(i, query);
     }
   }
@@ -58,7 +61,18 @@ export async function loadSources(
   const engine = new ComunicaQueryEngine();
 
   for (let i = 0; i < parsed.length; i++) {
-    const source = parsed[i] as ParsedGlobSource | ParsedEndpointSource;
+    const rawSource = parsed[i];
+    if (rawSource.kind === 'view') {
+      const viewStore = await resolveView({
+        view: rawSource as ParsedViewSource,
+        registry: parsed,
+      });
+      for (const quad of viewStore.getQuads(null, null, null, null)) {
+        merged.addQuad(quad);
+      }
+      continue;
+    }
+    const source = rawSource as ParsedGlobSource | ParsedEndpointSource;
     const effectiveMode: GraphMode =
       source.graphMode ?? options.graphMode ?? 'preserve';
     const overrideGraph = source.graph
