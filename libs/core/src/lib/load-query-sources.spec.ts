@@ -160,6 +160,38 @@ describe('loadQuerySources — materialization fallbacks', () => {
   });
 });
 
+describe('loadQuerySources — view forces materialization', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-loadquerysources-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('materializes a registry that includes a view (raw glob + view)', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const result = await loadQuerySources([
+      { id: 'raw', glob: join(dir, '*.ttl') },
+      {
+        id: 'derived',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+    ]);
+
+    expect(result.mode).toBe('materialized');
+    if (result.mode !== 'materialized') throw new Error('unreachable');
+    expect(result.store.size).toBeGreaterThan(0);
+  });
+});
+
 describe('loadQuerySources — mixed-source rejection', () => {
   let dir: string;
   let endpoint: FakeSparqlEndpoint | undefined;

@@ -1,21 +1,21 @@
 import { Parser as SparqlParser } from 'sparqljs';
 
-export function validatePrefilter(query: string): void {
+export function validateViewQuery(query: string): void {
   const parsed = new SparqlParser().parse(query);
   if (parsed.type === 'update') {
     throw new Error(
-      'UPDATE queries are not allowed as a prefilter; use SELECT or CONSTRUCT.',
+      'UPDATE queries are not allowed for a view query; use SELECT or CONSTRUCT.',
     );
   }
   if (parsed.type === 'query') {
     if (parsed.queryType === 'ASK') {
       throw new Error(
-        'ASK queries are not allowed as a prefilter; use SELECT or CONSTRUCT.',
+        'ASK queries are not allowed for a view query; use SELECT or CONSTRUCT.',
       );
     }
     if (parsed.queryType === 'DESCRIBE') {
       throw new Error(
-        'DESCRIBE queries are not allowed as a prefilter; use SELECT or CONSTRUCT.',
+        'DESCRIBE queries are not allowed for a view query; use SELECT or CONSTRUCT.',
       );
     }
     if (parsed.queryType === 'SELECT') {
@@ -30,7 +30,7 @@ function assertSelectProjection(variables: ReadonlyArray<unknown>): void {
     const term = v as { termType?: string; value?: string };
     if (term?.termType !== 'Variable' || typeof term.value !== 'string') {
       throw new Error(
-        'SELECT prefilter must project exactly {?s, ?p, ?o} or {?s, ?p, ?o, ?g} (no SELECT *, no expressions).',
+        'SELECT view query must project exactly {?s, ?p, ?o} or {?s, ?p, ?o, ?g} (no SELECT *, no expressions).',
       );
     }
     names.push(term.value);
@@ -38,7 +38,7 @@ function assertSelectProjection(variables: ReadonlyArray<unknown>): void {
   const sorted = [...names].sort().join(',');
   if (sorted !== 'o,p,s' && sorted !== 'g,o,p,s') {
     throw new Error(
-      'SELECT prefilter must project exactly {?s, ?p, ?o} or {?s, ?p, ?o, ?g}.',
+      'SELECT view query must project exactly {?s, ?p, ?o} or {?s, ?p, ?o, ?g}.',
     );
   }
 }

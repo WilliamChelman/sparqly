@@ -35,16 +35,28 @@ export interface ParsedReferenceSource extends SourceSpecCommonFields {
   ref: string;
 }
 
+export interface ParsedViewSource {
+  kind: 'view';
+  id: string;
+  from: ReadonlyArray<string>;
+  query?: string;
+  queryFile?: string;
+}
+
 export type ParsedSource =
   | ParsedGlobSource
   | ParsedEndpointSource
-  | ParsedReferenceSource;
+  | ParsedReferenceSource
+  | ParsedViewSource;
 
 export interface SourceSpecObjectInput
   extends SourceSpecCommonFields,
     EndpointHttpFields {
   glob?: string;
   endpoint?: string;
+  from?: ReadonlyArray<string>;
+  query?: string;
+  queryFile?: string;
 }
 
 export type SourceSpecInput = string | SourceSpecObjectInput;
@@ -94,9 +106,11 @@ export function parseSourceSpec(input: SourceSpecInput): ParsedSource {
   }
   const hasGlob = input.glob !== undefined;
   const hasEndpoint = input.endpoint !== undefined;
-  if (hasGlob === hasEndpoint) {
+  const hasFrom = input.from !== undefined;
+  const setCount = [hasGlob, hasEndpoint, hasFrom].filter(Boolean).length;
+  if (setCount !== 1) {
     throw new Error(
-      'source-spec object must declare exactly one of `glob:` or `endpoint:`',
+      'source-spec object must declare exactly one of `glob:`, `endpoint:`, or `from:`',
     );
   }
   if (input.id !== undefined) validateSourceId(input.id);
@@ -104,6 +118,9 @@ export function parseSourceSpec(input: SourceSpecInput): ParsedSource {
     throw new Error(
       '`prefilter` and `prefilterFile` are mutually exclusive on a source-spec object',
     );
+  }
+  if (hasFrom) {
+    return parseView(input);
   }
   const common = pickCommon(input);
   if (hasGlob) {
@@ -117,6 +134,53 @@ export function parseSourceSpec(input: SourceSpecInput): ParsedSource {
     ...common,
     ...http,
   };
+}
+
+const VIEW_REF_PREFIX = /^@(.+)$/;
+
+function parseView(input: SourceSpecObjectInput): ParsedViewSource {
+  if (input.id === undefined) {
+    throw new Error('view source: `id` is required');
+  }
+  const from = input.from as ReadonlyArray<string>;
+  if (from.length === 0) {
+    throw new Error('view source: `from` must list at least one ref');
+  }
+  const refs: string[] = [];
+  for (const entry of from) {
+    if (typeof entry !== 'string') {
+      throw new Error(
+        'view source: each `from` entry must be a `@id` ref string',
+      );
+    }
+    const match = VIEW_REF_PREFIX.exec(entry);
+    if (!match) {
+      throw new Error(
+        `view source: \`from\` entry ${JSON.stringify(entry)} must be a \`@id\` ref (e.g. \`@my-source\`)`,
+      );
+    }
+    refs.push(match[1]);
+  }
+  const hasQuery = input.query !== undefined;
+  const hasQueryFile = input.queryFile !== undefined;
+  if (hasQuery && hasQueryFile) {
+    throw new Error(
+      'view source: `query` and `queryFile` are mutually exclusive',
+    );
+  }
+  if (!hasQuery && !hasQueryFile) {
+    throw new Error(
+      'view source: must declare exactly one of `query` or `queryFile`',
+    );
+  }
+  const out: ParsedViewSource = {
+    kind: 'view',
+    id: input.id,
+    from: refs,
+  };
+  if (hasQuery) out.query = input.query;
+  if (hasQueryFile) out.queryFile = input.queryFile;
+  return out;
 }
 
 const ENDPOINT_ONLY_KEYS = ['auth', 'headers', 'timeoutMs'] as const;
