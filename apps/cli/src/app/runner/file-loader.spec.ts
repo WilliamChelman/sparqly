@@ -126,3 +126,86 @@ describe('makeFileLoader', () => {
     expect(result.filepath).toBe(join(dir, 'rel.yaml'));
   });
 });
+
+describe('makeFileLoader — env-var substitution on sources[]', () => {
+  let dir: string;
+  const ORIGINAL_ENV = { ...process.env };
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-loader-env-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  it('expands ${VAR} from process.env in sources[] entries before Zod validation', async () => {
+    process.env.SPARQLY_TEST_HOST = 'live.example.com';
+    const path = join(dir, 'sparqly.query.yaml');
+    await writeFile(
+      path,
+      'sources:\n  - "https://${SPARQLY_TEST_HOST}/sparql"\n',
+    );
+
+    const load = makeFileLoader(querySpec);
+    const result = await load(path, dir);
+    expect(result.data).toEqual({
+      sources: ['https://live.example.com/sparql'],
+    });
+  });
+
+  it('fails the load when a sources[] entry references a missing env var, naming the var and JSON pointer', async () => {
+    delete process.env.SPARQLY_MISSING_VAR;
+    const path = join(dir, 'sparqly.query.yaml');
+    await writeFile(
+      path,
+      'sources:\n  - "https://${SPARQLY_MISSING_VAR}/sparql"\n',
+    );
+
+    const load = makeFileLoader(querySpec);
+    await expect(load(path, dir)).rejects.toThrow(
+      /SPARQLY_MISSING_VAR.*\/sources\/0/,
+    );
+  });
+
+  it('does NOT substitute ${VAR} inside non-sources fields', async () => {
+    process.env.SPARQLY_TEST_PORT = '9999';
+    const path = join(dir, 'sparqly.serve.yaml');
+    await writeFile(
+      path,
+      'sources: "x"\nport: 8080\n',
+    );
+
+    const load = makeFileLoader(serveSpec);
+    const result = await load(path, dir);
+    expect(result.data).toEqual({ sources: 'x', port: 8080 });
+  });
+
+  it('leaves a non-sources string field with literal ${VAR} untouched (no expansion outside sources[])', async () => {
+    const labelSpec: CommandSpec = {
+      name: 'label',
+      description: 'l',
+      fields: [
+        sourcesField,
+        { key: 'label', schema: z.string() },
+      ],
+      handler: () => undefined,
+      exitCode: () => 1,
+    };
+    process.env.SPARQLY_TEST_HOST = 'live';
+    const path = join(dir, 'sparqly.label.yaml');
+    await writeFile(
+      path,
+      'sources:\n  - "https://${SPARQLY_TEST_HOST}/sparql"\n' +
+        'label: "literal ${SPARQLY_TEST_HOST} stays"\n',
+    );
+
+    const load = makeFileLoader(labelSpec);
+    const result = await load(path, dir);
+    expect(result.data).toEqual({
+      sources: ['https://live/sparql'],
+      label: 'literal ${SPARQLY_TEST_HOST} stays',
+    });
+  });
+});
