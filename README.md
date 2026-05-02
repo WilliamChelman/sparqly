@@ -331,6 +331,14 @@ detection, no fuzzy matching, no SHACL-aware equivalence.
 > language-tag casing will appear as both an addition and a removal even though
 > they denote the same value. Tracked in `ideas.md` (shared with `hash`).
 
+> **Determinism caveat (SPARQL endpoints).** `diff` always materializes both
+> sides, so a SPARQL endpoint source is rejected on either side unless an
+> explicit `prefilter` (or `prefilterFile`) is configured to scope the data
+> being compared. Even with a prefilter, a remote endpoint can return different
+> data between two runs (live data, eventual consistency, missing `ORDER BY`),
+> so a `diff` against a SPARQL source is only as deterministic as the endpoint
+> itself.
+
 ### Synopsis
 
 ```sh

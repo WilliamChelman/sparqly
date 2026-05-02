@@ -6,10 +6,12 @@ import {
   diffCanonicalStatements,
   formatRdf,
   formatRdfDiff,
+  parseSourceSpec,
   shortenNQuadLine,
   type FormatSerialization,
   type GraphMode,
   type RdfDiffResult,
+  type SourceSpecInput,
 } from 'core';
 import { configureLogger } from '../logging';
 import { writeOutputToFile } from '../output';
@@ -88,7 +90,7 @@ const formatField: FieldDescriptor = {
 export const diffSpec: CommandSpec<DiffConfig> = {
   name: 'diff',
   description:
-    'Compute a semantic diff between two RDF sources via RDFC-1.0 canonicalization. Note: RDFC-1.0 does not normalize literal lexical forms.',
+    'Compute a semantic diff between two RDF sources via RDFC-1.0 canonicalization. Always materializes both sides; a SPARQL endpoint source is rejected on either side unless a prefilter scopes it. Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL diff is only as deterministic as the endpoint. Note: RDFC-1.0 does not normalize literal lexical forms.',
   fields: [
     leftField,
     rightField,
@@ -103,6 +105,28 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     { field: 'left', name: 'left' },
     { field: 'right', name: 'right' },
   ],
+  refine: (schema) =>
+    (schema as z.ZodObject).superRefine(
+      (val: Record<string, unknown>, ctx) => {
+        for (const side of ['left', 'right'] as const) {
+          const value = val[side];
+          if (value === undefined) continue;
+          const list: SourceSpecInput[] = Array.isArray(value)
+            ? (value as SourceSpecInput[])
+            : [value as SourceSpecInput];
+          list.forEach((entry, i) => {
+            const violation = endpointWithoutPrefilter(entry);
+            if (violation) {
+              ctx.addIssue({
+                code: 'custom',
+                message: `SPARQL endpoint ${violation} requires a prefilter on the ${side} side of diff (diff always materializes; pre-scope the endpoint or pipe \`sparqly query --format=turtle\` into \`sparqly diff\`)`,
+                path: Array.isArray(value) ? [side, i] : [side],
+              });
+            }
+          });
+        }
+      },
+    ),
   exitCode: (err) => {
     if (err instanceof DiffPresentSignal) return 1;
     return 2;
@@ -221,6 +245,20 @@ function formatBlock(
     : 'turtle';
   const out = formatRdf(quads, serialization, { prefixes });
   return out.endsWith('\n') ? out : `${out}\n`;
+}
+
+function endpointWithoutPrefilter(entry: SourceSpecInput): string | null {
+  let parsed;
+  try {
+    parsed = parseSourceSpec(entry);
+  } catch {
+    return null;
+  }
+  if (parsed.kind !== 'endpoint') return null;
+  if (parsed.prefilter !== undefined || parsed.prefilterFile !== undefined) {
+    return null;
+  }
+  return parsed.endpoint;
 }
 
 export { DiffPresentSignal, DIFF_FORMATS };
