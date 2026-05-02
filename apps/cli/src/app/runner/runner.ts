@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { Option, type Command } from 'commander';
+import { resolveSourceReferences, type SourceSpecInput } from 'core';
 import { configureLogger } from '../logging';
 import type { FieldDescriptor } from './field';
 import { blockSchemaFromFields } from './field';
@@ -90,6 +91,7 @@ export function registerSpec<T extends Record<string, unknown>>(
         env,
         cli,
       });
+      resolveSourcesIfPresent(merged.config, fileLayers);
       rawConfig = merged.config;
 
       const baseSchema = blockSchemaFromFields(spec.fields);
@@ -120,6 +122,22 @@ export function registerSpec<T extends Record<string, unknown>>(
   });
 
   return sub;
+}
+
+function resolveSourcesIfPresent(
+  config: Record<string, unknown>,
+  fileLayers: FileLayers,
+): void {
+  const sources = config.sources;
+  if (sources === undefined) return;
+  const list: SourceSpecInput[] = Array.isArray(sources)
+    ? (sources as SourceSpecInput[])
+    : [sources as SourceSpecInput];
+  const registry = fileLayers.filepath === null
+    ? null
+    : ((fileLayers.data.sources as SourceSpecInput[] | undefined) ?? []);
+  const resolved = resolveSourceReferences(list, { registry });
+  config.sources = Array.isArray(sources) ? resolved : resolved[0];
 }
 
 class AliasedOption extends Option {

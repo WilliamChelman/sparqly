@@ -7,6 +7,7 @@ export * from './lib/formatter';
 export * from './lib/parse-rdf-string';
 export * from './lib/parse-sparql-prefixes';
 export * from './lib/source-spec';
+export * from './lib/resolve-source-references';
 export * from './lib/prefilter-validate';
 export * from './lib/load-sources';
 export * from './lib/env-substitute';
