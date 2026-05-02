@@ -16,6 +16,13 @@ export interface ViewCacheBinding {
   cacheDir: string;
   now?: () => number;
   /**
+   * Optional. When supplied, `viewCacheKey` walks the view DAG via `from:` refs
+   * and folds each upstream view's recursive cache key into the parent's key,
+   * so a deep ancestor's spec change propagates. Without it, only the directly
+   * supplied `upstream` specs feed the key.
+   */
+  registry?: ReadonlyArray<ParsedSource>;
+  /**
    * Required when `view.cache.strategy === 'freshness'`. Lazily produces the
    * store the ASK probe runs against — typically the resolved upstream.
    */
@@ -67,22 +74,85 @@ export function resolveViewCacheDir(
 }
 
 export function viewCacheKey(binding: ViewCacheBinding): string {
+  return computeViewCacheKey(binding, []);
+}
+
+function computeViewCacheKey(
+  binding: ViewCacheBinding,
+  stack: ReadonlyArray<string>,
+): string {
   const queryText =
     binding.view.query !== undefined
       ? `q:${binding.view.query}`
       : `qf:${binding.view.queryFile ?? ''}`;
-  const upstream = [...binding.upstream]
-    .map((s) => stableStringify(s))
-    .sort()
-    .join('\n');
+  const upstreamContribs = upstreamKeyContributions(binding, stack);
   const fromRefs = [...binding.view.from].sort().join(',');
   const material = [
     `view:${binding.view.id}`,
     `from:${fromRefs}`,
     queryText,
-    `upstream:\n${upstream}`,
+    `upstream:\n${upstreamContribs.join('\n')}`,
   ].join('\n');
   return createHash('sha256').update(material).digest('hex').slice(0, 32);
+}
+
+function upstreamKeyContributions(
+  binding: ViewCacheBinding,
+  stack: ReadonlyArray<string>,
+): string[] {
+  if (binding.registry !== undefined) {
+    return upstreamContribsViaRegistry(binding.view, binding.registry, stack);
+  }
+  return [...binding.upstream]
+    .map((s) => stableStringify(s))
+    .sort();
+}
+
+function indexRegistryById(
+  registry: ReadonlyArray<ParsedSource>,
+): Map<string, ParsedSource> {
+  const byId = new Map<string, ParsedSource>();
+  for (const src of registry) {
+    if (src.kind === 'reference' || src.id === undefined) continue;
+    byId.set(src.id, src);
+  }
+  return byId;
+}
+
+function upstreamContribsViaRegistry(
+  view: ParsedViewSource,
+  registry: ReadonlyArray<ParsedSource>,
+  stack: ReadonlyArray<string>,
+): string[] {
+  const byId = indexRegistryById(registry);
+  const contribs: string[] = [];
+  for (const refId of view.from) {
+    if (stack.includes(refId)) {
+      // Cycle guard: surface the cycle marker rather than recursing forever.
+      contribs.push(`cycle:${refId}`);
+      continue;
+    }
+    const upstream = byId.get(refId);
+    if (!upstream) {
+      contribs.push(`missing:${refId}`);
+      continue;
+    }
+    if (upstream.kind === 'view') {
+      const subKey = computeViewCacheKey(
+        {
+          view: upstream,
+          upstream: [],
+          cacheDir: '',
+          registry,
+        },
+        [...stack, view.id],
+      );
+      contribs.push(`view:${refId}:${subKey}`);
+      continue;
+    }
+    contribs.push(stableStringify(upstream));
+  }
+  return contribs.sort();
 }
 
 export async function lookup(
@@ -111,7 +181,61 @@ export async function lookup(
     if (!askPassed) return { freshness: 'stale' };
   }
 
+  if (binding.registry !== undefined) {
+    const ancestor = await ancestorFreshness(binding, [binding.view.id]);
+    if (ancestor !== 'fresh') return { freshness: 'stale' };
+  }
+
   return { freshness: 'fresh', store };
+}
+
+async function ancestorFreshness(
+  binding: ViewCacheBinding,
+  stack: ReadonlyArray<string>,
+): Promise<CacheFreshness> {
+  const registry = binding.registry;
+  if (!registry) return 'fresh';
+  const byId = indexRegistryById(registry);
+  for (const refId of binding.view.from) {
+    if (stack.includes(refId)) continue;
+    const upstream = byId.get(refId);
+    if (!upstream || upstream.kind !== 'view') continue;
+    const subBinding: ViewCacheBinding = {
+      view: upstream,
+      upstream: [],
+      cacheDir: ancestorCacheDir(binding, upstream),
+      registry,
+      now: binding.now,
+    };
+    if (upstream.cache !== undefined) {
+      // Skip freshness-ASK ancestors when no probe loader is plumbed:
+      // their own resolver pass handles ASK probing, and asserting their
+      // freshness here would require resolving their upstream — a coupling
+      // we do not want from inside view-cache.
+      if (
+        upstream.cache.strategy === 'freshness' &&
+        binding.loadProbeStore === undefined
+      ) {
+        continue;
+      }
+      const sub = await lookup(subBinding);
+      if (sub.freshness !== 'fresh') return sub.freshness;
+      continue;
+    }
+    // Uncached intermediate view: keep walking upward.
+    const deeper = await ancestorFreshness(subBinding, [...stack, refId]);
+    if (deeper !== 'fresh') return deeper;
+  }
+  return 'fresh';
+}
+
+function ancestorCacheDir(
+  binding: ViewCacheBinding,
+  upstream: ParsedViewSource,
+): string {
+  const override = upstream.cache?.cacheDir;
+  if (override !== undefined && isAbsolute(override)) return override;
+  return binding.cacheDir;
 }
 
 export async function storeView(
