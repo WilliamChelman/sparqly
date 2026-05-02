@@ -97,11 +97,20 @@ describe('sparqly serve --watch with mixed glob and SPARQL sources', () => {
       body: SPARQL_JSON_ONE_BINDING,
     }));
 
+    const configPath = join(scratch, 'sparqly.serve.yaml');
+    await writeFile(
+      configPath,
+      dedent`
+        sources:
+          - "${dataPath}"
+          - endpoint: "${endpoint.url}"
+            prefilter: "SELECT ?s ?p ?o WHERE { ?s ?p ?o }"
+      ` + '\n',
+    );
+
     handle = await startServe([
-      '-s',
-      dataPath,
-      '-s',
-      endpoint.url,
+      '--config',
+      configPath,
       '--watch',
       '--watch-debounce',
       '100',
