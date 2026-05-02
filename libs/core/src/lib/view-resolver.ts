@@ -31,7 +31,22 @@ export interface ResolveViewOptions {
 export async function resolveView(
   opts: ResolveViewOptions,
 ): Promise<Store> {
-  const { view, registry, cacheDir, now } = opts;
+  return resolveViewWithCache(
+    opts.view,
+    opts.registry,
+    [opts.view.id],
+    opts.cacheDir,
+    opts.now,
+  );
+}
+
+async function resolveViewWithCache(
+  view: ParsedViewSource,
+  registry: ReadonlyArray<ParsedSource>,
+  stack: ReadonlyArray<string>,
+  cacheDir: string | undefined,
+  now: (() => number) | undefined,
+): Promise<Store> {
   if (view.cache && cacheDir) {
     const upstream = collectCacheUpstream(view, registry);
     const binding: ViewCacheBinding = {
@@ -39,20 +54,21 @@ export async function resolveView(
       upstream,
       cacheDir,
       now,
+      registry,
       loadProbeStore:
         view.cache.strategy === 'freshness'
-          ? () => loadUpstream(view, registry, [view.id])
+          ? () => loadUpstream(view, registry, stack, cacheDir, now)
           : undefined,
     };
     const hit = await cacheLookup(binding);
     if (hit.freshness === 'fresh' && hit.store) {
       return hit.store;
     }
-    const fresh = await resolveViewInternal(view, registry, [view.id]);
+    const fresh = await resolveViewInternal(view, registry, stack, cacheDir, now);
     await cacheStore(binding, fresh);
     return fresh;
   }
-  return resolveViewInternal(view, registry, [view.id]);
+  return resolveViewInternal(view, registry, stack, cacheDir, now);
 }
 
 function collectCacheUpstream(
@@ -76,10 +92,12 @@ async function resolveViewInternal(
   view: ParsedViewSource,
   registry: ReadonlyArray<ParsedSource>,
   stack: ReadonlyArray<string>,
+  cacheDir: string | undefined,
+  now: (() => number) | undefined,
 ): Promise<Store> {
   const query = await loadViewQuery(view);
   validateViewQuery(query);
-  const upstreamStore = await loadUpstream(view, registry, stack);
+  const upstreamStore = await loadUpstream(view, registry, stack, cacheDir, now);
   return runViewQuery(upstreamStore, query);
 }
 
@@ -98,6 +116,8 @@ async function loadUpstream(
   view: ParsedViewSource,
   registry: ReadonlyArray<ParsedSource>,
   stack: ReadonlyArray<string>,
+  cacheDir: string | undefined,
+  now: (() => number) | undefined,
 ): Promise<Store> {
   const merged = new Store();
   const byId = buildRegistryById(registry);
@@ -124,10 +144,13 @@ async function loadUpstream(
       );
     }
     if (upstream.kind === 'view') {
-      const sub = await resolveViewInternal(upstream, registry, [
-        ...stack,
-        refId,
-      ]);
+      const sub = await resolveViewWithCache(
+        upstream,
+        registry,
+        [...stack, refId],
+        cacheDir,
+        now,
+      );
       for (const quad of sub.getQuads(null, null, null, null)) {
         merged.addQuad(quad);
       }

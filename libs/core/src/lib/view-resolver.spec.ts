@@ -488,6 +488,65 @@ describe('resolveView — view-cache integration', () => {
     expect(second.getQuads(null, null, null, null)).toHaveLength(1);
   });
 
+  it('two-deep cached chain: clearing the ancestor cache forces re-evaluation through the chain', async () => {
+    const a = join(dataDir, 'a.ttl');
+    await writeFile(
+      a,
+      '@prefix ex: <http://example.org/> . ex:one ex:p ex:v .',
+    );
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: a },
+      {
+        id: 'mid',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+      {
+        id: 'leaf',
+        from: ['@mid'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+    ]);
+    const leaf = registry[2] as ParsedViewSource;
+
+    const first = await resolveView({ view: leaf, registry, cacheDir });
+    expect(first.getQuads(null, null, null, null)).toHaveLength(1);
+
+    // Replace the underlying glob data — the leaf cache alone would still be
+    // 'fresh' per its TTL, but the `mid` cache is what feeds it.
+    await writeFile(
+      a,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:one ex:p ex:v .',
+        'ex:two ex:p ex:v .',
+      ].join('\n'),
+    );
+
+    // Confirm that, by itself, the leaf cache stays warm — only ancestor
+    // invalidation should bust it.
+    const stillCached = await resolveView({ view: leaf, registry, cacheDir });
+    expect(stillCached.getQuads(null, null, null, null)).toHaveLength(1);
+
+    // Manually invalidate the mid (ancestor) cache: this is what `cache clear
+    // <mid>` will do in #89.
+    const mid = registry[1] as ParsedViewSource;
+    const { invalidate } = await import('./view-cache');
+    await invalidate({
+      view: mid,
+      upstream: [registry[0]],
+      cacheDir,
+      registry,
+    });
+
+    const reEvaluated = await resolveView({ view: leaf, registry, cacheDir });
+    expect(
+      reEvaluated.getQuads(null, null, null, null).map((q) => q.subject.value).sort(),
+    ).toEqual(['http://example.org/one', 'http://example.org/two']);
+  });
+
   it('after TTL expiry the resolver re-evaluates upstream', async () => {
     const a = join(dataDir, 'a.ttl');
     await writeFile(

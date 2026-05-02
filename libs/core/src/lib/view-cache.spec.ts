@@ -390,6 +390,95 @@ describe('view-cache — cache key composition', () => {
     expect(k1).not.toEqual(k2);
   });
 
+  it("changes when an ancestor view's resolved upstream config changes (two-deep chain)", () => {
+    const registryV1 = parseSourceSpecs([
+      { id: 'raw', glob: 'data/*.ttl' },
+      {
+        id: 'a',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+      {
+        id: 'b',
+        from: ['@a'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+    ]);
+    const registryV2 = parseSourceSpecs([
+      { id: 'raw', glob: 'other/*.ttl' },
+      {
+        id: 'a',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+      {
+        id: 'b',
+        from: ['@a'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+    ]);
+    const k1 = viewCacheKey({
+      view: registryV1[2] as ParsedViewSource,
+      upstream: [registryV1[1]],
+      registry: registryV1,
+      cacheDir: '/x',
+    });
+    const k2 = viewCacheKey({
+      view: registryV2[2] as ParsedViewSource,
+      upstream: [registryV2[1]],
+      registry: registryV2,
+      cacheDir: '/x',
+    });
+    expect(k1).not.toEqual(k2);
+  });
+
+  it("changes when an ancestor view's query changes (two-deep chain)", () => {
+    const registryV1 = parseSourceSpecs([
+      { id: 'raw', glob: 'data/*.ttl' },
+      {
+        id: 'a',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+      {
+        id: 'b',
+        from: ['@a'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+    ]);
+    const registryV2 = parseSourceSpecs([
+      { id: 'raw', glob: 'data/*.ttl' },
+      {
+        id: 'a',
+        from: ['@raw'],
+        query:
+          'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s != ?o) }',
+      },
+      {
+        id: 'b',
+        from: ['@a'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+    ]);
+    const k1 = viewCacheKey({
+      view: registryV1[2] as ParsedViewSource,
+      upstream: [registryV1[1]],
+      registry: registryV1,
+      cacheDir: '/x',
+    });
+    const k2 = viewCacheKey({
+      view: registryV2[2] as ParsedViewSource,
+      upstream: [registryV2[1]],
+      registry: registryV2,
+      cacheDir: '/x',
+    });
+    expect(k1).not.toEqual(k2);
+  });
+
   it('is stable when only cacheDir (an output knob) changes', () => {
     const view = parseSourceSpecs([
       {
@@ -405,6 +494,59 @@ describe('view-cache — cache key composition', () => {
     expect(
       viewCacheKey({ view, upstream: [upstream], cacheDir: '/a' }),
     ).toEqual(viewCacheKey({ view, upstream: [upstream], cacheDir: '/b' }));
+  });
+});
+
+describe('view-cache — DAG-walk invalidation', () => {
+  let cacheDir: string;
+
+  beforeEach(async () => {
+    cacheDir = await mkdtemp(join(tmpdir(), 'sparqly-view-cache-dag-'));
+  });
+
+  afterEach(async () => {
+    await rm(cacheDir, { recursive: true, force: true });
+  });
+
+  it("returns 'stale' on a descendant when an ancestor view's cache entry has been invalidated", async () => {
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: 'data/*.ttl' },
+      {
+        id: 'a',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+      {
+        id: 'b',
+        from: ['@a'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+    ]);
+    const a = registry[1] as ParsedViewSource;
+    const b = registry[2] as ParsedViewSource;
+    const sample = makeStore([
+      ['http://example.org/x', 'http://example.org/p', 'http://example.org/y'],
+    ]);
+    const aBinding = {
+      view: a,
+      upstream: [registry[0]],
+      cacheDir,
+      registry,
+    };
+    const bBinding = {
+      view: b,
+      upstream: [a],
+      cacheDir,
+      registry,
+    };
+    await storeView(aBinding, sample);
+    await storeView(bBinding, sample);
+    expect((await lookup(bBinding)).freshness).toBe('fresh');
+
+    await invalidate(aBinding);
+    expect((await lookup(bBinding)).freshness).toBe('stale');
   });
 });
 
