@@ -16,7 +16,7 @@ import {
   coercedBooleanSchema,
   prefixField,
   prefixesField,
-  sourcesFieldFor,
+  sourcesField,
   verbosityFieldsFor,
 } from '../runner/fields-shared';
 import type { CommandSpec } from '../runner/spec';
@@ -91,7 +91,7 @@ export const formatSpec: CommandSpec<FormatConfig> = {
   description:
     'Pretty-print Turtle/TriG files. Reads a glob, or stdin when no glob is supplied, and writes the formatted result to stdout.',
   fields: [
-    sourcesFieldFor('format'),
+    sourcesField,
     prefixField,
     prefixesField,
     baseField,

@@ -184,8 +184,9 @@ earlier ones:
 
 Environment variables follow a predictable contract:
 
-- Shared keys: `SPARQLY_<UPPER_SNAKE_KEY>` (e.g., `SPARQLY_SOURCES`,
-  `SPARQLY_GRAPH_MODE`, `SPARQLY_MUTABLE`).
+- Shared keys: `SPARQLY_<UPPER_SNAKE_KEY>` (e.g., `SPARQLY_GRAPH_MODE`,
+  `SPARQLY_MUTABLE`). Note: `sources` is intentionally _not_ env-bound — pass
+  it on the CLI or via a config file.
 - Command-specific keys: `SPARQLY_<COMMAND>_<UPPER_SNAKE_KEY>` (e.g.,
   `SPARQLY_SERVE_PORT`, `SPARQLY_QUERY_FORMAT`, `SPARQLY_SERVE_WATCH_DEBOUNCE`,
   `SPARQLY_HASH_JSON`, `SPARQLY_HASH_COMPARE_WITH`).
@@ -288,7 +289,6 @@ hash:
 ### Environment variables
 
 ```
-SPARQLY_SOURCES               # shared
 SPARQLY_GRAPH_MODE        # shared — accepts preserve | fillDefault | forceAll | flatten
 SPARQLY_VERBOSE               # shared
 SPARQLY_QUIET                 # shared
