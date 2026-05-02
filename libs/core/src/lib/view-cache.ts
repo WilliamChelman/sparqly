@@ -1,3 +1,4 @@
+import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve as resolvePath } from 'node:path';
@@ -14,6 +15,11 @@ export interface ViewCacheBinding {
   upstream: ReadonlyArray<ParsedSource>;
   cacheDir: string;
   now?: () => number;
+  /**
+   * Required when `view.cache.strategy === 'freshness'`. Lazily produces the
+   * store the ASK probe runs against — typically the resolved upstream.
+   */
+  loadProbeStore?: () => Promise<Store>;
 }
 
 export interface ViewCacheLookup {
@@ -21,11 +27,26 @@ export interface ViewCacheLookup {
   store?: Store;
 }
 
-interface CacheMeta {
+interface CacheMetaTtl {
+  strategy: 'ttl';
   key: string;
   storedAt: number;
   ttlMs: number;
 }
+
+interface CacheMetaFreshness {
+  strategy: 'freshness';
+  key: string;
+  storedAt: number;
+}
+
+interface CacheMetaEverlasting {
+  strategy: 'everlasting';
+  key: string;
+  storedAt: number;
+}
+
+type CacheMeta = CacheMetaTtl | CacheMetaFreshness | CacheMetaEverlasting;
 
 export interface ResolveViewCacheDirOptions {
   view: ParsedViewSource;
@@ -69,16 +90,27 @@ export async function lookup(
 ): Promise<ViewCacheLookup> {
   const meta = await readMeta(binding);
   if (!meta) return { freshness: 'miss' };
-  const fresh = isFresh(meta, binding.now ?? Date.now);
-  if (!fresh) return { freshness: 'stale' };
   const dataPath = entryDataPath(binding);
   if (!(await fileExists(dataPath))) return { freshness: 'miss' };
-  const nquads = await readFile(dataPath, 'utf8');
-  const store = new Store();
-  const parser = new Parser({ format: 'application/n-quads' });
-  for (const q of parser.parse(nquads) as Quad[]) {
-    store.addQuad(q);
+
+  const timeFresh = isMetaTimeFresh(meta, binding.now ?? Date.now);
+  if (!timeFresh) return { freshness: 'stale' };
+
+  const store = await readCachedStore(dataPath);
+
+  if (meta.strategy === 'freshness') {
+    const askQuery = freshnessAskFor(binding);
+    if (!askQuery) return { freshness: 'stale' };
+    if (!binding.loadProbeStore) {
+      throw new Error(
+        `view "${binding.view.id}": cache.freshness requires a loadProbeStore callback on the binding`,
+      );
+    }
+    const probeStore = await binding.loadProbeStore();
+    const askPassed = await runAsk(askQuery, probeStore);
+    if (!askPassed) return { freshness: 'stale' };
   }
+
   return { freshness: 'fresh', store };
 }
 
@@ -101,14 +133,53 @@ export async function storeView(
     });
   });
   await writeFile(entryDataPath(binding), serialized, 'utf8');
-  const ttlMs = binding.view.cache?.ttlMs ?? 0;
   const now = (binding.now ?? Date.now)();
-  const meta: CacheMeta = {
-    key: viewCacheKey(binding),
-    storedAt: now,
-    ttlMs,
-  };
+  const meta = buildMeta(binding, now);
   await writeFile(entryMetaPath(binding), JSON.stringify(meta), 'utf8');
+}
+
+function buildMeta(binding: ViewCacheBinding, now: number): CacheMeta {
+  const key = viewCacheKey(binding);
+  const cache = binding.view.cache;
+  if (cache?.strategy === 'freshness') {
+    return { strategy: 'freshness', key, storedAt: now };
+  }
+  if (cache?.strategy === 'everlasting') {
+    return { strategy: 'everlasting', key, storedAt: now };
+  }
+  // Default ttl: covers explicit ttl strategy and (defensively) any caller that
+  // passes a binding with no cache block.
+  const ttlMs = cache?.strategy === 'ttl' ? cache.ttlMs : 0;
+  return { strategy: 'ttl', key, storedAt: now, ttlMs };
+}
+
+function freshnessAskFor(binding: ViewCacheBinding): string | undefined {
+  const cache = binding.view.cache;
+  if (cache?.strategy !== 'freshness') return undefined;
+  return cache.freshness;
+}
+
+async function readCachedStore(dataPath: string): Promise<Store> {
+  const nquads = await readFile(dataPath, 'utf8');
+  const store = new Store();
+  const parser = new Parser({ format: 'application/n-quads' });
+  for (const q of parser.parse(nquads) as Quad[]) {
+    store.addQuad(q);
+  }
+  return store;
+}
+
+async function runAsk(query: string, source: Store): Promise<boolean> {
+  const engine = new ComunicaQueryEngine();
+  const result = await engine.query(query, { sources: [source] });
+  if (result.resultType !== 'boolean') {
+    throw new Error(
+      `cache.freshness query must be an ASK; got result type ${String(
+        result.resultType,
+      )}`,
+    );
+  }
+  return (await result.execute()) as boolean;
 }
 
 export async function invalidate(binding: ViewCacheBinding): Promise<void> {
@@ -139,7 +210,9 @@ async function readMeta(
   return JSON.parse(raw) as CacheMeta;
 }
 
-function isFresh(meta: CacheMeta, now: () => number): boolean {
+function isMetaTimeFresh(meta: CacheMeta, now: () => number): boolean {
+  if (meta.strategy === 'everlasting') return true;
+  if (meta.strategy === 'freshness') return true;
   if (meta.ttlMs <= 0) return false;
   return now() - meta.storedAt < meta.ttlMs;
 }

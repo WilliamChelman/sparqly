@@ -396,6 +396,98 @@ describe('resolveView — view-cache integration', () => {
     ).toEqual(['http://example.org/keep']);
   });
 
+  it('with a freshness ASK that still passes, returns the cached snapshot; when the ASK fails, re-evaluates upstream', async () => {
+    const a = join(dataDir, 'a.ttl');
+    await writeFile(
+      a,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:dataset ex:revision "v1" .',
+        'ex:keep ex:p ex:v1 .',
+      ].join('\n'),
+    );
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: a },
+      {
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: {
+          freshness:
+            'PREFIX ex: <http://example.org/> ASK { ex:dataset ex:revision "v1" }',
+        },
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+
+    // First call: cache miss → runs view, populates cache.
+    const first = await resolveView({ view, registry, cacheDir });
+    expect(first.getQuads(null, null, null, null)).toHaveLength(2);
+
+    // Replace upstream content but keep the freshness marker (revision "v1").
+    await writeFile(
+      a,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:dataset ex:revision "v1" .',
+        'ex:keep ex:p ex:v1 .',
+        'ex:other ex:p ex:v2 .',
+      ].join('\n'),
+    );
+    // ASK still passes → return cached snapshot (still 2 quads, not 3).
+    const second = await resolveView({ view, registry, cacheDir });
+    expect(second.getQuads(null, null, null, null)).toHaveLength(2);
+
+    // Bump the freshness marker → ASK now fails, resolver should re-evaluate.
+    await writeFile(
+      a,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:dataset ex:revision "v2" .',
+        'ex:keep ex:p ex:v1 .',
+        'ex:other ex:p ex:v2 .',
+      ].join('\n'),
+    );
+    const third = await resolveView({ view, registry, cacheDir });
+    expect(third.getQuads(null, null, null, null)).toHaveLength(3);
+  });
+
+  it('with everlasting cache, never re-evaluates upstream until invalidate-by-clear', async () => {
+    const a = join(dataDir, 'a.ttl');
+    await writeFile(
+      a,
+      '@prefix ex: <http://example.org/> . ex:one ex:p ex:v .',
+    );
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: a },
+      {
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { everlasting: true },
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+
+    let nowMs = 1_000_000;
+    const opts = { view, registry, cacheDir, now: () => nowMs };
+    const first = await resolveView(opts);
+    expect(first.getQuads(null, null, null, null)).toHaveLength(1);
+
+    // Replace upstream and jump far into the future — cache must still win.
+    await writeFile(
+      a,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:one ex:p ex:v .',
+        'ex:two ex:p ex:v .',
+      ].join('\n'),
+    );
+    nowMs += 365 * 24 * 60 * 60 * 1000; // one year later
+    const second = await resolveView(opts);
+    expect(second.getQuads(null, null, null, null)).toHaveLength(1);
+  });
+
   it('after TTL expiry the resolver re-evaluates upstream', async () => {
     const a = join(dataDir, 'a.ttl');
     await writeFile(

@@ -9,6 +9,7 @@ import {
   type ParsedViewSource,
 } from './source-spec';
 import {
+  invalidate,
   lookup,
   resolveViewCacheDir,
   storeView,
@@ -165,6 +166,166 @@ describe('view-cache — ttl expiry', () => {
 
     nowMs += 1000;
     expect((await lookup(binding)).freshness).toBe('stale');
+  });
+});
+
+describe('view-cache — everlasting strategy', () => {
+  let cacheDir: string;
+
+  beforeEach(async () => {
+    cacheDir = await mkdtemp(join(tmpdir(), 'sparqly-view-cache-everlasting-'));
+  });
+
+  afterEach(async () => {
+    await rm(cacheDir, { recursive: true, force: true });
+  });
+
+  function everlastingRegistry() {
+    return parseSourceSpecs([
+      { id: 'raw', glob: 'data/*.ttl' },
+      {
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { everlasting: true },
+      },
+    ]);
+  }
+
+  it("stays 'fresh' even after the clock advances arbitrarily", async () => {
+    const registry = everlastingRegistry();
+    let nowMs = 1_000_000;
+    const binding = cachedViewBinding({
+      cacheDir,
+      registry,
+      viewIndex: 1,
+      upstreamIndices: [0],
+      now: () => nowMs,
+    });
+    await storeView(binding, makeStore([
+      ['http://example.org/x', 'http://example.org/p', 'http://example.org/y'],
+    ]));
+
+    nowMs += 10 * 365 * 24 * 60 * 60 * 1000; // ten years later
+    const result = await lookup(binding);
+    expect(result.freshness).toBe('fresh');
+    expect(result.store?.getQuads(null, null, null, null)).toHaveLength(1);
+  });
+
+  it("becomes 'miss' once invalidate() runs (manual clear)", async () => {
+    const registry = everlastingRegistry();
+    const binding = cachedViewBinding({
+      cacheDir,
+      registry,
+      viewIndex: 1,
+      upstreamIndices: [0],
+    });
+    await storeView(binding, makeStore([
+      ['http://example.org/x', 'http://example.org/p', 'http://example.org/y'],
+    ]));
+    expect((await lookup(binding)).freshness).toBe('fresh');
+
+    await invalidate(binding);
+    expect((await lookup(binding)).freshness).toBe('miss');
+  });
+
+  it("survives a fresh binding instance (process-restart simulation)", async () => {
+    const registry = everlastingRegistry();
+    const writeBinding = cachedViewBinding({
+      cacheDir,
+      registry,
+      viewIndex: 1,
+      upstreamIndices: [0],
+    });
+    await storeView(writeBinding, makeStore([
+      ['http://example.org/x', 'http://example.org/p', 'http://example.org/y'],
+    ]));
+
+    // Build a *new* binding object reading the same cacheDir; same view spec is
+    // re-parsed from scratch as a process restart would do.
+    const reopenedRegistry = everlastingRegistry();
+    const readBinding = cachedViewBinding({
+      cacheDir,
+      registry: reopenedRegistry,
+      viewIndex: 1,
+      upstreamIndices: [0],
+    });
+    const result = await lookup(readBinding);
+    expect(result.freshness).toBe('fresh');
+    expect(result.store?.getQuads(null, null, null, null)).toHaveLength(1);
+  });
+});
+
+describe('view-cache — freshness ASK strategy', () => {
+  let cacheDir: string;
+
+  beforeEach(async () => {
+    cacheDir = await mkdtemp(join(tmpdir(), 'sparqly-view-cache-freshness-'));
+  });
+
+  afterEach(async () => {
+    await rm(cacheDir, { recursive: true, force: true });
+  });
+
+  function freshnessRegistry(askQuery: string) {
+    return parseSourceSpecs([
+      { id: 'raw', glob: 'data/*.ttl' },
+      {
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { freshness: askQuery },
+      },
+    ]);
+  }
+
+  it("returns 'fresh' when the ASK probe over the upstream returns true", async () => {
+    const registry = freshnessRegistry(
+      'PREFIX ex: <http://example.org/> ASK { ex:probe ex:still ex:current }',
+    );
+    const probeStore = makeStore([
+      ['http://example.org/probe', 'http://example.org/still', 'http://example.org/current'],
+    ]);
+    const binding = {
+      ...cachedViewBinding({
+        cacheDir,
+        registry,
+        viewIndex: 1,
+        upstreamIndices: [0],
+      }),
+      loadProbeStore: async () => probeStore,
+    };
+    await storeView(binding, makeStore([
+      ['http://example.org/x', 'http://example.org/p', 'http://example.org/y'],
+    ]));
+
+    const result = await lookup(binding);
+    expect(result.freshness).toBe('fresh');
+    expect(result.store?.getQuads(null, null, null, null)).toHaveLength(1);
+  });
+
+  it("returns 'stale' when the ASK probe over the upstream returns false", async () => {
+    const registry = freshnessRegistry(
+      'PREFIX ex: <http://example.org/> ASK { ex:probe ex:still ex:current }',
+    );
+    const staleProbeStore = makeStore([
+      ['http://example.org/something', 'http://example.org/else', 'http://example.org/entirely'],
+    ]);
+    const binding = {
+      ...cachedViewBinding({
+        cacheDir,
+        registry,
+        viewIndex: 1,
+        upstreamIndices: [0],
+      }),
+      loadProbeStore: async () => staleProbeStore,
+    };
+    await storeView(binding, makeStore([
+      ['http://example.org/x', 'http://example.org/p', 'http://example.org/y'],
+    ]));
+
+    const result = await lookup(binding);
+    expect(result.freshness).toBe('stale');
   });
 });
 

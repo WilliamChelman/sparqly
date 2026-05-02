@@ -39,6 +39,10 @@ export async function resolveView(
       upstream,
       cacheDir,
       now,
+      loadProbeStore:
+        view.cache.strategy === 'freshness'
+          ? () => loadUpstream(view, registry, [view.id])
+          : undefined,
     };
     const hit = await cacheLookup(binding);
     if (hit.freshness === 'fresh' && hit.store) {
