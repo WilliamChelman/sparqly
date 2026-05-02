@@ -7,15 +7,31 @@ export interface CanonicalizeOptions {
   graphMode?: GraphMode;
 }
 
-export interface CanonicalizeResult {
-  files: string[];
-  store: Store;
-  /** Prefixes declared in each parsed file, keyed by absolute file path. */
-  prefixes: Record<string, Record<string, string>>;
+export interface CanonicalizeStoreResult {
   /** RDFC-1.0 canonical N-Quads, joined with '\n' and a trailing newline. */
   canonicalText: string;
   /** Canonical N-Quads statements, one element per quad, no trailing newline. */
   canonicalStatements: string[];
+}
+
+export interface CanonicalizeResult extends CanonicalizeStoreResult {
+  files: string[];
+  store: Store;
+  /** Prefixes declared in each parsed file, keyed by absolute file path. */
+  prefixes: Record<string, Record<string, string>>;
+}
+
+export async function canonicalizeStore(
+  store: Store,
+): Promise<CanonicalizeStoreResult> {
+  const canonicalText = await canonize(
+    store.getQuads(null, null, null, null),
+    { algorithm: 'RDFC-1.0', format: 'application/n-quads' },
+  );
+  const canonicalStatements = canonicalText
+    .split('\n')
+    .filter((line: string) => line.length > 0);
+  return { canonicalText, canonicalStatements };
 }
 
 export async function canonicalizeRdf(
@@ -25,15 +41,6 @@ export async function canonicalizeRdf(
     sources: options.sources,
     graphMode: options.graphMode,
   });
-
-  const canonicalText = await canonize(
-    store.getQuads(null, null, null, null),
-    { algorithm: 'RDFC-1.0', format: 'application/n-quads' },
-  );
-
-  const canonicalStatements = canonicalText
-    .split('\n')
-    .filter((line: string) => line.length > 0);
-
+  const { canonicalText, canonicalStatements } = await canonicalizeStore(store);
   return { files, store, prefixes, canonicalText, canonicalStatements };
 }

@@ -1,9 +1,13 @@
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { resolve as resolvePath } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { z } from 'zod';
 import {
   canonicalizeRdf,
+  canonicalizeStore,
   parseSourceSpec,
+  resolveAnonymousView,
   type GraphMode,
   type SourceSpecInput,
 } from 'core';
@@ -24,6 +28,8 @@ interface HashConfig {
   graphMode?: GraphMode;
   json?: boolean;
   compareWith?: string;
+  query?: string;
+  queryFile?: string;
   out?: string;
   verbose?: boolean;
   quiet?: boolean;
@@ -57,6 +63,32 @@ const compareWithField: FieldDescriptor = {
   ],
 };
 
+const queryField: FieldDescriptor = {
+  key: 'query',
+  schema: z.string().min(1),
+  env: ['SPARQLY_HASH_QUERY'],
+  flags: [
+    {
+      spec: '--query <sparql>',
+      description:
+        "Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the source. Required for SPARQL endpoint sources; otherwise optional. Lowers to an anonymous, uncached view. Mutually exclusive with --query-file. Requires exactly one source.",
+    },
+  ],
+};
+
+const queryFileField: FieldDescriptor = {
+  key: 'queryFile',
+  schema: z.string().min(1),
+  env: ['SPARQLY_HASH_QUERY_FILE'],
+  flags: [
+    {
+      spec: '--query-file <path>',
+      description:
+        'Path to a SPARQL file (relative to CWD) used as the inline scoping query. Mutually exclusive with --query. Requires exactly one source.',
+    },
+  ],
+};
+
 const jsonField: FieldDescriptor = {
   key: 'json',
   schema: coercedBooleanSchema,
@@ -80,6 +112,8 @@ export const hashSpec: CommandSpec<HashConfig> = {
     graphModeFieldFor('hash'),
     jsonField,
     compareWithField,
+    queryField,
+    queryFileField,
     outFieldFor('hash'),
     ...verbosityFieldsFor('hash'),
   ],
@@ -87,22 +121,47 @@ export const hashSpec: CommandSpec<HashConfig> = {
   refine: (schema) =>
     (schema as z.ZodObject).superRefine(
       (val: Record<string, unknown>, ctx) => {
+        const hasQuery = typeof val.query === 'string';
+        const hasQueryFile = typeof val.queryFile === 'string';
+        if (hasQuery && hasQueryFile) {
+          ctx.addIssue({
+            code: 'custom',
+            message:
+              '`--query` and `--query-file` are mutually exclusive on `hash`',
+            path: ['query'],
+          });
+        }
+        const hasInlineScope = hasQuery || hasQueryFile;
+
         const sources = val.sources;
-        if (sources !== undefined) {
-          const list: SourceSpecInput[] = Array.isArray(sources)
-            ? (sources as SourceSpecInput[])
-            : [sources as SourceSpecInput];
-          list.forEach((entry, i) => {
+        const sourceList: SourceSpecInput[] =
+          sources === undefined
+            ? []
+            : Array.isArray(sources)
+              ? (sources as SourceSpecInput[])
+              : [sources as SourceSpecInput];
+
+        if (hasInlineScope && sourceList.length > 1) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `\`--query\`/\`--query-file\` requires exactly one source (got ${sourceList.length}); express unions through a declared \`view\` source kind`,
+            path: ['sources'],
+          });
+        }
+
+        if (!hasInlineScope) {
+          sourceList.forEach((entry, i) => {
             const violation = rawEndpoint(entry);
             if (violation) {
               ctx.addIssue({
                 code: 'custom',
-                message: `SPARQL endpoint ${violation} cannot be hashed directly (hash always materializes; wrap the endpoint in a \`view\` source kind to scope it, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
+                message: `SPARQL endpoint ${violation} cannot be hashed directly (hash always materializes; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
                 path: ['sources', i],
               });
             }
           });
         }
+
         const compareWith = val.compareWith;
         if (typeof compareWith === 'string') {
           const violation = rawEndpoint(compareWith);
@@ -154,14 +213,15 @@ export const hashSpec: CommandSpec<HashConfig> = {
 
     const logger = new Logger('sparqly');
     const graphMode = config.graphMode as GraphMode | undefined;
+    const inlineQuery = await loadInlineScopeQuery(config);
 
     if (isCompareMode) {
       const compareSpec = config.compareWith as string;
       let primary: { source: string; hash: string };
       let secondary: { source: string; hash: string };
       try {
-        primary = await hashSource(sourceSpecs[0], graphMode, logger);
-        secondary = await hashSource(compareSpec, graphMode, logger);
+        primary = await hashSource(sourceSpecs[0], graphMode, inlineQuery, logger);
+        secondary = await hashSource(compareSpec, graphMode, undefined, logger);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         throw new HashCompareError(message);
@@ -178,7 +238,7 @@ export const hashSpec: CommandSpec<HashConfig> = {
 
     const results: Array<{ source: string; hash: string }> = [];
     for (const spec of sourceSpecs) {
-      results.push(await hashSource(spec, graphMode, logger));
+      results.push(await hashSource(spec, graphMode, inlineQuery, logger));
     }
 
     const body = config.json
@@ -211,9 +271,22 @@ function rawEndpoint(entry: SourceSpecInput): string | null {
 async function hashSource(
   spec: string,
   graphMode: GraphMode | undefined,
+  inlineQuery: string | undefined,
   logger: Logger,
 ): Promise<{ source: string; hash: string }> {
   const start = Date.now();
+  if (inlineQuery !== undefined) {
+    const store = await resolveAnonymousView({
+      source: spec,
+      query: inlineQuery,
+    });
+    const { canonicalText } = await canonicalizeStore(store);
+    const hash = createHash('sha256').update(canonicalText).digest('hex');
+    logger.log(
+      `Materialized anonymous view (${store.size} quads), canonicalized + hashed '${spec}' in ${Date.now() - start}ms`,
+    );
+    return { source: spec, hash };
+  }
   const { store, files, canonicalText } = await canonicalizeRdf({
     sources: spec,
     graphMode,
@@ -223,6 +296,17 @@ async function hashSource(
     `Loaded ${files.length} file(s) (${store.size} quads), canonicalized + hashed '${spec}' in ${Date.now() - start}ms`,
   );
   return { source: spec, hash };
+}
+
+async function loadInlineScopeQuery(
+  config: HashConfig,
+): Promise<string | undefined> {
+  if (typeof config.query === 'string') return config.query;
+  if (typeof config.queryFile === 'string') {
+    const path = resolvePath(process.cwd(), config.queryFile);
+    return readFile(path, 'utf8');
+  }
+  return undefined;
 }
 
 export { HashMismatchSignal, HashCompareError };
