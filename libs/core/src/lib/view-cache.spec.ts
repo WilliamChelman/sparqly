@@ -9,8 +9,11 @@ import {
   type ParsedViewSource,
 } from './source-spec';
 import {
+  clearCacheDir,
   invalidate,
+  listCachedEntries,
   lookup,
+  removeCacheEntry,
   resolveViewCacheDir,
   storeView,
   viewCacheKey,
@@ -604,5 +607,225 @@ describe('view-cache — cacheDir resolution', () => {
         configPath: '/repo/nested/sparqly.query.yaml',
       }),
     ).toBe('/repo/nested/cache-here');
+  });
+});
+
+describe('view-cache — listCachedEntries', () => {
+  let cacheDir: string;
+
+  beforeEach(async () => {
+    cacheDir = await mkdtemp(join(tmpdir(), 'sparqly-view-cache-list-'));
+  });
+
+  afterEach(async () => {
+    await rm(cacheDir, { recursive: true, force: true });
+  });
+
+  function ttlRegistry() {
+    return parseSourceSpecs([
+      { id: 'raw', glob: 'data/*.ttl' },
+      {
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+    ]);
+  }
+
+  it('returns an empty array for an empty cacheDir', async () => {
+    expect(await listCachedEntries(cacheDir)).toEqual([]);
+  });
+
+  it('returns one entry per stored view, with id, strategy, size, age, and freshness', async () => {
+    const registry = ttlRegistry();
+    let nowMs = 1_000_000;
+    const binding = cachedViewBinding({
+      cacheDir,
+      registry,
+      viewIndex: 1,
+      upstreamIndices: [0],
+      now: () => nowMs,
+    });
+    await storeView(
+      binding,
+      makeStore([
+        ['http://example.org/x', 'http://example.org/p', 'http://example.org/y'],
+      ]),
+    );
+
+    nowMs += 250;
+    const entries = await listCachedEntries(cacheDir, { now: () => nowMs });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      id: 'cached',
+      strategy: 'ttl',
+      ageMs: 250,
+      freshness: 'fresh',
+    });
+    expect(entries[0].sizeBytes).toBeGreaterThan(0);
+  });
+
+  it("reports 'stale' on a ttl entry whose ttl has elapsed", async () => {
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: 'data/*.ttl' },
+      {
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1s' },
+      },
+    ]);
+    let nowMs = 1_000_000;
+    const binding = cachedViewBinding({
+      cacheDir,
+      registry,
+      viewIndex: 1,
+      upstreamIndices: [0],
+      now: () => nowMs,
+    });
+    await storeView(
+      binding,
+      makeStore([
+        ['http://example.org/x', 'http://example.org/p', 'http://example.org/y'],
+      ]),
+    );
+
+    nowMs += 5000;
+    const entries = await listCachedEntries(cacheDir, { now: () => nowMs });
+    expect(entries[0].freshness).toBe('stale');
+  });
+});
+
+describe('view-cache — clearCacheDir', () => {
+  let cacheDir: string;
+
+  beforeEach(async () => {
+    cacheDir = await mkdtemp(join(tmpdir(), 'sparqly-view-cache-clear-'));
+  });
+
+  afterEach(async () => {
+    await rm(cacheDir, { recursive: true, force: true });
+  });
+
+  it('removes every cached entry under cacheDir', async () => {
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: 'data/*.ttl' },
+      {
+        id: 'a',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+      {
+        id: 'b',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s != ?o) }',
+        cache: { everlasting: true },
+      },
+    ]);
+    const a = cachedViewBinding({
+      cacheDir,
+      registry,
+      viewIndex: 1,
+      upstreamIndices: [0],
+    });
+    const b = cachedViewBinding({
+      cacheDir,
+      registry,
+      viewIndex: 2,
+      upstreamIndices: [0],
+    });
+    const sample = makeStore([
+      ['http://example.org/x', 'http://example.org/p', 'http://example.org/y'],
+    ]);
+    await storeView(a, sample);
+    await storeView(b, sample);
+    expect(await listCachedEntries(cacheDir)).toHaveLength(2);
+
+    const removed = await clearCacheDir(cacheDir);
+    expect(removed).toBe(2);
+    expect(await listCachedEntries(cacheDir)).toEqual([]);
+  });
+
+  it('returns 0 and does not throw when cacheDir does not exist', async () => {
+    const removed = await clearCacheDir(join(cacheDir, 'does-not-exist'));
+    expect(removed).toBe(0);
+  });
+});
+
+describe('view-cache — removeCacheEntry', () => {
+  let cacheDir: string;
+
+  beforeEach(async () => {
+    cacheDir = await mkdtemp(join(tmpdir(), 'sparqly-view-cache-remove-'));
+  });
+
+  afterEach(async () => {
+    await rm(cacheDir, { recursive: true, force: true });
+  });
+
+  function twoCachedViewsRegistry() {
+    return parseSourceSpecs([
+      { id: 'raw', glob: 'data/*.ttl' },
+      {
+        id: 'a',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+      {
+        id: 'b',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s != ?o) }',
+        cache: { ttl: '1h' },
+      },
+    ]);
+  }
+
+  it('removes only the entry whose id matches', async () => {
+    const registry = twoCachedViewsRegistry();
+    const aBinding = cachedViewBinding({
+      cacheDir,
+      registry,
+      viewIndex: 1,
+      upstreamIndices: [0],
+    });
+    const bBinding = cachedViewBinding({
+      cacheDir,
+      registry,
+      viewIndex: 2,
+      upstreamIndices: [0],
+    });
+    const sample = makeStore([
+      ['http://example.org/x', 'http://example.org/p', 'http://example.org/y'],
+    ]);
+    await storeView(aBinding, sample);
+    await storeView(bBinding, sample);
+
+    await removeCacheEntry(cacheDir, 'a');
+
+    const remaining = await listCachedEntries(cacheDir);
+    expect(remaining.map((e) => e.id)).toEqual(['b']);
+  });
+
+  it('throws a clear error referencing the unknown id and the known ids', async () => {
+    const registry = twoCachedViewsRegistry();
+    const aBinding = cachedViewBinding({
+      cacheDir,
+      registry,
+      viewIndex: 1,
+      upstreamIndices: [0],
+    });
+    await storeView(
+      aBinding,
+      makeStore([
+        ['http://example.org/x', 'http://example.org/p', 'http://example.org/y'],
+      ]),
+    );
+
+    await expect(removeCacheEntry(cacheDir, 'zzz')).rejects.toThrow(
+      /no cached entry with id "zzz".*known: a/i,
+    );
   });
 });
