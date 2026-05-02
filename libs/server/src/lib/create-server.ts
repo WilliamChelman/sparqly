@@ -5,12 +5,17 @@ import * as chokidar from 'chokidar';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { type GraphMode, loadRdf } from 'core';
+import {
+  type GraphMode,
+  loadSources,
+  parseSourceSpecs,
+  type SourceSpecInput,
+} from 'core';
 import { ServerModule } from './server.module';
 import type { StoreRef } from './tokens';
 
 export interface CreateServerOptions {
-  sources: string | string[];
+  sources: SourceSpecInput | ReadonlyArray<SourceSpecInput>;
   port: number;
   mutable?: boolean;
   graphMode?: GraphMode;
@@ -30,9 +35,9 @@ export async function createServer(
   options: CreateServerOptions,
 ): Promise<CreatedServer> {
   const logger = new Logger('sparqly');
+  const inputs = toSourceArray(options.sources);
   const loadStart = Date.now();
-  const { store, files } = await loadRdf({
-    sources: options.sources,
+  const { store, files } = await loadSources(inputs, {
     graphMode: options.graphMode,
   });
   logger.log(
@@ -65,8 +70,8 @@ export async function createServer(
   }
 
   const watcher = options.watch
-    ? await startWatcher({
-        sources: options.sources,
+    ? await maybeStartWatcher({
+        sources: inputs,
         graphMode: options.graphMode,
         storeRef,
         logger,
@@ -90,25 +95,48 @@ export async function createServer(
   };
 }
 
+function toSourceArray(
+  sources: SourceSpecInput | ReadonlyArray<SourceSpecInput>,
+): ReadonlyArray<SourceSpecInput> {
+  if (Array.isArray(sources)) return sources;
+  return [sources as SourceSpecInput];
+}
+
 interface WatcherHandle {
   close: () => Promise<void>;
 }
 
 interface StartWatcherOptions {
-  sources: string | string[];
+  sources: ReadonlyArray<SourceSpecInput>;
   graphMode?: GraphMode;
   storeRef: StoreRef;
   logger: Logger;
   debounceMs: number;
 }
 
+async function maybeStartWatcher(
+  opts: StartWatcherOptions,
+): Promise<WatcherHandle | undefined> {
+  const parsed = parseSourceSpecs(opts.sources);
+  const globPatterns = parsed
+    .filter((s): s is Extract<typeof s, { kind: 'glob' }> => s.kind === 'glob')
+    .map((s) => s.glob);
+
+  if (globPatterns.length === 0) {
+    opts.logger.warn(
+      '--watch ignored: no glob source to watch. SPARQL sources are not auto-refreshed; restart the process to pick up upstream changes.',
+    );
+    return undefined;
+  }
+
+  return startWatcher(opts, globPatterns);
+}
+
 async function startWatcher(
   opts: StartWatcherOptions,
+  globPatterns: ReadonlyArray<string>,
 ): Promise<WatcherHandle> {
-  const patterns = Array.isArray(opts.sources) ? opts.sources : [opts.sources];
-  const baseDirs = Array.from(
-    new Set(patterns.map((p) => globBase(p))),
-  );
+  const baseDirs = Array.from(new Set(globPatterns.map((p) => globBase(p))));
 
   const watcher = chokidar.watch(baseDirs, {
     ignoreInitial: true,
@@ -141,8 +169,7 @@ async function startWatcher(
     inFlight = true;
     try {
       const start = Date.now();
-      const { store, files } = await loadRdf({
-        sources: opts.sources,
+      const { store, files } = await loadSources(opts.sources, {
         graphMode: opts.graphMode,
       });
       opts.storeRef.current = store;
