@@ -6,3 +6,5 @@ export * from './lib/immutability';
 export * from './lib/formatter';
 export * from './lib/parse-rdf-string';
 export * from './lib/parse-sparql-prefixes';
+export * from './lib/source-spec';
+export * from './lib/load-sources';
