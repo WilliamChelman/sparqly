@@ -1,6 +1,6 @@
 import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve as resolvePath } from 'node:path';
 import { Parser, Store, Writer, type Quad } from 'n3';
 import {
@@ -36,6 +36,7 @@ export interface ViewCacheLookup {
 
 interface CacheMetaTtl {
   strategy: 'ttl';
+  id: string;
   key: string;
   storedAt: number;
   ttlMs: number;
@@ -43,12 +44,14 @@ interface CacheMetaTtl {
 
 interface CacheMetaFreshness {
   strategy: 'freshness';
+  id: string;
   key: string;
   storedAt: number;
 }
 
 interface CacheMetaEverlasting {
   strategy: 'everlasting';
+  id: string;
   key: string;
   storedAt: number;
 }
@@ -264,17 +267,18 @@ export async function storeView(
 
 function buildMeta(binding: ViewCacheBinding, now: number): CacheMeta {
   const key = viewCacheKey(binding);
+  const id = binding.view.id;
   const cache = binding.view.cache;
   if (cache?.strategy === 'freshness') {
-    return { strategy: 'freshness', key, storedAt: now };
+    return { strategy: 'freshness', id, key, storedAt: now };
   }
   if (cache?.strategy === 'everlasting') {
-    return { strategy: 'everlasting', key, storedAt: now };
+    return { strategy: 'everlasting', id, key, storedAt: now };
   }
   // Default ttl: covers explicit ttl strategy and (defensively) any caller that
   // passes a binding with no cache block.
   const ttlMs = cache?.strategy === 'ttl' ? cache.ttlMs : 0;
-  return { strategy: 'ttl', key, storedAt: now, ttlMs };
+  return { strategy: 'ttl', id, key, storedAt: now, ttlMs };
 }
 
 function freshnessAskFor(binding: ViewCacheBinding): string | undefined {
@@ -361,4 +365,102 @@ function stableStringify(value: unknown): string {
   return `{${entries
     .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`)
     .join(',')}}`;
+}
+
+export interface CachedEntrySummary {
+  id: string;
+  key: string;
+  strategy: CacheMeta['strategy'];
+  storedAt: number;
+  ageMs: number;
+  sizeBytes: number;
+  freshness: CacheFreshness;
+}
+
+export interface ListCachedEntriesOptions {
+  now?: () => number;
+}
+
+export async function listCachedEntries(
+  cacheDir: string,
+  opts: ListCachedEntriesOptions = {},
+): Promise<CachedEntrySummary[]> {
+  const now = opts.now ?? Date.now;
+  const files = await readDirSafe(cacheDir);
+  const entries: CachedEntrySummary[] = [];
+  for (const name of files) {
+    if (!name.endsWith('.meta.json')) continue;
+    const metaPath = join(cacheDir, name);
+    let meta: CacheMeta;
+    try {
+      const raw = await readFile(metaPath, 'utf8');
+      meta = JSON.parse(raw) as CacheMeta;
+    } catch {
+      continue;
+    }
+    const dataPath = join(cacheDir, `${meta.key}.nq`);
+    const [metaStat, dataStat] = await Promise.all([
+      statSafe(metaPath),
+      statSafe(dataPath),
+    ]);
+    const sizeBytes =
+      (metaStat?.size ?? 0) + (dataStat?.size ?? 0);
+    const nowMs = now();
+    const fresh = isMetaTimeFresh(meta, () => nowMs)
+      ? 'fresh'
+      : 'stale';
+    entries.push({
+      id: meta.id,
+      key: meta.key,
+      strategy: meta.strategy,
+      storedAt: meta.storedAt,
+      ageMs: Math.max(0, nowMs - meta.storedAt),
+      sizeBytes,
+      freshness: fresh,
+    });
+  }
+  entries.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return entries;
+}
+
+export async function clearCacheDir(cacheDir: string): Promise<number> {
+  const entries = await listCachedEntries(cacheDir);
+  for (const entry of entries) {
+    await rm(join(cacheDir, `${entry.key}.nq`), { force: true });
+    await rm(join(cacheDir, `${entry.key}.meta.json`), { force: true });
+  }
+  return entries.length;
+}
+
+export async function removeCacheEntry(
+  cacheDir: string,
+  id: string,
+): Promise<void> {
+  const entries = await listCachedEntries(cacheDir);
+  const target = entries.find((e) => e.id === id);
+  if (!target) {
+    const known = entries.map((e) => e.id).sort();
+    const knownStr = known.length === 0 ? '(none)' : known.join(', ');
+    throw new Error(
+      `no cached entry with id "${id}" under ${cacheDir} (known: ${knownStr})`,
+    );
+  }
+  await rm(join(cacheDir, `${target.key}.nq`), { force: true });
+  await rm(join(cacheDir, `${target.key}.meta.json`), { force: true });
+}
+
+async function readDirSafe(path: string): Promise<string[]> {
+  try {
+    return await readdir(path);
+  } catch {
+    return [];
+  }
+}
+
+async function statSafe(path: string) {
+  try {
+    return await stat(path);
+  } catch {
+    return undefined;
+  }
 }

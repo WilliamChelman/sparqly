@@ -36,8 +36,16 @@ export function registerSpec<T extends Record<string, unknown>>(
     })
     .join(' ');
 
-  const sub = program
-    .command(positionalArgs ? `${spec.name} ${positionalArgs}` : spec.name)
+  const segments = spec.name.split(/\s+/).filter(Boolean);
+  const leafName = segments[segments.length - 1];
+  const parentSegments = segments.slice(0, -1);
+  let parent: Command = program;
+  for (const segment of parentSegments) {
+    parent = findOrCreateParent(parent, segment);
+  }
+
+  const sub = parent
+    .command(positionalArgs ? `${leafName} ${positionalArgs}` : leafName)
     .description(spec.description);
 
   const positionalsCount = (spec.positionals ?? []).length;
@@ -138,6 +146,12 @@ function resolveSourcesIfPresent(
     : ((fileLayers.data.sources as SourceSpecInput[] | undefined) ?? []);
   const resolved = resolveSourceReferences(list, { registry });
   config.sources = Array.isArray(sources) ? resolved : resolved[0];
+}
+
+function findOrCreateParent(parent: Command, segment: string): Command {
+  const existing = parent.commands.find((c) => c.name() === segment);
+  if (existing) return existing;
+  return parent.command(segment).description(`${segment} commands`);
 }
 
 class AliasedOption extends Option {

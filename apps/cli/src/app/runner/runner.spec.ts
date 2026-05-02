@@ -64,6 +64,167 @@ describe('registerSpec', () => {
     });
   });
 
+  it('registers a nested subcommand when spec.name contains a space', async () => {
+    let received: Record<string, unknown> | undefined;
+    const idField: FieldDescriptor = {
+      key: 'id',
+      schema: z.string().optional(),
+    };
+    const spec: CommandSpec<Record<string, unknown>> = {
+      name: 'cache list',
+      description: 'list cached views',
+      fields: [idField],
+      handler: (config) => {
+        received = config as Record<string, unknown>;
+      },
+      exitCode: () => 1,
+    };
+
+    const program = makeProgram();
+    registerSpec(program, spec, { env: {}, cwd: process.cwd() });
+    await program.parseAsync(['cache', 'list'], { from: 'user' });
+
+    expect(received).toEqual({});
+  });
+
+  it('two specs sharing the same parent register as siblings under the same parent', async () => {
+    const calls: string[] = [];
+    const idField: FieldDescriptor = {
+      key: 'id',
+      schema: z.string().optional(),
+    };
+    const listSpec: CommandSpec<Record<string, unknown>> = {
+      name: 'cache list',
+      description: 'list',
+      fields: [idField],
+      handler: () => {
+        calls.push('list');
+      },
+      exitCode: () => 1,
+    };
+    const clearSpec: CommandSpec<Record<string, unknown>> = {
+      name: 'cache clear',
+      description: 'clear',
+      fields: [idField],
+      positionals: [{ field: 'id', name: 'id' }],
+      handler: (config) => {
+        calls.push(`clear:${(config as { id?: string }).id ?? ''}`);
+      },
+      exitCode: () => 1,
+    };
+
+    const program = makeProgram();
+    registerSpec(program, listSpec, { env: {}, cwd: process.cwd() });
+    registerSpec(program, clearSpec, { env: {}, cwd: process.cwd() });
+    await program.parseAsync(['cache', 'list'], { from: 'user' });
+    await program.parseAsync(['cache', 'clear', 'foo'], { from: 'user' });
+
+    expect(calls).toEqual(['list', 'clear:foo']);
+  });
+
+  it('whitespace inside a positional value reaches the handler intact (top-level spec)', async () => {
+    let received: Record<string, unknown> | undefined;
+    const labelField: FieldDescriptor = {
+      key: 'label',
+      schema: z.string(),
+    };
+    const spec: CommandSpec<Record<string, unknown>> = {
+      name: 'demo',
+      description: 'demo',
+      fields: [labelField],
+      positionals: [{ field: 'label', name: 'label' }],
+      handler: (config) => {
+        received = config as Record<string, unknown>;
+      },
+      exitCode: () => 1,
+    };
+
+    const program = makeProgram();
+    registerSpec(program, spec, { env: {}, cwd: process.cwd() });
+    await program.parseAsync(['demo', 'hello   world'], { from: 'user' });
+
+    expect(received?.label).toBe('hello   world');
+  });
+
+  it('whitespace inside a flag value reaches the handler intact (top-level spec)', async () => {
+    let received: Record<string, unknown> | undefined;
+    const labelField: FieldDescriptor = {
+      key: 'label',
+      schema: z.string(),
+      flags: [{ spec: '--label <text>', description: 'label' }],
+    };
+    const spec: CommandSpec<Record<string, unknown>> = {
+      name: 'demo',
+      description: 'demo',
+      fields: [labelField],
+      handler: (config) => {
+        received = config as Record<string, unknown>;
+      },
+      exitCode: () => 1,
+    };
+
+    const program = makeProgram();
+    registerSpec(program, spec, { env: {}, cwd: process.cwd() });
+    await program.parseAsync(['demo', '--label', 'hello   world'], {
+      from: 'user',
+    });
+
+    expect(received?.label).toBe('hello   world');
+  });
+
+  it('whitespace inside a positional value reaches a nested subcommand handler intact', async () => {
+    let received: Record<string, unknown> | undefined;
+    const idField: FieldDescriptor = {
+      key: 'id',
+      schema: z.string().optional(),
+    };
+    const spec: CommandSpec<Record<string, unknown>> = {
+      name: 'cache clear',
+      description: 'clear',
+      fields: [idField],
+      positionals: [{ field: 'id', name: 'id' }],
+      handler: (config) => {
+        received = config as Record<string, unknown>;
+      },
+      exitCode: () => 1,
+    };
+
+    const program = makeProgram();
+    registerSpec(program, spec, { env: {}, cwd: process.cwd() });
+    await program.parseAsync(['cache', 'clear', 'id with spaces'], {
+      from: 'user',
+    });
+
+    expect(received?.id).toBe('id with spaces');
+  });
+
+  it('whitespace inside a flag value reaches a nested subcommand handler intact', async () => {
+    let received: Record<string, unknown> | undefined;
+    const cacheDirField: FieldDescriptor = {
+      key: 'cacheDir',
+      schema: z.string(),
+      flags: [{ spec: '--cache-dir <path>', description: 'cache dir' }],
+    };
+    const spec: CommandSpec<Record<string, unknown>> = {
+      name: 'cache list',
+      description: 'list',
+      fields: [cacheDirField],
+      handler: (config) => {
+        received = config as Record<string, unknown>;
+      },
+      exitCode: () => 1,
+    };
+
+    const program = makeProgram();
+    registerSpec(program, spec, { env: {}, cwd: process.cwd() });
+    await program.parseAsync(
+      ['cache', 'list', '--cache-dir', '/tmp/dir with space'],
+      { from: 'user' },
+    );
+
+    expect(received?.cacheDir).toBe('/tmp/dir with space');
+  });
+
   it('repeated --sources flag accumulates into an array, beating positional', async () => {
     let received: Record<string, unknown> | undefined;
     const spec: CommandSpec = {
