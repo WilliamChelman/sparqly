@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -318,5 +318,129 @@ describe('resolveView — failure surfacing', () => {
     ]);
     const view = registry[1] as ParsedViewSource;
     await expect(resolveView({ view, registry })).rejects.toThrow();
+  });
+});
+
+describe('resolveView — view-cache integration', () => {
+  let dataDir: string;
+  let cacheDir: string;
+
+  beforeEach(async () => {
+    dataDir = await mkdtemp(join(tmpdir(), 'sparqly-view-cache-data-'));
+    cacheDir = await mkdtemp(join(tmpdir(), 'sparqly-view-cache-out-'));
+  });
+
+  afterEach(async () => {
+    await rm(dataDir, { recursive: true, force: true });
+    await rm(cacheDir, { recursive: true, force: true });
+  });
+
+  it('without a cache block, writes nothing into cacheDir', async () => {
+    const a = join(dataDir, 'a.ttl');
+    await writeFile(
+      a,
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: a },
+      {
+        id: 'plain',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+
+    await resolveView({ view, registry, cacheDir });
+    const entries = await readdir(cacheDir);
+    expect(entries).toEqual([]);
+  });
+
+  it('on cache miss, runs the view and stores; on hit, returns cached data without re-evaluating upstream', async () => {
+    const a = join(dataDir, 'a.ttl');
+    await writeFile(
+      a,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:keep ex:p ex:v1 .',
+        'ex:drop ex:p ex:v2 .',
+      ].join('\n'),
+    );
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: a },
+      {
+        id: 'cached',
+        from: ['@raw'],
+        query:
+          'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }',
+        cache: { ttl: '1h' },
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+
+    const first = await resolveView({ view, registry, cacheDir });
+    expect(
+      first.getQuads(null, null, null, null).map((q) => q.subject.value),
+    ).toEqual(['http://example.org/keep']);
+
+    // Replace upstream with completely different data; if the cache is hit,
+    // we should still see the original snapshot.
+    await writeFile(
+      a,
+      '@prefix ex: <http://example.org/> . ex:totally ex:different ex:now .',
+    );
+
+    const second = await resolveView({ view, registry, cacheDir });
+    expect(
+      second.getQuads(null, null, null, null).map((q) => q.subject.value),
+    ).toEqual(['http://example.org/keep']);
+  });
+
+  it('after TTL expiry the resolver re-evaluates upstream', async () => {
+    const a = join(dataDir, 'a.ttl');
+    await writeFile(
+      a,
+      '@prefix ex: <http://example.org/> . ex:one ex:p ex:v .',
+    );
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: a },
+      {
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1s' },
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+
+    let nowMs = 1_000_000;
+    const opts = {
+      view,
+      registry,
+      cacheDir,
+      now: () => nowMs,
+    };
+    const first = await resolveView(opts);
+    expect(first.getQuads(null, null, null, null)).toHaveLength(1);
+
+    // Change upstream
+    await writeFile(
+      a,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:one ex:p ex:v .',
+        'ex:two ex:p ex:v .',
+      ].join('\n'),
+    );
+
+    // Within ttl: still cached, only one quad.
+    nowMs += 500;
+    const second = await resolveView(opts);
+    expect(second.getQuads(null, null, null, null)).toHaveLength(1);
+
+    // Past ttl: cache stale, re-evaluates.
+    nowMs += 1000;
+    const third = await resolveView(opts);
+    expect(third.getQuads(null, null, null, null)).toHaveLength(2);
   });
 });

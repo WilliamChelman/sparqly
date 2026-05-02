@@ -38,12 +38,23 @@ export interface ParsedReferenceSource extends SourceSpecCommonFields {
   ref: string;
 }
 
+export interface ParsedViewCache {
+  ttlMs: number;
+  cacheDir?: string;
+}
+
 export interface ParsedViewSource {
   kind: 'view';
   id: string;
   from: ReadonlyArray<string>;
   query?: string;
   queryFile?: string;
+  cache?: ParsedViewCache;
+}
+
+export interface ViewCacheInput {
+  ttl?: string | number;
+  cacheDir?: string;
 }
 
 export type ParsedSource =
@@ -61,6 +72,7 @@ export interface SourceSpecObjectInput
   from?: ReadonlyArray<string>;
   query?: string;
   queryFile?: string;
+  cache?: ViewCacheInput;
 }
 
 export type SourceSpecInput = string | SourceSpecObjectInput;
@@ -130,6 +142,11 @@ export function parseSourceSpec(input: SourceSpecInput): ParsedSource {
   if (input.id !== undefined) validateSourceId(input.id);
   if (hasFrom) {
     return parseView(input);
+  }
+  if (input.cache !== undefined) {
+    throw new Error(
+      '`cache` is only valid on view sources (`from:` blocks); see PRD #78',
+    );
   }
   const common = pickCommon(input);
   if (hasGlob) {
@@ -205,7 +222,81 @@ function parseView(input: SourceSpecObjectInput): ParsedViewSource {
   };
   if (hasQuery) out.query = input.query;
   if (hasQueryFile) out.queryFile = input.queryFile;
+  if (input.cache !== undefined) {
+    out.cache = parseViewCache(input.id, input.cache);
+  }
   return out;
+}
+
+const KNOWN_CACHE_KEYS = new Set(['ttl', 'cacheDir']);
+
+function parseViewCache(viewId: string, raw: ViewCacheInput): ParsedViewCache {
+  if (raw === null || typeof raw !== 'object') {
+    throw new Error(
+      `view "${viewId}": \`cache\` must be an object with at least \`ttl\``,
+    );
+  }
+  for (const key of Object.keys(raw)) {
+    if (!KNOWN_CACHE_KEYS.has(key)) {
+      throw new Error(
+        `view "${viewId}": unknown \`cache\` key "${key}" (other strategies land in #87)`,
+      );
+    }
+  }
+  if (raw.ttl === undefined) {
+    throw new Error(
+      `view "${viewId}": \`cache.ttl\` is required (other strategies in #87)`,
+    );
+  }
+  const ttlMs = parseTtl(viewId, raw.ttl);
+  const out: ParsedViewCache = { ttlMs };
+  if (raw.cacheDir !== undefined) {
+    if (typeof raw.cacheDir !== 'string' || raw.cacheDir.length === 0) {
+      throw new Error(
+        `view "${viewId}": \`cache.cacheDir\` must be a non-empty string`,
+      );
+    }
+    out.cacheDir = raw.cacheDir;
+  }
+  return out;
+}
+
+const TTL_PATTERN = /^(\d+)(ms|s|m|h|d)$/;
+const TTL_UNIT_MS: Record<string, number> = {
+  ms: 1,
+  s: 1000,
+  m: 60_000,
+  h: 3_600_000,
+  d: 86_400_000,
+};
+
+function parseTtl(viewId: string, raw: string | number): number {
+  if (typeof raw === 'number') {
+    if (!Number.isFinite(raw) || raw <= 0 || !Number.isInteger(raw)) {
+      throw new Error(
+        `view "${viewId}": \`cache.ttl\` numeric value must be a positive integer (ms)`,
+      );
+    }
+    return raw;
+  }
+  if (typeof raw !== 'string') {
+    throw new Error(
+      `view "${viewId}": \`cache.ttl\` must be a duration string (e.g. "1h") or a positive integer (ms)`,
+    );
+  }
+  const match = TTL_PATTERN.exec(raw.trim());
+  if (!match) {
+    throw new Error(
+      `view "${viewId}": \`cache.ttl\` ${JSON.stringify(raw)} is not a valid duration (expected e.g. "100ms", "5s", "30m", "2h", "1d")`,
+    );
+  }
+  const n = Number(match[1]);
+  if (n <= 0) {
+    throw new Error(
+      `view "${viewId}": \`cache.ttl\` must be greater than zero`,
+    );
+  }
+  return n * TTL_UNIT_MS[match[2]];
 }
 
 const ENDPOINT_ONLY_KEYS = ['auth', 'headers', 'timeoutMs'] as const;

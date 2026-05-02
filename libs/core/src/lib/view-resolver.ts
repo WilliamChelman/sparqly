@@ -8,18 +8,64 @@ import {
   type ParsedSource,
   type ParsedViewSource,
 } from './source-spec';
+import {
+  lookup as cacheLookup,
+  storeView as cacheStore,
+  type ViewCacheBinding,
+} from './view-cache';
 import { validateViewQuery } from './view-query-validate';
 
 export interface ResolveViewOptions {
   view: ParsedViewSource;
   registry: ReadonlyArray<ParsedSource>;
+  /**
+   * Absolute directory used for persistent caching of views that declare a
+   * `cache` block. When omitted, the cache is skipped (lazy + process-lifetime
+   * materialization only). Anonymous CLI views always omit this.
+   */
+  cacheDir?: string;
+  /** Injectable clock; defaults to `Date.now`. */
+  now?: () => number;
 }
 
 export async function resolveView(
   opts: ResolveViewOptions,
 ): Promise<Store> {
-  const { view, registry } = opts;
+  const { view, registry, cacheDir, now } = opts;
+  if (view.cache && cacheDir) {
+    const upstream = collectCacheUpstream(view, registry);
+    const binding: ViewCacheBinding = {
+      view,
+      upstream,
+      cacheDir,
+      now,
+    };
+    const hit = await cacheLookup(binding);
+    if (hit.freshness === 'fresh' && hit.store) {
+      return hit.store;
+    }
+    const fresh = await resolveViewInternal(view, registry, [view.id]);
+    await cacheStore(binding, fresh);
+    return fresh;
+  }
   return resolveViewInternal(view, registry, [view.id]);
+}
+
+function collectCacheUpstream(
+  view: ParsedViewSource,
+  registry: ReadonlyArray<ParsedSource>,
+): ReadonlyArray<ParsedSource> {
+  const byId = new Map<string, ParsedSource>();
+  for (const src of registry) {
+    if (src.kind === 'reference' || src.id === undefined) continue;
+    byId.set(src.id, src);
+  }
+  const out: ParsedSource[] = [];
+  for (const refId of view.from) {
+    const upstream = byId.get(refId);
+    if (upstream) out.push(upstream);
+  }
+  return out;
 }
 
 async function resolveViewInternal(
