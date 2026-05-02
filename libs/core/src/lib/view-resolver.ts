@@ -2,6 +2,7 @@ import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import { DataFactory, Store, type Quad } from 'n3';
+import { loadEndpointToStore } from './endpoint-load';
 import { loadRdf } from './rdf-loader';
 import {
   type ParsedSource,
@@ -18,10 +19,17 @@ export async function resolveView(
   opts: ResolveViewOptions,
 ): Promise<Store> {
   const { view, registry } = opts;
+  return resolveViewInternal(view, registry, [view.id]);
+}
+
+async function resolveViewInternal(
+  view: ParsedViewSource,
+  registry: ReadonlyArray<ParsedSource>,
+  stack: ReadonlyArray<string>,
+): Promise<Store> {
   const query = await loadViewQuery(view);
   validateViewQuery(query);
-
-  const upstreamStore = await loadUpstream(view, registry, [view.id]);
+  const upstreamStore = await loadUpstream(view, registry, stack);
   return runViewQuery(upstreamStore, query);
 }
 
@@ -60,20 +68,27 @@ async function loadUpstream(
         `view "${view.id}": unknown @id reference "@${refId}"; defined ids: ${list}`,
       );
     }
-    if (upstream.kind === 'view') {
-      throw new Error(
-        `view "${view.id}": view-on-view upstream "@${refId}" is not yet supported in this release`,
-      );
-    }
-    if (upstream.kind === 'endpoint') {
-      throw new Error(
-        `view "${view.id}": endpoint upstream "@${refId}" is not yet supported in this release`,
-      );
-    }
     if (upstream.kind === 'reference') {
       throw new Error(
         `view "${view.id}": reference upstream "@${refId}" is not yet supported`,
       );
+    }
+    if (upstream.kind === 'view') {
+      const sub = await resolveViewInternal(upstream, registry, [
+        ...stack,
+        refId,
+      ]);
+      for (const quad of sub.getQuads(null, null, null, null)) {
+        merged.addQuad(quad);
+      }
+      continue;
+    }
+    if (upstream.kind === 'endpoint') {
+      const sub = await loadEndpointToStore(upstream);
+      for (const quad of sub.getQuads(null, null, null, null)) {
+        merged.addQuad(quad);
+      }
+      continue;
     }
     const sub = await loadRdf({
       sources: upstream.glob,

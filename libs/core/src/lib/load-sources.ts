@@ -2,10 +2,7 @@ import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import { DataFactory, Store, type Quad } from 'n3';
-import {
-  buildEndpointContext,
-  describeEndpointError,
-} from './endpoint-http';
+import { loadEndpointToStore } from './endpoint-load';
 import { validateViewQuery } from './view-query-validate';
 import { loadRdf, type GraphMode, type LoadResult } from './rdf-loader';
 import {
@@ -81,7 +78,7 @@ export async function loadSources(
     const prefilterQuery = resolvedPrefilters.get(i);
 
     if (source.kind === 'endpoint') {
-      const sub = await loadEndpoint(engine, source);
+      const sub = await loadEndpointToStore(source, engine);
       const syntheticGraph =
         overrideGraph ?? DataFactory.namedNode(source.endpoint);
       const after = prefilterQuery
@@ -142,47 +139,6 @@ export async function loadSources(
   }
 
   return { store: merged, files: allFiles, prefixes: allPrefixes };
-}
-
-async function loadEndpoint(
-  engine: ComunicaQueryEngine,
-  source: ParsedEndpointSource,
-): Promise<Store> {
-  const out = new Store();
-  try {
-    const result = await engine.query(
-      'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
-      buildEndpointContext(source) as Parameters<
-        ComunicaQueryEngine['query']
-      >[1],
-    );
-    if (result.resultType !== 'bindings') {
-      throw new Error(
-        `unexpected result type from endpoint: ${String(result.resultType)}`,
-      );
-    }
-    const bindings = await result.execute();
-    for await (const b of bindings as AsyncIterable<{
-      get(name: string): Quad['subject'] | undefined;
-    }>) {
-      const s = b.get('s');
-      const p = b.get('p');
-      const o = b.get('o');
-      if (!s || !p || !o) continue;
-      out.addQuad(
-        DataFactory.quad(
-          s as Quad['subject'],
-          p as Quad['predicate'],
-          o as Quad['object'],
-        ),
-      );
-    }
-    return out;
-  } catch (err) {
-    throw new Error(
-      `endpoint ${source.endpoint}: ${describeEndpointError(err)}`,
-    );
-  }
 }
 
 function applyGraphMode(
