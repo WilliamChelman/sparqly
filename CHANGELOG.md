@@ -1,3 +1,36 @@
+## [0.9.0](https://github.com/WilliamChelman/sparqly/compare/v0.8.0...v0.9.0) (2026-05-02)
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** SPARQLY_SOURCES and SPARQLY_<COMMAND>_SOURCES env vars
+are no longer read. Move source values to the CLI (-s/--sources or a
+positional glob) or to the sources: key in a config file.
+* **cli:** --print-config is no longer accepted on any command.
+* **core,cli:** graphStrategy is renamed to graphMode. Value mapping:
+none -> flatten, default -> preserve, partial -> fillDefault,
+full -> forceAll. SPARQLY_GRAPH_STRATEGY / SPARQLY_<COMMAND>_GRAPH_STRATEGY
+env vars are removed in favor of SPARQLY_GRAPH_MODE /
+SPARQLY_<COMMAND>_GRAPH_MODE. The --graph-strategy CLI flag is removed in
+favor of --graph-mode. Old key and old enum values now hard-fail.
+
+### Features
+
+* **cli:** drop --print-config flag and runner branch ([a2b3337](https://github.com/WilliamChelman/sparqly/commit/a2b333715ad1ceb3515ef8da67b20e83e6ecc8c9)), closes [#62](https://github.com/WilliamChelman/sparqly/issues/62)
+* **cli:** drop SPARQLY_SOURCES and per-command SOURCES env vars ([becebc7](https://github.com/WilliamChelman/sparqly/commit/becebc760736777c48ecd72c82d94db0dd76aa64)), closes [#60](https://github.com/WilliamChelman/sparqly/issues/60) [#63](https://github.com/WilliamChelman/sparqly/issues/63)
+* **cli:** reject SPARQL diff sources without prefilter on either side ([a72a7cc](https://github.com/WilliamChelman/sparqly/commit/a72a7cce695fa4cf4dd1f1633f0deb9827b6e1ed)), closes [#71](https://github.com/WilliamChelman/sparqly/issues/71)
+* **cli:** reject SPARQL hash sources without prefilter ([d9e85d2](https://github.com/WilliamChelman/sparqly/commit/d9e85d23118414e5ab66537be7a4570afe8fa457))
+* **cli:** reject SPARQL sources and prefilters on format glob sources ([d7cf33e](https://github.com/WilliamChelman/sparqly/commit/d7cf33ee4d7ebf540b608aee01b33be2cbb733bf))
+* **core,cli:** [@id](https://github.com/id) reference resolution end-to-end ([683f139](https://github.com/WilliamChelman/sparqly/commit/683f139bf1bc4312578291b35682420c58b7ac64)), closes [#67](https://github.com/WilliamChelman/sparqly/issues/67)
+* **core,cli:** ${VAR} env substitution on source-spec strings ([90da793](https://github.com/WilliamChelman/sparqly/commit/90da793209f2b4e020306d846dcfb78f2964215b))
+* **core,cli:** rename graphStrategy to graphMode ([d48a8cf](https://github.com/WilliamChelman/sparqly/commit/d48a8cf189ef363ed7b49a1d60e7c972aa400fd9)), closes [#61](https://github.com/WilliamChelman/sparqly/issues/61) [#60](https://github.com/WilliamChelman/sparqly/issues/60)
+* **core,cli:** SPARQL endpoint auth, headers, and per-source timeoutMs ([774ca36](https://github.com/WilliamChelman/sparqly/commit/774ca366015162103045996d91213c5a1cdc4c90)), closes [#69](https://github.com/WilliamChelman/sparqly/issues/69)
+* **core,cli:** SPARQL endpoint source — materialized load ([fa3e37f](https://github.com/WilliamChelman/sparqly/commit/fa3e37f38a6f3e767bb82eb26500d930a9f279f3))
+* **core:** prefilter contract and per-source pipeline on glob sources ([33ed513](https://github.com/WilliamChelman/sparqly/commit/33ed513eb84b5ead3addf299d06eaa2317f264c7)), closes [#66](https://github.com/WilliamChelman/sparqly/issues/66)
+* **core:** source-spec parser/normalizer with glob-only loader ([a9cce39](https://github.com/WilliamChelman/sparqly/commit/a9cce39867ec5fdb036e8305e6a9e4d7c1cb5ddc)), closes [#67](https://github.com/WilliamChelman/sparqly/issues/67) [#68](https://github.com/WilliamChelman/sparqly/issues/68) [#66](https://github.com/WilliamChelman/sparqly/issues/66) [#64](https://github.com/WilliamChelman/sparqly/issues/64)
+* **query:** pass-through federation for single endpoint, no prefilter ([663c675](https://github.com/WilliamChelman/sparqly/commit/663c675549c06996f82e9674896ddbebcc711ca0)), closes [#74](https://github.com/WilliamChelman/sparqly/issues/74)
+* **serve:** --watch warns and ignores when no glob source ([0316cae](https://github.com/WilliamChelman/sparqly/commit/0316cae76277218a7bbeab2faa7fdc538685ad60)), closes [#73](https://github.com/WilliamChelman/sparqly/issues/73)
+* **serve:** pass-through federation for single endpoint, no prefilter ([8c99e49](https://github.com/WilliamChelman/sparqly/commit/8c99e49f3d284840f2760938fdcfb3ebfad27bb8)), closes [#76](https://github.com/WilliamChelman/sparqly/issues/76)
+
 ## [0.8.0](https://github.com/WilliamChelman/sparqly/compare/v0.7.0...v0.8.0) (2026-05-01)
 
 ### Features
