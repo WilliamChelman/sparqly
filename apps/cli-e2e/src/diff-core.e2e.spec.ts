@@ -262,34 +262,5 @@ describe('sparqly diff — core properties', () => {
       expect(parsed.added).toHaveLength(1);
     });
 
-    it('--print-config prints the diff block annotated with sources', async () => {
-      const result = await runCli([
-        'diff',
-        '--print-config',
-        '--format=rdf-patch',
-        '--quiet',
-        diffFixture('domain.ttl'),
-        diffFixture('added.ttl'),
-      ]);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('# sparqly diff --print-config');
-      expect(result.stdout).toMatch(/format\s*:\s*"rdf-patch"\s+# flag/);
-    });
-
-    it('--print-config annotates the default format=human when no flag is given', async () => {
-      const result = await runCli([
-        'diff',
-        '--print-config',
-        '--quiet',
-        'x.ttl',
-        'y.ttl',
-      ]);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toMatch(/format\s*:\s*"human"\s+# default/);
-      expect(result.stdout).toMatch(/left\s*:\s*"x\.ttl"\s+# flag/);
-      expect(result.stdout).toMatch(/right\s*:\s*"y\.ttl"\s+# flag/);
-    });
   });
 });

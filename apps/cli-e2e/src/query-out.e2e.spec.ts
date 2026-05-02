@@ -121,19 +121,4 @@ describe('sparqly query --out', () => {
     expect(await readFile(target, 'utf8')).toMatch(/"bindings"/);
   });
 
-  it('--print-config still writes to stdout when --out is set', async () => {
-    const target = join(scratch, 'should-not-exist.json');
-
-    const result = await runCli([
-      'query',
-      '--print-config',
-      '--out',
-      target,
-    ]);
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toMatch(/^# sparqly query --print-config/);
-    expect(result.stdout).toMatch(/^out\s*:.*flag/m);
-    await expect(readFile(target, 'utf8')).rejects.toThrow();
-  });
 });

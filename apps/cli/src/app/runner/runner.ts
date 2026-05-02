@@ -3,7 +3,7 @@ import { Option, type Command } from 'commander';
 import { configureLogger } from '../logging';
 import type { FieldDescriptor } from './field';
 import { blockSchemaFromFields } from './field';
-import { mergeLayers, type ConfigSource } from './merge';
+import { mergeLayers } from './merge';
 import type { CommandSpec } from './spec';
 
 export interface FileLayers {
@@ -44,7 +44,6 @@ export function registerSpec<T extends Record<string, unknown>>(
 
   applyFieldFlags(sub, spec.fields);
   sub.option('--config <path>', 'Path to a sparqly.config.{yaml,yml,json} file.');
-  sub.option('--print-config', 'Print the fully-merged effective configuration and exit.');
 
   sub.action(async (...args: unknown[]) => {
     let rawConfig: Record<string, unknown> = {};
@@ -109,20 +108,6 @@ export function registerSpec<T extends Record<string, unknown>>(
         new Logger('sparqly').log(`Loaded config from ${fileLayers.filepath}`);
       }
 
-      if (optsBag.printConfig) {
-        const out = ctx.stdout ?? process.stdout;
-        out.write(
-          formatPrintConfig({
-            name: spec.name,
-            fields: spec.fields,
-            config: validated.data as Record<string, unknown>,
-            sources: merged.sources,
-            filepath: fileLayers.filepath,
-          }),
-        );
-        return;
-      }
-
       await spec.handler(validated.data as T);
     } catch (err) {
       const silent = (err as { silent?: boolean } | undefined)?.silent === true;
@@ -181,45 +166,6 @@ function readEnv(
     }
   }
   return out;
-}
-
-interface PrintConfigInput {
-  name: string;
-  fields: ReadonlyArray<FieldDescriptor>;
-  config: Record<string, unknown>;
-  sources: Record<string, ConfigSource>;
-  filepath: string | null;
-}
-
-function formatPrintConfig(input: PrintConfigInput): string {
-  const orderedKeys = input.fields.map((f) => f.key);
-  const entries: Array<{ key: string; valueStr: string; source: ConfigSource }> = [];
-  for (const key of orderedKeys) {
-    const source = input.sources[key];
-    if (source === undefined) continue;
-    entries.push({
-      key,
-      valueStr: formatValue(input.config[key]),
-      source,
-    });
-  }
-  const keyWidth = Math.max(0, ...entries.map((e) => e.key.length));
-  const valueWidth = Math.max(0, ...entries.map((e) => e.valueStr.length));
-  const lines: string[] = [];
-  lines.push(`# sparqly ${input.name} --print-config`);
-  lines.push(`# config file: ${input.filepath ?? '(none)'}`);
-  for (const e of entries) {
-    lines.push(
-      `${e.key.padEnd(keyWidth)}: ${e.valueStr.padEnd(valueWidth)}  # ${e.source}`,
-    );
-  }
-  return lines.join('\n') + '\n';
-}
-
-function formatValue(value: unknown): string {
-  if (typeof value === 'string') return JSON.stringify(value);
-  if (Array.isArray(value)) return JSON.stringify(value);
-  return String(value);
 }
 
 function numberWord(n: number): string {

@@ -29,13 +29,12 @@ describe('config — backward compatibility and --help surface', () => {
   });
 
   it.each(['query', 'serve'] as const)(
-    '%s --help lists --config and --print-config',
+    '%s --help lists --config',
     async (command) => {
       const result = await runCli([command, '--help']);
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('--config');
-      expect(result.stdout).toContain('--print-config');
     },
   );
 
@@ -60,15 +59,4 @@ describe('config — backward compatibility and --help surface', () => {
     expect(parsed.results.bindings).toHaveLength(1);
   });
 
-  it('--print-config with no config file reports "(none)" for the config file', async () => {
-    const result = await runCli(
-      ['query', '--print-config', 'pos/**/*.ttl'],
-      { cwd: scratch, env: CLEARED_ENV },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('# sparqly query --print-config');
-    expect(result.stdout).toContain('# config file: (none)');
-    expect(result.stdout).toMatch(/sources\s*:\s*"pos\/\*\*\/\*\.ttl"\s+# flag/);
-  });
 });

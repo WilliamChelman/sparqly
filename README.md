@@ -85,7 +85,6 @@ Behavior:
   no symlink-following behavior.
 - **`--out -`.** Rejected with a clear error; pipe stdout instead.
 - **Existing directory at `<path>`.** Rejected with a clear error.
-- **`--print-config`.** Always writes to stdout, even when `out` is set.
 
 Per-command notes:
 
@@ -193,24 +192,6 @@ Environment variables follow a predictable contract:
 
 String env values are coerced to numbers / booleans according to the schema.
 
-### `--print-config`
-
-To see exactly what `sparqly` will run with — and which layer each value came
-from — pass `--print-config` to either command. It resolves the merged
-configuration, prints it annotated, and exits 0 without running the query or
-starting the server.
-
-```sh
-sparqly query --config ./sparqly.query.yaml --print-config
-# sparqly query --print-config
-# config file: /path/to/sparqly.query.yaml
-sources       : "data/**/*.ttl"  # file
-graphMode     : preserve         # default
-mutable       : true             # file
-verbose       : false            # default
-quiet         : false            # default
-```
-
 ## `sparqly hash`
 
 `sparqly hash` computes a stable SHA-256 over the **canonicalized** RDF content
@@ -237,7 +218,7 @@ sparqly hash [glob]
             [--graph-mode <preserve|fillDefault|forceAll|flatten>]
             [--json]
             [--compare-with <source>]
-            [--config <path>] [--print-config]
+            [--config <path>]
             [-v, --verbose] [--quiet]
 ```
 
@@ -319,8 +300,7 @@ SPARQLY_HASH_COMPARE_WITH     # hash-specific
 
 The same precedence chain applies as for `query` and `serve`: built-in
 defaults → config file shared keys → config file `hash:` block → environment
-variables → CLI flags. Pass `--print-config` to see the resolved configuration
-annotated with where each value came from.
+variables → CLI flags.
 
 ## `sparqly diff`
 
@@ -350,7 +330,7 @@ sparqly diff [left] [right]
             [--left <source>] [--right <source>]
             [--graph-mode <preserve|fillDefault|forceAll|flatten>]
             [-f, --format <human|json|rdf-patch>]
-            [--config <path>] [--print-config]
+            [--config <path>]
             [-v, --verbose] [--quiet]
 ```
 
@@ -418,9 +398,7 @@ SPARQLY_DIFF_GRAPH_MODE   # diff-specific
 
 The same precedence chain applies as for the other commands: built-in defaults
 → config file shared keys → config file `diff:` block → environment variables
-→ CLI flags (and the positional `[left] [right]` arguments). Pass
-`--print-config` to see the resolved configuration annotated with where each
-value came from.
+→ CLI flags (and the positional `[left] [right]` arguments).
 
 ## Workspace layout
 
