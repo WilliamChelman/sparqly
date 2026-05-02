@@ -211,6 +211,14 @@ N-Quads, TriG, JSON-LD, and RDF/XML.
 > This is acceptable for the primary split/merge workflow as long as the
 > splitter does not rewrite literals. Tracked in `ideas.md`.
 
+> **Determinism caveat (SPARQL endpoints).** `hash` always materializes its
+> sources, so a SPARQL endpoint source is rejected unless an explicit
+> `prefilter` (or `prefilterFile`) is configured to scope the data being
+> canonicalized. Even with a prefilter, a remote endpoint can return different
+> data between two runs (live data, eventual consistency, missing `ORDER BY`),
+> so a `hash --compare-with` against a SPARQL source is only as deterministic
+> as the endpoint itself.
+
 ### Synopsis
 
 ```sh
