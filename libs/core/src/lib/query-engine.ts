@@ -1,6 +1,12 @@
 import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import type { Store } from 'n3';
+import {
+  buildEndpointContext,
+  describeEndpointError,
+  type ComunicaEndpointContext,
+} from './endpoint-http';
 import { assertImmutable, detectQueryType } from './immutability';
+import type { ParsedEndpointSource } from './source-spec';
 
 export const SUPPORTED_FORMATS = ['json', 'turtle'] as const;
 
@@ -24,22 +30,39 @@ export interface ExecuteResult {
 
 export type StoreSource = Store | (() => Store);
 
+export type QueryEngineSource = StoreSource | ParsedEndpointSource;
+
 export class QueryEngine {
   private readonly engine = new ComunicaQueryEngine();
-  private readonly resolveStore: () => Store;
+  private readonly resolveContext: () => Record<string, unknown>;
+  private readonly endpointSource: ParsedEndpointSource | undefined;
 
-  constructor(source: StoreSource) {
-    this.resolveStore =
-      typeof source === 'function' ? source : (): Store => source;
+  constructor(source: QueryEngineSource) {
+    if (isParsedEndpointSource(source)) {
+      this.endpointSource = source;
+      const ctx = buildEndpointContext(source);
+      this.resolveContext = (): Record<string, unknown> =>
+        ctx as unknown as Record<string, unknown>;
+    } else {
+      this.endpointSource = undefined;
+      const resolveStore: () => Store =
+        typeof source === 'function' ? source : (): Store => source;
+      this.resolveContext = (): Record<string, unknown> => ({
+        sources: [resolveStore()],
+      });
+    }
   }
 
   async execute(query: string, options: ExecuteOptions = {}): Promise<ExecuteResult> {
     const queryType = detectQueryType(query);
     assertImmutable(queryType, { mutable: options.mutable });
 
-    const result = await this.engine.query(query, {
-      sources: [this.resolveStore()],
-    });
+    const result = await this.wrapEndpointErrors(() =>
+      this.engine.query(
+        query,
+        this.resolveContext() as Parameters<ComunicaQueryEngine['query']>[1],
+      ),
+    );
     const resultType = result.resultType;
 
     const defaultFormat: SparqlFormat = resultType === 'quads' ? 'turtle' : 'json';
@@ -58,10 +81,36 @@ export class QueryEngine {
     }
 
     const mediaType = FORMAT_TO_MIME[format];
-    const { data } = await this.engine.resultToString(result, mediaType);
-    const body = await streamToString(data);
+    const body = await this.wrapEndpointErrors(async () => {
+      const stringified = await this.engine.resultToString(result, mediaType);
+      return streamToString(stringified.data);
+    });
     return { body, format, contentType: mediaType };
   }
+
+  private async wrapEndpointErrors<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (err) {
+      if (this.endpointSource) {
+        throw new Error(
+          `endpoint ${this.endpointSource.endpoint}: ${describeEndpointError(err)}`,
+        );
+      }
+      throw err;
+    }
+  }
+}
+
+function isParsedEndpointSource(
+  source: QueryEngineSource,
+): source is ParsedEndpointSource {
+  return (
+    typeof source === 'object' &&
+    source !== null &&
+    'kind' in source &&
+    (source as { kind: unknown }).kind === 'endpoint'
+  );
 }
 
 async function streamToString(stream: NodeJS.ReadableStream): Promise<string> {
@@ -71,3 +120,5 @@ async function streamToString(stream: NodeJS.ReadableStream): Promise<string> {
   }
   return Buffer.concat(chunks).toString('utf8');
 }
+
+export type { ComunicaEndpointContext };

@@ -5,7 +5,7 @@ import {
   QueryEngine,
   SUPPORTED_FORMATS,
   formatRdf,
-  loadSources,
+  loadQuerySources,
   parseRdfString,
   parseSparqlPrefixes,
   type GraphMode,
@@ -140,15 +140,25 @@ export const querySpec: CommandSpec<QueryConfig> = {
     const inputs = Array.isArray(config.sources)
       ? config.sources
       : [config.sources];
-    const { store, files } = await loadSources(inputs, { graphMode });
-    logger.log(
-      `Loaded ${files.length} file(s) (${store.size} quads) in ${
-        Date.now() - loadStart
-      }ms`,
-    );
+    const sources = await loadQuerySources(inputs, { graphMode });
+    let engine: QueryEngine;
+    if (sources.mode === 'pass-through') {
+      logger.log(
+        `Federating to endpoint ${sources.endpoint.endpoint} in ${
+          Date.now() - loadStart
+        }ms`,
+      );
+      engine = new QueryEngine(sources.endpoint);
+    } else {
+      logger.log(
+        `Loaded ${sources.files.length} file(s) (${sources.store.size} quads) in ${
+          Date.now() - loadStart
+        }ms`,
+      );
+      engine = new QueryEngine(sources.store);
+    }
 
     const queryStart = Date.now();
-    const engine = new QueryEngine(store);
     const result = await engine.execute(query, { format, mutable });
     logger.log(`Query executed in ${Date.now() - queryStart}ms`);
 
