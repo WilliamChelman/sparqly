@@ -10,6 +10,7 @@
       {
         "preset": "conventionalcommits",
         "releaseRules": [
+          { "breaking": true, "release": "minor" },
           { "type": "chore", "release": false },
           { "type": "docs", "release": false },
           { "type": "test", "release": false },
