@@ -200,6 +200,104 @@ describe('parseSourceSpec — view discriminant', () => {
   });
 });
 
+describe('parseSourceSpec — view cache block', () => {
+  it('parses a view with cache.ttl as a duration string', () => {
+    expect(
+      parseSourceSpec({
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      }),
+    ).toEqual({
+      kind: 'view',
+      id: 'cached',
+      from: ['raw'],
+      query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      cache: { ttlMs: 60 * 60 * 1000 },
+    });
+  });
+
+  it('honours a per-view cacheDir override on the cache block', () => {
+    expect(
+      parseSourceSpec({
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '5m', cacheDir: './tmp/my-cache' },
+      }),
+    ).toMatchObject({
+      cache: { ttlMs: 5 * 60 * 1000, cacheDir: './tmp/my-cache' },
+    });
+  });
+
+  it('accepts ttl as a positive number of milliseconds', () => {
+    expect(
+      parseSourceSpec({
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: 1500 },
+      }),
+    ).toMatchObject({ cache: { ttlMs: 1500 } });
+  });
+
+  it('rejects a cache block with no ttl (placeholder until #87 adds freshness/everlasting)', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        // @ts-expect-error — cache requires ttl in this slice
+        cache: {},
+      }),
+    ).toThrow(/cache.*ttl.*required/i);
+  });
+
+  it('rejects an unparseable ttl duration string', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: 'forever' },
+      }),
+    ).toThrow(/cache.*ttl/i);
+  });
+
+  it('rejects unknown keys on the cache block', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'cached',
+        from: ['@raw'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        // @ts-expect-error — `freshness` lands in #87
+        cache: { ttl: '1h', freshness: 'ASK { ?s ?p ?o }' },
+      }),
+    ).toThrow(/cache.*unknown.*freshness/i);
+  });
+
+  it('rejects a cache block on a non-view source (glob)', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        // @ts-expect-error — cache only valid on view sources
+        cache: { ttl: '1h' },
+      }),
+    ).toThrow(/cache.*view/i);
+  });
+
+  it('rejects a cache block on an endpoint source', () => {
+    expect(() =>
+      parseSourceSpec({
+        endpoint: 'https://example.org/sparql',
+        // @ts-expect-error — cache only valid on view sources
+        cache: { ttl: '1h' },
+      }),
+    ).toThrow(/cache.*view/i);
+  });
+});
+
 describe('parseSourceSpec — endpoint graph/graphMode are removed', () => {
   it('rejects an endpoint source carrying graphMode with a hint about views', () => {
     expect(() =>
