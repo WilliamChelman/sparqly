@@ -7,8 +7,10 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import {
   type GraphMode,
+  loadQuerySources,
   loadSources,
   parseSourceSpecs,
+  QueryEngine,
   type SourceSpecInput,
 } from 'core';
 import { ServerModule } from './server.module';
@@ -37,20 +39,33 @@ export async function createServer(
   const logger = new Logger('sparqly');
   const inputs = toSourceArray(options.sources);
   const loadStart = Date.now();
-  const { store, files } = await loadSources(inputs, {
+  const querySources = await loadQuerySources(inputs, {
     graphMode: options.graphMode,
   });
-  logger.log(
-    `Loaded ${files.length} file(s) (${store.size} quads) in ${
-      Date.now() - loadStart
-    }ms`,
-  );
 
-  const storeRef: StoreRef = { current: store };
+  let engine: QueryEngine;
+  let storeRef: StoreRef | undefined;
+  if (querySources.mode === 'pass-through') {
+    logger.log(
+      `Federating to endpoint ${querySources.endpoint.endpoint} in ${
+        Date.now() - loadStart
+      }ms`,
+    );
+    engine = new QueryEngine(querySources.endpoint);
+  } else {
+    logger.log(
+      `Loaded ${querySources.files.length} file(s) (${querySources.store.size} quads) in ${
+        Date.now() - loadStart
+      }ms`,
+    );
+    storeRef = { current: querySources.store };
+    const ref = storeRef;
+    engine = new QueryEngine(() => ref.current);
+  }
 
   const app = await NestFactory.create<NestExpressApplication>(
     ServerModule.forRoot({
-      storeRef,
+      engine,
       config: { mutable: options.mutable === true },
     }),
     { abortOnError: false },
@@ -109,7 +124,7 @@ interface WatcherHandle {
 interface StartWatcherOptions {
   sources: ReadonlyArray<SourceSpecInput>;
   graphMode?: GraphMode;
-  storeRef: StoreRef;
+  storeRef: StoreRef | undefined;
   logger: Logger;
   debounceMs: number;
 }
@@ -122,18 +137,18 @@ async function maybeStartWatcher(
     .filter((s): s is Extract<typeof s, { kind: 'glob' }> => s.kind === 'glob')
     .map((s) => s.glob);
 
-  if (globPatterns.length === 0) {
+  if (globPatterns.length === 0 || !opts.storeRef) {
     opts.logger.warn(
       '--watch ignored: no glob source to watch. SPARQL sources are not auto-refreshed; restart the process to pick up upstream changes.',
     );
     return undefined;
   }
 
-  return startWatcher(opts, globPatterns);
+  return startWatcher({ ...opts, storeRef: opts.storeRef }, globPatterns);
 }
 
 async function startWatcher(
-  opts: StartWatcherOptions,
+  opts: StartWatcherOptions & { storeRef: StoreRef },
   globPatterns: ReadonlyArray<string>,
 ): Promise<WatcherHandle> {
   const baseDirs = Array.from(new Set(globPatterns.map((p) => globBase(p))));
