@@ -196,4 +196,187 @@ describe('registerSpec', () => {
       expect(called).toBe(false);
     });
   });
+
+  describe('@id reference resolution', () => {
+    const richSourcesField: FieldDescriptor = {
+      key: 'sources',
+      schema: z.union([
+        z.union([
+          z.string(),
+          z
+            .object({
+              id: z.string().optional(),
+              glob: z.string().optional(),
+              endpoint: z.string().optional(),
+              graph: z.string().optional(),
+            })
+            .strict(),
+        ]),
+        z
+          .array(
+            z.union([
+              z.string(),
+              z
+                .object({
+                  id: z.string().optional(),
+                  glob: z.string().optional(),
+                  endpoint: z.string().optional(),
+                  graph: z.string().optional(),
+                })
+                .strict(),
+            ]),
+          )
+          .min(1),
+      ]),
+      flags: [
+        {
+          spec: '-s, --sources <glob>',
+          description: 'sources (repeatable)',
+          parse: (value, prev) => [
+            ...((prev as string[] | undefined) ?? []),
+            value,
+          ],
+        },
+      ],
+    };
+
+    function makeSpec(
+      handler: (c: unknown) => void,
+    ): CommandSpec<Record<string, unknown>> {
+      return {
+        name: 'demo',
+        description: 'demo',
+        fields: [richSourcesField],
+        positionals: [{ field: 'sources', name: 'glob' }],
+        handler,
+        exitCode: () => 1,
+      };
+    }
+
+    it('inlines a CLI @id against the file registry, before Zod', async () => {
+      let received: Record<string, unknown> | undefined;
+      const spec = makeSpec((c) => {
+        received = c as Record<string, unknown>;
+      });
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        loadFile: async () => ({
+          data: {
+            sources: [
+              { id: 'main', glob: 'data/*.ttl', graph: 'urn:my:graph' },
+            ],
+          },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(
+        ['demo', '--config', '/cfg.yaml', '-s', '@main'],
+        { from: 'user' },
+      );
+      expect(received?.sources).toEqual([
+        { glob: 'data/*.ttl', graph: 'urn:my:graph' },
+      ]);
+    });
+
+    it('errors with "no config loaded" when an @id is given without a config file', async () => {
+      const errors: string[] = [];
+      const stderr = { write: (chunk: string) => errors.push(chunk) };
+      const spec = makeSpec(() => undefined);
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        stderr,
+      });
+      await program.parseAsync(['demo', '@main'], { from: 'user' });
+      expect(errors.join('')).toMatch(
+        /cannot resolve @id reference "@main".*no config file is loaded/,
+      );
+    });
+
+    it('resolves @id inside file sources when no CLI override is given', async () => {
+      let received: Record<string, unknown> | undefined;
+      const spec = makeSpec((c) => {
+        received = c as Record<string, unknown>;
+      });
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        loadFile: async () => ({
+          data: {
+            sources: [
+              { id: 'vocab', glob: 'vocab/*.ttl' },
+              '@vocab',
+            ],
+          },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(['demo', '--config', '/cfg.yaml'], {
+        from: 'user',
+      });
+      expect(received?.sources).toEqual([
+        { id: 'vocab', glob: 'vocab/*.ttl' },
+        { glob: 'vocab/*.ttl' },
+      ]);
+    });
+
+    it('errors with the list of defined ids on an unknown @id reference', async () => {
+      const errors: string[] = [];
+      const stderr = { write: (chunk: string) => errors.push(chunk) };
+      const spec = makeSpec(() => undefined);
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        stderr,
+        loadFile: async () => ({
+          data: {
+            sources: [
+              { id: 'one', glob: 'a/*.ttl' },
+              { id: 'two', glob: 'b/*.ttl' },
+            ],
+          },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(
+        ['demo', '--config', '/cfg.yaml', '-s', '@three'],
+        { from: 'user' },
+      );
+      expect(errors.join('')).toMatch(
+        /unknown @id reference "@three".*@one.*@two/s,
+      );
+    });
+
+    it('resolves @id after env-var substitution on registry strings (file-loader expands ${VAR} first)', async () => {
+      let received: Record<string, unknown> | undefined;
+      const spec = makeSpec((c) => {
+        received = c as Record<string, unknown>;
+      });
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        // file-loader is responsible for env subst; simulate that an
+        // already-expanded registry is what reaches the runner.
+        loadFile: async () => ({
+          data: {
+            sources: [{ id: 'main', glob: '/data/expanded/*.ttl' }],
+          },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(
+        ['demo', '--config', '/cfg.yaml', '-s', '@main'],
+        { from: 'user' },
+      );
+      expect(received?.sources).toEqual([
+        { glob: '/data/expanded/*.ttl' },
+      ]);
+    });
+  });
 });

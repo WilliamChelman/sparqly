@@ -10,9 +10,23 @@ const coercedBoolean = z.preprocess((v) => {
   return v;
 }, z.boolean());
 
+const sourceObjectSchema = z
+  .object({
+    id: z.string().optional(),
+    glob: z.string().optional(),
+    endpoint: z.string().optional(),
+    graphMode: z.enum(GRAPH_MODES).optional(),
+    graph: z.string().optional(),
+    prefilter: z.string().optional(),
+    prefilterFile: z.string().optional(),
+  })
+  .strict();
+
+const sourceSpecInputSchema = z.union([z.string(), sourceObjectSchema]);
+
 export const sourcesField: FieldDescriptor = {
   key: 'sources',
-  schema: z.union([z.string(), z.array(z.string()).min(1)]),
+  schema: z.union([sourceSpecInputSchema, z.array(sourceSpecInputSchema).min(1)]),
   flags: [
     {
       spec: '-s, --sources <glob>',
