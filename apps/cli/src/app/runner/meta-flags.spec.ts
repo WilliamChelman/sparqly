@@ -16,38 +16,6 @@ function makeProgram(): Command {
 }
 
 describe('runner meta-flags', () => {
-  it('--print-config short-circuits before handler and writes formatted config', async () => {
-    let handlerCalled = false;
-    const stdoutChunks: string[] = [];
-    const spec: CommandSpec = {
-      name: 'demo',
-      description: 'demo',
-      fields: [sourcesField],
-      positionals: [{ field: 'sources', name: 'glob' }],
-      handler: () => {
-        handlerCalled = true;
-      },
-      exitCode: () => 1,
-    };
-
-    const program = makeProgram();
-    registerSpec(program, spec, {
-      env: {},
-      cwd: process.cwd(),
-      stdout: { write: (c: string) => stdoutChunks.push(c) },
-    });
-    await program.parseAsync(
-      ['demo', 'a/*.ttl', '--print-config'],
-      { from: 'user' },
-    );
-
-    expect(handlerCalled).toBe(false);
-    const out = stdoutChunks.join('');
-    expect(out).toContain('# sparqly demo --print-config');
-    expect(out).toContain('sources: "a/*.ttl"');
-    expect(out).toContain('# flag');
-  });
-
   it('--config flag is accepted and routed to file loader', async () => {
     let received: { fileUsed: boolean } | undefined;
     const spec: CommandSpec = {

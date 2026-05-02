@@ -31,7 +31,7 @@ describe('config file — validation policy', () => {
     await writeFile(configPath, 'port: "abc"\n');
 
     const result = await runCli(
-      ['serve', '--print-config', '--config', configPath],
+      ['serve', '--config', configPath],
       { cwd: scratch, env: CLEARED_ENV },
     );
 
@@ -52,7 +52,7 @@ describe('config file — validation policy', () => {
     );
 
     const result = await runCli(
-      ['query', '--print-config', '--config', configPath],
+      ['query', '--config', configPath],
       { cwd: scratch, env: CLEARED_ENV },
     );
 

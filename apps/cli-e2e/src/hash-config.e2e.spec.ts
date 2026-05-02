@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
-import { escapeRe, hashFixture, hashLineRe, nonEmptyLines } from './helpers/hash';
+import { hashFixture, hashLineRe, nonEmptyLines } from './helpers/hash';
 
 const CLEARED_ENV = {
   SPARQLY_HASH_SOURCES: undefined,
@@ -13,7 +13,7 @@ const CLEARED_ENV = {
   SPARQLY_HASH_GRAPH_MODE: undefined,
 } as const;
 
-describe('sparqly hash — config file + env precedence + --print-config', () => {
+describe('sparqly hash — config file + env precedence', () => {
   let scratch: string;
 
   beforeEach(async () => {
@@ -135,38 +135,6 @@ describe('sparqly hash — config file + env precedence + --print-config', () =>
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toMatch(/^match: [0-9a-f]{64}\n$/);
-  });
-
-  it('--print-config prints the merged hash config with source annotations and exits 0', async () => {
-    const single = hashFixture('domain.ttl');
-    const configPath = join(scratch, 'sparqly.hash.yaml');
-    await writeFile(configPath, `sources: "${single}"\n`);
-
-    const result = await runCli(
-      ['hash', '--config', configPath, '--print-config', '--graph-mode=flatten'],
-      { env: CLEARED_ENV },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('# sparqly hash --print-config');
-    expect(result.stdout).toMatch(
-      new RegExp(`sources\\s*:\\s*"${escapeRe(single)}"\\s+# file`),
-    );
-    expect(result.stdout).toMatch(/graphMode\s*:\s*"flatten"\s+# flag/);
-  });
-
-  it('--print-config annotates env-sourced values with "# env"', async () => {
-    const single = hashFixture('domain.ttl');
-
-    const result = await runCli(['hash', '--print-config'], {
-      env: { ...CLEARED_ENV, SPARQLY_HASH_SOURCES: single },
-      cwd: scratch,
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toMatch(
-      new RegExp(`sources\\s*:\\s*"${escapeRe(single)}"\\s+# env`),
-    );
   });
 
   it('SPARQLY_HASH_JSON=true is equivalent to --json', async () => {
