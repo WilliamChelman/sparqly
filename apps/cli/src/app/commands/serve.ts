@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { type GraphMode } from 'core';
+import { type GraphMode, type SourceSpecInput } from 'core';
 import { createServer } from 'server';
 import { configureLogger } from '../logging';
 import type { FieldDescriptor } from '../runner/field';
@@ -16,7 +16,7 @@ import type { CommandSpec } from '../runner/spec';
 const WEB_BUNDLE_DIR = join(__dirname, 'web');
 
 interface ServeConfig {
-  sources?: string | string[];
+  sources?: SourceSpecInput | SourceSpecInput[];
   port?: number;
   graphMode?: GraphMode;
   mutable?: boolean;
@@ -94,8 +94,12 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     const port = config.port ?? 3000;
     const mutable = config.mutable === true;
 
+    const inputs: ReadonlyArray<SourceSpecInput> = Array.isArray(config.sources)
+      ? config.sources
+      : [config.sources];
+
     await createServer({
-      sources: config.sources,
+      sources: inputs,
       port,
       mutable,
       graphMode,
