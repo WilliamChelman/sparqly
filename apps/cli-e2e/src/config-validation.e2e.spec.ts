@@ -7,7 +7,7 @@ import { runCli } from './helpers/run-cli';
 
 const CLEARED_ENV = {
   SPARQLY_SOURCES: undefined,
-  SPARQLY_GRAPH_STRATEGY: undefined,
+  SPARQLY_GRAPH_MODE: undefined,
   SPARQLY_MUTABLE: undefined,
   SPARQLY_VERBOSE: undefined,
   SPARQLY_QUIET: undefined,

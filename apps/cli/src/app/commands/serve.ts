@@ -1,12 +1,12 @@
 import { join } from 'node:path';
-import { type GraphStrategy } from 'core';
+import { type GraphMode } from 'core';
 import { createServer } from 'server';
 import { configureLogger } from '../logging';
 import type { FieldDescriptor } from '../runner/field';
 import {
   coercedBooleanSchema,
   coercedIntSchema,
-  graphStrategyFieldFor,
+  graphModeFieldFor,
   mutableFieldsFor,
   sourcesFieldFor,
   verbosityFieldsFor,
@@ -18,7 +18,7 @@ const WEB_BUNDLE_DIR = join(__dirname, 'web');
 interface ServeConfig {
   sources?: string | string[];
   port?: number;
-  graphStrategy?: GraphStrategy;
+  graphMode?: GraphMode;
   mutable?: boolean;
   watch?: boolean;
   watchDebounce?: number;
@@ -72,7 +72,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
   fields: [
     sourcesFieldFor('serve'),
     portField,
-    graphStrategyFieldFor('serve'),
+    graphModeFieldFor('serve'),
     ...mutableFieldsFor('serve'),
     watchField,
     watchDebounceField,
@@ -90,7 +90,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       throw new Error('a sources glob is required');
     }
 
-    const graphStrategy = config.graphStrategy;
+    const graphMode = config.graphMode;
     const port = config.port ?? 3000;
     const mutable = config.mutable === true;
 
@@ -98,7 +98,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       sources: config.sources,
       port,
       mutable,
-      graphStrategy,
+      graphMode,
       webRootDir: WEB_BUNDLE_DIR,
       watch: config.watch === true,
       watchDebounceMs: config.watchDebounce,

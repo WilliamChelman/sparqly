@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import { z } from 'zod';
-import { canonicalizeRdf, type GraphStrategy } from 'core';
+import { canonicalizeRdf, type GraphMode } from 'core';
 import { configureLogger } from '../logging';
 import { writeOutputToFile } from '../output';
 import type { FieldDescriptor } from '../runner/field';
 import {
   coercedBooleanSchema,
-  graphStrategyFieldFor,
+  graphModeFieldFor,
   outFieldFor,
   sourcesFieldFor,
   verbosityFieldsFor,
@@ -16,7 +16,7 @@ import type { CommandSpec } from '../runner/spec';
 
 interface HashConfig {
   sources?: string | string[];
-  graphStrategy?: GraphStrategy;
+  graphMode?: GraphMode;
   json?: boolean;
   compareWith?: string;
   out?: string;
@@ -72,7 +72,7 @@ export const hashSpec: CommandSpec<HashConfig> = {
     'Compute a stable SHA-256 over the canonicalized RDF content of one or more sources',
   fields: [
     sourcesFieldFor('hash'),
-    graphStrategyFieldFor('hash'),
+    graphModeFieldFor('hash'),
     jsonField,
     compareWithField,
     outFieldFor('hash'),
@@ -116,15 +116,15 @@ export const hashSpec: CommandSpec<HashConfig> = {
     }
 
     const logger = new Logger('sparqly');
-    const graphStrategy = config.graphStrategy as GraphStrategy | undefined;
+    const graphMode = config.graphMode as GraphMode | undefined;
 
     if (isCompareMode) {
       const compareSpec = config.compareWith as string;
       let primary: { source: string; hash: string };
       let secondary: { source: string; hash: string };
       try {
-        primary = await hashSource(sourceSpecs[0], graphStrategy, logger);
-        secondary = await hashSource(compareSpec, graphStrategy, logger);
+        primary = await hashSource(sourceSpecs[0], graphMode, logger);
+        secondary = await hashSource(compareSpec, graphMode, logger);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         throw new HashCompareError(message);
@@ -141,7 +141,7 @@ export const hashSpec: CommandSpec<HashConfig> = {
 
     const results: Array<{ source: string; hash: string }> = [];
     for (const spec of sourceSpecs) {
-      results.push(await hashSource(spec, graphStrategy, logger));
+      results.push(await hashSource(spec, graphMode, logger));
     }
 
     const body = config.json
@@ -162,13 +162,13 @@ export const hashSpec: CommandSpec<HashConfig> = {
 
 async function hashSource(
   spec: string,
-  graphStrategy: GraphStrategy | undefined,
+  graphMode: GraphMode | undefined,
   logger: Logger,
 ): Promise<{ source: string; hash: string }> {
   const start = Date.now();
   const { store, files, canonicalText } = await canonicalizeRdf({
     sources: spec,
-    graphStrategy,
+    graphMode,
   });
   const hash = createHash('sha256').update(canonicalText).digest('hex');
   logger.log(

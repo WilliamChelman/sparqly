@@ -179,7 +179,7 @@ describe('loadRdf', () => {
     expect(quad.graph.value).toBe('http://example.org/g');
   });
 
-  it('graphStrategy=partial: places triple-format quads in a file:// graph', async () => {
+  it('graphMode=fillDefault: places triple-format quads in a file:// graph', async () => {
     const file = join(dir, 'a.ttl');
     await writeFile(
       file,
@@ -187,14 +187,14 @@ describe('loadRdf', () => {
     );
     const { store } = await loadRdf({
       sources: join(dir, '*.ttl'),
-      graphStrategy: 'partial',
+      graphMode: 'fillDefault',
     });
     const [quad] = store.getQuads(null, null, null, null);
     expect(quad.graph.termType).toBe('NamedNode');
     expect(quad.graph.value).toBe(`file://${file}`);
   });
 
-  it('graphStrategy=partial: preserves declared graph IRIs from quad-format files', async () => {
+  it('graphMode=fillDefault: preserves declared graph IRIs from quad-format files', async () => {
     const file = join(dir, 'a.nq');
     await writeFile(
       file,
@@ -202,13 +202,13 @@ describe('loadRdf', () => {
     );
     const { store } = await loadRdf({
       sources: join(dir, '*.nq'),
-      graphStrategy: 'partial',
+      graphMode: 'fillDefault',
     });
     const [quad] = store.getQuads(null, null, null, null);
     expect(quad.graph.value).toBe('http://example.org/g');
   });
 
-  it('graphStrategy=full: places triple-format quads in a file:// graph', async () => {
+  it('graphMode=forceAll: places triple-format quads in a file:// graph', async () => {
     const file = join(dir, 'a.ttl');
     await writeFile(
       file,
@@ -216,14 +216,14 @@ describe('loadRdf', () => {
     );
     const { store } = await loadRdf({
       sources: join(dir, '*.ttl'),
-      graphStrategy: 'full',
+      graphMode: 'forceAll',
     });
     const [quad] = store.getQuads(null, null, null, null);
     expect(quad.graph.termType).toBe('NamedNode');
     expect(quad.graph.value).toBe(`file://${file}`);
   });
 
-  it('graphStrategy=full: overrides declared graph IRIs from quad-format files', async () => {
+  it('graphMode=forceAll: overrides declared graph IRIs from quad-format files', async () => {
     const file = join(dir, 'a.nq');
     await writeFile(
       file,
@@ -231,7 +231,7 @@ describe('loadRdf', () => {
     );
     const { store } = await loadRdf({
       sources: join(dir, '*.nq'),
-      graphStrategy: 'full',
+      graphMode: 'forceAll',
     });
     const [quad] = store.getQuads(null, null, null, null);
     expect(quad.graph.termType).toBe('NamedNode');
@@ -259,7 +259,7 @@ describe('loadRdf', () => {
     expect(graphs).toEqual(['http://example.org/g']);
   });
 
-  it('SPARQL GRAPH ?g under graphStrategy=partial binds file:// for triples and declared IRI for quads', async () => {
+  it('SPARQL GRAPH ?g under graphMode=fillDefault binds file:// for triples and declared IRI for quads', async () => {
     const a = join(dir, 'a.ttl');
     const b = join(dir, 'b.nq');
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
@@ -269,7 +269,7 @@ describe('loadRdf', () => {
     );
     const { store } = await loadRdf({
       sources: join(dir, '*'),
-      graphStrategy: 'partial',
+      graphMode: 'fillDefault',
     });
     const engine = new QueryEngine(store);
     const result = await engine.execute(
@@ -282,7 +282,7 @@ describe('loadRdf', () => {
     expect(graphs).toEqual(new Set([`file://${a}`, 'http://example.org/g']));
   });
 
-  it('SPARQL GRAPH ?g under graphStrategy=full binds the file:// graph for every quad', async () => {
+  it('SPARQL GRAPH ?g under graphMode=forceAll binds the file:// graph for every quad', async () => {
     const a = join(dir, 'a.ttl');
     const b = join(dir, 'b.nq');
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
@@ -292,7 +292,7 @@ describe('loadRdf', () => {
     );
     const { store } = await loadRdf({
       sources: join(dir, '*'),
-      graphStrategy: 'full',
+      graphMode: 'forceAll',
     });
     const engine = new QueryEngine(store);
     const result = await engine.execute(
@@ -305,7 +305,7 @@ describe('loadRdf', () => {
     expect(graphs).toEqual(new Set([`file://${a}`, `file://${b}`]));
   });
 
-  it('graphStrategy=none: flattens declared graph IRIs from quad-format files into the default graph', async () => {
+  it('graphMode=flatten: flattens declared graph IRIs from quad-format files into the default graph', async () => {
     await writeFile(
       join(dir, 'a.trig'),
       dedent`
@@ -316,7 +316,7 @@ describe('loadRdf', () => {
     );
     const { store } = await loadRdf({
       sources: join(dir, '*.trig'),
-      graphStrategy: 'none',
+      graphMode: 'flatten',
     });
     expect(store.size).toBe(2);
     for (const quad of store.getQuads(null, null, null, null)) {
@@ -324,14 +324,14 @@ describe('loadRdf', () => {
     }
   });
 
-  it('graphStrategy=none: leaves triple-format quads in the default graph', async () => {
+  it('graphMode=flatten: leaves triple-format quads in the default graph', async () => {
     await writeFile(
       join(dir, 'a.ttl'),
       '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
     );
     const { store } = await loadRdf({
       sources: join(dir, '*.ttl'),
-      graphStrategy: 'none',
+      graphMode: 'flatten',
     });
     const [quad] = store.getQuads(null, null, null, null);
     expect(quad.graph.termType).toBe('DefaultGraph');
@@ -369,7 +369,7 @@ describe('loadRdf', () => {
     });
   });
 
-  it('graphStrategy=full: gives each file its own named graph', async () => {
+  it('graphMode=forceAll: gives each file its own named graph', async () => {
     const a = join(dir, 'a.ttl');
     const b = join(dir, 'b.ttl');
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
@@ -377,7 +377,7 @@ describe('loadRdf', () => {
 
     const { store } = await loadRdf({
       sources: join(dir, '*.ttl'),
-      graphStrategy: 'full',
+      graphMode: 'forceAll',
     });
 
     const graphs = new Set(

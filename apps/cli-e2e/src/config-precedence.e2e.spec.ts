@@ -7,8 +7,8 @@ import { runCli } from './helpers/run-cli';
 const CLEARED_ENV = {
   SPARQLY_SOURCES: undefined,
   SPARQLY_QUERY_SOURCES: undefined,
-  SPARQLY_GRAPH_STRATEGY: undefined,
-  SPARQLY_QUERY_GRAPH_STRATEGY: undefined,
+  SPARQLY_GRAPH_MODE: undefined,
+  SPARQLY_QUERY_GRAPH_MODE: undefined,
   SPARQLY_MUTABLE: undefined,
   SPARQLY_QUERY_MUTABLE: undefined,
   SPARQLY_VERBOSE: undefined,
@@ -36,9 +36,9 @@ describe('config file — precedence chain', () => {
     await rm(scratch, { recursive: true, force: true });
   });
 
-  it('file value beats default (graphStrategy)', async () => {
+  it('file value beats default (graphMode)', async () => {
     const configPath = join(scratch, 'sparqly.query.yaml');
-    await writeFile(configPath, 'graphStrategy: partial\n');
+    await writeFile(configPath, 'graphMode: fillDefault\n');
 
     const result = await runCli(
       ['query', '--print-config', '--config', configPath],
@@ -46,26 +46,26 @@ describe('config file — precedence chain', () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(sourceLine(result.stdout, 'graphStrategy')).toMatch(
-      /"partial".*# file/,
+    expect(sourceLine(result.stdout, 'graphMode')).toMatch(
+      /"fillDefault".*# file/,
     );
   });
 
   it('SPARQLY_<KEY> env var beats file value', async () => {
     const configPath = join(scratch, 'sparqly.query.yaml');
-    await writeFile(configPath, 'graphStrategy: partial\n');
+    await writeFile(configPath, 'graphMode: fillDefault\n');
 
     const result = await runCli(
       ['query', '--print-config', '--config', configPath],
       {
         cwd: scratch,
-        env: { ...CLEARED_ENV, SPARQLY_GRAPH_STRATEGY: 'full' },
+        env: { ...CLEARED_ENV, SPARQLY_GRAPH_MODE: 'forceAll' },
       },
     );
 
     expect(result.exitCode).toBe(0);
-    expect(sourceLine(result.stdout, 'graphStrategy')).toMatch(
-      /"full".*# env/,
+    expect(sourceLine(result.stdout, 'graphMode')).toMatch(
+      /"forceAll".*# env/,
     );
   });
 
@@ -87,16 +87,16 @@ describe('config file — precedence chain', () => {
 
   it('CLI flag beats env var', async () => {
     const result = await runCli(
-      ['query', '--print-config', '--graph-strategy', 'full'],
+      ['query', '--print-config', '--graph-mode', 'forceAll'],
       {
         cwd: scratch,
-        env: { ...CLEARED_ENV, SPARQLY_GRAPH_STRATEGY: 'partial' },
+        env: { ...CLEARED_ENV, SPARQLY_GRAPH_MODE: 'fillDefault' },
       },
     );
 
     expect(result.exitCode).toBe(0);
-    expect(sourceLine(result.stdout, 'graphStrategy')).toMatch(
-      /"full".*# flag/,
+    expect(sourceLine(result.stdout, 'graphMode')).toMatch(
+      /"forceAll".*# flag/,
     );
   });
 

@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { GRAPH_STRATEGIES } from 'core';
+import { GRAPH_MODES } from 'core';
 import type { FieldDescriptor } from './field';
 import { registerSpec } from './runner';
 import type { CommandSpec } from './spec';
@@ -22,11 +22,11 @@ const sourcesField: FieldDescriptor = {
   ],
 };
 
-const graphStrategyField: FieldDescriptor = {
-  key: 'graphStrategy',
-  schema: z.enum(GRAPH_STRATEGIES),
-  default: 'default',
-  flags: [{ spec: '--graph-strategy <strategy>', description: 'gs' }],
+const graphModeField: FieldDescriptor = {
+  key: 'graphMode',
+  schema: z.enum(GRAPH_MODES),
+  default: 'preserve',
+  flags: [{ spec: '--graph-mode <mode>', description: 'gm' }],
 };
 
 const jsonField: FieldDescriptor = {
@@ -42,7 +42,7 @@ describe('registerSpec', () => {
     const spec: CommandSpec<Record<string, unknown>> = {
       name: 'demo',
       description: 'demo',
-      fields: [sourcesField, graphStrategyField, jsonField],
+      fields: [sourcesField, graphModeField, jsonField],
       positionals: [{ field: 'sources', name: 'glob' }],
       handler: (config) => {
         received = config;
@@ -53,13 +53,13 @@ describe('registerSpec', () => {
     const program = makeProgram();
     registerSpec(program, spec, { env: {}, cwd: process.cwd() });
     await program.parseAsync(
-      ['demo', 'a/*.ttl', '--graph-strategy', 'full', '--json'],
+      ['demo', 'a/*.ttl', '--graph-mode', 'forceAll', '--json'],
       { from: 'user' },
     );
 
     expect(received).toEqual({
       sources: 'a/*.ttl',
-      graphStrategy: 'full',
+      graphMode: 'forceAll',
       json: true,
     });
   });
@@ -69,7 +69,7 @@ describe('registerSpec', () => {
     const spec: CommandSpec = {
       name: 'demo',
       description: 'demo',
-      fields: [sourcesField, graphStrategyField, jsonField],
+      fields: [sourcesField, graphModeField, jsonField],
       positionals: [{ field: 'sources', name: 'glob' }],
       handler: (config) => {
         received = config as Record<string, unknown>;
@@ -94,7 +94,7 @@ describe('registerSpec', () => {
       description: 'demo',
       fields: [
         { ...sourcesField, env: 'SPARQLY_DEMO_SOURCES' },
-        graphStrategyField,
+        graphModeField,
       ],
       positionals: [{ field: 'sources', name: 'glob' }],
       handler: (config) => {

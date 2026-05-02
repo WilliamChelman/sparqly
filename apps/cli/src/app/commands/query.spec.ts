@@ -9,9 +9,9 @@ describe('querySpec', () => {
     ]);
   });
 
-  it('declares default graphStrategy=default and mutable=false', () => {
+  it('declares default graphMode=preserve and mutable=false', () => {
     expect(defaultsFromFields(querySpec.fields)).toMatchObject({
-      graphStrategy: 'default',
+      graphMode: 'preserve',
       mutable: false,
       verbose: false,
       quiet: false,
@@ -25,9 +25,9 @@ describe('querySpec', () => {
     expect(schema.safeParse({ format: 'turtle' }).success).toBe(true);
   });
 
-  it('rejects unknown --graph-strategy', () => {
+  it('rejects unknown --graph-mode', () => {
     const schema = blockSchemaFromFields(querySpec.fields);
-    expect(schema.safeParse({ graphStrategy: 'bogus' }).success).toBe(false);
+    expect(schema.safeParse({ graphMode: 'bogus' }).success).toBe(false);
   });
 
   it('exposes both --mutable and --immutable flags writing to the mutable field', () => {

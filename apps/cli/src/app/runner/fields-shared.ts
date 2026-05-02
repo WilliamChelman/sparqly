@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { GRAPH_STRATEGIES } from 'core';
+import { GRAPH_MODES } from 'core';
 import type { FieldDescriptor } from './field';
 
 const coercedBoolean = z.preprocess((v) => {
@@ -34,18 +34,18 @@ export function sourcesFieldFor(commandName: string): FieldDescriptor {
   };
 }
 
-export function graphStrategyFieldFor(commandName: string): FieldDescriptor {
+export function graphModeFieldFor(commandName: string): FieldDescriptor {
   const upper = commandName.toUpperCase();
   return {
-    key: 'graphStrategy',
-    schema: z.enum(GRAPH_STRATEGIES),
-    default: 'default',
-    env: ['SPARQLY_GRAPH_STRATEGY', `SPARQLY_${upper}_GRAPH_STRATEGY`],
+    key: 'graphMode',
+    schema: z.enum(GRAPH_MODES),
+    default: 'preserve',
+    env: ['SPARQLY_GRAPH_MODE', `SPARQLY_${upper}_GRAPH_MODE`],
     flags: [
       {
-        spec: '--graph-strategy <strategy>',
+        spec: '--graph-mode <mode>',
         description:
-          "Named-graph strategy: 'default', 'partial', 'full', or 'none' (see `query --help`)",
+          "Named-graph mode: 'preserve', 'fillDefault', 'forceAll', or 'flatten' (see `query --help`)",
       },
     ],
   };

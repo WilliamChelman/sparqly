@@ -105,7 +105,7 @@ the same precedence as every other option.
 ## Configuration file
 
 Each command reads its own per-command config file so you don't have to repeat
-`--sources`, `--graph-strategy`, `--port`, etc. on every invocation. There is
+`--sources`, `--graph-mode`, `--port`, etc. on every invocation. There is
 **no auto-discovery**: a config file is loaded only when you point at one
 explicitly via `--config <path>` or the `SPARQLY_CONFIG` environment variable.
 `--config` wins when both are set; a missing, unreadable, or unparseable path
@@ -125,7 +125,7 @@ command is expressible in the file.
 ```yaml
 # sparqly.query.yaml
 sources: 'data/**/*.ttl'
-graphStrategy: default # default | partial | full | none
+graphMode: preserve # preserve | fillDefault | forceAll | flatten
 mutable: false
 query: |
   SELECT ?s ?p ?o
@@ -149,7 +149,7 @@ mutable: true
 sources: # may be a string or an array of source specs
   - 'domain.ttl'
   - 'parts/**/*.ttl'
-graphStrategy: none # flatten quads to triples for hashing
+graphMode: flatten # flatten quads to triples for hashing
 json: false
 # compareWith: "parts/**/*.ttl"   # requires exactly one primary source
 ```
@@ -160,10 +160,10 @@ left: 'domain.ttl' # string or array of source specs
 right: # one side may be a glob, the other a single file
   - 'parts/**/*.ttl'
 format: human # human | json | rdf-patch
-graphStrategy: default # default | partial | full | none
+graphMode: preserve # preserve | fillDefault | forceAll | flatten
 ```
 
-`graphStrategy: none` strips graph names from quad-bearing formats
+`graphMode: flatten` strips graph names from quad-bearing formats
 (`.trig`, `.nq`) and places every statement in the default graph. It works
 across `query`, `serve`, `hash`, and `diff` — useful when you want to coerce
 quad sources to triples regardless of command.
@@ -186,7 +186,7 @@ earlier ones:
 Environment variables follow a predictable contract:
 
 - Shared keys: `SPARQLY_<UPPER_SNAKE_KEY>` (e.g., `SPARQLY_SOURCES`,
-  `SPARQLY_GRAPH_STRATEGY`, `SPARQLY_MUTABLE`).
+  `SPARQLY_GRAPH_MODE`, `SPARQLY_MUTABLE`).
 - Command-specific keys: `SPARQLY_<COMMAND>_<UPPER_SNAKE_KEY>` (e.g.,
   `SPARQLY_SERVE_PORT`, `SPARQLY_QUERY_FORMAT`, `SPARQLY_SERVE_WATCH_DEBOUNCE`,
   `SPARQLY_HASH_JSON`, `SPARQLY_HASH_COMPARE_WITH`).
@@ -205,7 +205,7 @@ sparqly query --config ./sparqly.query.yaml --print-config
 # sparqly query --print-config
 # config file: /path/to/sparqly.query.yaml
 sources       : "data/**/*.ttl"  # file
-graphStrategy : default          # default
+graphMode     : preserve         # default
 mutable       : true             # file
 verbose       : false            # default
 quiet         : false            # default
@@ -234,7 +234,7 @@ N-Quads, TriG, JSON-LD, and RDF/XML.
 ```sh
 sparqly hash [glob]
             [-s, --sources <glob>]...
-            [--graph-strategy <default|partial|full|none>]
+            [--graph-mode <preserve|fillDefault|forceAll|flatten>]
             [--json]
             [--compare-with <source>]
             [--config <path>] [--print-config]
@@ -290,7 +290,7 @@ sparqly hash --sources domain.ttl --sources "vocab/**/*.ttl" --json
 
 ### Config block
 
-`sparqly hash` reads the shared config keys (`sources`, `graphStrategy`,
+`sparqly hash` reads the shared config keys (`sources`, `graphMode`,
 `verbose`, `quiet`) plus the hash-specific keys below from a top-level `hash:`
 block:
 
@@ -299,7 +299,7 @@ hash:
   sources: # string | string[] — array → multiple hashes
     - 'domain.ttl'
     - 'parts/**/*.ttl'
-  graphStrategy: none # default | partial | full | none
+  graphMode: flatten # preserve | fillDefault | forceAll | flatten
   json: false # JSON array output instead of <hash>  <source>
   compareWith: 'parts/**/*.ttl' # if set, requires exactly one primary source
 ```
@@ -308,7 +308,7 @@ hash:
 
 ```
 SPARQLY_SOURCES               # shared
-SPARQLY_GRAPH_STRATEGY        # shared — accepts default | partial | full | none
+SPARQLY_GRAPH_MODE        # shared — accepts preserve | fillDefault | forceAll | flatten
 SPARQLY_VERBOSE               # shared
 SPARQLY_QUIET                 # shared
 SPARQLY_HASH_JSON             # hash-specific
@@ -348,7 +348,7 @@ detection, no fuzzy matching, no SHACL-aware equivalence.
 ```sh
 sparqly diff [left] [right]
             [--left <source>] [--right <source>]
-            [--graph-strategy <default|partial|full|none>]
+            [--graph-mode <preserve|fillDefault|forceAll|flatten>]
             [-f, --format <human|json|rdf-patch>]
             [--config <path>] [--print-config]
             [-v, --verbose] [--quiet]
@@ -379,17 +379,18 @@ output.
 | 1    | Sources differ. The diff is on stdout.                                          |
 | 2    | Load, parse, or canonicalization error on either side. Error message on stderr. |
 
-### Graph strategy
+### Graph mode
 
-`diff` honors the shared `graphStrategy` option just like `query`, `serve`, and
-`hash`. The default keeps graph names as part of statement identity for quad
-sources, so `<s,p,o,g1>` and `<s,p,o,g2>` are reported as one removal + one
-addition. With `--graph-strategy=none`, graph names are stripped before diffing
-— useful when comparing a quad source against a triples source.
+`diff` honors the shared `graphMode` option just like `query`, `serve`, and
+`hash`. The default (`preserve`) keeps graph names as part of statement
+identity for quad sources, so `<s,p,o,g1>` and `<s,p,o,g2>` are reported as
+one removal + one addition. With `--graph-mode=flatten`, graph names are
+stripped before diffing — useful when comparing a quad source against a
+triples source.
 
 ### Config block
 
-`sparqly diff` reads the shared config keys (`graphStrategy`, `verbose`,
+`sparqly diff` reads the shared config keys (`graphMode`, `verbose`,
 `quiet`) plus the diff-specific keys below from a top-level `diff:` block:
 
 ```yaml
@@ -398,19 +399,19 @@ diff:
     - 'domain.ttl'
   right: 'parts/**/*.ttl'
   format: human # human | json | rdf-patch
-  graphStrategy: default # default | partial | full | none
+  graphMode: preserve # preserve | fillDefault | forceAll | flatten
 ```
 
 ### Environment variables
 
 ```
-SPARQLY_GRAPH_STRATEGY        # shared
+SPARQLY_GRAPH_MODE        # shared
 SPARQLY_VERBOSE               # shared
 SPARQLY_QUIET                 # shared
 SPARQLY_DIFF_LEFT             # diff-specific
 SPARQLY_DIFF_RIGHT            # diff-specific
 SPARQLY_DIFF_FORMAT           # diff-specific — accepts human | json | rdf-patch
-SPARQLY_DIFF_GRAPH_STRATEGY   # diff-specific
+SPARQLY_DIFF_GRAPH_MODE   # diff-specific
 ```
 
 ### Precedence

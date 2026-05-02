@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { GRAPH_STRATEGIES } from 'core';
+import { GRAPH_MODES } from 'core';
 import {
   blockSchemaFromFields,
   defaultsFromFields,
   type FieldDescriptor,
 } from './field';
 
-const graphStrategyField: FieldDescriptor = {
-  key: 'graphStrategy',
-  schema: z.enum(GRAPH_STRATEGIES),
-  default: 'default',
+const graphModeField: FieldDescriptor = {
+  key: 'graphMode',
+  schema: z.enum(GRAPH_MODES),
+  default: 'preserve',
 };
 
 const sourcesField: FieldDescriptor = {
@@ -19,17 +19,17 @@ const sourcesField: FieldDescriptor = {
 };
 
 describe('blockSchemaFromFields', () => {
-  it('makes every field optional and rejects unknown graphStrategy', () => {
-    const schema = blockSchemaFromFields([graphStrategyField, sourcesField]);
+  it('makes every field optional and rejects unknown graphMode', () => {
+    const schema = blockSchemaFromFields([graphModeField, sourcesField]);
     const ok = schema.safeParse({ sources: 'a/*.ttl' });
     expect(ok.success).toBe(true);
 
-    const bad = schema.safeParse({ graphStrategy: 'bogus' });
+    const bad = schema.safeParse({ graphMode: 'bogus' });
     expect(bad.success).toBe(false);
   });
 
   it('accepts the empty object (all fields optional)', () => {
-    const schema = blockSchemaFromFields([graphStrategyField, sourcesField]);
+    const schema = blockSchemaFromFields([graphModeField, sourcesField]);
     const r = schema.safeParse({});
     expect(r.success).toBe(true);
   });
@@ -37,7 +37,7 @@ describe('blockSchemaFromFields', () => {
 
 describe('defaultsFromFields', () => {
   it('returns only fields that declare a default', () => {
-    const out = defaultsFromFields([graphStrategyField, sourcesField]);
-    expect(out).toEqual({ graphStrategy: 'default' });
+    const out = defaultsFromFields([graphModeField, sourcesField]);
+    expect(out).toEqual({ graphMode: 'preserve' });
   });
 });

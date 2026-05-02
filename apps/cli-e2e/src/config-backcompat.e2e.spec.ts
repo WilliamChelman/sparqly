@@ -11,7 +11,7 @@ const MINIMAL_TTL = resolve(HERE, '../fixtures/minimal.ttl');
 const CLEARED_ENV = {
   SPARQLY_SOURCES: undefined,
   SPARQLY_QUERY_SOURCES: undefined,
-  SPARQLY_GRAPH_STRATEGY: undefined,
+  SPARQLY_GRAPH_MODE: undefined,
   SPARQLY_MUTABLE: undefined,
   SPARQLY_VERBOSE: undefined,
   SPARQLY_QUIET: undefined,

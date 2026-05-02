@@ -1,10 +1,10 @@
 import { canonize } from 'rdf-canonize';
 import type { Store } from 'n3';
-import { loadRdf, type GraphStrategy } from './rdf-loader';
+import { loadRdf, type GraphMode } from './rdf-loader';
 
 export interface CanonicalizeOptions {
   sources: string | string[];
-  graphStrategy?: GraphStrategy;
+  graphMode?: GraphMode;
 }
 
 export interface CanonicalizeResult {
@@ -23,7 +23,7 @@ export async function canonicalizeRdf(
 ): Promise<CanonicalizeResult> {
   const { store, files, prefixes } = await loadRdf({
     sources: options.sources,
-    graphStrategy: options.graphStrategy,
+    graphMode: options.graphMode,
   });
 
   const canonicalText = await canonize(

@@ -123,7 +123,7 @@ describe('canonicalizeRdf', () => {
     }
   });
 
-  it('graphStrategy=none flattens a .trig with named graphs to the same canonical text as the equivalent triples-only .ttl', async () => {
+  it('graphMode=flatten flattens a .trig with named graphs to the same canonical text as the equivalent triples-only .ttl', async () => {
     const trig = join(dir, 'data.trig');
     await writeFile(
       trig,
@@ -145,7 +145,7 @@ describe('canonicalizeRdf', () => {
 
     const fromTrig = await canonicalizeRdf({
       sources: trig,
-      graphStrategy: 'none',
+      graphMode: 'flatten',
     });
     const fromTtl = await canonicalizeRdf({ sources: ttl });
 

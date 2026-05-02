@@ -10,7 +10,7 @@ const CLEARED_ENV = {
   SPARQLY_HASH_SOURCES: undefined,
   SPARQLY_HASH_JSON: undefined,
   SPARQLY_HASH_COMPARE_WITH: undefined,
-  SPARQLY_HASH_GRAPH_STRATEGY: undefined,
+  SPARQLY_HASH_GRAPH_MODE: undefined,
 } as const;
 
 describe('sparqly hash — config file + env precedence + --print-config', () => {
@@ -143,7 +143,7 @@ describe('sparqly hash — config file + env precedence + --print-config', () =>
     await writeFile(configPath, `sources: "${single}"\n`);
 
     const result = await runCli(
-      ['hash', '--config', configPath, '--print-config', '--graph-strategy=none'],
+      ['hash', '--config', configPath, '--print-config', '--graph-mode=flatten'],
       { env: CLEARED_ENV },
     );
 
@@ -152,7 +152,7 @@ describe('sparqly hash — config file + env precedence + --print-config', () =>
     expect(result.stdout).toMatch(
       new RegExp(`sources\\s*:\\s*"${escapeRe(single)}"\\s+# file`),
     );
-    expect(result.stdout).toMatch(/graphStrategy\s*:\s*"none"\s+# flag/);
+    expect(result.stdout).toMatch(/graphMode\s*:\s*"flatten"\s+# flag/);
   });
 
   it('--print-config annotates env-sourced values with "# env"', async () => {
