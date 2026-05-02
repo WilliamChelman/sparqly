@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import { z } from 'zod';
-import { canonicalizeRdf, type GraphMode } from 'core';
+import {
+  canonicalizeRdf,
+  parseSourceSpec,
+  type GraphMode,
+  type SourceSpecInput,
+} from 'core';
 import { configureLogger } from '../logging';
 import { writeOutputToFile } from '../output';
 import type { FieldDescriptor } from '../runner/field';
@@ -47,7 +52,7 @@ const compareWithField: FieldDescriptor = {
     {
       spec: '--compare-with <source>',
       description:
-        "Hash a second source spec (file path or glob) with the same loader options and compare against the primary source. Exit 0 on match (stdout 'match: <hash>'), 1 on mismatch (stdout shows both labeled hashes), 2 on error. Requires exactly one primary source.",
+        "Hash a second source spec (file path or glob) with the same loader options and compare against the primary source. Exit 0 on match (stdout 'match: <hash>'), 1 on mismatch (stdout shows both labeled hashes), 2 on error. Requires exactly one primary source. SPARQL endpoint sources are rejected on this side (a prefilter cannot be expressed for a CLI string).",
     },
   ],
 };
@@ -69,7 +74,7 @@ const jsonField: FieldDescriptor = {
 export const hashSpec: CommandSpec<HashConfig> = {
   name: 'hash',
   description:
-    'Compute a stable SHA-256 over the canonicalized RDF content of one or more sources',
+    'Compute a stable SHA-256 over the canonicalized RDF content of one or more sources. Always materializes; a SPARQL endpoint source is rejected unless a prefilter scopes it. Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL hash is only as deterministic as the endpoint.',
   fields: [
     sourcesField,
     graphModeFieldFor('hash'),
@@ -79,6 +84,38 @@ export const hashSpec: CommandSpec<HashConfig> = {
     ...verbosityFieldsFor('hash'),
   ],
   positionals: [{ field: 'sources', name: 'glob' }],
+  refine: (schema) =>
+    (schema as z.ZodObject).superRefine(
+      (val: Record<string, unknown>, ctx) => {
+        const sources = val.sources;
+        if (sources !== undefined) {
+          const list: SourceSpecInput[] = Array.isArray(sources)
+            ? (sources as SourceSpecInput[])
+            : [sources as SourceSpecInput];
+          list.forEach((entry, i) => {
+            const violation = endpointWithoutPrefilter(entry);
+            if (violation) {
+              ctx.addIssue({
+                code: 'custom',
+                message: `SPARQL endpoint ${violation} requires a prefilter for hash (hash always materializes; pre-scope the endpoint or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
+                path: ['sources', i],
+              });
+            }
+          });
+        }
+        const compareWith = val.compareWith;
+        if (typeof compareWith === 'string') {
+          const violation = endpointWithoutPrefilter(compareWith);
+          if (violation) {
+            ctx.addIssue({
+              code: 'custom',
+              message: `SPARQL endpoint ${violation} requires a prefilter for hash (hash always materializes; pre-scope the endpoint or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
+              path: ['compareWith'],
+            });
+          }
+        }
+      },
+    ),
   exitCode: (err, ctx) => {
     if (err instanceof HashMismatchSignal) return 1;
     const isCompareMode = ctx?.rawConfig?.compareWith !== undefined;
@@ -159,6 +196,20 @@ export const hashSpec: CommandSpec<HashConfig> = {
     }
   },
 };
+
+function endpointWithoutPrefilter(entry: SourceSpecInput): string | null {
+  let parsed;
+  try {
+    parsed = parseSourceSpec(entry);
+  } catch {
+    return null;
+  }
+  if (parsed.kind !== 'endpoint') return null;
+  if (parsed.prefilter !== undefined || parsed.prefilterFile !== undefined) {
+    return null;
+  }
+  return parsed.endpoint;
+}
 
 async function hashSource(
   spec: string,
