@@ -1,4 +1,4 @@
-import { DataFactory, Store, type Quad } from 'n3';
+import { DataFactory, Store } from 'n3';
 import { loadEndpointToStore } from './endpoint-load';
 import { loadRdf, type GraphMode, type LoadResult } from './rdf-loader';
 import {
@@ -48,22 +48,20 @@ export async function loadSources(
       continue;
     }
     const source = rawSource as ParsedGlobSource | ParsedEndpointSource;
+
+    if (source.kind === 'endpoint') {
+      const sub = await loadEndpointToStore(source);
+      for (const quad of sub.getQuads(null, null, null, null)) {
+        merged.addQuad(quad);
+      }
+      continue;
+    }
+
     const effectiveMode: GraphMode =
       source.graphMode ?? options.graphMode ?? 'preserve';
     const overrideGraph = source.graph
       ? DataFactory.namedNode(source.graph)
       : undefined;
-
-    if (source.kind === 'endpoint') {
-      const sub = await loadEndpointToStore(source);
-      const syntheticGraph =
-        overrideGraph ?? DataFactory.namedNode(source.endpoint);
-      const after = applyGraphMode(sub, effectiveMode, syntheticGraph);
-      for (const quad of after.getQuads(null, null, null, null)) {
-        merged.addQuad(quad);
-      }
-      continue;
-    }
 
     const sub = await loadRdf({
       sources: source.glob,
@@ -89,27 +87,4 @@ export async function loadSources(
   }
 
   return { store: merged, files: allFiles, prefixes: allPrefixes };
-}
-
-function applyGraphMode(
-  source: Store,
-  mode: GraphMode,
-  syntheticGraph: ReturnType<typeof DataFactory.namedNode>,
-): Store {
-  if (mode === 'preserve') return source;
-  const out = new Store();
-  for (const quad of source.getQuads(null, null, null, null)) {
-    let graph: Quad['graph'] = quad.graph;
-    if (mode === 'flatten') {
-      graph = DataFactory.defaultGraph();
-    } else if (mode === 'forceAll') {
-      graph = syntheticGraph;
-    } else if (mode === 'fillDefault' && quad.graph.termType === 'DefaultGraph') {
-      graph = syntheticGraph;
-    }
-    out.addQuad(
-      DataFactory.quad(quad.subject, quad.predicate, quad.object, graph),
-    );
-  }
-  return out;
 }

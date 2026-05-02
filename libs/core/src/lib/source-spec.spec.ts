@@ -200,6 +200,40 @@ describe('parseSourceSpec — view discriminant', () => {
   });
 });
 
+describe('parseSourceSpec — endpoint graph/graphMode are removed', () => {
+  it('rejects an endpoint source carrying graphMode with a hint about views', () => {
+    expect(() =>
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        // @ts-expect-error — `graphMode` was removed from endpoint source-spec shape
+        graphMode: 'forceAll',
+      }),
+    ).toThrow(/graphMode.*endpoint.*view/i);
+  });
+
+  it('rejects an endpoint source carrying graph with a hint about views', () => {
+    expect(() =>
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        // @ts-expect-error — `graph` was removed from endpoint source-spec shape
+        graph: 'urn:my:custom-graph',
+      }),
+    ).toThrow(/\bgraph\b.*endpoint.*view/i);
+  });
+
+  it('still accepts graphMode on a glob source', () => {
+    expect(
+      parseSourceSpec({ glob: 'data/*.ttl', graphMode: 'forceAll' }),
+    ).toEqual({ kind: 'glob', glob: 'data/*.ttl', graphMode: 'forceAll' });
+  });
+
+  it('still accepts graph on a glob source', () => {
+    expect(
+      parseSourceSpec({ glob: 'data/*.ttl', graph: 'urn:g' }),
+    ).toEqual({ kind: 'glob', glob: 'data/*.ttl', graph: 'urn:g' });
+  });
+});
+
 describe('parseSourceSpec — prefilter is removed', () => {
   it('does not surface a prefilter field on the parsed glob source even if the input still has one', () => {
     const parsed = parseSourceSpec({

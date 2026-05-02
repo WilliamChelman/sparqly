@@ -2,6 +2,9 @@ import type { GraphMode } from './rdf-loader';
 
 export interface SourceSpecCommonFields {
   id?: string;
+}
+
+export interface GlobOnlyGraphFields {
   graphMode?: GraphMode;
   graph?: string;
 }
@@ -16,7 +19,9 @@ export interface EndpointHttpFields {
   timeoutMs?: number;
 }
 
-export interface ParsedGlobSource extends SourceSpecCommonFields {
+export interface ParsedGlobSource
+  extends SourceSpecCommonFields,
+    GlobOnlyGraphFields {
   kind: 'glob';
   glob: string;
 }
@@ -49,6 +54,7 @@ export type ParsedSource =
 
 export interface SourceSpecObjectInput
   extends SourceSpecCommonFields,
+    GlobOnlyGraphFields,
     EndpointHttpFields {
   glob?: string;
   endpoint?: string;
@@ -65,9 +71,12 @@ export const SOURCE_ID_REGEX = /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/;
 
 const COMMON_FIELD_KEYS = [
   'id',
+] as const satisfies ReadonlyArray<keyof SourceSpecCommonFields>;
+
+const GLOB_GRAPH_FIELD_KEYS = [
   'graphMode',
   'graph',
-] as const satisfies ReadonlyArray<keyof SourceSpecCommonFields>;
+] as const satisfies ReadonlyArray<keyof GlobOnlyGraphFields>;
 
 function validateSourceId(id: string): void {
   if (id.startsWith('@')) {
@@ -83,6 +92,15 @@ function validateSourceId(id: string): void {
 function pickCommon(input: SourceSpecObjectInput): SourceSpecCommonFields {
   const out: SourceSpecCommonFields = {};
   for (const k of COMMON_FIELD_KEYS) {
+    const v = input[k];
+    if (v !== undefined) (out as Record<string, unknown>)[k] = v;
+  }
+  return out;
+}
+
+function pickGlobGraph(input: SourceSpecObjectInput): GlobOnlyGraphFields {
+  const out: GlobOnlyGraphFields = {};
+  for (const k of GLOB_GRAPH_FIELD_KEYS) {
     const v = input[k];
     if (v !== undefined) (out as Record<string, unknown>)[k] = v;
   }
@@ -116,8 +134,14 @@ export function parseSourceSpec(input: SourceSpecInput): ParsedSource {
   const common = pickCommon(input);
   if (hasGlob) {
     rejectEndpointOnlyFields(input);
-    return { kind: 'glob', glob: input.glob as string, ...common };
+    return {
+      kind: 'glob',
+      glob: input.glob as string,
+      ...common,
+      ...pickGlobGraph(input),
+    };
   }
+  rejectGlobGraphFieldsOnEndpoint(input);
   const http = pickEndpointHttp(input);
   return {
     kind: 'endpoint',
@@ -125,6 +149,16 @@ export function parseSourceSpec(input: SourceSpecInput): ParsedSource {
     ...common,
     ...http,
   };
+}
+
+function rejectGlobGraphFieldsOnEndpoint(input: SourceSpecObjectInput): void {
+  for (const key of GLOB_GRAPH_FIELD_KEYS) {
+    if ((input as Record<string, unknown>)[key] !== undefined) {
+      throw new Error(
+        `\`${key}\` is not valid on endpoint sources; express endpoint graph behaviour through a view's query (see #78)`,
+      );
+    }
+  }
 }
 
 const VIEW_REF_PREFIX = /^@(.+)$/;

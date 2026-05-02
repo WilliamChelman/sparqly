@@ -104,41 +104,41 @@ describe('loadSources — SPARQL endpoint sources', () => {
     expect(store.size).toBe(2);
   });
 
-  it('synthetic graph defaults to the endpoint URL when graphMode is forceAll', async () => {
+  it('endpoint quads land in the default graph (no synthetic graph applied)', async () => {
     endpoint = await startFakeSparqlEndpoint(() => ({
       contentType: 'application/sparql-results+json',
       body: SPARQL_JSON_TWO_BINDINGS,
     }));
 
-    const { store } = await loadSources([
-      { endpoint: endpoint.url, graphMode: 'forceAll' },
-    ]);
+    const { store } = await loadSources([{ endpoint: endpoint.url }]);
 
     const quads = store.getQuads(null, null, null, null);
     expect(quads).toHaveLength(2);
     for (const q of quads) {
-      expect(q.graph.termType).toBe('NamedNode');
-      expect(q.graph.value).toBe(endpoint.url);
+      expect(q.graph.termType).toBe('DefaultGraph');
     }
   });
 
-  it('per-source graph: IRI overrides the default endpoint-URL synthetic graph', async () => {
-    endpoint = await startFakeSparqlEndpoint(() => ({
-      contentType: 'application/sparql-results+json',
-      body: SPARQL_JSON_TWO_BINDINGS,
-    }));
+  it('rejects an endpoint source carrying graphMode at parse time', async () => {
+    await expect(
+      loadSources([
+        {
+          endpoint: 'https://example.com/sparql',
+          graphMode: 'forceAll',
+        } as unknown as Parameters<typeof loadSources>[0][number],
+      ]),
+    ).rejects.toThrow(/graphMode.*endpoint.*view/i);
+  });
 
-    const { store } = await loadSources([
-      {
-        endpoint: endpoint.url,
-        graphMode: 'forceAll',
-        graph: 'urn:my:custom-endpoint-graph',
-      },
-    ]);
-
-    for (const q of store.getQuads(null, null, null, null)) {
-      expect(q.graph.value).toBe('urn:my:custom-endpoint-graph');
-    }
+  it('rejects an endpoint source carrying graph at parse time', async () => {
+    await expect(
+      loadSources([
+        {
+          endpoint: 'https://example.com/sparql',
+          graph: 'urn:my:custom-endpoint-graph',
+        } as unknown as Parameters<typeof loadSources>[0][number],
+      ]),
+    ).rejects.toThrow(/\bgraph\b.*endpoint.*view/i);
   });
 
   it('surfaces source identity and HTTP status on a 5xx error', async () => {
