@@ -31,8 +31,6 @@ const sourceObjectSchema = z
     queryFile: z.string().optional(),
     graphMode: z.enum(GRAPH_MODES).optional(),
     graph: z.string().optional(),
-    prefilter: z.string().optional(),
-    prefilterFile: z.string().optional(),
     auth: sparqlAuthSchema.optional(),
     headers: z.record(z.string(), z.string()).optional(),
     timeoutMs: z.number().int().positive().optional(),

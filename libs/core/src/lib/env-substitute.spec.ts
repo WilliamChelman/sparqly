@@ -11,13 +11,13 @@ describe('substituteSourceEnv — tracer bullet', () => {
 });
 
 describe('substituteSourceEnv — recursion into nested fields', () => {
-  it('expands strings inside auth, headers, prefilter, endpoint, graph', () => {
+  it('expands strings inside auth, headers, query, endpoint, graph', () => {
     const out = substituteSourceEnv(
       [
         {
           endpoint: 'https://${HOST}/sparql',
           graph: 'urn:graph:${HOST}',
-          prefilter: 'CONSTRUCT { ?s ?p "${LABEL}" } WHERE { ?s ?p ?o }',
+          query: 'CONSTRUCT { ?s ?p "${LABEL}" } WHERE { ?s ?p ?o }',
           auth: { type: 'bearer', token: '${TOKEN}' },
           headers: { 'X-Tenant': '${TENANT}' },
         },
@@ -35,7 +35,7 @@ describe('substituteSourceEnv — recursion into nested fields', () => {
       {
         endpoint: 'https://live/sparql',
         graph: 'urn:graph:live',
-        prefilter: 'CONSTRUCT { ?s ?p "hi" } WHERE { ?s ?p ?o }',
+        query: 'CONSTRUCT { ?s ?p "hi" } WHERE { ?s ?p ?o }',
         auth: { type: 'bearer', token: 'tk-1' },
         headers: { 'X-Tenant': 'acme' },
       },
@@ -75,11 +75,11 @@ describe('substituteSourceEnv — recursion into nested fields', () => {
 describe('substituteSourceEnv — escape syntax', () => {
   it('escapes $${...} to a literal ${...} without consulting env', () => {
     const out = substituteSourceEnv(
-      [{ prefilter: 'PREFIX ex: <https://ex/> SELECT $${ROW} WHERE { ?s ?p ?o }' }],
+      [{ query: 'PREFIX ex: <https://ex/> SELECT $${ROW} WHERE { ?s ?p ?o }' }],
       { env: {} },
     );
     expect(out).toEqual([
-      { prefilter: 'PREFIX ex: <https://ex/> SELECT ${ROW} WHERE { ?s ?p ?o }' },
+      { query: 'PREFIX ex: <https://ex/> SELECT ${ROW} WHERE { ?s ?p ?o }' },
     ]);
   });
 

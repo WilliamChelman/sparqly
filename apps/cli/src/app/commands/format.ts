@@ -248,12 +248,6 @@ function sourceIssue(entry: SourceSpecInput): string | null {
   if (parsed.kind === 'endpoint') {
     return `SPARQL endpoint ${parsed.endpoint} cannot be used as a format source (format is a round-trip-a-file contract; pipe \`sparqly query --format=turtle\` into \`sparqly format\` for a filtered round-trip)`;
   }
-  if (
-    parsed.kind === 'glob' &&
-    (parsed.prefilter !== undefined || parsed.prefilterFile !== undefined)
-  ) {
-    return `prefilter is not supported on a format source (format is a round-trip-a-file contract; pipe \`sparqly query --format=turtle\` into \`sparqly format\` for a filtered round-trip)`;
-  }
   return null;
 }
 

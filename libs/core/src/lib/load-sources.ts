@@ -1,9 +1,5 @@
-import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
-import { readFile } from 'node:fs/promises';
-import { resolve as resolvePath } from 'node:path';
 import { DataFactory, Store, type Quad } from 'n3';
 import { loadEndpointToStore } from './endpoint-load';
-import { validateViewQuery } from './view-query-validate';
 import { loadRdf, type GraphMode, type LoadResult } from './rdf-loader';
 import {
   parseSourceSpecs,
@@ -36,29 +32,11 @@ export async function loadSources(
     }
   }
 
-  const resolvedPrefilters = new Map<number, string>();
-  for (let i = 0; i < parsed.length; i++) {
-    const source = parsed[i];
-    if (source.kind === 'reference') continue;
-    if (source.kind === 'view') continue;
-    if (source.prefilter !== undefined) {
-      validateViewQuery(source.prefilter);
-      resolvedPrefilters.set(i, source.prefilter);
-    } else if (source.prefilterFile !== undefined) {
-      const path = resolvePath(process.cwd(), source.prefilterFile);
-      const query = await readFile(path, 'utf8');
-      validateViewQuery(query);
-      resolvedPrefilters.set(i, query);
-    }
-  }
-
   const merged = new Store();
   const allFiles: string[] = [];
   const allPrefixes: Record<string, Record<string, string>> = {};
-  const engine = new ComunicaQueryEngine();
 
-  for (let i = 0; i < parsed.length; i++) {
-    const rawSource = parsed[i];
+  for (const rawSource of parsed) {
     if (rawSource.kind === 'view') {
       const viewStore = await resolveView({
         view: rawSource as ParsedViewSource,
@@ -75,43 +53,15 @@ export async function loadSources(
     const overrideGraph = source.graph
       ? DataFactory.namedNode(source.graph)
       : undefined;
-    const prefilterQuery = resolvedPrefilters.get(i);
 
     if (source.kind === 'endpoint') {
-      const sub = await loadEndpointToStore(source, engine);
+      const sub = await loadEndpointToStore(source);
       const syntheticGraph =
         overrideGraph ?? DataFactory.namedNode(source.endpoint);
-      const after = prefilterQuery
-        ? await applyPrefilter(engine, sub, prefilterQuery, {
-            graphMode: effectiveMode,
-            syntheticGraph,
-          })
-        : applyGraphMode(sub, effectiveMode, syntheticGraph);
+      const after = applyGraphMode(sub, effectiveMode, syntheticGraph);
       for (const quad of after.getQuads(null, null, null, null)) {
         merged.addQuad(quad);
       }
-      continue;
-    }
-
-    if (prefilterQuery !== undefined) {
-      const sub = await loadRdf({
-        sources: source.glob,
-        graphMode: 'preserve',
-      });
-      const syntheticGraph =
-        overrideGraph ??
-        (sub.files.length === 1
-          ? DataFactory.namedNode(`file://${sub.files[0]}`)
-          : undefined);
-      const after = await applyPrefilter(engine, sub.store, prefilterQuery, {
-        graphMode: effectiveMode,
-        syntheticGraph,
-      });
-      for (const quad of after.getQuads(null, null, null, null)) {
-        merged.addQuad(quad);
-      }
-      allFiles.push(...sub.files);
-      Object.assign(allPrefixes, sub.prefixes);
       continue;
     }
 
@@ -162,67 +112,4 @@ function applyGraphMode(
     );
   }
   return out;
-}
-
-interface PrefilterPostOptions {
-  graphMode: GraphMode;
-  syntheticGraph: ReturnType<typeof DataFactory.namedNode> | undefined;
-}
-
-async function applyPrefilter(
-  engine: ComunicaQueryEngine,
-  source: Store,
-  query: string,
-  opts: PrefilterPostOptions,
-): Promise<Store> {
-  const out = new Store();
-  const result = await engine.query(query, { sources: [source] });
-  if (result.resultType === 'bindings') {
-    const bindings = await result.execute();
-    for await (const b of bindings as AsyncIterable<{
-      get(name: string): Quad['subject'] | Quad['predicate'] | Quad['object'] | undefined;
-    }>) {
-      const s = b.get('s');
-      const p = b.get('p');
-      const o = b.get('o');
-      const g = b.get('g');
-      if (!s || !p || !o) continue;
-      const graph = g
-        ? (g as Quad['graph'])
-        : graphFromMode(opts.graphMode, opts.syntheticGraph);
-      out.addQuad(
-        DataFactory.quad(
-          s as Quad['subject'],
-          p as Quad['predicate'],
-          o as Quad['object'],
-          graph,
-        ),
-      );
-    }
-    return out;
-  }
-  if (result.resultType === 'quads') {
-    const quads = await result.execute();
-    for await (const q of quads as AsyncIterable<Quad>) {
-      const graph =
-        q.graph.termType === 'DefaultGraph'
-          ? graphFromMode(opts.graphMode, opts.syntheticGraph)
-          : q.graph;
-      out.addQuad(DataFactory.quad(q.subject, q.predicate, q.object, graph));
-    }
-    return out;
-  }
-  throw new Error(
-    `Unexpected prefilter result type: ${String(result.resultType)}`,
-  );
-}
-
-function graphFromMode(
-  mode: GraphMode,
-  syntheticGraph: ReturnType<typeof DataFactory.namedNode> | undefined,
-): Quad['graph'] {
-  if ((mode === 'fillDefault' || mode === 'forceAll') && syntheticGraph) {
-    return syntheticGraph;
-  }
-  return DataFactory.defaultGraph();
 }

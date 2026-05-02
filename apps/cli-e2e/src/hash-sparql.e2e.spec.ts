@@ -6,7 +6,7 @@ import {
 import { hashFixture } from './helpers/hash';
 import { runCli } from './helpers/run-cli';
 
-describe('sparqly hash — SPARQL source requires a prefilter', () => {
+describe('sparqly hash — raw SPARQL endpoint sources are rejected', () => {
   let endpoint: FakeSparqlEndpoint | undefined;
 
   afterEach(async () => {
@@ -14,7 +14,7 @@ describe('sparqly hash — SPARQL source requires a prefilter', () => {
     endpoint = undefined;
   });
 
-  it('rejects a SPARQL endpoint as primary source when no prefilter is set, without contacting the endpoint', async () => {
+  it('rejects a raw SPARQL endpoint as primary source, without contacting the endpoint', async () => {
     endpoint = await startFakeSparqlEndpoint(() => ({
       contentType: 'application/sparql-results+json',
       body: '{}',
@@ -23,12 +23,12 @@ describe('sparqly hash — SPARQL source requires a prefilter', () => {
     const result = await runCli(['hash', '--quiet', endpoint.url]);
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/prefilter/i);
+    expect(result.stderr).toMatch(/view/i);
     expect(result.stderr).toContain(endpoint.url);
     expect(endpoint.requestCount()).toBe(0);
   });
 
-  it('rejects a SPARQL endpoint on the --compare-with side when no prefilter is set, without contacting the endpoint', async () => {
+  it('rejects a raw SPARQL endpoint on the --compare-with side, without contacting the endpoint', async () => {
     endpoint = await startFakeSparqlEndpoint(() => ({
       contentType: 'application/sparql-results+json',
       body: '{}',
@@ -44,7 +44,7 @@ describe('sparqly hash — SPARQL source requires a prefilter', () => {
     ]);
 
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toMatch(/prefilter/i);
+    expect(result.stderr).toMatch(/view/i);
     expect(result.stderr).toContain(endpoint.url);
     expect(endpoint.requestCount()).toBe(0);
   });

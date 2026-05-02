@@ -58,7 +58,6 @@ describe('parseSourceSpec — object form', () => {
         id: 'vocab',
         graphMode: 'flatten',
         graph: 'urn:my:graph',
-        prefilter: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       }),
     ).toEqual({
       kind: 'glob',
@@ -66,7 +65,6 @@ describe('parseSourceSpec — object form', () => {
       id: 'vocab',
       graphMode: 'flatten',
       graph: 'urn:my:graph',
-      prefilter: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
     });
   });
 
@@ -202,31 +200,25 @@ describe('parseSourceSpec — view discriminant', () => {
   });
 });
 
-describe('parseSourceSpec — prefilter mutex', () => {
-  it('accepts prefilter alone', () => {
-    expect(
-      parseSourceSpec({
-        glob: 'a/*.ttl',
-        prefilter: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      }).prefilter,
-    ).toMatch(/CONSTRUCT/);
+describe('parseSourceSpec — prefilter is removed', () => {
+  it('does not surface a prefilter field on the parsed glob source even if the input still has one', () => {
+    const parsed = parseSourceSpec({
+      glob: 'a/*.ttl',
+      // @ts-expect-error — `prefilter` was removed from the source-spec shape
+      prefilter: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+    });
+    expect((parsed as Record<string, unknown>).prefilter).toBeUndefined();
+    expect((parsed as Record<string, unknown>).prefilterFile).toBeUndefined();
   });
 
-  it('accepts prefilterFile alone', () => {
-    expect(
-      parseSourceSpec({ glob: 'a/*.ttl', prefilterFile: './pf.rq' })
-        .prefilterFile,
-    ).toBe('./pf.rq');
-  });
-
-  it('rejects an object that sets both prefilter and prefilterFile', () => {
-    expect(() =>
-      parseSourceSpec({
-        glob: 'a/*.ttl',
-        prefilter: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
-        prefilterFile: './pf.rq',
-      }),
-    ).toThrow(/`prefilter`.*`prefilterFile`.*mutual/i);
+  it('does not surface a prefilterFile field on the parsed endpoint source', () => {
+    const parsed = parseSourceSpec({
+      endpoint: 'https://example.com/sparql',
+      // @ts-expect-error — `prefilterFile` was removed from the source-spec shape
+      prefilterFile: './pf.rq',
+    });
+    expect((parsed as Record<string, unknown>).prefilter).toBeUndefined();
+    expect((parsed as Record<string, unknown>).prefilterFile).toBeUndefined();
   });
 });
 

@@ -26,19 +26,6 @@ const SPARQL_JSON_TWO_BINDINGS = JSON.stringify({
   },
 });
 
-const SPARQL_JSON_ONE_BINDING = JSON.stringify({
-  head: { vars: ['s', 'p', 'o'] },
-  results: {
-    bindings: [
-      {
-        s: { type: 'uri', value: 'http://example.org/keep' },
-        p: { type: 'uri', value: 'http://example.org/p' },
-        o: { type: 'uri', value: 'http://example.org/v1' },
-      },
-    ],
-  },
-});
-
 describe('loadSources', () => {
   let dir: string;
 
@@ -152,25 +139,6 @@ describe('loadSources — SPARQL endpoint sources', () => {
     for (const q of store.getQuads(null, null, null, null)) {
       expect(q.graph.value).toBe('urn:my:custom-endpoint-graph');
     }
-  });
-
-  it('applies a SELECT prefilter to narrow what the endpoint contributes', async () => {
-    endpoint = await startFakeSparqlEndpoint(() => ({
-      contentType: 'application/sparql-results+json',
-      body: SPARQL_JSON_ONE_BINDING,
-    }));
-
-    const { store } = await loadSources([
-      {
-        endpoint: endpoint.url,
-        prefilter:
-          'PREFIX ex: <http://example.org/> SELECT ?s ?p ?o WHERE { ?s ?p ?o FILTER(?s = ex:keep) }',
-      },
-    ]);
-
-    const quads = store.getQuads(null, null, null, null);
-    expect(quads).toHaveLength(1);
-    expect(quads[0].subject.value).toBe('http://example.org/keep');
   });
 
   it('surfaces source identity and HTTP status on a 5xx error', async () => {
@@ -350,94 +318,6 @@ describe('loadSources — per-source pipeline', () => {
     }
     expect(byGraph.get(`file://${a}`)).toBe(1);
     expect(byGraph.get('<default>')).toBe(1);
-  });
-
-  it('SELECT prefilter (?s ?p ?o) narrows the source to the bound triples', async () => {
-    const a = join(dir, 'a.ttl');
-    await writeFile(
-      a,
-      [
-        '@prefix ex: <http://example.org/> .',
-        'ex:keep ex:p ex:v1 .',
-        'ex:drop ex:p ex:v2 .',
-      ].join('\n'),
-    );
-
-    const { store } = await loadSources([
-      {
-        glob: a,
-        prefilter:
-          'PREFIX ex: <http://example.org/> SELECT ?s ?p ?o WHERE { ?s ?p ?o FILTER(?s = ex:keep) }',
-      },
-    ]);
-
-    const quads = store.getQuads(null, null, null, null);
-    expect(quads).toHaveLength(1);
-    expect(quads[0].subject.value).toBe('http://example.org/keep');
-  });
-
-  it('CONSTRUCT prefilter emits triples (default graph) and is then subject to graphMode', async () => {
-    const a = join(dir, 'a.ttl');
-    await writeFile(
-      a,
-      [
-        '@prefix ex: <http://example.org/> .',
-        'ex:a ex:p ex:b .',
-        'ex:c ex:p ex:d .',
-      ].join('\n'),
-    );
-
-    const { store } = await loadSources([
-      {
-        glob: a,
-        graphMode: 'forceAll',
-        graph: 'urn:after-prefilter',
-        prefilter:
-          'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:renamed ?o } WHERE { ?s ex:p ?o }',
-      },
-    ]);
-
-    const quads = store.getQuads(null, null, null, null);
-    expect(quads).toHaveLength(2);
-    for (const q of quads) {
-      expect(q.predicate.value).toBe('http://example.org/renamed');
-      expect(q.graph.value).toBe('urn:after-prefilter');
-    }
-  });
-
-  it('reads prefilterFile cwd-relative and applies it', async () => {
-    const a = join(dir, 'a.ttl');
-    await writeFile(
-      a,
-      [
-        '@prefix ex: <http://example.org/> .',
-        'ex:keep ex:p ex:v1 .',
-        'ex:drop ex:p ex:v2 .',
-      ].join('\n'),
-    );
-
-    const cwd = process.cwd();
-    process.chdir(dir);
-    try {
-      await writeFile(
-        join(dir, 'pf.rq'),
-        'PREFIX ex: <http://example.org/> SELECT ?s ?p ?o WHERE { ?s ?p ?o FILTER(?s = ex:keep) }',
-      );
-      const { store } = await loadSources([
-        { glob: a, prefilterFile: 'pf.rq' },
-      ]);
-      const quads = store.getQuads(null, null, null, null);
-      expect(quads).toHaveLength(1);
-      expect(quads[0].subject.value).toBe('http://example.org/keep');
-    } finally {
-      process.chdir(cwd);
-    }
-  });
-
-  it('rejects an invalid prefilter (ASK) before any I/O', async () => {
-    await expect(
-      loadSources([{ glob: 'never-read/*.ttl', prefilter: 'ASK { ?s ?p ?o }' }]),
-    ).rejects.toThrow(/ASK.*not.*allowed/i);
   });
 
   it('dispatches view sources through the view-resolver and merges their quads', async () => {

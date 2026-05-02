@@ -34,7 +34,7 @@ const SPARQL_JSON_THREE = JSON.stringify({
 
 const SELECT_ALL = 'SELECT * WHERE { ?s ?p ?o }';
 
-describe('sparqly serve — SPARQL source materialized snapshot (US 47)', () => {
+describe('sparqly serve — view-of-endpoint materialized snapshot (US 47)', () => {
   let endpoint: FakeSparqlEndpoint | undefined;
   let handle: ServeHandle | undefined;
   let dir: string;
@@ -51,14 +51,17 @@ describe('sparqly serve — SPARQL source materialized snapshot (US 47)', () => 
     await rm(dir, { recursive: true, force: true });
   });
 
-  async function startWithPrefilter(): Promise<void> {
+  async function startWithViewOverEndpoint(): Promise<void> {
     const configPath = join(dir, 'sparqly.serve.yaml');
     await writeFile(
       configPath,
       dedent`
         sources:
-          - endpoint: "${endpoint?.url}"
-            prefilter: "SELECT ?s ?p ?o WHERE { ?s ?p ?o }"
+          - id: ep
+            endpoint: "${endpoint?.url}"
+          - id: snap
+            from: ["@ep"]
+            query: "SELECT ?s ?p ?o WHERE { ?s ?p ?o }"
       ` + '\n',
     );
     handle = await startServe(['--config', configPath]);
@@ -70,7 +73,7 @@ describe('sparqly serve — SPARQL source materialized snapshot (US 47)', () => 
       body: SPARQL_JSON_THREE,
     }));
 
-    await startWithPrefilter();
+    await startWithViewOverEndpoint();
 
     const afterBoot = endpoint.requestCount();
     expect(afterBoot).toBeGreaterThan(0);
@@ -97,7 +100,7 @@ describe('sparqly serve — SPARQL source materialized snapshot (US 47)', () => 
       body: SPARQL_JSON_THREE,
     }));
 
-    await startWithPrefilter();
+    await startWithViewOverEndpoint();
 
     for (const method of ['GET', 'POST'] as const) {
       const res = await fetch(`${handle?.baseUrl}/api/refresh`, { method });

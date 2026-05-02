@@ -96,7 +96,7 @@ describe('loadQuerySources — materialization fallbacks', () => {
     expect(result.files).toHaveLength(1);
   });
 
-  it('materializes a single endpoint when a prefilter is present', async () => {
+  it('materializes a registry of {endpoint, view-of-endpoint} via the view path', async () => {
     endpoint = await startFakeSparqlEndpoint(() => ({
       contentType: 'application/sparql-results+json',
       body: JSON.stringify({
@@ -114,49 +114,18 @@ describe('loadQuerySources — materialization fallbacks', () => {
     }));
 
     const result = await loadQuerySources([
+      { id: 'ep', endpoint: endpoint.url },
       {
-        endpoint: endpoint.url,
-        prefilter:
-          'PREFIX ex: <http://example.org/> SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
+        id: 'snap',
+        from: ['@ep'],
+        query:
+          'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       },
     ]);
 
     expect(result.mode).toBe('materialized');
     if (result.mode !== 'materialized') throw new Error('unreachable');
-    expect(result.store.size).toBe(1);
-  });
-
-  it('materializes when there are multiple endpoints, all with prefilters', async () => {
-    endpoint = await startFakeSparqlEndpoint(() => ({
-      contentType: 'application/sparql-results+json',
-      body: JSON.stringify({
-        head: { vars: ['s', 'p', 'o'] },
-        results: {
-          bindings: [
-            {
-              s: { type: 'uri', value: 'http://example.org/x' },
-              p: { type: 'uri', value: 'http://example.org/p' },
-              o: { type: 'uri', value: 'http://example.org/y' },
-            },
-          ],
-        },
-      }),
-    }));
-
-    const result = await loadQuerySources([
-      {
-        endpoint: endpoint.url,
-        prefilter:
-          'PREFIX ex: <http://example.org/> SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
-      },
-      {
-        endpoint: endpoint.url,
-        prefilter:
-          'PREFIX ex: <http://example.org/> SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
-      },
-    ]);
-
-    expect(result.mode).toBe('materialized');
+    expect(result.store.size).toBeGreaterThan(0);
   });
 });
 
@@ -192,7 +161,7 @@ describe('loadQuerySources — view forces materialization', () => {
   });
 });
 
-describe('loadQuerySources — mixed-source rejection', () => {
+describe('loadQuerySources — multi-source materialization', () => {
   let dir: string;
   let endpoint: FakeSparqlEndpoint | undefined;
 
@@ -206,7 +175,7 @@ describe('loadQuerySources — mixed-source rejection', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it('rejects an endpoint without prefilter mixed with a glob source', async () => {
+  it('materializes a raw endpoint mixed with a glob source (no pass-through)', async () => {
     endpoint = await startFakeSparqlEndpoint(() => ({
       contentType: 'application/sparql-results+json',
       body: SPARQL_JSON_TWO_BINDINGS,
@@ -216,28 +185,11 @@ describe('loadQuerySources — mixed-source rejection', () => {
       '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
     );
 
-    await expect(
-      loadQuerySources([endpoint.url, join(dir, '*.ttl')]),
-    ).rejects.toThrow(/endpoint.*prefilter/i);
-    expect(endpoint.requestCount()).toBe(0);
-  });
+    const result = await loadQuerySources([endpoint.url, join(dir, '*.ttl')]);
 
-  it('rejects when one endpoint has no prefilter alongside another endpoint', async () => {
-    endpoint = await startFakeSparqlEndpoint(() => ({
-      contentType: 'application/sparql-results+json',
-      body: SPARQL_JSON_TWO_BINDINGS,
-    }));
-
-    await expect(
-      loadQuerySources([
-        endpoint.url,
-        {
-          endpoint: endpoint.url,
-          prefilter:
-            'PREFIX ex: <http://example.org/> SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
-        },
-      ]),
-    ).rejects.toThrow(/endpoint.*prefilter/i);
-    expect(endpoint.requestCount()).toBe(0);
+    expect(result.mode).toBe('materialized');
+    if (result.mode !== 'materialized') throw new Error('unreachable');
+    expect(result.store.size).toBeGreaterThan(0);
+    expect(endpoint.requestCount()).toBeGreaterThan(0);
   });
 });
