@@ -57,12 +57,12 @@ describe('sparqly hash — core properties', () => {
     for (const h of rest) expect(h).toBe(first);
   });
 
-  it('--graph-strategy=none: a .trig with named graphs hashes the same as the equivalent triples-only .ttl, but differs without the flag', async () => {
+  it('--graph-mode=flatten: a .trig with named graphs hashes the same as the equivalent triples-only .ttl, but differs without the flag', async () => {
     const trig = hashFixture('quad/data.trig');
     const ttl = hashFixture('quad/data-flat.ttl');
 
     const [withNone, withoutNone, ttlPlain] = await Promise.all([
-      runCli(['hash', '--quiet', '--graph-strategy=none', trig]),
+      runCli(['hash', '--quiet', '--graph-mode=flatten', trig]),
       runCli(['hash', '--quiet', trig]),
       runCli(['hash', '--quiet', ttl]),
     ]);
@@ -98,16 +98,16 @@ describe('sparqly hash — argv and flag validation', () => {
     expect(result.stderr).toMatch(/no files/i);
   });
 
-  it('exits non-zero on an unknown --graph-strategy value', async () => {
+  it('exits non-zero on an unknown --graph-mode value', async () => {
     const result = await runCli([
       'hash',
       '--quiet',
-      '--graph-strategy=bogus',
+      '--graph-mode=bogus',
       join(scratch, '*.ttl'),
     ]);
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/unknown.*--graph-strategy/i);
+    expect(result.stderr).toMatch(/unknown.*--graph-mode/i);
   });
 
   it('exits non-zero when no sources are provided', async () => {

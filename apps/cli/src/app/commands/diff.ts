@@ -8,7 +8,7 @@ import {
   formatRdfDiff,
   shortenNQuadLine,
   type FormatSerialization,
-  type GraphStrategy,
+  type GraphMode,
   type RdfDiffResult,
 } from 'core';
 import { configureLogger } from '../logging';
@@ -16,7 +16,7 @@ import { writeOutputToFile } from '../output';
 import type { FieldDescriptor } from '../runner/field';
 import {
   baseField,
-  graphStrategyFieldFor,
+  graphModeFieldFor,
   outFieldFor,
   prefixesField,
   verbosityFieldsFor,
@@ -29,7 +29,7 @@ type DiffFormat = (typeof DIFF_FORMATS)[number];
 interface DiffConfig {
   left?: string;
   right?: string;
-  graphStrategy?: GraphStrategy;
+  graphMode?: GraphMode;
   format?: DiffFormat;
   prefixes?: Record<string, string>;
   base?: string;
@@ -92,7 +92,7 @@ export const diffSpec: CommandSpec<DiffConfig> = {
   fields: [
     leftField,
     rightField,
-    graphStrategyFieldFor('diff'),
+    graphModeFieldFor('diff'),
     formatField,
     prefixesField,
     baseField,
@@ -118,14 +118,14 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     }
 
     const logger = new Logger('sparqly');
-    const graphStrategy = config.graphStrategy;
+    const graphMode = config.graphMode;
     const format = (config.format ?? 'human') as DiffFormat;
     const quiet = config.quiet === true;
 
     const start = Date.now();
     const [leftResult, rightResult] = await Promise.all([
-      canonicalizeRdf({ sources: config.left, graphStrategy }),
-      canonicalizeRdf({ sources: config.right, graphStrategy }),
+      canonicalizeRdf({ sources: config.left, graphMode }),
+      canonicalizeRdf({ sources: config.right, graphMode }),
     ]);
     logger.log(
       `Loaded ${leftResult.files.length} left + ${rightResult.files.length} right file(s), canonicalized in ${Date.now() - start}ms`,

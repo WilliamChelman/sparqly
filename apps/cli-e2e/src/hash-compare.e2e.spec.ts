@@ -114,14 +114,14 @@ describe('sparqly hash --compare-with', () => {
     expect(result.stderr).toMatch(/--compare-with.*one primary source/);
   });
 
-  it('applies --graph-strategy=none to both sides so a .trig with named graphs matches the equivalent triples-only .ttl', async () => {
+  it('applies --graph-mode=flatten to both sides so a .trig with named graphs matches the equivalent triples-only .ttl', async () => {
     const trig = hashFixture('quad/data.trig');
     const ttl = hashFixture('quad/data-flat.ttl');
 
     const result = await runCli([
       'hash',
       '--quiet',
-      '--graph-strategy=none',
+      '--graph-mode=flatten',
       trig,
       '--compare-with',
       ttl,
@@ -131,19 +131,19 @@ describe('sparqly hash --compare-with', () => {
     expect(result.stdout).toMatch(/^match: [0-9a-f]{64}\n$/);
   });
 
-  it('exits 2 on an unknown --graph-strategy value', async () => {
+  it('exits 2 on an unknown --graph-mode value', async () => {
     const single = hashFixture('domain.ttl');
 
     const result = await runCli([
       'hash',
       '--quiet',
-      '--graph-strategy=bogus',
+      '--graph-mode=bogus',
       single,
       '--compare-with',
       single,
     ]);
 
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toMatch(/unknown.*--graph-strategy/i);
+    expect(result.stderr).toMatch(/unknown.*--graph-mode/i);
   });
 });

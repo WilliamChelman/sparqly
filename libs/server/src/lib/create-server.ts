@@ -5,7 +5,7 @@ import * as chokidar from 'chokidar';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { type GraphStrategy, loadRdf } from 'core';
+import { type GraphMode, loadRdf } from 'core';
 import { ServerModule } from './server.module';
 import type { StoreRef } from './tokens';
 
@@ -13,7 +13,7 @@ export interface CreateServerOptions {
   sources: string | string[];
   port: number;
   mutable?: boolean;
-  graphStrategy?: GraphStrategy;
+  graphMode?: GraphMode;
   webRootDir?: string;
   watch?: boolean;
   watchDebounceMs?: number;
@@ -33,7 +33,7 @@ export async function createServer(
   const loadStart = Date.now();
   const { store, files } = await loadRdf({
     sources: options.sources,
-    graphStrategy: options.graphStrategy,
+    graphMode: options.graphMode,
   });
   logger.log(
     `Loaded ${files.length} file(s) (${store.size} quads) in ${
@@ -67,7 +67,7 @@ export async function createServer(
   const watcher = options.watch
     ? await startWatcher({
         sources: options.sources,
-        graphStrategy: options.graphStrategy,
+        graphMode: options.graphMode,
         storeRef,
         logger,
         debounceMs: options.watchDebounceMs ?? DEFAULT_DEBOUNCE_MS,
@@ -96,7 +96,7 @@ interface WatcherHandle {
 
 interface StartWatcherOptions {
   sources: string | string[];
-  graphStrategy?: GraphStrategy;
+  graphMode?: GraphMode;
   storeRef: StoreRef;
   logger: Logger;
   debounceMs: number;
@@ -143,7 +143,7 @@ async function startWatcher(
       const start = Date.now();
       const { store, files } = await loadRdf({
         sources: opts.sources,
-        graphStrategy: opts.graphStrategy,
+        graphMode: opts.graphMode,
       });
       opts.storeRef.current = store;
       opts.logger.log(

@@ -47,12 +47,12 @@ describe('sparqly query — multi-format loading', () => {
     }
   });
 
-  it('--graph-strategy full puts every file in its own file:// graph (US 12)', async () => {
+  it('--graph-mode forceAll puts every file in its own file:// graph (US 12)', async () => {
     const result = await runCli([
       'query',
       FORMATS_GLOB,
-      '--graph-strategy',
-      'full',
+      '--graph-mode',
+      'forceAll',
       '-q',
       'SELECT DISTINCT ?g WHERE { GRAPH ?g { ?s ?p ?o } }',
     ]);

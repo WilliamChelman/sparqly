@@ -17,7 +17,7 @@ Each CLI command is a value (a "command spec") in a registry, composed from reus
 
 ## Consequences
 
-- **Field descriptors own a field's full CLI surface.** A field is declared once with `key + schema + default + flag(s) + env`. Touching `--graph-strategy` becomes a single-file edit. `cli-errors.ts:FIELD_TO_FLAG` is derived from the registry.
+- **Field descriptors own a field's full CLI surface.** A field is declared once with `key + schema + default + flag(s) + env`. Touching `--graph-mode` becomes a single-file edit. `cli-errors.ts:FIELD_TO_FLAG` is derived from the registry.
 - **Adapters dissolve.** The per-command `*.adapter.ts` files collapse into one runner step: `spec.schema.safeParse(rawCli)`. The `*.adapter.spec.ts` files transform into spec-validation tests.
 - **No `switch (command)`.** `defaultsFor`, `blockKeysFor`, `blockSchemaFor`, the `LAYERS` block-reader, and `exitCodeFor` collapse into iterators over the registry. Adding a command is "write a spec, register it" — no edits to shared dispatch.
 - **File config schema is derived and per-command.** Each spec's file-config schema is `blockSchemaFromFields(spec.fields)`, marked `.strict()`. The file is flat — no `extends:`, no shared block, no per-command blocks; `CommandSpec.fileBlockName` and `FieldDescriptor.shared` are gone. Unknown keys are hard validation errors. Documented filename convention: `sparqly.<command>.{yaml,yml,json}` (e.g. `sparqly.query.yaml`); the runner does not enforce it.
@@ -29,4 +29,4 @@ Each CLI command is a value (a "command spec") in a registry, composed from reus
 - **Multi-flag aliases handled per-flag.** `--immutable`'s `parse` writes the inverted boolean to `mutable` directly. `mutableFromCli` is removed. If a future field needs cross-flag derivation, a `derive(raw)` hook can be added then.
 - **Exit codes belong to the spec.** Each spec declares `exitCode(error: unknown): number` (defaults to 1; `diff` returns 2; `hash` distinguishes mismatch from error). Handlers throw; the runner maps once.
 - **Drop `nest-commander` and `AppModule`; keep `@nestjs/common` `Logger`.** Apps/cli `package.json` loses `nest-commander`. `apps/cli/src/main.ts` builds a Commander program from the registry. `Logger` is preserved to avoid a parallel logger abstraction.
-- **ADR-0001 is partially superseded.** Zod is still the validator, and `core` still owns domain enum tuples (`GRAPH_STRATEGIES`, `SUPPORTED_FORMATS`); but per-command block schemas are no longer assembled in `schema.ts` — they are computed from `spec.fields` by the runner.
+- **ADR-0001 is partially superseded.** Zod is still the validator, and `core` still owns domain enum tuples (`GRAPH_MODES`, `SUPPORTED_FORMATS`); but per-command block schemas are no longer assembled in `schema.ts` — they are computed from `spec.fields` by the runner.

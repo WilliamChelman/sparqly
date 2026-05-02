@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { GRAPH_STRATEGIES } from 'core';
+import { GRAPH_MODES } from 'core';
 import { blockSchemaFromFields, defaultsFromFields } from './field';
 import type { FieldDescriptor } from './field';
 import type { CommandSpec } from './spec';
@@ -17,24 +17,24 @@ const sourcesField: FieldDescriptor = {
   ],
 };
 
-const graphStrategyField: FieldDescriptor = {
-  key: 'graphStrategy',
-  schema: z.enum(GRAPH_STRATEGIES),
-  default: 'default',
+const graphModeField: FieldDescriptor = {
+  key: 'graphMode',
+  schema: z.enum(GRAPH_MODES),
+  default: 'preserve',
   flags: [
     {
-      spec: '--graph-strategy <strategy>',
-      description: 'named-graph strategy',
+      spec: '--graph-mode <mode>',
+      description: 'named-graph mode',
     },
   ],
 };
 
 describe('CommandSpec', () => {
   it('composes fields into a usable block schema and defaults', () => {
-    const spec: CommandSpec<{ sources?: string | string[]; graphStrategy?: string }> = {
+    const spec: CommandSpec<{ sources?: string | string[]; graphMode?: string }> = {
       name: 'test',
       description: 'test command',
-      fields: [sourcesField, graphStrategyField],
+      fields: [sourcesField, graphModeField],
       handler: async () => undefined,
       exitCode: () => 1,
     };
@@ -43,10 +43,10 @@ describe('CommandSpec', () => {
     const ok = schema.safeParse({ sources: 'a/*.ttl' });
     expect(ok.success).toBe(true);
 
-    const bad = schema.safeParse({ graphStrategy: 'bogus' });
+    const bad = schema.safeParse({ graphMode: 'bogus' });
     expect(bad.success).toBe(false);
 
-    expect(defaultsFromFields(spec.fields)).toEqual({ graphStrategy: 'default' });
+    expect(defaultsFromFields(spec.fields)).toEqual({ graphMode: 'preserve' });
   });
 
 });

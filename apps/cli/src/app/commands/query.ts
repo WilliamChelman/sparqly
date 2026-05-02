@@ -8,7 +8,7 @@ import {
   loadRdf,
   parseRdfString,
   parseSparqlPrefixes,
-  type GraphStrategy,
+  type GraphMode,
   type SparqlFormat,
 } from 'core';
 import { configureLogger } from '../logging';
@@ -16,7 +16,7 @@ import { writeOutputToFile } from '../output';
 import type { FieldDescriptor } from '../runner/field';
 import {
   baseField,
-  graphStrategyFieldFor,
+  graphModeFieldFor,
   mutableFieldsFor,
   outFieldFor,
   prefixesField,
@@ -30,7 +30,7 @@ interface QueryConfig {
   query?: string;
   queryFile?: string;
   format?: SparqlFormat;
-  graphStrategy?: GraphStrategy;
+  graphMode?: GraphMode;
   mutable?: boolean;
   prefixes?: Record<string, string>;
   base?: string;
@@ -83,7 +83,7 @@ export const querySpec: CommandSpec<QueryConfig> = {
     queryField,
     queryFileField,
     formatField,
-    graphStrategyFieldFor('query'),
+    graphModeFieldFor('query'),
     ...mutableFieldsFor('query'),
     prefixesField,
     baseField,
@@ -132,14 +132,14 @@ export const querySpec: CommandSpec<QueryConfig> = {
     }
 
     const logger = new Logger('sparqly');
-    const graphStrategy = config.graphStrategy;
+    const graphMode = config.graphMode;
     const format = config.format;
     const mutable = config.mutable === true;
 
     const loadStart = Date.now();
     const { store, files } = await loadRdf({
       sources: config.sources,
-      graphStrategy,
+      graphMode,
     });
     logger.log(
       `Loaded ${files.length} file(s) (${store.size} quads) in ${

@@ -11,7 +11,7 @@ const CLEARED_ENV = {
   SPARQLY_QUERY_IMMUTABLE: undefined,
   SPARQLY_SOURCES: undefined,
   SPARQLY_QUERY_SOURCES: undefined,
-  SPARQLY_GRAPH_STRATEGY: undefined,
+  SPARQLY_GRAPH_MODE: undefined,
   SPARQLY_VERBOSE: undefined,
   SPARQLY_QUIET: undefined,
 } as const;

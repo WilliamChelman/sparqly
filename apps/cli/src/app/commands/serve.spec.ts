@@ -15,7 +15,7 @@ describe('serveSpec', () => {
       watch: false,
       watchDebounce: 250,
       mutable: false,
-      graphStrategy: 'default',
+      graphMode: 'preserve',
       verbose: false,
       quiet: false,
     });
@@ -27,9 +27,9 @@ describe('serveSpec', () => {
     expect(r.port).toBe(4000);
   });
 
-  it('rejects unknown --graph-strategy', () => {
+  it('rejects unknown --graph-mode', () => {
     const schema = blockSchemaFromFields(serveSpec.fields);
-    expect(schema.safeParse({ graphStrategy: 'bogus' }).success).toBe(false);
+    expect(schema.safeParse({ graphMode: 'bogus' }).success).toBe(false);
   });
 
   it('exposes both --mutable and --immutable writing to the mutable field', () => {

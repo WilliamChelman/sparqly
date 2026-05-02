@@ -4,18 +4,18 @@ import { DataFactory, Store, type DefaultGraph, type NamedNode, type Quad } from
 import { rdfParser } from 'rdf-parse';
 import { glob } from 'tinyglobby';
 
-export const GRAPH_STRATEGIES = [
-  'default',
-  'partial',
-  'full',
-  'none',
+export const GRAPH_MODES = [
+  'preserve',
+  'fillDefault',
+  'forceAll',
+  'flatten',
 ] as const;
 
-export type GraphStrategy = (typeof GRAPH_STRATEGIES)[number];
+export type GraphMode = (typeof GRAPH_MODES)[number];
 
 export interface LoadOptions {
   sources: string | string[];
-  graphStrategy?: GraphStrategy;
+  graphMode?: GraphMode;
 }
 
 export interface LoadResult {
@@ -53,7 +53,7 @@ export async function loadRdf(options: LoadOptions): Promise<LoadResult> {
     );
   }
 
-  const strategy: GraphStrategy = options.graphStrategy ?? 'default';
+  const mode: GraphMode = options.graphMode ?? 'preserve';
   const store = new Store();
   const prefixes: Record<string, Record<string, string>> = {};
 
@@ -63,7 +63,7 @@ export async function loadRdf(options: LoadOptions): Promise<LoadResult> {
       throw new Error(`Unsupported file extension: ${file}`);
     }
     try {
-      prefixes[file] = await parseFileInto(file, contentType, store, strategy);
+      prefixes[file] = await parseFileInto(file, contentType, store, mode);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(`Failed to parse ${file}: ${message}`);
@@ -79,12 +79,12 @@ function contentTypeFor(file: string): string | undefined {
 
 function targetGraph(
   quad: Quad,
-  strategy: GraphStrategy,
+  mode: GraphMode,
   fileGraph: NamedNode,
 ): NamedNode | DefaultGraph | undefined {
-  if (strategy === 'none') return DataFactory.defaultGraph();
-  if (strategy === 'full') return fileGraph;
-  if (strategy === 'partial' && quad.graph.termType === 'DefaultGraph') {
+  if (mode === 'flatten') return DataFactory.defaultGraph();
+  if (mode === 'forceAll') return fileGraph;
+  if (mode === 'fillDefault' && quad.graph.termType === 'DefaultGraph') {
     return fileGraph;
   }
   return undefined;
@@ -94,7 +94,7 @@ function parseFileInto(
   file: string,
   contentType: string,
   store: Store,
-  strategy: GraphStrategy,
+  mode: GraphMode,
 ): Promise<Record<string, string>> {
   const fileGraph = DataFactory.namedNode(`file://${file}`);
   const filePrefixes: Record<string, string> = {};
@@ -104,7 +104,7 @@ function parseFileInto(
     rdfParser
       .parse(stream, { contentType, baseIRI: `file://${file}` })
       .on('data', (quad: Quad) => {
-        const target = targetGraph(quad, strategy, fileGraph);
+        const target = targetGraph(quad, mode, fileGraph);
         const out = target
           ? DataFactory.quad(quad.subject, quad.predicate, quad.object, target)
           : quad;

@@ -3,9 +3,9 @@ import { blockSchemaFromFields, defaultsFromFields } from '../runner/field';
 import { hashSpec, HashCompareError, HashMismatchSignal } from './hash';
 
 describe('hashSpec', () => {
-  it('rejects unknown --graph-strategy', () => {
+  it('rejects unknown --graph-mode', () => {
     const schema = blockSchemaFromFields(hashSpec.fields);
-    const r = schema.safeParse({ graphStrategy: 'bogus' });
+    const r = schema.safeParse({ graphMode: 'bogus' });
     expect(r.success).toBe(false);
   });
 
@@ -31,9 +31,9 @@ describe('hashSpec', () => {
     ).toBe(false);
   });
 
-  it('declares default graphStrategy="default" and json=false', () => {
+  it('declares default graphMode="preserve" and json=false', () => {
     expect(defaultsFromFields(hashSpec.fields)).toMatchObject({
-      graphStrategy: 'default',
+      graphMode: 'preserve',
       json: false,
       verbose: false,
       quiet: false,

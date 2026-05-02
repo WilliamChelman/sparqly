@@ -23,18 +23,18 @@ describe('diffSpec', () => {
     }
   });
 
-  it('declares default format=human and graphStrategy=default', () => {
+  it('declares default format=human and graphMode=preserve', () => {
     expect(defaultsFromFields(diffSpec.fields)).toMatchObject({
       format: 'human',
-      graphStrategy: 'default',
+      graphMode: 'preserve',
       verbose: false,
       quiet: false,
     });
   });
 
-  it('rejects unknown --graph-strategy', () => {
+  it('rejects unknown --graph-mode', () => {
     const schema = blockSchemaFromFields(diffSpec.fields);
-    expect(schema.safeParse({ graphStrategy: 'bogus' }).success).toBe(false);
+    expect(schema.safeParse({ graphMode: 'bogus' }).success).toBe(false);
   });
 
   it('exitCode returns 2 by default for unknown errors', () => {
