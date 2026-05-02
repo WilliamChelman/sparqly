@@ -151,6 +151,115 @@ describe('parseSourceSpec — source id', () => {
   });
 });
 
+describe('parseSourceSpec — endpoint HTTP fields (auth, headers, timeoutMs)', () => {
+  it('carries through bearer auth on an endpoint object', () => {
+    expect(
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        auth: { type: 'bearer', token: 'tk-1' },
+      }),
+    ).toEqual({
+      kind: 'endpoint',
+      endpoint: 'https://example.com/sparql',
+      auth: { type: 'bearer', token: 'tk-1' },
+    });
+  });
+
+  it('carries through basic auth on an endpoint object', () => {
+    expect(
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        auth: { type: 'basic', username: 'alice', password: 'hunter2' },
+      }),
+    ).toEqual({
+      kind: 'endpoint',
+      endpoint: 'https://example.com/sparql',
+      auth: { type: 'basic', username: 'alice', password: 'hunter2' },
+    });
+  });
+
+  it('carries through arbitrary headers on an endpoint object', () => {
+    expect(
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        headers: { 'X-Tenant': 'acme', 'X-Trace': 'abc' },
+      }),
+    ).toEqual({
+      kind: 'endpoint',
+      endpoint: 'https://example.com/sparql',
+      headers: { 'X-Tenant': 'acme', 'X-Trace': 'abc' },
+    });
+  });
+
+  it('carries through timeoutMs on an endpoint object', () => {
+    expect(
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        timeoutMs: 5000,
+      }),
+    ).toEqual({
+      kind: 'endpoint',
+      endpoint: 'https://example.com/sparql',
+      timeoutMs: 5000,
+    });
+  });
+
+  it('rejects auth + a colliding Authorization header (case-insensitive)', () => {
+    expect(() =>
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        auth: { type: 'bearer', token: 'tk-1' },
+        headers: { authorization: 'Bearer other' },
+      }),
+    ).toThrow(/auth.*Authorization.*collide/i);
+  });
+
+  it('rejects bearer auth with an empty token', () => {
+    expect(() =>
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        auth: { type: 'bearer', token: '' },
+      }),
+    ).toThrow(/bearer.*token.*non-empty/i);
+  });
+
+  it('rejects basic auth missing username or password', () => {
+    expect(() =>
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        auth: { type: 'basic', username: '', password: 'p' },
+      }),
+    ).toThrow(/basic.*username.*non-empty/i);
+    expect(() =>
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        auth: { type: 'basic', username: 'u', password: '' },
+      }),
+    ).toThrow(/basic.*password.*non-empty/i);
+  });
+
+  it('rejects auth/headers/timeoutMs on a glob source', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        auth: { type: 'bearer', token: 'tk' },
+      } as unknown as Parameters<typeof parseSourceSpec>[0]),
+    ).toThrow(/auth.*only.*endpoint/i);
+    expect(() =>
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        headers: { 'X-Tenant': 'acme' },
+      } as unknown as Parameters<typeof parseSourceSpec>[0]),
+    ).toThrow(/headers.*only.*endpoint/i);
+    expect(() =>
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        timeoutMs: 1000,
+      } as unknown as Parameters<typeof parseSourceSpec>[0]),
+    ).toThrow(/timeoutMs.*only.*endpoint/i);
+  });
+});
+
 describe('parseSourceSpecs — id collision detection', () => {
   it('parses each entry without an id without complaint', () => {
     const parsed = parseSourceSpecs([

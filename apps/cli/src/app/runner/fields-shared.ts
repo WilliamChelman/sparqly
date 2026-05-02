@@ -10,6 +10,17 @@ const coercedBoolean = z.preprocess((v) => {
   return v;
 }, z.boolean());
 
+const sparqlAuthSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('bearer'), token: z.string() }).strict(),
+  z
+    .object({
+      type: z.literal('basic'),
+      username: z.string(),
+      password: z.string(),
+    })
+    .strict(),
+]);
+
 const sourceObjectSchema = z
   .object({
     id: z.string().optional(),
@@ -19,6 +30,9 @@ const sourceObjectSchema = z
     graph: z.string().optional(),
     prefilter: z.string().optional(),
     prefilterFile: z.string().optional(),
+    auth: sparqlAuthSchema.optional(),
+    headers: z.record(z.string(), z.string()).optional(),
+    timeoutMs: z.number().int().positive().optional(),
   })
   .strict();
 

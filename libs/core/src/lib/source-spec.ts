@@ -8,12 +8,24 @@ export interface SourceSpecCommonFields {
   prefilterFile?: string;
 }
 
+export type SparqlAuth =
+  | { type: 'bearer'; token: string }
+  | { type: 'basic'; username: string; password: string };
+
+export interface EndpointHttpFields {
+  auth?: SparqlAuth;
+  headers?: Record<string, string>;
+  timeoutMs?: number;
+}
+
 export interface ParsedGlobSource extends SourceSpecCommonFields {
   kind: 'glob';
   glob: string;
 }
 
-export interface ParsedEndpointSource extends SourceSpecCommonFields {
+export interface ParsedEndpointSource
+  extends SourceSpecCommonFields,
+    EndpointHttpFields {
   kind: 'endpoint';
   endpoint: string;
 }
@@ -28,7 +40,9 @@ export type ParsedSource =
   | ParsedEndpointSource
   | ParsedReferenceSource;
 
-export interface SourceSpecObjectInput extends SourceSpecCommonFields {
+export interface SourceSpecObjectInput
+  extends SourceSpecCommonFields,
+    EndpointHttpFields {
   glob?: string;
   endpoint?: string;
 }
@@ -93,9 +107,72 @@ export function parseSourceSpec(input: SourceSpecInput): ParsedSource {
   }
   const common = pickCommon(input);
   if (hasGlob) {
+    rejectEndpointOnlyFields(input);
     return { kind: 'glob', glob: input.glob as string, ...common };
   }
-  return { kind: 'endpoint', endpoint: input.endpoint as string, ...common };
+  const http = pickEndpointHttp(input);
+  return {
+    kind: 'endpoint',
+    endpoint: input.endpoint as string,
+    ...common,
+    ...http,
+  };
+}
+
+const ENDPOINT_ONLY_KEYS = ['auth', 'headers', 'timeoutMs'] as const;
+
+function rejectEndpointOnlyFields(input: SourceSpecObjectInput): void {
+  for (const key of ENDPOINT_ONLY_KEYS) {
+    if ((input as Record<string, unknown>)[key] !== undefined) {
+      throw new Error(
+        `\`${key}\` is only valid on endpoint sources (got a glob source)`,
+      );
+    }
+  }
+}
+
+function pickEndpointHttp(input: SourceSpecObjectInput): EndpointHttpFields {
+  const out: EndpointHttpFields = {};
+  if (input.auth !== undefined) {
+    out.auth = validateAuth(input.auth);
+  }
+  if (input.headers !== undefined) out.headers = { ...input.headers };
+  if (input.timeoutMs !== undefined) out.timeoutMs = input.timeoutMs;
+  if (out.auth && out.headers) {
+    for (const key of Object.keys(out.headers)) {
+      if (key.toLowerCase() === 'authorization') {
+        throw new Error(
+          '`auth` and an explicit `Authorization` header collide on the same endpoint source',
+        );
+      }
+    }
+  }
+  return out;
+}
+
+function validateAuth(auth: SparqlAuth): SparqlAuth {
+  if (auth.type === 'bearer') {
+    if (typeof auth.token !== 'string' || auth.token.length === 0) {
+      throw new Error('bearer auth `token` must be a non-empty string');
+    }
+    return { type: 'bearer', token: auth.token };
+  }
+  if (auth.type === 'basic') {
+    if (typeof auth.username !== 'string' || auth.username.length === 0) {
+      throw new Error('basic auth `username` must be a non-empty string');
+    }
+    if (typeof auth.password !== 'string' || auth.password.length === 0) {
+      throw new Error('basic auth `password` must be a non-empty string');
+    }
+    return {
+      type: 'basic',
+      username: auth.username,
+      password: auth.password,
+    };
+  }
+  throw new Error(
+    `unknown auth type: ${JSON.stringify((auth as { type: unknown }).type)}`,
+  );
 }
 
 export interface ParseSourceSpecsContext {
