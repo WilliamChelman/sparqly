@@ -6,7 +6,9 @@ import {
   formatRdf,
   loadRdf,
   parseRdfString,
+  parseSourceSpec,
   type FormatSerialization,
+  type SourceSpecInput,
 } from 'core';
 import { configureLogger } from '../logging';
 import { writeOutputToFile } from '../output';
@@ -122,6 +124,21 @@ export const formatSpec: CommandSpec<FormatConfig> = {
             path: ['out'],
           });
         }
+        const sources = val.sources;
+        if (sources !== undefined) {
+          const list: SourceSpecInput[] = Array.isArray(sources)
+            ? (sources as SourceSpecInput[])
+            : [sources as SourceSpecInput];
+          list.forEach((entry, i) => {
+            const issue = sourceIssue(entry);
+            if (!issue) return;
+            ctx.addIssue({
+              code: 'custom',
+              message: issue,
+              path: Array.isArray(sources) ? ['sources', i] : ['sources'],
+            });
+          });
+        }
       },
     ),
   exitCode: (err, ctx) => {
@@ -220,6 +237,25 @@ export const formatSpec: CommandSpec<FormatConfig> = {
     await emit(body, config.out);
   },
 };
+
+function sourceIssue(entry: SourceSpecInput): string | null {
+  let parsed;
+  try {
+    parsed = parseSourceSpec(entry);
+  } catch {
+    return null;
+  }
+  if (parsed.kind === 'endpoint') {
+    return `SPARQL endpoint ${parsed.endpoint} cannot be used as a format source (format is a round-trip-a-file contract; pipe \`sparqly query --format=turtle\` into \`sparqly format\` for a filtered round-trip)`;
+  }
+  if (
+    parsed.kind === 'glob' &&
+    (parsed.prefilter !== undefined || parsed.prefilterFile !== undefined)
+  ) {
+    return `prefilter is not supported on a format source (format is a round-trip-a-file contract; pipe \`sparqly query --format=turtle\` into \`sparqly format\` for a filtered round-trip)`;
+  }
+  return null;
+}
 
 async function emit(body: string, out: string | undefined): Promise<void> {
   if (out !== undefined) {
