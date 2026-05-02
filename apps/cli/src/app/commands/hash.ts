@@ -30,6 +30,8 @@ interface HashConfig {
   compareWith?: string;
   query?: string;
   queryFile?: string;
+  compareWithQuery?: string;
+  compareWithQueryFile?: string;
   out?: string;
   verbose?: boolean;
   quiet?: boolean;
@@ -89,6 +91,32 @@ const queryFileField: FieldDescriptor = {
   ],
 };
 
+const compareWithQueryField: FieldDescriptor = {
+  key: 'compareWithQuery',
+  schema: z.string().min(1),
+  env: ['SPARQLY_HASH_COMPARE_WITH_QUERY'],
+  flags: [
+    {
+      spec: '--compare-with-query <sparql>',
+      description:
+        "Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the --compare-with side. Required for SPARQL endpoint sources on that side; otherwise optional. Lowers to an anonymous, uncached view. Mutually exclusive with --compare-with-query-file. Requires --compare-with.",
+    },
+  ],
+};
+
+const compareWithQueryFileField: FieldDescriptor = {
+  key: 'compareWithQueryFile',
+  schema: z.string().min(1),
+  env: ['SPARQLY_HASH_COMPARE_WITH_QUERY_FILE'],
+  flags: [
+    {
+      spec: '--compare-with-query-file <path>',
+      description:
+        'Path to a SPARQL file (relative to CWD) used as the inline scoping query for the --compare-with side. Mutually exclusive with --compare-with-query. Requires --compare-with.',
+    },
+  ],
+};
+
 const jsonField: FieldDescriptor = {
   key: 'json',
   schema: coercedBooleanSchema,
@@ -114,6 +142,8 @@ export const hashSpec: CommandSpec<HashConfig> = {
     compareWithField,
     queryField,
     queryFileField,
+    compareWithQueryField,
+    compareWithQueryFileField,
     outFieldFor('hash'),
     ...verbosityFieldsFor('hash'),
   ],
@@ -162,13 +192,33 @@ export const hashSpec: CommandSpec<HashConfig> = {
           });
         }
 
+        const hasCompareQuery = typeof val.compareWithQuery === 'string';
+        const hasCompareQueryFile = typeof val.compareWithQueryFile === 'string';
+        if (hasCompareQuery && hasCompareQueryFile) {
+          ctx.addIssue({
+            code: 'custom',
+            message:
+              '`--compare-with-query` and `--compare-with-query-file` are mutually exclusive on `hash`',
+            path: ['compareWithQuery'],
+          });
+        }
+        const hasCompareInlineScope = hasCompareQuery || hasCompareQueryFile;
+
         const compareWith = val.compareWith;
-        if (typeof compareWith === 'string') {
+        if (hasCompareInlineScope && typeof compareWith !== 'string') {
+          ctx.addIssue({
+            code: 'custom',
+            message:
+              '`--compare-with-query`/`--compare-with-query-file` requires `--compare-with`',
+            path: ['compareWithQuery'],
+          });
+        }
+        if (typeof compareWith === 'string' && !hasCompareInlineScope) {
           const violation = rawEndpoint(compareWith);
           if (violation) {
             ctx.addIssue({
               code: 'custom',
-              message: `SPARQL endpoint ${violation} cannot be hashed directly (hash always materializes; wrap the endpoint in a \`view\` source kind to scope it, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
+              message: `SPARQL endpoint ${violation} cannot be hashed directly (hash always materializes; wrap the endpoint in a \`view\` source kind to scope it, pass \`--compare-with-query\`/\`--compare-with-query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
               path: ['compareWith'],
             });
           }
@@ -214,6 +264,7 @@ export const hashSpec: CommandSpec<HashConfig> = {
     const logger = new Logger('sparqly');
     const graphMode = config.graphMode as GraphMode | undefined;
     const inlineQuery = await loadInlineScopeQuery(config);
+    const compareInlineQuery = await loadCompareInlineScopeQuery(config);
 
     if (isCompareMode) {
       const compareSpec = config.compareWith as string;
@@ -221,7 +272,7 @@ export const hashSpec: CommandSpec<HashConfig> = {
       let secondary: { source: string; hash: string };
       try {
         primary = await hashSource(sourceSpecs[0], graphMode, inlineQuery, logger);
-        secondary = await hashSource(compareSpec, graphMode, undefined, logger);
+        secondary = await hashSource(compareSpec, graphMode, compareInlineQuery, logger);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         throw new HashCompareError(message);
@@ -304,6 +355,17 @@ async function loadInlineScopeQuery(
   if (typeof config.query === 'string') return config.query;
   if (typeof config.queryFile === 'string') {
     const path = resolvePath(process.cwd(), config.queryFile);
+    return readFile(path, 'utf8');
+  }
+  return undefined;
+}
+
+async function loadCompareInlineScopeQuery(
+  config: HashConfig,
+): Promise<string | undefined> {
+  if (typeof config.compareWithQuery === 'string') return config.compareWithQuery;
+  if (typeof config.compareWithQueryFile === 'string') {
+    const path = resolvePath(process.cwd(), config.compareWithQueryFile);
     return readFile(path, 'utf8');
   }
   return undefined;
