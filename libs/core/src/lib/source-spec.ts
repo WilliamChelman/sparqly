@@ -4,8 +4,6 @@ export interface SourceSpecCommonFields {
   id?: string;
   graphMode?: GraphMode;
   graph?: string;
-  prefilter?: string;
-  prefilterFile?: string;
 }
 
 export type SparqlAuth =
@@ -69,8 +67,6 @@ const COMMON_FIELD_KEYS = [
   'id',
   'graphMode',
   'graph',
-  'prefilter',
-  'prefilterFile',
 ] as const satisfies ReadonlyArray<keyof SourceSpecCommonFields>;
 
 function validateSourceId(id: string): void {
@@ -114,11 +110,6 @@ export function parseSourceSpec(input: SourceSpecInput): ParsedSource {
     );
   }
   if (input.id !== undefined) validateSourceId(input.id);
-  if (input.prefilter !== undefined && input.prefilterFile !== undefined) {
-    throw new Error(
-      '`prefilter` and `prefilterFile` are mutually exclusive on a source-spec object',
-    );
-  }
   if (hasFrom) {
     return parseView(input);
   }

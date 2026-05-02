@@ -24,25 +24,7 @@ export async function loadQuerySources(
 ): Promise<QuerySources> {
   const parsed = parseSourceSpecs(inputs, options.parseContext);
 
-  const endpointsWithoutPrefilter = parsed.filter(
-    (s) =>
-      s.kind === 'endpoint' &&
-      s.prefilter === undefined &&
-      s.prefilterFile === undefined,
-  );
-  if (endpointsWithoutPrefilter.length > 0 && parsed.length > 1) {
-    const first = endpointsWithoutPrefilter[0] as ParsedEndpointSource;
-    throw new Error(
-      `endpoint ${first.endpoint} has no prefilter and is mixed with other sources — endpoints without a prefilter must be the only source (add a prefilter to scope it, or remove the other sources)`,
-    );
-  }
-
-  if (
-    parsed.length === 1 &&
-    parsed[0].kind === 'endpoint' &&
-    parsed[0].prefilter === undefined &&
-    parsed[0].prefilterFile === undefined
-  ) {
+  if (parsed.length === 1 && parsed[0].kind === 'endpoint') {
     return { mode: 'pass-through', endpoint: parsed[0] };
   }
 

@@ -103,8 +103,11 @@ describe('sparqly serve --watch with mixed glob and SPARQL sources', () => {
       dedent`
         sources:
           - "${dataPath}"
-          - endpoint: "${endpoint.url}"
-            prefilter: "SELECT ?s ?p ?o WHERE { ?s ?p ?o }"
+          - id: ep
+            endpoint: "${endpoint.url}"
+          - id: snap
+            from: ["@ep"]
+            query: "SELECT ?s ?p ?o WHERE { ?s ?p ?o }"
       ` + '\n',
     );
 

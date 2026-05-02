@@ -1,13 +1,11 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   startFakeSparqlEndpoint,
   type FakeSparqlEndpoint,
 } from './helpers/fake-sparql';
-import { runCli } from './helpers/run-cli';
 import { startServe, type ServeHandle } from './helpers/serve';
 
 const SPARQL_JSON_PROBE = JSON.stringify({
@@ -76,37 +74,4 @@ describe('sparqly serve — pass-through federation', () => {
     );
   });
 
-  it('mixing an endpoint without prefilter and a glob source is rejected at startup', async () => {
-    let requestCount = 0;
-    endpoint = await startFakeSparqlEndpoint(() => {
-      requestCount += 1;
-      return {
-        contentType: 'application/sparql-results+json',
-        body: SPARQL_JSON_PROBE,
-      };
-    });
-    const ttlPath = join(dir, 'a.ttl');
-    await writeFile(
-      ttlPath,
-      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
-    );
-
-    const configPath = join(dir, 'sparqly.serve.yaml');
-    await writeFile(
-      configPath,
-      dedent`
-        sources:
-          - "${endpoint.url}"
-          - "${ttlPath}"
-      ` + '\n',
-    );
-
-    const result = await runCli(['serve', '--config', configPath, '--port', '0'], {
-      env: {},
-    });
-
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/endpoint.*prefilter/i);
-    expect(requestCount).toBe(0);
-  });
 });

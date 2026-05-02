@@ -52,7 +52,7 @@ const compareWithField: FieldDescriptor = {
     {
       spec: '--compare-with <source>',
       description:
-        "Hash a second source spec (file path or glob) with the same loader options and compare against the primary source. Exit 0 on match (stdout 'match: <hash>'), 1 on mismatch (stdout shows both labeled hashes), 2 on error. Requires exactly one primary source. SPARQL endpoint sources are rejected on this side (a prefilter cannot be expressed for a CLI string).",
+        "Hash a second source spec (file path or glob) with the same loader options and compare against the primary source. Exit 0 on match (stdout 'match: <hash>'), 1 on mismatch (stdout shows both labeled hashes), 2 on error. Requires exactly one primary source. SPARQL endpoint sources are rejected on this side (use a `view` source kind to scope an endpoint).",
     },
   ],
 };
@@ -74,7 +74,7 @@ const jsonField: FieldDescriptor = {
 export const hashSpec: CommandSpec<HashConfig> = {
   name: 'hash',
   description:
-    'Compute a stable SHA-256 over the canonicalized RDF content of one or more sources. Always materializes; a SPARQL endpoint source is rejected unless a prefilter scopes it. Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL hash is only as deterministic as the endpoint.',
+    'Compute a stable SHA-256 over the canonicalized RDF content of one or more sources. Always materializes; a SPARQL endpoint source is rejected (wrap it in a `view` source kind to scope it). Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL hash is only as deterministic as the endpoint.',
   fields: [
     sourcesField,
     graphModeFieldFor('hash'),
@@ -93,11 +93,11 @@ export const hashSpec: CommandSpec<HashConfig> = {
             ? (sources as SourceSpecInput[])
             : [sources as SourceSpecInput];
           list.forEach((entry, i) => {
-            const violation = endpointWithoutPrefilter(entry);
+            const violation = rawEndpoint(entry);
             if (violation) {
               ctx.addIssue({
                 code: 'custom',
-                message: `SPARQL endpoint ${violation} requires a prefilter for hash (hash always materializes; pre-scope the endpoint or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
+                message: `SPARQL endpoint ${violation} cannot be hashed directly (hash always materializes; wrap the endpoint in a \`view\` source kind to scope it, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
                 path: ['sources', i],
               });
             }
@@ -105,11 +105,11 @@ export const hashSpec: CommandSpec<HashConfig> = {
         }
         const compareWith = val.compareWith;
         if (typeof compareWith === 'string') {
-          const violation = endpointWithoutPrefilter(compareWith);
+          const violation = rawEndpoint(compareWith);
           if (violation) {
             ctx.addIssue({
               code: 'custom',
-              message: `SPARQL endpoint ${violation} requires a prefilter for hash (hash always materializes; pre-scope the endpoint or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
+              message: `SPARQL endpoint ${violation} cannot be hashed directly (hash always materializes; wrap the endpoint in a \`view\` source kind to scope it, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
               path: ['compareWith'],
             });
           }
@@ -197,7 +197,7 @@ export const hashSpec: CommandSpec<HashConfig> = {
   },
 };
 
-function endpointWithoutPrefilter(entry: SourceSpecInput): string | null {
+function rawEndpoint(entry: SourceSpecInput): string | null {
   let parsed;
   try {
     parsed = parseSourceSpec(entry);
@@ -205,9 +205,6 @@ function endpointWithoutPrefilter(entry: SourceSpecInput): string | null {
     return null;
   }
   if (parsed.kind !== 'endpoint') return null;
-  if (parsed.prefilter !== undefined || parsed.prefilterFile !== undefined) {
-    return null;
-  }
   return parsed.endpoint;
 }
 

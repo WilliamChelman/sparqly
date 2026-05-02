@@ -85,12 +85,12 @@ describe('formatSpec', () => {
     }
 
     const objectResult = schema.safeParse({
-      sources: { endpoint: 'http://example.org/sparql', prefilter: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }' },
+      sources: { endpoint: 'http://example.org/sparql' },
     });
     expect(objectResult.success).toBe(false);
   });
 
-  it('rejects prefilter/prefilterFile on a glob source via spec.refine', () => {
+  it('rejects prefilter/prefilterFile on a glob source as unknown keys (the field was removed)', () => {
     const baseSchema = blockSchemaFromFields(formatSpec.fields);
     if (!formatSpec.refine) throw new Error('expected refine');
     const schema = formatSpec.refine(baseSchema);
@@ -99,17 +99,6 @@ describe('formatSpec', () => {
       sources: { glob: 'data/**/*.ttl', prefilter: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }' },
     });
     expect(prefilterResult.success).toBe(false);
-    if (!prefilterResult.success) {
-      const messages = (
-        prefilterResult as z.ZodSafeParseError<unknown>
-      ).error.issues.map((i) => i.message);
-      expect(messages.some((m) => /prefilter/.test(m))).toBe(true);
-      expect(
-        messages.some((m) =>
-          /sparqly query --format=turtle.*sparqly format/.test(m),
-        ),
-      ).toBe(true);
-    }
 
     const prefilterFileResult = schema.safeParse({
       sources: { glob: 'data/**/*.ttl', prefilterFile: 'q.rq' },

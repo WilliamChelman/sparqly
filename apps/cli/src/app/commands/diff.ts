@@ -90,7 +90,7 @@ const formatField: FieldDescriptor = {
 export const diffSpec: CommandSpec<DiffConfig> = {
   name: 'diff',
   description:
-    'Compute a semantic diff between two RDF sources via RDFC-1.0 canonicalization. Always materializes both sides; a SPARQL endpoint source is rejected on either side unless a prefilter scopes it. Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL diff is only as deterministic as the endpoint. Note: RDFC-1.0 does not normalize literal lexical forms.',
+    'Compute a semantic diff between two RDF sources via RDFC-1.0 canonicalization. Always materializes both sides; a SPARQL endpoint source is rejected on either side (wrap it in a `view` source kind to scope it). Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL diff is only as deterministic as the endpoint. Note: RDFC-1.0 does not normalize literal lexical forms.',
   fields: [
     leftField,
     rightField,
@@ -115,11 +115,11 @@ export const diffSpec: CommandSpec<DiffConfig> = {
             ? (value as SourceSpecInput[])
             : [value as SourceSpecInput];
           list.forEach((entry, i) => {
-            const violation = endpointWithoutPrefilter(entry);
+            const violation = rawEndpoint(entry);
             if (violation) {
               ctx.addIssue({
                 code: 'custom',
-                message: `SPARQL endpoint ${violation} requires a prefilter on the ${side} side of diff (diff always materializes; pre-scope the endpoint or pipe \`sparqly query --format=turtle\` into \`sparqly diff\`)`,
+                message: `SPARQL endpoint ${violation} cannot be diffed directly on the ${side} side (diff always materializes; wrap the endpoint in a \`view\` source kind to scope it, or pipe \`sparqly query --format=turtle\` into \`sparqly diff\`)`,
                 path: Array.isArray(value) ? [side, i] : [side],
               });
             }
@@ -247,7 +247,7 @@ function formatBlock(
   return out.endsWith('\n') ? out : `${out}\n`;
 }
 
-function endpointWithoutPrefilter(entry: SourceSpecInput): string | null {
+function rawEndpoint(entry: SourceSpecInput): string | null {
   let parsed;
   try {
     parsed = parseSourceSpec(entry);
@@ -255,9 +255,6 @@ function endpointWithoutPrefilter(entry: SourceSpecInput): string | null {
     return null;
   }
   if (parsed.kind !== 'endpoint') return null;
-  if (parsed.prefilter !== undefined || parsed.prefilterFile !== undefined) {
-    return null;
-  }
   return parsed.endpoint;
 }
 

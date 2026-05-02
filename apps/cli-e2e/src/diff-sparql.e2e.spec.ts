@@ -6,7 +6,7 @@ import {
 import { diffFixture } from './helpers/hash';
 import { runCli } from './helpers/run-cli';
 
-describe('sparqly diff — SPARQL source requires a prefilter on each side', () => {
+describe('sparqly diff — raw SPARQL endpoint sources are rejected on either side', () => {
   let endpoint: FakeSparqlEndpoint | undefined;
 
   afterEach(async () => {
@@ -14,7 +14,7 @@ describe('sparqly diff — SPARQL source requires a prefilter on each side', () 
     endpoint = undefined;
   });
 
-  it('rejects a SPARQL endpoint on the left when no prefilter is set, without contacting the endpoint', async () => {
+  it('rejects a raw SPARQL endpoint on the left, without contacting the endpoint', async () => {
     endpoint = await startFakeSparqlEndpoint(() => ({
       contentType: 'application/sparql-results+json',
       body: '{}',
@@ -28,12 +28,12 @@ describe('sparqly diff — SPARQL source requires a prefilter on each side', () 
     ]);
 
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toMatch(/prefilter/i);
+    expect(result.stderr).toMatch(/view/i);
     expect(result.stderr).toContain(endpoint.url);
     expect(endpoint.requestCount()).toBe(0);
   });
 
-  it('rejects a SPARQL endpoint on the right when no prefilter is set, without contacting the endpoint', async () => {
+  it('rejects a raw SPARQL endpoint on the right, without contacting the endpoint', async () => {
     endpoint = await startFakeSparqlEndpoint(() => ({
       contentType: 'application/sparql-results+json',
       body: '{}',
@@ -47,7 +47,7 @@ describe('sparqly diff — SPARQL source requires a prefilter on each side', () 
     ]);
 
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toMatch(/prefilter/i);
+    expect(result.stderr).toMatch(/view/i);
     expect(result.stderr).toContain(endpoint.url);
     expect(endpoint.requestCount()).toBe(0);
   });
