@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, isAbsolute, resolve } from 'node:path';
 import { load as loadYaml, YAMLException } from 'js-yaml';
 import { z } from 'zod';
+import { substituteSourceEnv } from 'core';
 import type { CommandSpec } from './spec';
 import { blockSchemaFromFields } from './field';
 import type { FileLayers } from './runner';
@@ -23,8 +24,12 @@ export function makeFileLoader(spec: CommandSpec) {
         `config at ${absolute} must be an object, got ${describeType(parsed)}`,
       );
     }
+    const withEnv = applySourceEnvSubstitution(
+      parsed as Record<string, unknown>,
+      absolute,
+    );
     const schema = strictBlockSchema(spec);
-    const result = schema.safeParse(parsed);
+    const result = schema.safeParse(withEnv);
     if (!result.success) {
       throw new ConfigError(formatZodError(result.error, absolute));
     }
@@ -64,6 +69,22 @@ function parseByExtension(absolute: string, raw: string): unknown {
   throw new ConfigError(
     `failed to load --config '${absolute}': unsupported extension '${ext}' (expected .yaml, .yml, or .json)`,
   );
+}
+
+function applySourceEnvSubstitution(
+  parsed: Record<string, unknown>,
+  filepath: string,
+): Record<string, unknown> {
+  const sources = parsed.sources;
+  if (!Array.isArray(sources)) return parsed;
+  let substituted: unknown[];
+  try {
+    substituted = substituteSourceEnv(sources, { env: process.env });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new ConfigError(`invalid config at ${filepath}: ${message}`);
+  }
+  return { ...parsed, sources: substituted };
 }
 
 function strictBlockSchema(spec: CommandSpec): z.ZodTypeAny {
