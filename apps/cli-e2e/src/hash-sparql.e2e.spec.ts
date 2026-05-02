@@ -1,10 +1,34 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   startFakeSparqlEndpoint,
   type FakeSparqlEndpoint,
 } from './helpers/fake-sparql';
-import { hashFixture } from './helpers/hash';
+import { hashFixture, leadingHash } from './helpers/hash';
 import { runCli } from './helpers/run-cli';
+
+const SPARQL_TWO_BINDINGS_JSON = JSON.stringify({
+  head: { vars: ['s', 'p', 'o'] },
+  results: {
+    bindings: [
+      {
+        s: { type: 'uri', value: 'http://example.org/keep' },
+        p: { type: 'uri', value: 'http://example.org/p' },
+        o: { type: 'uri', value: 'http://example.org/v1' },
+      },
+      {
+        s: { type: 'uri', value: 'http://example.org/drop' },
+        p: { type: 'uri', value: 'http://example.org/p' },
+        o: { type: 'uri', value: 'http://example.org/v2' },
+      },
+    ],
+  },
+});
+
+const SCOPE_QUERY =
+  'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }';
 
 describe('sparqly hash — raw SPARQL endpoint sources are rejected', () => {
   let endpoint: FakeSparqlEndpoint | undefined;
@@ -47,5 +71,113 @@ describe('sparqly hash — raw SPARQL endpoint sources are rejected', () => {
     expect(result.stderr).toMatch(/view/i);
     expect(result.stderr).toContain(endpoint.url);
     expect(endpoint.requestCount()).toBe(0);
+  });
+});
+
+describe('sparqly hash — inline scoping query (anonymous view)', () => {
+  let endpoint: FakeSparqlEndpoint | undefined;
+  let scratch: string;
+
+  beforeEach(async () => {
+    scratch = await mkdtemp(join(tmpdir(), 'sparqly-hash-anon-view-'));
+  });
+
+  afterEach(async () => {
+    if (endpoint) await endpoint.close();
+    endpoint = undefined;
+    await rm(scratch, { recursive: true, force: true });
+  });
+
+  it('--query: hashes a scoped slice of a SPARQL endpoint, equal to hashing the same slice from a turtle file', async () => {
+    endpoint = await startFakeSparqlEndpoint(() => ({
+      body: SPARQL_TWO_BINDINGS_JSON,
+    }));
+
+    const ttlPath = join(scratch, 'kept.ttl');
+    await writeFile(
+      ttlPath,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:keep ex:p ex:v1 .',
+      ].join('\n') + '\n',
+    );
+
+    const viaEndpoint = await runCli([
+      'hash',
+      '--quiet',
+      '--query',
+      SCOPE_QUERY,
+      endpoint.url,
+    ]);
+    const viaFile = await runCli(['hash', '--quiet', ttlPath]);
+
+    expect(viaEndpoint.exitCode, viaEndpoint.stderr).toBe(0);
+    expect(viaFile.exitCode, viaFile.stderr).toBe(0);
+    expect(leadingHash(viaEndpoint.stdout)).toBe(leadingHash(viaFile.stdout));
+    expect(endpoint.requestCount()).toBeGreaterThan(0);
+  });
+
+  it('--query-file: behaves equivalently to --query', async () => {
+    endpoint = await startFakeSparqlEndpoint(() => ({
+      body: SPARQL_TWO_BINDINGS_JSON,
+    }));
+    const queryPath = join(scratch, 'scope.rq');
+    await writeFile(queryPath, SCOPE_QUERY);
+
+    const ttlPath = join(scratch, 'kept.ttl');
+    await writeFile(
+      ttlPath,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:keep ex:p ex:v1 .',
+      ].join('\n') + '\n',
+    );
+
+    const viaEndpoint = await runCli([
+      'hash',
+      '--quiet',
+      '--query-file',
+      queryPath,
+      endpoint.url,
+    ]);
+    const viaFile = await runCli(['hash', '--quiet', ttlPath]);
+
+    expect(viaEndpoint.exitCode, viaEndpoint.stderr).toBe(0);
+    expect(viaFile.exitCode, viaFile.stderr).toBe(0);
+    expect(leadingHash(viaEndpoint.stdout)).toBe(leadingHash(viaFile.stdout));
+  });
+
+  it('--query and --query-file are mutually exclusive', async () => {
+    const queryPath = join(scratch, 'scope.rq');
+    await writeFile(queryPath, SCOPE_QUERY);
+
+    const result = await runCli([
+      'hash',
+      '--quiet',
+      '--query',
+      SCOPE_QUERY,
+      '--query-file',
+      queryPath,
+      hashFixture('domain.ttl'),
+    ]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/--query.*--query-file|mutually exclusive/i);
+  });
+
+  it('rejects more than one source when an inline scoping query is provided', async () => {
+    const result = await runCli([
+      'hash',
+      '--quiet',
+      '--query',
+      SCOPE_QUERY,
+      '-s',
+      hashFixture('domain.ttl'),
+      '-s',
+      hashFixture('parts/*.ttl'),
+    ]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/exactly one source|single source|one source/i);
   });
 });
