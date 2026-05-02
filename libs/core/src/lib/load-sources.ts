@@ -7,6 +7,7 @@ import { loadRdf, type GraphMode, type LoadResult } from './rdf-loader';
 import {
   parseSourceSpecs,
   type ParseSourceSpecsContext,
+  type ParsedEndpointSource,
   type ParsedGlobSource,
   type SourceSpecInput,
 } from './source-spec';
@@ -25,11 +26,6 @@ export async function loadSources(
 ): Promise<LoadResult> {
   const parsed = parseSourceSpecs(inputs, options.parseContext);
   for (const source of parsed) {
-    if (source.kind === 'endpoint') {
-      throw new Error(
-        `SPARQL endpoint sources are not yet supported (tracking: ${NOT_SUPPORTED_TRACKING_URL})`,
-      );
-    }
     if (source.kind === 'reference') {
       throw new Error(
         `@id reference sources are not yet supported (tracking: ${NOT_SUPPORTED_TRACKING_URL})`,
@@ -37,10 +33,10 @@ export async function loadSources(
     }
   }
 
-  const globs = parsed as ReadonlyArray<ParsedGlobSource>;
   const resolvedPrefilters = new Map<number, string>();
-  for (let i = 0; i < globs.length; i++) {
-    const source = globs[i];
+  for (let i = 0; i < parsed.length; i++) {
+    const source = parsed[i];
+    if (source.kind === 'reference') continue;
     if (source.prefilter !== undefined) {
       validatePrefilter(source.prefilter);
       resolvedPrefilters.set(i, source.prefilter);
@@ -57,15 +53,31 @@ export async function loadSources(
   const allPrefixes: Record<string, Record<string, string>> = {};
   const engine = new ComunicaQueryEngine();
 
-  for (let i = 0; i < globs.length; i++) {
-    const source = globs[i];
+  for (let i = 0; i < parsed.length; i++) {
+    const source = parsed[i] as ParsedGlobSource | ParsedEndpointSource;
     const effectiveMode: GraphMode =
       source.graphMode ?? options.graphMode ?? 'preserve';
     const overrideGraph = source.graph
       ? DataFactory.namedNode(source.graph)
       : undefined;
-
     const prefilterQuery = resolvedPrefilters.get(i);
+
+    if (source.kind === 'endpoint') {
+      const sub = await loadEndpoint(engine, source);
+      const syntheticGraph =
+        overrideGraph ?? DataFactory.namedNode(source.endpoint);
+      const after = prefilterQuery
+        ? await applyPrefilter(engine, sub, prefilterQuery, {
+            graphMode: effectiveMode,
+            syntheticGraph,
+          })
+        : applyGraphMode(sub, effectiveMode, syntheticGraph);
+      for (const quad of after.getQuads(null, null, null, null)) {
+        merged.addQuad(quad);
+      }
+      continue;
+    }
+
     if (prefilterQuery !== undefined) {
       const sub = await loadRdf({
         sources: source.glob,
@@ -112,6 +124,74 @@ export async function loadSources(
   }
 
   return { store: merged, files: allFiles, prefixes: allPrefixes };
+}
+
+async function loadEndpoint(
+  engine: ComunicaQueryEngine,
+  source: ParsedEndpointSource,
+): Promise<Store> {
+  const out = new Store();
+  try {
+    const result = await engine.query(
+      'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
+      { sources: [{ type: 'sparql', value: source.endpoint }] },
+    );
+    if (result.resultType !== 'bindings') {
+      throw new Error(
+        `unexpected result type from endpoint: ${String(result.resultType)}`,
+      );
+    }
+    const bindings = await result.execute();
+    for await (const b of bindings as AsyncIterable<{
+      get(name: string): Quad['subject'] | undefined;
+    }>) {
+      const s = b.get('s');
+      const p = b.get('p');
+      const o = b.get('o');
+      if (!s || !p || !o) continue;
+      out.addQuad(
+        DataFactory.quad(
+          s as Quad['subject'],
+          p as Quad['predicate'],
+          o as Quad['object'],
+        ),
+      );
+    }
+    return out;
+  } catch (err) {
+    throw new Error(
+      `endpoint ${source.endpoint}: ${describeEndpointError(err)}`,
+    );
+  }
+}
+
+function describeEndpointError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  // Comunica's HTTP error messages typically include the status code; pass through.
+  return message;
+}
+
+function applyGraphMode(
+  source: Store,
+  mode: GraphMode,
+  syntheticGraph: ReturnType<typeof DataFactory.namedNode>,
+): Store {
+  if (mode === 'preserve') return source;
+  const out = new Store();
+  for (const quad of source.getQuads(null, null, null, null)) {
+    let graph: Quad['graph'] = quad.graph;
+    if (mode === 'flatten') {
+      graph = DataFactory.defaultGraph();
+    } else if (mode === 'forceAll') {
+      graph = syntheticGraph;
+    } else if (mode === 'fillDefault' && quad.graph.termType === 'DefaultGraph') {
+      graph = syntheticGraph;
+    }
+    out.addQuad(
+      DataFactory.quad(quad.subject, quad.predicate, quad.object, graph),
+    );
+  }
+  return out;
 }
 
 interface PrefilterPostOptions {

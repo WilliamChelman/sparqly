@@ -5,7 +5,7 @@ import {
   QueryEngine,
   SUPPORTED_FORMATS,
   formatRdf,
-  loadRdf,
+  loadSources,
   parseRdfString,
   parseSparqlPrefixes,
   type GraphMode,
@@ -137,10 +137,10 @@ export const querySpec: CommandSpec<QueryConfig> = {
     const mutable = config.mutable === true;
 
     const loadStart = Date.now();
-    const { store, files } = await loadRdf({
-      sources: config.sources,
-      graphMode,
-    });
+    const inputs = Array.isArray(config.sources)
+      ? config.sources
+      : [config.sources];
+    const { store, files } = await loadSources(inputs, { graphMode });
     logger.log(
       `Loaded ${files.length} file(s) (${store.size} quads) in ${
         Date.now() - loadStart
