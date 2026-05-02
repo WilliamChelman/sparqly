@@ -15,3 +15,10 @@
 - ontology to shacl
 - linting
   - duplicated triples (either in file or across graphs)
+- mutation dive
+  - file update
+  - remote changes (vendor specific?)
+- simplify prefix handling: no need to be cute about parsing prefixes bases, except maybe for format
+- rationalize ENV config, keep only what makes sense
+- meta-source split : differentiate between true remote source, and materialized one, with cache etc. Query to verify case (e.g. dct:modified on a dataset)
+- hash diff: add --query option
