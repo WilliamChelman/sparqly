@@ -86,6 +86,11 @@ export function parseSourceSpec(input: SourceSpecInput): ParsedSource {
     );
   }
   if (input.id !== undefined) validateSourceId(input.id);
+  if (input.prefilter !== undefined && input.prefilterFile !== undefined) {
+    throw new Error(
+      '`prefilter` and `prefilterFile` are mutually exclusive on a source-spec object',
+    );
+  }
   const common = pickCommon(input);
   if (hasGlob) {
     return { kind: 'glob', glob: input.glob as string, ...common };

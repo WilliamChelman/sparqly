@@ -1,7 +1,13 @@
+import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
+import { readFile } from 'node:fs/promises';
+import { resolve as resolvePath } from 'node:path';
+import { DataFactory, Store, type Quad } from 'n3';
+import { validatePrefilter } from './prefilter-validate';
 import { loadRdf, type GraphMode, type LoadResult } from './rdf-loader';
 import {
   parseSourceSpecs,
   type ParseSourceSpecsContext,
+  type ParsedGlobSource,
   type SourceSpecInput,
 } from './source-spec';
 
@@ -18,7 +24,6 @@ export async function loadSources(
   options: LoadSourcesOptions = {},
 ): Promise<LoadResult> {
   const parsed = parseSourceSpecs(inputs, options.parseContext);
-  const globs: string[] = [];
   for (const source of parsed) {
     if (source.kind === 'endpoint') {
       throw new Error(
@@ -30,7 +35,144 @@ export async function loadSources(
         `@id reference sources are not yet supported (tracking: ${NOT_SUPPORTED_TRACKING_URL})`,
       );
     }
-    globs.push(source.glob);
   }
-  return loadRdf({ sources: globs, graphMode: options.graphMode });
+
+  const globs = parsed as ReadonlyArray<ParsedGlobSource>;
+  const resolvedPrefilters = new Map<number, string>();
+  for (let i = 0; i < globs.length; i++) {
+    const source = globs[i];
+    if (source.prefilter !== undefined) {
+      validatePrefilter(source.prefilter);
+      resolvedPrefilters.set(i, source.prefilter);
+    } else if (source.prefilterFile !== undefined) {
+      const path = resolvePath(process.cwd(), source.prefilterFile);
+      const query = await readFile(path, 'utf8');
+      validatePrefilter(query);
+      resolvedPrefilters.set(i, query);
+    }
+  }
+
+  const merged = new Store();
+  const allFiles: string[] = [];
+  const allPrefixes: Record<string, Record<string, string>> = {};
+  const engine = new ComunicaQueryEngine();
+
+  for (let i = 0; i < globs.length; i++) {
+    const source = globs[i];
+    const effectiveMode: GraphMode =
+      source.graphMode ?? options.graphMode ?? 'preserve';
+    const overrideGraph = source.graph
+      ? DataFactory.namedNode(source.graph)
+      : undefined;
+
+    const prefilterQuery = resolvedPrefilters.get(i);
+    if (prefilterQuery !== undefined) {
+      const sub = await loadRdf({
+        sources: source.glob,
+        graphMode: 'preserve',
+      });
+      const syntheticGraph =
+        overrideGraph ??
+        (sub.files.length === 1
+          ? DataFactory.namedNode(`file://${sub.files[0]}`)
+          : undefined);
+      const after = await applyPrefilter(engine, sub.store, prefilterQuery, {
+        graphMode: effectiveMode,
+        syntheticGraph,
+      });
+      for (const quad of after.getQuads(null, null, null, null)) {
+        merged.addQuad(quad);
+      }
+      allFiles.push(...sub.files);
+      Object.assign(allPrefixes, sub.prefixes);
+      continue;
+    }
+
+    const sub = await loadRdf({
+      sources: source.glob,
+      graphMode: effectiveMode,
+    });
+    const fileSyntheticIris = new Set(sub.files.map((f) => `file://${f}`));
+    for (const quad of sub.store.getQuads(null, null, null, null)) {
+      const rewritten =
+        overrideGraph &&
+        quad.graph.termType === 'NamedNode' &&
+        fileSyntheticIris.has(quad.graph.value)
+          ? DataFactory.quad(
+              quad.subject,
+              quad.predicate,
+              quad.object,
+              overrideGraph,
+            )
+          : quad;
+      merged.addQuad(rewritten);
+    }
+    allFiles.push(...sub.files);
+    Object.assign(allPrefixes, sub.prefixes);
+  }
+
+  return { store: merged, files: allFiles, prefixes: allPrefixes };
+}
+
+interface PrefilterPostOptions {
+  graphMode: GraphMode;
+  syntheticGraph: ReturnType<typeof DataFactory.namedNode> | undefined;
+}
+
+async function applyPrefilter(
+  engine: ComunicaQueryEngine,
+  source: Store,
+  query: string,
+  opts: PrefilterPostOptions,
+): Promise<Store> {
+  const out = new Store();
+  const result = await engine.query(query, { sources: [source] });
+  if (result.resultType === 'bindings') {
+    const bindings = await result.execute();
+    for await (const b of bindings as AsyncIterable<{
+      get(name: string): Quad['subject'] | Quad['predicate'] | Quad['object'] | undefined;
+    }>) {
+      const s = b.get('s');
+      const p = b.get('p');
+      const o = b.get('o');
+      const g = b.get('g');
+      if (!s || !p || !o) continue;
+      const graph = g
+        ? (g as Quad['graph'])
+        : graphFromMode(opts.graphMode, opts.syntheticGraph);
+      out.addQuad(
+        DataFactory.quad(
+          s as Quad['subject'],
+          p as Quad['predicate'],
+          o as Quad['object'],
+          graph,
+        ),
+      );
+    }
+    return out;
+  }
+  if (result.resultType === 'quads') {
+    const quads = await result.execute();
+    for await (const q of quads as AsyncIterable<Quad>) {
+      const graph =
+        q.graph.termType === 'DefaultGraph'
+          ? graphFromMode(opts.graphMode, opts.syntheticGraph)
+          : q.graph;
+      out.addQuad(DataFactory.quad(q.subject, q.predicate, q.object, graph));
+    }
+    return out;
+  }
+  throw new Error(
+    `Unexpected prefilter result type: ${String(result.resultType)}`,
+  );
+}
+
+function graphFromMode(
+  mode: GraphMode,
+  syntheticGraph: ReturnType<typeof DataFactory.namedNode> | undefined,
+): Quad['graph'] {
+  if ((mode === 'fillDefault' || mode === 'forceAll') && syntheticGraph) {
+    return syntheticGraph;
+  }
+  return DataFactory.defaultGraph();
 }

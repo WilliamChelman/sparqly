@@ -86,6 +86,34 @@ describe('parseSourceSpec — object form', () => {
   });
 });
 
+describe('parseSourceSpec — prefilter mutex', () => {
+  it('accepts prefilter alone', () => {
+    expect(
+      parseSourceSpec({
+        glob: 'a/*.ttl',
+        prefilter: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      }).prefilter,
+    ).toMatch(/CONSTRUCT/);
+  });
+
+  it('accepts prefilterFile alone', () => {
+    expect(
+      parseSourceSpec({ glob: 'a/*.ttl', prefilterFile: './pf.rq' })
+        .prefilterFile,
+    ).toBe('./pf.rq');
+  });
+
+  it('rejects an object that sets both prefilter and prefilterFile', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'a/*.ttl',
+        prefilter: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
+        prefilterFile: './pf.rq',
+      }),
+    ).toThrow(/`prefilter`.*`prefilterFile`.*mutual/i);
+  });
+});
+
 describe('parseSourceSpec — source id', () => {
   it.each([
     'a',
