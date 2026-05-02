@@ -62,4 +62,62 @@ describe('formatSpec', () => {
     ).toBe(2);
     expect(formatSpec.exitCode(new Error('x'))).toBe(1);
   });
+
+  it('rejects a SPARQL endpoint source via spec.refine, suggesting the query→format pipe', () => {
+    const baseSchema = blockSchemaFromFields(formatSpec.fields);
+    if (!formatSpec.refine) throw new Error('expected refine');
+    const schema = formatSpec.refine(baseSchema);
+
+    const stringResult = schema.safeParse({
+      sources: 'http://example.org/sparql',
+    });
+    expect(stringResult.success).toBe(false);
+    if (!stringResult.success) {
+      const messages = (
+        stringResult as z.ZodSafeParseError<unknown>
+      ).error.issues.map((i) => i.message);
+      expect(messages.some((m) => /SPARQL endpoint/.test(m))).toBe(true);
+      expect(
+        messages.some((m) =>
+          /sparqly query --format=turtle.*sparqly format/.test(m),
+        ),
+      ).toBe(true);
+    }
+
+    const objectResult = schema.safeParse({
+      sources: { endpoint: 'http://example.org/sparql', prefilter: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }' },
+    });
+    expect(objectResult.success).toBe(false);
+  });
+
+  it('rejects prefilter/prefilterFile on a glob source via spec.refine', () => {
+    const baseSchema = blockSchemaFromFields(formatSpec.fields);
+    if (!formatSpec.refine) throw new Error('expected refine');
+    const schema = formatSpec.refine(baseSchema);
+
+    const prefilterResult = schema.safeParse({
+      sources: { glob: 'data/**/*.ttl', prefilter: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }' },
+    });
+    expect(prefilterResult.success).toBe(false);
+    if (!prefilterResult.success) {
+      const messages = (
+        prefilterResult as z.ZodSafeParseError<unknown>
+      ).error.issues.map((i) => i.message);
+      expect(messages.some((m) => /prefilter/.test(m))).toBe(true);
+      expect(
+        messages.some((m) =>
+          /sparqly query --format=turtle.*sparqly format/.test(m),
+        ),
+      ).toBe(true);
+    }
+
+    const prefilterFileResult = schema.safeParse({
+      sources: { glob: 'data/**/*.ttl', prefilterFile: 'q.rq' },
+    });
+    expect(prefilterFileResult.success).toBe(false);
+
+    expect(
+      schema.safeParse({ sources: { glob: 'data/**/*.ttl' } }).success,
+    ).toBe(true);
+  });
 });
