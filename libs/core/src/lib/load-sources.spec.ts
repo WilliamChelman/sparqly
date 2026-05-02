@@ -192,6 +192,131 @@ describe('loadSources — SPARQL endpoint sources', () => {
   });
 });
 
+describe('loadSources — SPARQL auth, headers, and timeoutMs', () => {
+  let endpoint: FakeSparqlEndpoint | undefined;
+
+  afterEach(async () => {
+    if (endpoint) await endpoint.close();
+    endpoint = undefined;
+  });
+
+  it('forwards bearer auth as `Authorization: Bearer <token>`', async () => {
+    let observed: string | undefined;
+    endpoint = await startFakeSparqlEndpoint(({ headers }) => {
+      const v = headers['authorization'];
+      observed = Array.isArray(v) ? v[0] : v;
+      return {
+        contentType: 'application/sparql-results+json',
+        body: SPARQL_JSON_TWO_BINDINGS,
+      };
+    });
+
+    await loadSources([
+      {
+        endpoint: endpoint.url,
+        auth: { type: 'bearer', token: 'tk-1' },
+      },
+    ]);
+
+    expect(observed).toBe('Bearer tk-1');
+  });
+
+  it('forwards basic auth as `Authorization: Basic <base64>`', async () => {
+    let observed: string | undefined;
+    endpoint = await startFakeSparqlEndpoint(({ headers }) => {
+      const v = headers['authorization'];
+      observed = Array.isArray(v) ? v[0] : v;
+      return {
+        contentType: 'application/sparql-results+json',
+        body: SPARQL_JSON_TWO_BINDINGS,
+      };
+    });
+
+    await loadSources([
+      {
+        endpoint: endpoint.url,
+        auth: { type: 'basic', username: 'alice', password: 'hunter2' },
+      },
+    ]);
+
+    const expected = `Basic ${Buffer.from('alice:hunter2', 'utf8').toString(
+      'base64',
+    )}`;
+    expect(observed).toBe(expected);
+  });
+
+  it('forwards custom headers (escape hatch) verbatim to the endpoint', async () => {
+    let observed: Record<string, string | string[] | undefined> = {};
+    endpoint = await startFakeSparqlEndpoint(({ headers }) => {
+      observed = headers;
+      return {
+        contentType: 'application/sparql-results+json',
+        body: SPARQL_JSON_TWO_BINDINGS,
+      };
+    });
+
+    await loadSources([
+      {
+        endpoint: endpoint.url,
+        headers: { 'X-Tenant': 'acme', 'X-Trace': 'abc' },
+      },
+    ]);
+
+    const tenant = observed['x-tenant'];
+    const trace = observed['x-trace'];
+    expect(Array.isArray(tenant) ? tenant[0] : tenant).toBe('acme');
+    expect(Array.isArray(trace) ? trace[0] : trace).toBe('abc');
+  });
+
+  it('honors a per-source timeoutMs override (slow endpoint → hard error)', async () => {
+    endpoint = await startFakeSparqlEndpoint(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return {
+        contentType: 'application/sparql-results+json',
+        body: SPARQL_JSON_TWO_BINDINGS,
+      };
+    });
+
+    await expect(
+      loadSources([{ endpoint: endpoint.url, timeoutMs: 25 }]),
+    ).rejects.toThrow(new RegExp(`endpoint ${endpoint.url}`));
+  });
+
+  it('default timeoutMs (30s) lets a fast endpoint succeed', async () => {
+    endpoint = await startFakeSparqlEndpoint(() => ({
+      contentType: 'application/sparql-results+json',
+      body: SPARQL_JSON_TWO_BINDINGS,
+    }));
+
+    const { store } = await loadSources([{ endpoint: endpoint.url }]);
+    expect(store.size).toBe(2);
+  });
+
+  it('combines auth + custom headers on the same request', async () => {
+    let observed: Record<string, string | string[] | undefined> = {};
+    endpoint = await startFakeSparqlEndpoint(({ headers }) => {
+      observed = headers;
+      return {
+        contentType: 'application/sparql-results+json',
+        body: SPARQL_JSON_TWO_BINDINGS,
+      };
+    });
+
+    await loadSources([
+      {
+        endpoint: endpoint.url,
+        auth: { type: 'bearer', token: 'tk-1' },
+        headers: { 'X-Tenant': 'acme' },
+      },
+    ]);
+
+    const auth = observed['authorization'];
+    const tenant = observed['x-tenant'];
+    expect(Array.isArray(auth) ? auth[0] : auth).toBe('Bearer tk-1');
+    expect(Array.isArray(tenant) ? tenant[0] : tenant).toBe('acme');
+  });
+});
+
 describe('loadSources — per-source pipeline', () => {
   let dir: string;
 
