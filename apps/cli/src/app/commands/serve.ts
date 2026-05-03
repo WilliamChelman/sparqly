@@ -1,5 +1,12 @@
 import { join } from 'node:path';
-import { type GraphMode, type SourceSpecInput } from 'core';
+import { z } from 'zod';
+import {
+  parseSourceSpecs,
+  selectTarget,
+  type GraphMode,
+  type ParsedSource,
+  type SourceSpecInput,
+} from 'core';
 import { createServer } from 'server';
 import { configureLogger } from '../logging';
 import type { FieldDescriptor } from '../runner/field';
@@ -8,7 +15,7 @@ import {
   coercedIntSchema,
   graphModeFieldFor,
   mutableFieldsFor,
-  sourcesField,
+  sourceField,
   verbosityFieldsFor,
 } from '../runner/fields-shared';
 import type { CommandSpec } from '../runner/spec';
@@ -16,7 +23,8 @@ import type { CommandSpec } from '../runner/spec';
 const WEB_BUNDLE_DIR = join(__dirname, 'web');
 
 interface ServeConfig {
-  sources?: SourceSpecInput | SourceSpecInput[];
+  sources?: SourceSpecInput[];
+  source?: SourceSpecInput;
   port?: number;
   graphMode?: GraphMode;
   mutable?: boolean;
@@ -26,6 +34,13 @@ interface ServeConfig {
   verbose?: boolean;
   quiet?: boolean;
 }
+
+const sourceSpecObjectSchema = z.record(z.string(), z.unknown());
+
+const sourcesRegistryField: FieldDescriptor = {
+  key: 'sources',
+  schema: z.array(z.union([z.string(), sourceSpecObjectSchema])),
+};
 
 const portField: FieldDescriptor = {
   key: 'port',
@@ -49,7 +64,7 @@ const watchField: FieldDescriptor = {
     {
       spec: '--watch',
       description:
-        'Watch the sources glob and rebuild the in-memory store on change (debounced). Default: off.',
+        "Watch the target's chain (globs and any `cache.ttl`/`cache.freshness` views) and rebuild on change. Default: off.",
     },
   ],
 };
@@ -81,11 +96,23 @@ const watchPollField: FieldDescriptor = {
   ],
 };
 
+export function resolveServeTarget(config: ServeConfig): ParsedSource {
+  const registry = parseSourceSpecs(config.sources ?? []);
+  const targetArg =
+    typeof config.source === 'string' ? config.source : undefined;
+  if (config.source !== undefined && targetArg === undefined) {
+    return parseSourceSpecs([config.source])[0];
+  }
+  return selectTarget(registry, targetArg);
+}
+
 export const serveSpec: CommandSpec<ServeConfig> = {
   name: 'serve',
-  description: 'Serve a W3C SPARQL Protocol endpoint at /api/sparql',
+  description:
+    'Serve a W3C SPARQL Protocol endpoint at /api/sparql against a target source (an `@id` ref into the config registry, or an inline glob/URL)',
   fields: [
-    sourcesField,
+    sourceField,
+    sourcesRegistryField,
     portField,
     graphModeFieldFor('serve'),
     ...mutableFieldsFor('serve'),
@@ -94,7 +121,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     watchPollField,
     ...verbosityFieldsFor('serve'),
   ],
-  positionals: [{ field: 'sources', name: 'glob' }],
+  positionals: [{ field: 'source', name: 'glob' }],
   exitCode: () => 1,
   handler: async (config) => {
     configureLogger({
@@ -102,20 +129,28 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       quiet: config.quiet === true,
     });
 
-    if (!config.sources) {
-      throw new Error('a sources glob is required');
-    }
-
     const graphMode = config.graphMode;
     const port = config.port ?? 3000;
     const mutable = config.mutable === true;
 
-    const inputs: ReadonlyArray<SourceSpecInput> = Array.isArray(config.sources)
-      ? config.sources
-      : [config.sources];
+    let sources: ReadonlyArray<SourceSpecInput>;
+    let target: string | undefined;
+    if (typeof config.source === 'object' && config.source !== null) {
+      // Inline object spec overrides the registry — single-source registry.
+      sources = [config.source];
+      target = undefined;
+    } else {
+      sources = config.sources ?? [];
+      target = typeof config.source === 'string' ? config.source : undefined;
+    }
+
+    if (sources.length === 0 && target === undefined) {
+      throw new Error('a source is required');
+    }
 
     await createServer({
-      sources: inputs,
+      sources,
+      target,
       port,
       mutable,
       graphMode,

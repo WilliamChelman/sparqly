@@ -72,6 +72,7 @@ describe('sparqly serve --watch with views', () => {
           - id: raw
             glob: "${ttlPath}"
           - id: people
+            default: true
             from: "@raw"
             query: |
               PREFIX ex: <http://example.org/>
@@ -156,21 +157,16 @@ describe('sparqly serve --watch with views', () => {
     );
 
     try {
-      // A glob source is required for the watcher to start (no-op for this view).
-      const sentinelPath = join(dir, 'sentinel.ttl');
-      await writeFile(sentinelPath, '');
-
       const cacheDir = join(dir, '.sparqly-cache');
       const configPath = join(dir, 'sparqly.serve.yaml');
       await writeFile(
         configPath,
         dedent`
           sources:
-            - id: sentinel
-              glob: "${sentinelPath}"
             - id: ep
               endpoint: "${endpoint.url}"
             - id: snap
+              default: true
               from: "@ep"
               query: |
                 CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }
@@ -254,20 +250,16 @@ describe('sparqly serve --watch with views', () => {
     );
 
     try {
-      const sentinelPath = join(dir, 'sentinel.ttl');
-      await writeFile(sentinelPath, '');
-
       const cacheDir = join(dir, '.sparqly-cache');
       const configPath = join(dir, 'sparqly.serve.yaml');
       await writeFile(
         configPath,
         dedent`
           sources:
-            - id: sentinel
-              glob: "${sentinelPath}"
             - id: ep
               endpoint: "${endpoint.url}"
             - id: snap
+              default: true
               from: "@ep"
               query: |
                 CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }

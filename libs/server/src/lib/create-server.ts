@@ -9,19 +9,26 @@ import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { Store } from 'n3';
 import {
   type GraphMode,
-  loadQuerySources,
-  loadSources,
   parseSourceSpecs,
   type ParsedSource,
   type ParsedViewSource,
   QueryEngine,
+  resolveSource,
+  selectTarget,
   type SourceSpecInput,
 } from 'core';
 import { ServerModule } from './server.module';
 import type { StoreRef } from './tokens';
+import { buildWatcherChain, type WatcherChain } from './watcher-chain';
 
 export interface CreateServerOptions {
   sources: SourceSpecInput | ReadonlyArray<SourceSpecInput>;
+  /**
+   * Selector for the target source within `sources`. An `@id` ref into the
+   * registry, or an inline glob/URL. Same precedence as the CLI: explicit
+   * value > `default: true` > sole entry > error.
+   */
+  target?: string;
   port: number;
   mutable?: boolean;
   graphMode?: GraphMode;
@@ -44,9 +51,13 @@ export async function createServer(
 ): Promise<CreatedServer> {
   const logger = new Logger('sparqly');
   const inputs = toSourceArray(options.sources);
+  const registry = parseSourceSpecs(inputs);
+  const target = selectTarget(registry, options.target);
+
   const loadStart = Date.now();
-  const querySources = await loadQuerySources(inputs, {
+  const querySources = await resolveSource(target, {
     graphMode: options.graphMode,
+    registry,
   });
 
   let engine: QueryEngine;
@@ -92,7 +103,8 @@ export async function createServer(
 
   const watcher = options.watch
     ? await maybeStartWatcher({
-        sources: inputs,
+        target,
+        registry,
         graphMode: options.graphMode,
         storeRef,
         logger,
@@ -145,7 +157,8 @@ function triggerLabel(trigger: RefreshTrigger): string {
 }
 
 interface StartWatcherOptions {
-  sources: ReadonlyArray<SourceSpecInput>;
+  target: ParsedSource;
+  registry: ReadonlyArray<ParsedSource>;
   graphMode?: GraphMode;
   storeRef: StoreRef | undefined;
   logger: Logger;
@@ -156,56 +169,55 @@ interface StartWatcherOptions {
 async function maybeStartWatcher(
   opts: StartWatcherOptions,
 ): Promise<WatcherHandle | undefined> {
-  const parsed = parseSourceSpecs(opts.sources);
-  const globPatterns = parsed
-    .filter((s): s is Extract<typeof s, { kind: 'glob' }> => s.kind === 'glob')
-    .map((s) => s.glob);
-  const views = parsed.filter(
-    (s): s is ParsedViewSource => s.kind === 'view',
-  );
+  const chain = buildWatcherChain(opts.registry, opts.target);
 
-  if (globPatterns.length === 0 || !opts.storeRef) {
+  if (chain.globs.length === 0 && chain.cachedViews.length === 0) {
+    // No glob source and no ttl/freshness view to drive refreshes — typically a
+    // raw endpoint (pass-through) or an everlasting-cached view.
     opts.logger.warn(
-      '--watch ignored: no glob source to watch. SPARQL sources are not auto-refreshed; restart the process to pick up upstream changes.',
+      '--watch ignored: no glob source in the target chain and no `cache.ttl`/`cache.freshness` views to refresh. SPARQL endpoints are not auto-refreshed; restart the process to pick up upstream changes.',
+    );
+    return undefined;
+  }
+  if (!opts.storeRef) {
+    opts.logger.warn(
+      '--watch ignored: target resolves pass-through to an endpoint; nothing local to refresh.',
     );
     return undefined;
   }
 
-  return startWatcher(
-    { ...opts, storeRef: opts.storeRef },
-    globPatterns,
-    views,
-    parsed,
-  );
+  return startWatcher({ ...opts, storeRef: opts.storeRef }, chain);
 }
 
 async function startWatcher(
   opts: StartWatcherOptions & { storeRef: StoreRef },
-  globPatterns: ReadonlyArray<string>,
-  views: ReadonlyArray<ParsedViewSource>,
-  registry: ReadonlyArray<ParsedSource>,
+  chain: WatcherChain,
 ): Promise<WatcherHandle> {
-  const viewIds = views.map((v) => v.id);
-  const baseDirs = Array.from(new Set(globPatterns.map((p) => globBase(p))));
+  const inChainViewIds = chain.views.map((v) => v.id);
+  const cachedViews = chain.cachedViews;
 
-  const watcher = chokidar.watch(baseDirs, {
-    ignoreInitial: true,
-    persistent: true,
-    awaitWriteFinish: { stabilityThreshold: 50, pollInterval: 10 },
-  });
-
-  await new Promise<void>((resolveReady, rejectReady) => {
-    const onReady = (): void => {
-      watcher.off('error', onError);
-      resolveReady();
-    };
-    const onError = (err: unknown): void => {
-      watcher.off('ready', onReady);
-      rejectReady(err instanceof Error ? err : new Error(String(err)));
-    };
-    watcher.once('ready', onReady);
-    watcher.once('error', onError);
-  });
+  let watcher: chokidar.FSWatcher | undefined;
+  if (chain.globs.length > 0) {
+    const baseDirs = Array.from(new Set(chain.globs.map((p) => globBase(p))));
+    watcher = chokidar.watch(baseDirs, {
+      ignoreInitial: true,
+      persistent: true,
+      awaitWriteFinish: { stabilityThreshold: 50, pollInterval: 10 },
+    });
+    await new Promise<void>((resolveReady, rejectReady) => {
+      const w = watcher as chokidar.FSWatcher;
+      const onReady = (): void => {
+        w.off('error', onError);
+        resolveReady();
+      };
+      const onError = (err: unknown): void => {
+        w.off('ready', onReady);
+        rejectReady(err instanceof Error ? err : new Error(String(err)));
+      };
+      w.once('ready', onReady);
+      w.once('error', onError);
+    });
+  }
 
   let pending: NodeJS.Timeout | undefined;
   let inFlight = false;
@@ -219,22 +231,25 @@ async function startWatcher(
     inFlight = true;
     try {
       const refreshedIds =
-        trigger.kind === 'file-change' ? viewIds : [trigger.viewId];
+        trigger.kind === 'file-change' ? inChainViewIds : [trigger.viewId];
       for (const id of refreshedIds) {
         opts.logger.log(
           `Refreshing view "${id}" (trigger: ${triggerLabel(trigger)})`,
         );
       }
       const start = Date.now();
-      const { store, files } = await loadSources(opts.sources, {
+      const refreshed = await resolveSource(opts.target, {
         graphMode: opts.graphMode,
+        registry: opts.registry,
       });
-      opts.storeRef.current = store;
-      opts.logger.log(
-        `Rebuilt store: ${files.length} file(s), ${store.size} quads in ${
-          Date.now() - start
-        }ms`,
-      );
+      if (refreshed.mode === 'materialized') {
+        opts.storeRef.current = refreshed.store;
+        opts.logger.log(
+          `Rebuilt store: ${refreshed.files.length} file(s), ${refreshed.store.size} quads in ${
+            Date.now() - start
+          }ms`,
+        );
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       opts.logger.error(`Rebuild failed: ${message}`);
@@ -256,15 +271,17 @@ async function startWatcher(
     }, opts.debounceMs);
   };
 
-  const onFileEvent = (): void => schedule({ kind: 'file-change' });
-  watcher.on('add', onFileEvent);
-  watcher.on('change', onFileEvent);
-  watcher.on('unlink', onFileEvent);
+  if (watcher) {
+    const onFileEvent = (): void => schedule({ kind: 'file-change' });
+    watcher.on('add', onFileEvent);
+    watcher.on('change', onFileEvent);
+    watcher.on('unlink', onFileEvent);
+  }
 
-  const ttlTimers = startTtlTimers(views, schedule);
+  const ttlTimers = startTtlTimers(cachedViews, schedule);
   const freshnessPolls = startFreshnessPolls(
-    views,
-    registry,
+    cachedViews,
+    chain.registry,
     opts.pollMs,
     opts.logger,
     schedule,
@@ -278,7 +295,7 @@ async function startWatcher(
       }
       ttlTimers.stop();
       freshnessPolls.stop();
-      await watcher.close();
+      if (watcher) await watcher.close();
     },
   };
 }
