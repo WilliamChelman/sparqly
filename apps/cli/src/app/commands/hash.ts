@@ -5,6 +5,7 @@ import { Logger } from '@nestjs/common';
 import { z } from 'zod';
 import {
   canonicalizeStore,
+  extractAnnotationPredicates,
   parseSourceSpecs,
   resolveAnonymousView,
   resolveSource,
@@ -338,7 +339,11 @@ async function hashTarget(
       `SPARQL endpoint ${sources.endpoint.endpoint} cannot be hashed directly (hash materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
     );
   }
-  const { canonicalText } = await canonicalizeStore(sources.store);
+  const { canonicalText } = await canonicalizeStore(sources.store, {
+    annotationPredicates: extractAnnotationPredicates(
+      target.kind === 'glob' ? target.transforms : undefined,
+    ),
+  });
   const hash = createHash('sha256').update(canonicalText).digest('hex');
   logger.log(
     `Loaded ${sources.files.length} file(s) (${sources.store.size} quads), canonicalized + hashed '${label}' in ${Date.now() - start}ms`,

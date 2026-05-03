@@ -5,6 +5,8 @@ import {
   type AnnotationPredicateIris,
 } from './source-record-builder';
 import type {
+  ParsedTransform,
+  ParsedTransformResult,
   TransformApply,
   TransformContext,
   TransformDefinition,
@@ -18,10 +20,44 @@ export function parseAnnotateTransform(raw: unknown): TransformApply {
   return (store, ctx) => applyAnnotate(store, ctx, predicates);
 }
 
+function parseAnnotateForRegistry(raw: unknown): ParsedTransformResult {
+  const predicates = parseAnnotateSpec(raw);
+  return {
+    apply: (store, ctx) => applyAnnotate(store, ctx, predicates),
+    config: predicates,
+  };
+}
+
 export const ANNOTATE_TRANSFORM: TransformDefinition = {
   key: KEY,
-  parse: parseAnnotateTransform,
+  parse: parseAnnotateForRegistry,
 };
+
+/**
+ * Pull the configured annotation predicate IRIs out of a parsed transforms
+ * list — returns the override when the source declared `annotate` (with or
+ * without overrides), or the defaults otherwise. Used by the canonicalize /
+ * hash / diff layer to thread the right predicates into the stripper.
+ */
+export function extractAnnotationPredicates(
+  transforms: ReadonlyArray<ParsedTransform> | undefined,
+): AnnotationPredicateIris {
+  if (!transforms) return { ...DEFAULT_ANNOTATION_PREDICATE_IRIS };
+  for (const t of transforms) {
+    if (t.key === KEY && isPredicateIris(t.config)) return t.config;
+  }
+  return { ...DEFAULT_ANNOTATION_PREDICATE_IRIS };
+}
+
+function isPredicateIris(value: unknown): value is AnnotationPredicateIris {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v['source'] === 'string' &&
+    typeof v['file'] === 'string' &&
+    typeof v['line'] === 'string'
+  );
+}
 
 function parseAnnotateSpec(raw: unknown): AnnotationPredicateIris {
   if (raw === undefined || raw === null) {

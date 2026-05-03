@@ -70,6 +70,74 @@ describe('resolveView — glob upstream', () => {
     expect(quads[0].subject.value).toBe('http://example.org/keep');
   });
 
+  it('a view over an annotated glob upstream produces zero annotation triples when its CONSTRUCT does not reference annotations', async () => {
+    const a = join(dir, 'a.ttl');
+    await writeFile(
+      a,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:keep ex:p ex:v1 .',
+        'ex:drop ex:p ex:v2 .',
+      ].join('\n'),
+    );
+
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: a, transforms: [{ annotate: {} }] },
+      {
+        id: 'kept',
+        from: '@raw',
+        query:
+          'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:p ?o } WHERE { ?s ex:p ?o FILTER(?s = ex:keep) }',
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+
+    const store = await resolveView({ view, registry });
+    const all = store.getQuads(null, null, null, null);
+    expect(all).toHaveLength(1);
+    for (const annotationIri of [
+      'urn:sparqly:source',
+      'urn:sparqly:file',
+      'urn:sparqly:line',
+    ]) {
+      expect(
+        all.filter((q) => q.predicate.value === annotationIri),
+      ).toHaveLength(0);
+    }
+  });
+
+  it('a view over an annotated glob upstream surfaces annotation triples when the query explicitly references them', async () => {
+    const a = join(dir, 'a.ttl');
+    await writeFile(
+      a,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:keep ex:p ex:v1 .',
+      ].join('\n'),
+    );
+
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: a, transforms: [{ annotate: {} }] },
+      {
+        id: 'sources',
+        from: '@raw',
+        query:
+          'CONSTRUCT { ?b <urn:sparqly:file> ?f } WHERE { ?b <urn:sparqly:file> ?f }',
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+
+    const store = await resolveView({ view, registry });
+    const fileQuads = store.getQuads(
+      null,
+      null,
+      null,
+      null,
+    ).filter((q) => q.predicate.value === 'urn:sparqly:file');
+    expect(fileQuads.length).toBeGreaterThan(0);
+    expect(fileQuads[0].object.value).toMatch(/^file:\/\/.*a\.ttl$/);
+  });
+
   it('reads queryFile relative to cwd and uses it', async () => {
     const a = join(dir, 'a.ttl');
     await writeFile(

@@ -2,8 +2,14 @@ import { canonize } from 'rdf-canonize';
 import type { Store } from 'n3';
 import { parseGraphNameTransform } from './graph-name-transform';
 import { loadRdf, type GraphMode } from './rdf-loader';
+import {
+  DEFAULT_ANNOTATION_PREDICATE_IRIS,
+  type AnnotationPredicateIris,
+} from './source-record-builder';
+import { stripAnnotations } from './strip-annotations';
 import { applyTransformPipeline } from './transform-pipeline';
 import type { ParsedTransform } from './transform-spec';
+import { extractAnnotationPredicates } from './annotate-transform';
 
 export interface CanonicalizeOptions {
   sources: string | string[];
@@ -14,6 +20,16 @@ export interface CanonicalizeOptions {
    * source-spec should declare their own `transforms` pipeline.
    */
   graphMode?: GraphMode;
+}
+
+export interface CanonicalizeStoreOptions {
+  /**
+   * Predicate IRIs identifying annotation triples to strip before RDFC-1.0
+   * normalization. Defaults to {@link DEFAULT_ANNOTATION_PREDICATE_IRIS};
+   * pass values from {@link extractAnnotationPredicates} when the source's
+   * `annotate` transform overrides any of them.
+   */
+  annotationPredicates?: AnnotationPredicateIris;
 }
 
 export interface CanonicalizeStoreResult {
@@ -32,9 +48,13 @@ export interface CanonicalizeResult extends CanonicalizeStoreResult {
 
 export async function canonicalizeStore(
   store: Store,
+  options: CanonicalizeStoreOptions = {},
 ): Promise<CanonicalizeStoreResult> {
+  const predicates =
+    options.annotationPredicates ?? DEFAULT_ANNOTATION_PREDICATE_IRIS;
+  const stripped = stripAnnotations(store, predicates);
   const canonicalText = await canonize(
-    store.getQuads(null, null, null, null),
+    stripped.getQuads(null, null, null, null),
     { algorithm: 'RDFC-1.0', format: 'application/n-quads' },
   );
   const canonicalStatements = canonicalText
@@ -59,8 +79,10 @@ export async function canonicalizeRdf(
   const transformed = applyTransformPipeline(loaded.store, transforms, {
     perFileRecords: loaded.perFileRecords,
   });
-  const { canonicalText, canonicalStatements } =
-    await canonicalizeStore(transformed);
+  const { canonicalText, canonicalStatements } = await canonicalizeStore(
+    transformed,
+    { annotationPredicates: extractAnnotationPredicates(transforms) },
+  );
   return {
     files: loaded.files,
     store: transformed,

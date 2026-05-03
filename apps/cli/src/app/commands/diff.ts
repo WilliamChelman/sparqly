@@ -6,6 +6,7 @@ import { z } from 'zod';
 import {
   canonicalizeStore,
   diffCanonicalStatements,
+  extractAnnotationPredicates,
   formatRdf,
   formatRdfDiff,
   parseSourceSpecs,
@@ -461,7 +462,11 @@ async function canonicalizeSide(
       `SPARQL endpoint ${sources.endpoint.endpoint} cannot be diffed directly on the ${side} side (diff materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly diff\`)`,
     );
   }
-  const { canonicalStatements } = await canonicalizeStore(sources.store);
+  const { canonicalStatements } = await canonicalizeStore(sources.store, {
+    annotationPredicates: extractAnnotationPredicates(
+      target.kind === 'glob' ? target.transforms : undefined,
+    ),
+  });
   return {
     fileCount: sources.files.length,
     canonicalStatements,

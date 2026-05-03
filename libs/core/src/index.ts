@@ -10,6 +10,7 @@ export * from './lib/source-spec';
 export * from './lib/transform-spec';
 export * from './lib/transform-pipeline';
 export * from './lib/source-record-builder';
+export * from './lib/strip-annotations';
 export * from './lib/annotate-transform';
 export * from './lib/resolve-source-references';
 export * from './lib/view-query-validate';
