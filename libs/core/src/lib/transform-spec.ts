@@ -18,16 +18,32 @@ export type TransformApply = (
   ctx?: TransformContext,
 ) => Store;
 
+/** Result of a {@link TransformDefinition.parse} call. */
+export interface ParsedTransformResult {
+  apply: TransformApply;
+  /**
+   * Opaque per-transform configuration the canonicalize/diff layer can
+   * inspect by key (e.g. annotate's predicate IRIs). Transforms with no
+   * downstream-relevant config may omit this.
+   */
+  config?: unknown;
+}
+
 export interface TransformDefinition<TInput = unknown> {
   /** Discriminator key on the source-spec list item (e.g. `graphName`, `annotate`). */
   key: string;
-  /** Validate the raw value under `key` and return the bound apply function. */
-  parse(rawValue: TInput): TransformApply;
+  /**
+   * Validate the raw value under `key` and return the bound apply function
+   * (optionally with downstream-visible config).
+   */
+  parse(rawValue: TInput): TransformApply | ParsedTransformResult;
 }
 
 export interface ParsedTransform {
   key: string;
   apply: TransformApply;
+  /** Opaque config exposed by the transform for downstream consumers. */
+  config?: unknown;
 }
 
 export function parseTransformList(
@@ -81,6 +97,9 @@ function parseOne(
       `transforms[${index}]: unknown transform key "${key}" (${knownNote})`,
     );
   }
-  const apply = def.parse((item as Record<string, unknown>)[key]);
-  return { key, apply };
+  const parsed = def.parse((item as Record<string, unknown>)[key]);
+  if (typeof parsed === 'function') {
+    return { key, apply: parsed };
+  }
+  return { key, apply: parsed.apply, config: parsed.config };
 }
