@@ -62,6 +62,49 @@ const sourceObjectSchema = z
 
 const sourceSpecInputSchema = z.union([z.string(), sourceObjectSchema]);
 
+export const MULTI_SOURCE_REJECTION_MESSAGE =
+  'pass a single `--source`/positional value (an `@id` ref or an inline glob/URL); for multi-source composition use a single broader glob, or a `SERVICE` clause inside a view hosted on an `empty` source — see ADR-0005 (docs/adr/0005-single-target-source-at-command-boundary.md)';
+
+const singleSourceSchema: z.ZodType = z
+  .unknown()
+  .superRefine((value, ctx) => {
+    if (Array.isArray(value)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: MULTI_SOURCE_REJECTION_MESSAGE,
+      });
+      return;
+    }
+    const parsed = sourceSpecInputSchema.safeParse(value);
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        ctx.addIssue({
+          code: 'custom',
+          message: issue.message,
+          path: issue.path as PropertyKey[],
+        });
+      }
+    }
+  });
+
+export const sourceField: FieldDescriptor = {
+  key: 'source',
+  schema: singleSourceSchema,
+  flags: [
+    {
+      spec: '-s, --source <spec>',
+      description:
+        'Single source to run against: an `@id` ref into the config registry, or an inline glob/URL. Alternative to the positional arg.',
+    },
+  ],
+};
+
+/**
+ * Legacy multi-source field. Retained for `hash`, `serve`, and `format` until
+ * those commands are migrated to the single-target model in #106 / #107. New
+ * commands should use `sourceField` and rely on `selectTarget` + `resolveSource`
+ * to honor ADR-0005.
+ */
 export const sourcesField: FieldDescriptor = {
   key: 'sources',
   schema: z.union([sourceSpecInputSchema, z.array(sourceSpecInputSchema).min(1)]),

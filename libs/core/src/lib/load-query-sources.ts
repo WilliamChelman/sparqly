@@ -1,22 +1,12 @@
-import type { Store } from 'n3';
 import {
   loadSources,
   type LoadSourcesOptions,
 } from './load-sources';
+import { type QuerySources } from './resolve-source';
 import {
   parseSourceSpecs,
-  type ParsedEndpointSource,
   type SourceSpecInput,
 } from './source-spec';
-
-export type QuerySources =
-  | { mode: 'pass-through'; endpoint: ParsedEndpointSource }
-  | {
-      mode: 'materialized';
-      store: Store;
-      files: string[];
-      prefixes: Record<string, Record<string, string>>;
-    };
 
 export async function loadQuerySources(
   inputs: ReadonlyArray<SourceSpecInput>,

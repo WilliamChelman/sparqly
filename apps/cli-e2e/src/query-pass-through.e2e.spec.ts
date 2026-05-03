@@ -105,6 +105,7 @@ describe('sparqly query — pass-through federation', () => {
     const result = await runCli(
       [
         'query',
+        '@snap',
         '--config',
         configPath,
         '-q',

@@ -1,0 +1,188 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { resolveSource } from './resolve-source';
+import { parseSourceSpec, parseSourceSpecs } from './source-spec';
+import {
+  startFakeSparqlEndpoint,
+  type FakeSparqlEndpoint,
+} from './test/fake-sparql-endpoint';
+
+const SPARQL_JSON_TWO_BINDINGS = JSON.stringify({
+  head: { vars: ['s', 'p', 'o'] },
+  results: {
+    bindings: [
+      {
+        s: { type: 'uri', value: 'http://example.org/a' },
+        p: { type: 'uri', value: 'http://example.org/p' },
+        o: { type: 'uri', value: 'http://example.org/b' },
+      },
+    ],
+  },
+});
+
+describe('resolveSource — endpoint target', () => {
+  let endpoint: FakeSparqlEndpoint | undefined;
+
+  afterEach(async () => {
+    if (endpoint) await endpoint.close();
+    endpoint = undefined;
+  });
+
+  it('returns pass-through and never contacts the endpoint', async () => {
+    endpoint = await startFakeSparqlEndpoint(() => ({
+      contentType: 'application/sparql-results+json',
+      body: SPARQL_JSON_TWO_BINDINGS,
+    }));
+
+    const target = parseSourceSpec(endpoint.url);
+    const result = await resolveSource(target);
+
+    expect(result.mode).toBe('pass-through');
+    if (result.mode !== 'pass-through') throw new Error('unreachable');
+    expect(result.endpoint.endpoint).toBe(endpoint.url);
+    expect(endpoint.requestCount()).toBe(0);
+  });
+
+  it('preserves auth/headers/timeoutMs on object-form endpoint targets', async () => {
+    endpoint = await startFakeSparqlEndpoint(() => ({
+      contentType: 'application/sparql-results+json',
+      body: SPARQL_JSON_TWO_BINDINGS,
+    }));
+
+    const target = parseSourceSpec({
+      endpoint: endpoint.url,
+      auth: { type: 'bearer', token: 'tk-1' },
+      headers: { 'X-Tenant': 'acme' },
+      timeoutMs: 1234,
+    });
+    const result = await resolveSource(target);
+
+    expect(result.mode).toBe('pass-through');
+    if (result.mode !== 'pass-through') throw new Error('unreachable');
+    expect(result.endpoint.auth).toEqual({ type: 'bearer', token: 'tk-1' });
+    expect(result.endpoint.headers).toEqual({ 'X-Tenant': 'acme' });
+    expect(result.endpoint.timeoutMs).toBe(1234);
+    expect(endpoint.requestCount()).toBe(0);
+  });
+});
+
+describe('resolveSource — glob target', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-resolve-source-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('materializes a glob target into a Store', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const target = parseSourceSpec(join(dir, '*.ttl'));
+    const result = await resolveSource(target);
+
+    expect(result.mode).toBe('materialized');
+    if (result.mode !== 'materialized') throw new Error('unreachable');
+    expect(result.store.size).toBe(1);
+    expect(result.files).toHaveLength(1);
+  });
+});
+
+describe('resolveSource — empty target', () => {
+  it('materializes an empty target into a fresh empty Store', async () => {
+    const target = parseSourceSpec({ id: 'host', empty: true });
+    const result = await resolveSource(target);
+
+    expect(result.mode).toBe('materialized');
+    if (result.mode !== 'materialized') throw new Error('unreachable');
+    expect(result.store.size).toBe(0);
+    expect(result.files).toEqual([]);
+  });
+});
+
+describe('resolveSource — view target', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-resolve-source-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('walks the from: chain and materializes the view query result', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:a ex:p ex:b .',
+        'ex:c ex:p ex:d .',
+      ].join('\n'),
+    );
+
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: join(dir, '*.ttl') },
+      {
+        id: 'derived',
+        from: '@raw',
+        query:
+          'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:r ?o } WHERE { ?s ex:p ?o }',
+      },
+    ]);
+    const target = registry.find((s) => s.id === 'derived');
+    if (!target) throw new Error('derived view missing from registry');
+
+    const result = await resolveSource(target, { registry });
+
+    expect(result.mode).toBe('materialized');
+    if (result.mode !== 'materialized') throw new Error('unreachable');
+    const predicates = new Set(
+      result.store.getQuads(null, null, null, null).map((q) => q.predicate.value),
+    );
+    expect(predicates.has('http://example.org/r')).toBe(true);
+  });
+
+  it('does not open or fetch sibling registry entries unrelated to the target', async () => {
+    let siblingHits = 0;
+    const sibling = await startFakeSparqlEndpoint(() => {
+      siblingHits++;
+      return {
+        contentType: 'application/sparql-results+json',
+        body: SPARQL_JSON_TWO_BINDINGS,
+      };
+    });
+    try {
+      await writeFile(
+        join(dir, 'a.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+
+      const registry = parseSourceSpecs([
+        { id: 'prod-A', endpoint: sibling.url },
+        { id: 'raw', glob: join(dir, '*.ttl') },
+        {
+          id: 'stats',
+          from: '@raw',
+          query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        },
+      ]);
+      const target = registry.find((s) => s.id === 'stats');
+      if (!target) throw new Error('stats view missing from registry');
+
+      const result = await resolveSource(target, { registry });
+
+      expect(result.mode).toBe('materialized');
+      expect(siblingHits).toBe(0);
+    } finally {
+      await sibling.close();
+    }
+  });
+});
