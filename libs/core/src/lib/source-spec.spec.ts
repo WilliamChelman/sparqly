@@ -672,6 +672,79 @@ describe('parseSourceSpec — endpoint HTTP fields (auth, headers, timeoutMs)', 
   });
 });
 
+describe('parseSourceSpec — default: true marker', () => {
+  it('accepts default: true on a glob source and propagates it to the parsed output', () => {
+    expect(
+      parseSourceSpec({ glob: 'data/*.ttl', id: 'files', default: true }),
+    ).toEqual({
+      kind: 'glob',
+      glob: 'data/*.ttl',
+      id: 'files',
+      default: true,
+    });
+  });
+
+  it('does not allow default: true on a reference (string-form refs cannot carry default)', () => {
+    // String-form `@id` is the only path to `kind: 'reference'`; strings cannot carry a default flag,
+    // so a reference with `default: true` is structurally impossible.
+    const parsed = parseSourceSpec('@my-alias');
+    expect(parsed).toEqual({ kind: 'reference', ref: 'my-alias' });
+    expect((parsed as unknown as Record<string, unknown>)['default']).toBeUndefined();
+  });
+
+  it('rejects default: false explicitly (the marker must be `true` to opt in)', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        // @ts-expect-error — default must be `true` to opt in
+        default: false,
+      }),
+    ).toThrow(/`default`.*true/i);
+  });
+
+  it('accepts default: true on a view source', () => {
+    expect(
+      parseSourceSpec({
+        id: 'filtered',
+        from: '@raw',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        default: true,
+      }),
+    ).toEqual({
+      kind: 'view',
+      id: 'filtered',
+      from: 'raw',
+      query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      default: true,
+    });
+  });
+
+  it('accepts default: true on an empty source', () => {
+    expect(
+      parseSourceSpec({ id: 'composer', empty: true, default: true }),
+    ).toEqual({
+      kind: 'empty',
+      id: 'composer',
+      default: true,
+    });
+  });
+
+  it('accepts default: true on an endpoint source', () => {
+    expect(
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        id: 'live',
+        default: true,
+      }),
+    ).toEqual({
+      kind: 'endpoint',
+      endpoint: 'https://example.com/sparql',
+      id: 'live',
+      default: true,
+    });
+  });
+});
+
 describe('parseSourceSpecs — view from: single-ref invariant', () => {
   const VIEW_QUERY = 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }';
 
@@ -691,6 +764,58 @@ describe('parseSourceSpecs — view from: single-ref invariant', () => {
         { id: 'scoped', from: '@files', query: VIEW_QUERY },
       ]),
     ).not.toThrow();
+  });
+});
+
+describe('parseSourceSpecs — registry-level default validation', () => {
+  it('accepts a registry with exactly one default: true entry', () => {
+    const parsed = parseSourceSpecs([
+      { glob: 'a/*.ttl', id: 'one', default: true },
+      { glob: 'b/*.ttl', id: 'two' },
+    ]);
+    expect(parsed[0]).toMatchObject({ id: 'one', default: true });
+    expect((parsed[1] as unknown as Record<string, unknown>)['default']).toBeUndefined();
+  });
+
+  it('accepts a registry with no default: true entries', () => {
+    const parsed = parseSourceSpecs([
+      { glob: 'a/*.ttl', id: 'one' },
+      { glob: 'b/*.ttl', id: 'two' },
+    ]);
+    for (const p of parsed) {
+      expect((p as unknown as Record<string, unknown>)['default']).toBeUndefined();
+    }
+  });
+
+  it('rejects a registry where more than one entry carries default: true and names both locations', () => {
+    expect(() =>
+      parseSourceSpecs(
+        [
+          { glob: 'a/*.ttl', id: 'one', default: true },
+          { glob: 'b/*.ttl', id: 'two', default: true },
+        ],
+        { locations: ['config:sources[0]', 'config:sources[1]'] },
+      ),
+    ).toThrow(/more than one.*default.*config:sources\[0\].*config:sources\[1\]/s);
+  });
+
+  it('reports an integer index when no explicit location is provided for multi-default', () => {
+    expect(() =>
+      parseSourceSpecs([
+        { glob: 'a/*.ttl', id: 'one', default: true },
+        { glob: 'b/*.ttl', id: 'two', default: true },
+      ]),
+    ).toThrow(/more than one.*default.*sources\[0\].*sources\[1\]/s);
+  });
+
+  it('still surfaces parse errors in unrelated entries when default markers are in play', () => {
+    // An unrelated entry has a malformed id; default markers elsewhere do not mask it.
+    expect(() =>
+      parseSourceSpecs([
+        { glob: 'a/*.ttl', id: 'ok', default: true },
+        { glob: 'b/*.ttl', id: 'has spaces' },
+      ]),
+    ).toThrow(/source id .* must match/i);
   });
 });
 
