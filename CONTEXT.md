@@ -51,7 +51,21 @@ _Avoid_: "upstream cache", "endpoint cache"
 An `ASK` query attached to `cache.strategy: 'freshness'`. Run on cache lookup to decide whether the cached result is still valid. For single-endpoint upstreams the ASK is itself pass-through.
 
 **Canonicalization**:
-RDFC-1.0 normalization producing a stable N-Quads serialization, used by `hash` and `diff`. Operates on whatever Store the resolution produced (materialized upstream or pass-through result).
+RDFC-1.0 normalization producing a stable N-Quads serialization, used by `hash` and `diff`. Operates on the **asserted triples** of whatever Store the resolution produced (materialized upstream or pass-through result); **Source records** and any other RDF-star annotation triples are stripped before canonical output, so `hash` is independent of source-tracking metadata.
+
+**Source transformation pipeline**:
+An ordered list of declared transforms attached to a **Glob source** under `transforms:`, applied eagerly to its loaded Store before it is handed to any consumer. Each list item is an object with exactly one transform key (presence-of-key discriminator, matching the `cache:` and `empty: true` patterns elsewhere in the source-spec); the registry is closed (only sparqly-known transforms). Order is array order; each transform documents its own ordering constraints if any.
+_Avoid_: "post-processors", "loader plugins"
+
+**Graph-name transformation** (`graphName`):
+A transform whose value is one of `preserve`, `fillDefault`, `forceAll`, `flatten` — the canonical home of the rules formerly expressed by the now-removed `graphMode` field on a glob source.
+
+**Annotate transformation** (`annotate`):
+A transform that emits a **Source record** as an RDF-star annotation on each asserted triple loaded from disk, recording where that triple was authored. Listing it on a glob source makes annotations always-on for that source's downstream consumers.
+
+**Source record**:
+A blank-node record reached via `sparqly:source` from an RDF-star quoted triple, with `sparqly:file` (the absolute `file://` IRI of the source file) and optionally `sparqly:line` (1-based line of the predicate-object pair, omitted when the parser cannot supply it). One record per (file, line) instance of a triple; a triple loaded from two files produces two records under the same quoted-triple subject. Each of the three predicate IRIs is independently configurable on the **Annotate transformation** (`source` / `file` / `line` keys), defaulting respectively to `urn:sparqly:source`, `urn:sparqly:file`, `urn:sparqly:line`.
+_Avoid_: "provenance triple" (implied semantics beyond what we record), "lineage record"
 
 ## Relationships
 
@@ -62,6 +76,8 @@ RDFC-1.0 normalization producing a stable N-Quads serialization, used by `hash` 
 - The **`query` command** picks one **target source** from the **source registry** and resolves it: **pass-through** when the target is an endpoint, **materialized** otherwise (glob, empty, view).
 - The **`serve` command** picks one **target source** from the **source registry** and exposes it as a SPARQL endpoint, using the same resolution rules as `query`.
 - **`hash`** and **`diff`** also pick one **target source** and always **canonicalize** the resolved Store; they refuse a raw endpoint as target — endpoints must be wrapped in a view (declared or anonymous) so a scoping query exists.
+- A **Glob source** may declare a **Source transformation pipeline**; transforms run in array order at load time before the Store is exposed to resolution.
+- The **Annotate transformation** populates **Source records** on the glob's own asserted triples; annotations do not propagate through a downstream **View** unless that view's query explicitly references them, and they are stripped by **Canonicalization**.
 
 ## Example dialogue
 

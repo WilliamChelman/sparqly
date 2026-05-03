@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Store } from 'n3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolveSource } from './resolve-source';
 import { parseSourceSpec, parseSourceSpecs } from './source-spec';
@@ -91,6 +92,29 @@ describe('resolveSource — glob target', () => {
     expect(result.mode).toBe('materialized');
     if (result.mode !== 'materialized') throw new Error('unreachable');
     expect(result.store.size).toBe(1);
+    expect(result.files).toHaveLength(1);
+  });
+
+  it('threads the parsed transform pipeline through the glob loader', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    // Stub transform: drop every loaded quad. Confirms the executor is wired in.
+    const dropAll = {
+      key: 'stubDropAll',
+      parse: () => () => new Store(),
+    };
+    const target = parseSourceSpec(
+      { glob: join(dir, '*.ttl'), transforms: [{ stubDropAll: true }] },
+      { transformRegistry: [dropAll] },
+    );
+    const result = await resolveSource(target);
+
+    if (result.mode !== 'materialized') throw new Error('unreachable');
+    expect(result.store.size).toBe(0);
+    // Files list still reflects what was matched on disk; only the Store content changed.
     expect(result.files).toHaveLength(1);
   });
 });

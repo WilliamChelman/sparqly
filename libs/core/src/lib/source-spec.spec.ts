@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { parseSourceSpec, parseSourceSpecs } from './source-spec';
+import type { TransformDefinition } from './transform-spec';
+
+const STUB_NOOP: TransformDefinition = {
+  key: 'stubNoop',
+  parse: () => (s) => s,
+};
 
 describe('parseSourceSpec — string discriminator', () => {
   it('parses a plain string as a glob source', () => {
@@ -501,6 +507,84 @@ describe('parseSourceSpec — endpoint graph/graphMode are removed', () => {
     expect(
       parseSourceSpec({ glob: 'data/*.ttl', graph: 'urn:g' }),
     ).toEqual({ kind: 'glob', glob: 'data/*.ttl', graph: 'urn:g' });
+  });
+});
+
+describe('parseSourceSpec — transforms field (closed registry)', () => {
+  it('accepts an empty transforms list on a glob source and surfaces it as []', () => {
+    const parsed = parseSourceSpec({ glob: 'data/*.ttl', transforms: [] });
+    expect(parsed).toMatchObject({ kind: 'glob', glob: 'data/*.ttl', transforms: [] });
+  });
+
+  it('omits the transforms field on a glob source when it is not declared', () => {
+    const parsed = parseSourceSpec({ glob: 'data/*.ttl' });
+    expect((parsed as Record<string, unknown>).transforms).toBeUndefined();
+  });
+
+  it('rejects an unknown transform key with a stable error naming the key', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        // @ts-expect-error — unknown key in closed registry
+        transforms: [{ bogus: 'forceAll' }],
+      }),
+    ).toThrow(/unknown transform key "bogus"/);
+  });
+
+  it('rejects a non-array transforms value', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        // @ts-expect-error — must be an array
+        transforms: { stubNoop: true },
+      }),
+    ).toThrow(/`transforms` must be an array/);
+  });
+
+  it('accepts a registered transform via an injected stub registry', () => {
+    const parsed = parseSourceSpec(
+      { glob: 'data/*.ttl', transforms: [{ stubNoop: true }] },
+      { transformRegistry: [STUB_NOOP] },
+    );
+    expect(parsed.kind).toBe('glob');
+    if (parsed.kind === 'glob') {
+      expect(parsed.transforms).toHaveLength(1);
+      expect(parsed.transforms?.[0].key).toBe('stubNoop');
+      expect(typeof parsed.transforms?.[0].apply).toBe('function');
+    }
+  });
+
+  it('rejects transforms on an endpoint source', () => {
+    expect(() =>
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        // @ts-expect-error — transforms only valid on glob
+        transforms: [],
+      }),
+    ).toThrow(/`transforms`.*only.*glob.*endpoint/);
+  });
+
+  it('rejects transforms on a view source', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'v',
+        from: '@raw',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        // @ts-expect-error — transforms only valid on glob
+        transforms: [],
+      }),
+    ).toThrow(/`transforms`.*only.*glob.*view/);
+  });
+
+  it('rejects transforms on an empty source', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'composer',
+        empty: true,
+        // @ts-expect-error — transforms only valid on glob
+        transforms: [],
+      }),
+    ).toThrow(/empty source.*`transforms`/);
   });
 });
 

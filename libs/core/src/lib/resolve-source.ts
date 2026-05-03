@@ -6,6 +6,7 @@ import {
   type ParsedSource,
   type ParsedViewSource,
 } from './source-spec';
+import { applyTransformPipeline } from './transform-pipeline';
 import { resolveView, type ResolveViewOptions } from './view-resolver';
 
 export type QuerySources =
@@ -100,7 +101,12 @@ async function loadGlobIntoStore(
         : quad;
     merged.addQuad(rewritten);
   }
-  return { store: merged, files: [...sub.files], prefixes: { ...sub.prefixes } };
+  const transformed = applyTransformPipeline(merged, source.transforms ?? []);
+  return {
+    store: transformed,
+    files: [...sub.files],
+    prefixes: { ...sub.prefixes },
+  };
 }
 
 function materialized(
