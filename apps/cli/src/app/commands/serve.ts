@@ -22,6 +22,7 @@ interface ServeConfig {
   mutable?: boolean;
   watch?: boolean;
   watchDebounce?: number;
+  watchPoll?: number;
   verbose?: boolean;
   quiet?: boolean;
 }
@@ -66,6 +67,20 @@ const watchDebounceField: FieldDescriptor = {
   ],
 };
 
+const watchPollField: FieldDescriptor = {
+  key: 'watchPoll',
+  schema: coercedIntSchema,
+  default: 1000,
+  env: ['SPARQLY_WATCH_POLL', 'SPARQLY_SERVE_WATCH_POLL'],
+  flags: [
+    {
+      spec: '--watch-poll <ms>',
+      description:
+        'Poll interval for cache freshness ASK probes under --watch in milliseconds (default: 1000)',
+    },
+  ],
+};
+
 export const serveSpec: CommandSpec<ServeConfig> = {
   name: 'serve',
   description: 'Serve a W3C SPARQL Protocol endpoint at /api/sparql',
@@ -76,6 +91,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     ...mutableFieldsFor('serve'),
     watchField,
     watchDebounceField,
+    watchPollField,
     ...verbosityFieldsFor('serve'),
   ],
   positionals: [{ field: 'sources', name: 'glob' }],
@@ -106,6 +122,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       webRootDir: WEB_BUNDLE_DIR,
       watch: config.watch === true,
       watchDebounceMs: config.watchDebounce,
+      watchPollMs: config.watchPoll,
     });
   },
 };

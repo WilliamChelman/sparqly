@@ -5,11 +5,14 @@ import * as chokidar from 'chokidar';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import {
   type GraphMode,
   loadQuerySources,
   loadSources,
   parseSourceSpecs,
+  type ParsedSource,
+  type ParsedViewSource,
   QueryEngine,
   type SourceSpecInput,
 } from 'core';
@@ -24,6 +27,7 @@ export interface CreateServerOptions {
   webRootDir?: string;
   watch?: boolean;
   watchDebounceMs?: number;
+  watchPollMs?: number;
 }
 
 export interface CreatedServer {
@@ -32,6 +36,7 @@ export interface CreatedServer {
 }
 
 const DEFAULT_DEBOUNCE_MS = 250;
+const DEFAULT_POLL_MS = 1000;
 
 export async function createServer(
   options: CreateServerOptions,
@@ -91,6 +96,7 @@ export async function createServer(
         storeRef,
         logger,
         debounceMs: options.watchDebounceMs ?? DEFAULT_DEBOUNCE_MS,
+        pollMs: options.watchPollMs ?? DEFAULT_POLL_MS,
       })
     : undefined;
   if (watcher) {
@@ -121,12 +127,29 @@ interface WatcherHandle {
   close: () => Promise<void>;
 }
 
+type RefreshTrigger =
+  | { kind: 'file-change' }
+  | { kind: 'ttl'; viewId: string }
+  | { kind: 'freshness'; viewId: string };
+
+function triggerLabel(trigger: RefreshTrigger): string {
+  switch (trigger.kind) {
+    case 'file-change':
+      return 'file change';
+    case 'ttl':
+      return 'ttl';
+    case 'freshness':
+      return 'freshness';
+  }
+}
+
 interface StartWatcherOptions {
   sources: ReadonlyArray<SourceSpecInput>;
   graphMode?: GraphMode;
   storeRef: StoreRef | undefined;
   logger: Logger;
   debounceMs: number;
+  pollMs: number;
 }
 
 async function maybeStartWatcher(
@@ -136,6 +159,9 @@ async function maybeStartWatcher(
   const globPatterns = parsed
     .filter((s): s is Extract<typeof s, { kind: 'glob' }> => s.kind === 'glob')
     .map((s) => s.glob);
+  const views = parsed.filter(
+    (s): s is ParsedViewSource => s.kind === 'view',
+  );
 
   if (globPatterns.length === 0 || !opts.storeRef) {
     opts.logger.warn(
@@ -144,13 +170,21 @@ async function maybeStartWatcher(
     return undefined;
   }
 
-  return startWatcher({ ...opts, storeRef: opts.storeRef }, globPatterns);
+  return startWatcher(
+    { ...opts, storeRef: opts.storeRef },
+    globPatterns,
+    views,
+    parsed,
+  );
 }
 
 async function startWatcher(
   opts: StartWatcherOptions & { storeRef: StoreRef },
   globPatterns: ReadonlyArray<string>,
+  views: ReadonlyArray<ParsedViewSource>,
+  registry: ReadonlyArray<ParsedSource>,
 ): Promise<WatcherHandle> {
+  const viewIds = views.map((v) => v.id);
   const baseDirs = Array.from(new Set(globPatterns.map((p) => globBase(p))));
 
   const watcher = chokidar.watch(baseDirs, {
@@ -174,15 +208,22 @@ async function startWatcher(
 
   let pending: NodeJS.Timeout | undefined;
   let inFlight = false;
-  let queued = false;
+  let queued: RefreshTrigger | undefined;
 
-  const rebuild = async (): Promise<void> => {
+  const rebuild = async (trigger: RefreshTrigger): Promise<void> => {
     if (inFlight) {
-      queued = true;
+      queued = trigger;
       return;
     }
     inFlight = true;
     try {
+      const refreshedIds =
+        trigger.kind === 'file-change' ? viewIds : [trigger.viewId];
+      for (const id of refreshedIds) {
+        opts.logger.log(
+          `Refreshing view "${id}" (trigger: ${triggerLabel(trigger)})`,
+        );
+      }
       const start = Date.now();
       const { store, files } = await loadSources(opts.sources, {
         graphMode: opts.graphMode,
@@ -198,24 +239,35 @@ async function startWatcher(
       opts.logger.error(`Rebuild failed: ${message}`);
     } finally {
       inFlight = false;
-      if (queued) {
-        queued = false;
-        void rebuild();
+      const next = queued;
+      if (next) {
+        queued = undefined;
+        void rebuild(next);
       }
     }
   };
 
-  const schedule = (): void => {
+  const schedule = (trigger: RefreshTrigger): void => {
     if (pending) clearTimeout(pending);
     pending = setTimeout(() => {
       pending = undefined;
-      void rebuild();
+      void rebuild(trigger);
     }, opts.debounceMs);
   };
 
-  watcher.on('add', schedule);
-  watcher.on('change', schedule);
-  watcher.on('unlink', schedule);
+  const onFileEvent = (): void => schedule({ kind: 'file-change' });
+  watcher.on('add', onFileEvent);
+  watcher.on('change', onFileEvent);
+  watcher.on('unlink', onFileEvent);
+
+  const ttlTimers = startTtlTimers(views, schedule);
+  const freshnessPolls = startFreshnessPolls(
+    views,
+    registry,
+    opts.pollMs,
+    opts.logger,
+    schedule,
+  );
 
   return {
     close: async () => {
@@ -223,9 +275,106 @@ async function startWatcher(
         clearTimeout(pending);
         pending = undefined;
       }
+      ttlTimers.stop();
+      freshnessPolls.stop();
       await watcher.close();
     },
   };
+}
+
+interface ScheduledHandle {
+  stop: () => void;
+}
+
+function startTtlTimers(
+  views: ReadonlyArray<ParsedViewSource>,
+  schedule: (trigger: RefreshTrigger) => void,
+): ScheduledHandle {
+  const timers: NodeJS.Timeout[] = [];
+  for (const view of views) {
+    if (view.cache?.strategy !== 'ttl') continue;
+    const ttlMs = view.cache.ttlMs;
+    const tick = (): void => {
+      schedule({ kind: 'ttl', viewId: view.id });
+    };
+    const t = setInterval(tick, ttlMs);
+    timers.push(t);
+  }
+  return {
+    stop: () => {
+      for (const t of timers) clearInterval(t);
+    },
+  };
+}
+
+function startFreshnessPolls(
+  views: ReadonlyArray<ParsedViewSource>,
+  registry: ReadonlyArray<ParsedSource>,
+  pollMs: number,
+  logger: Logger,
+  schedule: (trigger: RefreshTrigger) => void,
+): ScheduledHandle {
+  const timers: NodeJS.Timeout[] = [];
+  for (const view of views) {
+    if (view.cache?.strategy !== 'freshness') continue;
+    const askQuery = view.cache.freshness;
+    let lastResult = true;
+    const probe = async (): Promise<void> => {
+      try {
+        const result = await runAskAgainstUpstream(view, registry, askQuery);
+        if (lastResult && !result) {
+          schedule({ kind: 'freshness', viewId: view.id });
+        }
+        lastResult = result;
+      } catch (err) {
+        logger.error(
+          `freshness probe failed for view "${view.id}": ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    };
+    const t = setInterval(() => void probe(), pollMs);
+    timers.push(t);
+  }
+  return {
+    stop: () => {
+      for (const t of timers) clearInterval(t);
+    },
+  };
+}
+
+async function runAskAgainstUpstream(
+  view: ParsedViewSource,
+  registry: ReadonlyArray<ParsedSource>,
+  askQuery: string,
+): Promise<boolean> {
+  const byId = new Map<string, ParsedSource>();
+  for (const src of registry) {
+    if (src.kind === 'reference' || src.id === undefined) continue;
+    byId.set(src.id, src);
+  }
+  if (view.from.length !== 1) {
+    throw new Error(
+      `freshness watch supports a single endpoint upstream; view "${view.id}" has ${view.from.length}`,
+    );
+  }
+  const upstream = byId.get(view.from[0]);
+  if (!upstream || upstream.kind !== 'endpoint') {
+    throw new Error(
+      `freshness watch supports endpoint upstreams only; view "${view.id}" upstream is ${upstream?.kind ?? 'missing'}`,
+    );
+  }
+  const engine = new ComunicaQueryEngine();
+  const result = await engine.query(askQuery, {
+    sources: [{ type: 'sparql', value: upstream.endpoint }],
+  });
+  if (result.resultType !== 'boolean') {
+    throw new Error(
+      `cache.freshness query must be an ASK; got ${String(result.resultType)}`,
+    );
+  }
+  return (await result.execute()) as boolean;
 }
 
 function globBase(pattern: string): string {
