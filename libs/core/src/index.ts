@@ -15,4 +15,5 @@ export * from './lib/view-pass-through';
 export * from './lib/anonymous-view-builder';
 export * from './lib/load-sources';
 export * from './lib/load-query-sources';
+export * from './lib/select-target';
 export * from './lib/env-substitute';
