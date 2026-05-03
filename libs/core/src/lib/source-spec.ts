@@ -4,6 +4,10 @@ export interface SourceSpecCommonFields {
   id?: string;
 }
 
+export interface DefaultMarkerField {
+  default?: true;
+}
+
 export interface GlobOnlyGraphFields {
   graphMode?: GraphMode;
   graph?: string;
@@ -21,14 +25,16 @@ export interface EndpointHttpFields {
 
 export interface ParsedGlobSource
   extends SourceSpecCommonFields,
-    GlobOnlyGraphFields {
+    GlobOnlyGraphFields,
+    DefaultMarkerField {
   kind: 'glob';
   glob: string;
 }
 
 export interface ParsedEndpointSource
   extends SourceSpecCommonFields,
-    EndpointHttpFields {
+    EndpointHttpFields,
+    DefaultMarkerField {
   kind: 'endpoint';
   endpoint: string;
 }
@@ -38,7 +44,9 @@ export interface ParsedReferenceSource extends SourceSpecCommonFields {
   ref: string;
 }
 
-export interface ParsedEmptySource extends SourceSpecCommonFields {
+export interface ParsedEmptySource
+  extends SourceSpecCommonFields,
+    DefaultMarkerField {
   kind: 'empty';
   id: string;
 }
@@ -65,7 +73,7 @@ export type ParsedViewCache =
   | ParsedViewCacheFreshness
   | ParsedViewCacheEverlasting;
 
-export interface ParsedViewSource {
+export interface ParsedViewSource extends DefaultMarkerField {
   kind: 'view';
   id: string;
   from: string;
@@ -99,6 +107,7 @@ export interface SourceSpecObjectInput
   query?: string;
   queryFile?: string;
   cache?: ViewCacheInput;
+  default?: true;
 }
 
 export type SourceSpecInput = string | SourceSpecObjectInput;
@@ -110,6 +119,14 @@ export const SOURCE_ID_REGEX = /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/;
 const COMMON_FIELD_KEYS = [
   'id',
 ] as const satisfies ReadonlyArray<keyof SourceSpecCommonFields>;
+
+function pickDefault(input: SourceSpecObjectInput): DefaultMarkerField {
+  if (input.default === undefined) return {};
+  if (input.default !== true) {
+    throw new Error('`default` must be `true` (omit the field otherwise)');
+  }
+  return { default: true };
+}
 
 const GLOB_GRAPH_FIELD_KEYS = [
   'graphMode',
@@ -181,6 +198,7 @@ export function parseSourceSpec(input: SourceSpecInput): ParsedSource {
     );
   }
   const common = pickCommon(input);
+  const defaultMarker = pickDefault(input);
   if (hasGlob) {
     rejectEndpointOnlyFields(input);
     return {
@@ -188,6 +206,7 @@ export function parseSourceSpec(input: SourceSpecInput): ParsedSource {
       glob: input.glob as string,
       ...common,
       ...pickGlobGraph(input),
+      ...defaultMarker,
     };
   }
   rejectGlobGraphFieldsOnEndpoint(input);
@@ -197,6 +216,7 @@ export function parseSourceSpec(input: SourceSpecInput): ParsedSource {
     endpoint: input.endpoint as string,
     ...common,
     ...http,
+    ...defaultMarker,
   };
 }
 
@@ -231,7 +251,8 @@ function parseEmpty(input: SourceSpecObjectInput): ParsedEmptySource {
       );
     }
   }
-  return { kind: 'empty', id: input.id };
+  const defaultMarker = pickDefault(input);
+  return { kind: 'empty', id: input.id, ...defaultMarker };
 }
 
 const VIEW_REF_PREFIX = /^@(.+)$/;
@@ -279,6 +300,8 @@ function parseView(input: SourceSpecObjectInput): ParsedViewSource {
   if (input.cache !== undefined) {
     out.cache = parseViewCache(input.id, input.cache);
   }
+  const defaultMarker = pickDefault(input);
+  if (defaultMarker.default) out.default = true;
   return out;
 }
 
@@ -471,6 +494,24 @@ export function parseSourceSpecs(
       );
     }
     seen.set(id, i);
+  }
+  const defaultIndices: number[] = [];
+  for (let i = 0; i < parsed.length; i++) {
+    const entry = parsed[i] as { default?: true; kind: ParsedSource['kind'] };
+    if (entry.default === true) {
+      if (entry.kind === 'reference') {
+        throw new Error(
+          `\`default: true\` is not valid on \`kind: 'reference'\` (alias) at ${locationFor(i)}`,
+        );
+      }
+      defaultIndices.push(i);
+    }
+  }
+  if (defaultIndices.length > 1) {
+    const locs = defaultIndices.map(locationFor).join(', ');
+    throw new Error(
+      `more than one source entry carries \`default: true\` (${locs}); at most one entry may be marked default`,
+    );
   }
   return parsed;
 }
