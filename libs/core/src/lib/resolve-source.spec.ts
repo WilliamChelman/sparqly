@@ -119,6 +119,154 @@ describe('resolveSource — glob target', () => {
   });
 });
 
+describe('resolveSource — annotate transform on glob target', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-resolve-annotate-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  function fileQuads(store: Store, predicateIri: string) {
+    return store.getQuads(
+      null,
+      { termType: 'NamedNode', value: predicateIri } as never,
+      null,
+      null,
+    );
+  }
+
+  it('emits source records with file:// IRI and per-(p,o) line for a Turtle source', async () => {
+    const file = join(dir, 'a.ttl');
+    await writeFile(
+      file,
+      [
+        '@prefix ex: <http://example.org/> .',
+        '',
+        'ex:a ex:p1 ex:b ;',
+        '  ex:p2 ex:c .',
+        '',
+      ].join('\n'),
+    );
+    const target = parseSourceSpec({
+      glob: join(dir, '*.ttl'),
+      transforms: [{ annotate: {} }],
+    });
+    const result = await resolveSource(target);
+    if (result.mode !== 'materialized') throw new Error('unreachable');
+
+    const fileTriples = fileQuads(result.store, 'urn:sparqly:file');
+    expect(fileTriples).toHaveLength(2);
+    for (const q of fileTriples) {
+      expect(q.object.value).toBe(`file://${file}`);
+    }
+    const lineTriples = fileQuads(result.store, 'urn:sparqly:line');
+    const lineValues = lineTriples
+      .map((q) => Number(q.object.value))
+      .sort((a, b) => a - b);
+    expect(lineValues).toEqual([3, 4]);
+  });
+
+  it('emits file-only source records (no line) for JSON-LD sources', async () => {
+    const file = join(dir, 'a.jsonld');
+    await writeFile(
+      file,
+      JSON.stringify({
+        '@context': { ex: 'http://example.org/' },
+        '@id': 'ex:a',
+        'ex:p': { '@id': 'ex:b' },
+      }),
+    );
+    const target = parseSourceSpec({
+      glob: join(dir, '*.jsonld'),
+      transforms: [{ annotate: {} }],
+    });
+    const result = await resolveSource(target);
+    if (result.mode !== 'materialized') throw new Error('unreachable');
+
+    const fileTriples = fileQuads(result.store, 'urn:sparqly:file');
+    expect(fileTriples).toHaveLength(1);
+    expect(fileTriples[0].object.value).toBe(`file://${file}`);
+    expect(fileQuads(result.store, 'urn:sparqly:line')).toHaveLength(0);
+  });
+
+  it('emits no source records when annotate is not listed', async () => {
+    const file = join(dir, 'a.ttl');
+    await writeFile(
+      file,
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const target = parseSourceSpec(join(dir, '*.ttl'));
+    const result = await resolveSource(target);
+    if (result.mode !== 'materialized') throw new Error('unreachable');
+
+    expect(fileQuads(result.store, 'urn:sparqly:source')).toHaveLength(0);
+    expect(fileQuads(result.store, 'urn:sparqly:file')).toHaveLength(0);
+    expect(fileQuads(result.store, 'urn:sparqly:line')).toHaveLength(0);
+  });
+
+  it('emits two records under one quoted-triple subject when the same triple lives in two files (graphName: preserve)', async () => {
+    const a = join(dir, 'a.ttl');
+    const b = join(dir, 'b.ttl');
+    const triple = '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .';
+    await writeFile(a, triple);
+    await writeFile(b, triple);
+
+    const target = parseSourceSpec({
+      glob: join(dir, '*.ttl'),
+      transforms: [{ graphName: 'preserve' }, { annotate: {} }],
+    });
+    const result = await resolveSource(target);
+    if (result.mode !== 'materialized') throw new Error('unreachable');
+
+    const sourceTriples = fileQuads(result.store, 'urn:sparqly:source');
+    expect(sourceTriples).toHaveLength(2);
+    // Both source quads share the same quoted-triple subject term.
+    expect(sourceTriples[0].subject.equals(sourceTriples[1].subject)).toBe(true);
+    // The blank-node records differ.
+    expect(sourceTriples[0].object.equals(sourceTriples[1].object)).toBe(false);
+
+    // Each record points to its own file.
+    const fileIris = fileQuads(result.store, 'urn:sparqly:file')
+      .map((q) => q.object.value)
+      .sort();
+    expect(fileIris).toEqual([`file://${a}`, `file://${b}`]);
+  });
+
+  it('honours custom predicate IRI overrides end-to-end', async () => {
+    const file = join(dir, 'a.ttl');
+    await writeFile(
+      file,
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const target = parseSourceSpec({
+      glob: join(dir, '*.ttl'),
+      transforms: [
+        {
+          annotate: {
+            source: 'http://my/source',
+            file: 'http://my/file',
+            line: 'http://my/line',
+          },
+        },
+      ],
+    });
+    const result = await resolveSource(target);
+    if (result.mode !== 'materialized') throw new Error('unreachable');
+
+    expect(fileQuads(result.store, 'http://my/source')).toHaveLength(1);
+    expect(fileQuads(result.store, 'http://my/file')).toHaveLength(1);
+    expect(fileQuads(result.store, 'http://my/line')).toHaveLength(1);
+    // Defaults are not emitted when overridden.
+    expect(fileQuads(result.store, 'urn:sparqly:source')).toHaveLength(0);
+    expect(fileQuads(result.store, 'urn:sparqly:file')).toHaveLength(0);
+    expect(fileQuads(result.store, 'urn:sparqly:line')).toHaveLength(0);
+  });
+});
+
 describe('resolveSource — empty target', () => {
   it('materializes an empty target into a fresh empty Store', async () => {
     const target = parseSourceSpec({ id: 'host', empty: true });
