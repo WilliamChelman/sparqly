@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import { DataFactory, Store, type Quad } from 'n3';
 import { loadRdf } from './rdf-loader';
+import { applyTransformPipeline } from './transform-pipeline';
 import {
   type ParsedEndpointSource,
   type ParsedSource,
@@ -195,11 +196,10 @@ async function loadUpstream(
       `view "${view.id}": unexpected upstream kind "${(upstream as { kind: string }).kind}" for ref @${refId}`,
     );
   }
-  const sub = await loadRdf({
-    sources: upstream.glob,
-    graphMode: upstream.graphMode ?? 'preserve',
+  const sub = await loadRdf({ sources: upstream.glob });
+  return applyTransformPipeline(sub.store, upstream.transforms ?? [], {
+    perFileRecords: sub.perFileRecords,
   });
-  return sub.store;
 }
 
 function buildRegistryById(

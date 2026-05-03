@@ -62,15 +62,11 @@ describe('parseSourceSpec — object form', () => {
       parseSourceSpec({
         glob: 'data/*.ttl',
         id: 'vocab',
-        graphMode: 'flatten',
-        graph: 'urn:my:graph',
       }),
     ).toEqual({
       kind: 'glob',
       glob: 'data/*.ttl',
       id: 'vocab',
-      graphMode: 'flatten',
-      graph: 'urn:my:graph',
     });
   });
 
@@ -476,7 +472,7 @@ describe('parseSourceSpec — view cache block', () => {
   });
 });
 
-describe('parseSourceSpec — endpoint graph/graphMode are removed', () => {
+describe('parseSourceSpec — top-level graph/graphMode are removed (alpha-stage breaking change)', () => {
   it('rejects an endpoint source carrying graphMode with a hint about views', () => {
     expect(() =>
       parseSourceSpec({
@@ -497,16 +493,77 @@ describe('parseSourceSpec — endpoint graph/graphMode are removed', () => {
     ).toThrow(/\bgraph\b.*endpoint.*view/i);
   });
 
-  it('still accepts graphMode on a glob source', () => {
-    expect(
-      parseSourceSpec({ glob: 'data/*.ttl', graphMode: 'forceAll' }),
-    ).toEqual({ kind: 'glob', glob: 'data/*.ttl', graphMode: 'forceAll' });
+  it('rejects graphMode on a glob source with a stable error pointing at the transforms pipeline', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        // @ts-expect-error — `graphMode` was removed from glob source-spec shape
+        graphMode: 'forceAll',
+      }),
+    ).toThrow(/graphMode.*removed.*transforms.*graphName/);
   });
 
-  it('still accepts graph on a glob source', () => {
-    expect(
-      parseSourceSpec({ glob: 'data/*.ttl', graph: 'urn:g' }),
-    ).toEqual({ kind: 'glob', glob: 'data/*.ttl', graph: 'urn:g' });
+  it('rejects graph on a glob source with a stable error pointing at the transforms pipeline', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        // @ts-expect-error — `graph` was removed from glob source-spec shape
+        graph: 'urn:g',
+      }),
+    ).toThrow(/`graph`.*removed.*transforms.*graphName/);
+  });
+});
+
+describe('parseSourceSpec — graphName transform on glob sources', () => {
+  it('parses graphName shorthand into a registered transform', () => {
+    const parsed = parseSourceSpec({
+      glob: 'data/*.ttl',
+      transforms: [{ graphName: 'forceAll' }],
+    });
+    expect(parsed.kind).toBe('glob');
+    if (parsed.kind === 'glob') {
+      expect(parsed.transforms).toHaveLength(1);
+      expect(parsed.transforms?.[0].key).toBe('graphName');
+    }
+  });
+
+  it('parses graphName long form with override IRI', () => {
+    const parsed = parseSourceSpec({
+      glob: 'data/*.ttl',
+      transforms: [{ graphName: { mode: 'forceAll', graph: 'urn:g' } }],
+    });
+    expect(parsed.kind).toBe('glob');
+    if (parsed.kind === 'glob') {
+      expect(parsed.transforms?.[0].key).toBe('graphName');
+    }
+  });
+
+  it('rejects override `graph` with mode `preserve`', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        transforms: [{ graphName: { mode: 'preserve', graph: 'urn:g' } }],
+      }),
+    ).toThrow(/graphName.*`graph`.*preserve/);
+  });
+
+  it('rejects override `graph` with mode `flatten`', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        transforms: [{ graphName: { mode: 'flatten', graph: 'urn:g' } }],
+      }),
+    ).toThrow(/graphName.*`graph`.*flatten/);
+  });
+
+  it('rejects an unknown graphName mode shorthand', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        // @ts-expect-error — invalid mode
+        transforms: [{ graphName: 'bogus' }],
+      }),
+    ).toThrow(/graphName.*unknown mode "bogus"/);
   });
 });
 
