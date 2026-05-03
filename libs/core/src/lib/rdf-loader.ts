@@ -1,8 +1,6 @@
-import { createReadStream } from 'node:fs';
-import { extname } from 'node:path';
 import { DataFactory, Store, type DefaultGraph, type NamedNode, type Quad } from 'n3';
-import { rdfParser } from 'rdf-parse';
 import { glob } from 'tinyglobby';
+import { parseRdfFile } from './rdf-file-parser';
 
 export const GRAPH_MODES = [
   'preserve',
@@ -25,21 +23,6 @@ export interface LoadResult {
   prefixes: Record<string, Record<string, string>>;
 }
 
-const EXTENSION_TO_CONTENT_TYPE: Record<string, string> = {
-  '.ttl': 'text/turtle',
-  '.turtle': 'text/turtle',
-  '.nt': 'application/n-triples',
-  '.ntriples': 'application/n-triples',
-  '.nq': 'application/n-quads',
-  '.nquads': 'application/n-quads',
-  '.trig': 'application/trig',
-  '.jsonld': 'application/ld+json',
-  '.rdf': 'application/rdf+xml',
-  '.rdfxml': 'application/rdf+xml',
-  '.owl': 'application/rdf+xml',
-  '.xml': 'application/rdf+xml',
-};
-
 export async function loadRdf(options: LoadOptions): Promise<LoadResult> {
   const files = await glob(options.sources, { absolute: true });
 
@@ -58,12 +41,17 @@ export async function loadRdf(options: LoadOptions): Promise<LoadResult> {
   const prefixes: Record<string, Record<string, string>> = {};
 
   for (const file of files) {
-    const contentType = contentTypeFor(file);
-    if (!contentType) {
-      throw new Error(`Unsupported file extension: ${file}`);
-    }
     try {
-      prefixes[file] = await parseFileInto(file, contentType, store, mode);
+      const result = await parseRdfFile(file);
+      const fileGraph = DataFactory.namedNode(`file://${file}`);
+      for (const { quad } of result.records) {
+        const target = targetGraph(quad, mode, fileGraph);
+        const out = target
+          ? DataFactory.quad(quad.subject, quad.predicate, quad.object, target)
+          : quad;
+        store.addQuad(out);
+      }
+      prefixes[file] = result.prefixes;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(`Failed to parse ${file}: ${message}`);
@@ -71,10 +59,6 @@ export async function loadRdf(options: LoadOptions): Promise<LoadResult> {
   }
 
   return { store, files, prefixes };
-}
-
-function contentTypeFor(file: string): string | undefined {
-  return EXTENSION_TO_CONTENT_TYPE[extname(file).toLowerCase()];
 }
 
 function targetGraph(
@@ -88,32 +72,4 @@ function targetGraph(
     return fileGraph;
   }
   return undefined;
-}
-
-function parseFileInto(
-  file: string,
-  contentType: string,
-  store: Store,
-  mode: GraphMode,
-): Promise<Record<string, string>> {
-  const fileGraph = DataFactory.namedNode(`file://${file}`);
-  const filePrefixes: Record<string, string> = {};
-  return new Promise((resolve, reject) => {
-    const stream = createReadStream(file);
-    stream.on('error', reject);
-    rdfParser
-      .parse(stream, { contentType, baseIRI: `file://${file}` })
-      .on('data', (quad: Quad) => {
-        const target = targetGraph(quad, mode, fileGraph);
-        const out = target
-          ? DataFactory.quad(quad.subject, quad.predicate, quad.object, target)
-          : quad;
-        store.addQuad(out);
-      })
-      .on('prefix', (prefix: string, iri: NamedNode) => {
-        if (prefix && iri?.value) filePrefixes[prefix] = iri.value;
-      })
-      .on('error', reject)
-      .on('end', () => resolve(filePrefixes));
-  });
 }
