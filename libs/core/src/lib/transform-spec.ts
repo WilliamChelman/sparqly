@@ -1,0 +1,70 @@
+import type { Store } from 'n3';
+
+export type TransformApply = (store: Store) => Store;
+
+export interface TransformDefinition<TInput = unknown> {
+  /** Discriminator key on the source-spec list item (e.g. `graphName`, `annotate`). */
+  key: string;
+  /** Validate the raw value under `key` and return the bound apply function. */
+  parse(rawValue: TInput): TransformApply;
+}
+
+export interface ParsedTransform {
+  key: string;
+  apply: TransformApply;
+}
+
+export function parseTransformList(
+  raw: unknown,
+  registry: ReadonlyArray<TransformDefinition>,
+): ParsedTransform[] {
+  if (!Array.isArray(raw)) {
+    throw new Error('`transforms` must be an array of transform objects');
+  }
+  const out: ParsedTransform[] = [];
+  const seen = new Map<string, number>();
+  for (let i = 0; i < raw.length; i++) {
+    const parsed = parseOne(raw[i], i, registry);
+    const prev = seen.get(parsed.key);
+    if (prev !== undefined) {
+      throw new Error(
+        `duplicate transform key "${parsed.key}" at transforms[${prev}] and transforms[${i}]; each transform may appear at most once per source`,
+      );
+    }
+    seen.set(parsed.key, i);
+    out.push(parsed);
+  }
+  return out;
+}
+
+function parseOne(
+  item: unknown,
+  index: number,
+  registry: ReadonlyArray<TransformDefinition>,
+): ParsedTransform {
+  if (item === null || typeof item !== 'object' || Array.isArray(item)) {
+    throw new Error(
+      `transforms[${index}] must be an object with exactly one transform key`,
+    );
+  }
+  const keys = Object.keys(item as Record<string, unknown>);
+  if (keys.length !== 1) {
+    throw new Error(
+      `transforms[${index}] must declare exactly one transform key (got ${
+        keys.length === 0 ? '<none>' : keys.join(', ')
+      })`,
+    );
+  }
+  const key = keys[0];
+  const def = registry.find((d) => d.key === key);
+  if (!def) {
+    const known = registry.map((d) => d.key);
+    const knownNote =
+      known.length === 0 ? 'no transforms registered' : `known: ${known.join(', ')}`;
+    throw new Error(
+      `transforms[${index}]: unknown transform key "${key}" (${knownNote})`,
+    );
+  }
+  const apply = def.parse((item as Record<string, unknown>)[key]);
+  return { key, apply };
+}

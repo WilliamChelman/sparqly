@@ -1,4 +1,9 @@
 import type { GraphMode } from './rdf-loader';
+import {
+  parseTransformList,
+  type ParsedTransform,
+  type TransformDefinition,
+} from './transform-spec';
 
 export interface SourceSpecCommonFields {
   id?: string;
@@ -29,6 +34,8 @@ export interface ParsedGlobSource
     DefaultMarkerField {
   kind: 'glob';
   glob: string;
+  /** Parsed source-transformation pipeline (omitted when not declared). */
+  transforms?: ParsedTransform[];
 }
 
 export interface ParsedEndpointSource
@@ -108,6 +115,7 @@ export interface SourceSpecObjectInput
   queryFile?: string;
   cache?: ViewCacheInput;
   default?: true;
+  transforms?: ReadonlyArray<unknown>;
 }
 
 export type SourceSpecInput = string | SourceSpecObjectInput;
@@ -162,7 +170,25 @@ function pickGlobGraph(input: SourceSpecObjectInput): GlobOnlyGraphFields {
   return out;
 }
 
-export function parseSourceSpec(input: SourceSpecInput): ParsedSource {
+/**
+ * Closed registry of source transforms recognised by the source-spec parser.
+ *
+ * Empty in this slice (#111): the `transforms:` field parses, validates, and
+ * threads through unchanged, but no transform keys are accepted yet — so any
+ * non-empty list fails with "unknown transform key". Subsequent slices add
+ * `graphName` and `annotate` here.
+ */
+export const TRANSFORM_REGISTRY: ReadonlyArray<TransformDefinition> = [];
+
+export interface ParseSourceSpecContext {
+  /** Override the closed transform registry (test stubs only). */
+  transformRegistry?: ReadonlyArray<TransformDefinition>;
+}
+
+export function parseSourceSpec(
+  input: SourceSpecInput,
+  ctx?: ParseSourceSpecContext,
+): ParsedSource {
   if (typeof input === 'string') {
     if (HTTP_PREFIX.test(input)) {
       return { kind: 'endpoint', endpoint: input };
@@ -187,6 +213,7 @@ export function parseSourceSpec(input: SourceSpecInput): ParsedSource {
   }
   if (input.id !== undefined) validateSourceId(input.id);
   if (hasFrom) {
+    rejectTransformsOn(input, 'view');
     return parseView(input);
   }
   if (hasEmpty) {
@@ -201,15 +228,22 @@ export function parseSourceSpec(input: SourceSpecInput): ParsedSource {
   const defaultMarker = pickDefault(input);
   if (hasGlob) {
     rejectEndpointOnlyFields(input);
+    const registry = ctx?.transformRegistry ?? TRANSFORM_REGISTRY;
+    const transformsField =
+      input.transforms === undefined
+        ? {}
+        : { transforms: parseTransformList(input.transforms, registry) };
     return {
       kind: 'glob',
       glob: input.glob as string,
       ...common,
       ...pickGlobGraph(input),
+      ...transformsField,
       ...defaultMarker,
     };
   }
   rejectGlobGraphFieldsOnEndpoint(input);
+  rejectTransformsOn(input, 'endpoint');
   const http = pickEndpointHttp(input);
   return {
     kind: 'endpoint',
@@ -218,6 +252,17 @@ export function parseSourceSpec(input: SourceSpecInput): ParsedSource {
     ...http,
     ...defaultMarker,
   };
+}
+
+function rejectTransformsOn(
+  input: SourceSpecObjectInput,
+  kind: 'endpoint' | 'view' | 'empty',
+): void {
+  if (input.transforms !== undefined) {
+    throw new Error(
+      `\`transforms\` is only valid on glob sources (got a ${kind} source)`,
+    );
+  }
 }
 
 function rejectGlobGraphFieldsOnEndpoint(input: SourceSpecObjectInput): void {
@@ -238,6 +283,7 @@ const EMPTY_FORBIDDEN_KEYS = [
   'query',
   'queryFile',
   'cache',
+  'transforms',
 ] as const;
 
 function parseEmpty(input: SourceSpecObjectInput): ParsedEmptySource {
@@ -471,7 +517,7 @@ function validateAuth(auth: SparqlAuth): SparqlAuth {
   );
 }
 
-export interface ParseSourceSpecsContext {
+export interface ParseSourceSpecsContext extends ParseSourceSpecContext {
   /** Per-input human-readable location string for collision diagnostics. */
   locations?: ReadonlyArray<string>;
 }
@@ -480,7 +526,9 @@ export function parseSourceSpecs(
   inputs: ReadonlyArray<SourceSpecInput>,
   ctx?: ParseSourceSpecsContext,
 ): ParsedSource[] {
-  const parsed = inputs.map((input) => parseSourceSpec(input));
+  const parsed = inputs.map((input) =>
+    parseSourceSpec(input, { transformRegistry: ctx?.transformRegistry }),
+  );
   const locationFor = (i: number): string =>
     ctx?.locations?.[i] ?? `sources[${i}]`;
   const seen = new Map<string, number>();
