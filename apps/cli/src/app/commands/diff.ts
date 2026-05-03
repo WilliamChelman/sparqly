@@ -178,7 +178,7 @@ const formatField: FieldDescriptor = {
 export const diffSpec: CommandSpec<DiffConfig> = {
   name: 'diff',
   description:
-    'Compute a semantic diff between two RDF sources via RDFC-1.0 canonicalization. Always materializes both sides; a SPARQL endpoint source is rejected on either side (wrap it in a `view` source kind to scope it). Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL diff is only as deterministic as the endpoint. Note: RDFC-1.0 does not normalize literal lexical forms.',
+    'Compute a semantic diff between two RDF sources via RDFC-1.0 canonicalization. Materializes the *result* on both sides; for endpoint-backed views the query passes through to the endpoint. A SPARQL endpoint source is rejected as a raw input on either side (wrap it in a `view` source kind to scope it). Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL diff is only as deterministic as the endpoint. Note: RDFC-1.0 does not normalize literal lexical forms.',
   fields: [
     leftField,
     rightField,
@@ -272,7 +272,7 @@ export const diffSpec: CommandSpec<DiffConfig> = {
             if (violation) {
               ctx.addIssue({
                 code: 'custom',
-                message: `SPARQL endpoint ${violation} cannot be diffed directly on the ${side} side (diff always materializes; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly diff\`)`,
+                message: `SPARQL endpoint ${violation} cannot be diffed directly on the ${side} side (diff materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly diff\`)`,
                 path: Array.isArray(value) ? [side, i] : [side],
               });
             }

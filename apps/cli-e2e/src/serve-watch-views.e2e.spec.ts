@@ -124,6 +124,19 @@ describe('sparqly serve --watch with views', () => {
         }
         counter += 1;
         const value = `v${counter}`;
+        // The view's query is CONSTRUCT, but the standalone `ep` source in
+        // the registry is also bare-materialized via loadEndpointToStore
+        // (which sends SELECT ?s ?p ?o WHERE { ?s ?p ?o } and expects SPARQL
+        // results JSON). Differentiate by the query verb.
+        const isConstruct = /^\s*(?:PREFIX[^\n]*\s+)*CONSTRUCT\b/i.test(query);
+        if (isConstruct) {
+          return {
+            contentType: 'text/turtle',
+            body:
+              '@prefix ex: <http://example.org/> .\n' +
+              `ex:x ex:name ${JSON.stringify(value)} .\n`,
+          };
+        }
         return {
           contentType: 'application/sparql-results+json',
           body: JSON.stringify({
@@ -210,6 +223,18 @@ describe('sparqly serve --watch with views', () => {
           };
         }
         counter += 1;
+        // See note above: the view's CONSTRUCT pass-through expects turtle,
+        // but the standalone `ep` source bare-materializes via SELECT which
+        // expects SPARQL results JSON. Branch on the query verb.
+        const isConstruct = /^\s*(?:PREFIX[^\n]*\s+)*CONSTRUCT\b/i.test(query);
+        if (isConstruct) {
+          return {
+            contentType: 'text/turtle',
+            body:
+              '@prefix ex: <http://example.org/> .\n' +
+              `ex:x ex:name ${JSON.stringify(`r${counter}`)} .\n`,
+          };
+        }
         return {
           contentType: 'application/sparql-results+json',
           body: JSON.stringify({

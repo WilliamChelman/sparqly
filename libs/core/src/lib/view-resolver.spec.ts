@@ -1,6 +1,7 @@
 import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Store } from 'n3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   parseSourceSpecs,
@@ -138,12 +139,67 @@ describe('resolveView — endpoint upstream', () => {
     endpoint = undefined;
   });
 
-  it('loads an endpoint upstream in-process and runs the view query over it', async () => {
-    endpoint = await startFakeSparqlEndpoint(() => ({
-      body: SPARQL_JSON_TWO_BINDINGS,
-    }));
+  it('passes the view query through to a single-endpoint upstream and returns the endpoint result as a Store', async () => {
+    let observed = '';
+    endpoint = await startFakeSparqlEndpoint(({ query }) => {
+      observed = query;
+      return { body: SPARQL_JSON_TWO_BINDINGS };
+    });
     const registry = parseSourceSpecs([
       { id: 'live', endpoint: endpoint.url },
+      {
+        id: 'kept',
+        from: ['@live'],
+        query:
+          'PREFIX ex: <http://example.org/> SELECT ?s ?p ?o WHERE { ?s ?p ?o FILTER(?s = ex:keep) }',
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+
+    const store = await resolveView({ view, registry });
+    // The view query — including its FILTER — reached the endpoint verbatim.
+    expect(observed).toContain('FILTER');
+    expect(observed).not.toMatch(
+      /\bSELECT\s+\?s\s+\?p\s+\?o\s+WHERE\s*{\s*\?s\s+\?p\s+\?o\s*}\s*$/i,
+    );
+    // Pass-through builds a Store from the bindings the endpoint returned.
+    expect(
+      store.getQuads(null, null, null, null).map((q) => q.subject.value).sort(),
+    ).toEqual(['http://example.org/drop', 'http://example.org/keep']);
+  });
+});
+
+describe('resolveView — dispatch (stubbed Comunica engine)', () => {
+  interface RecordedCall {
+    query: string;
+    context: { sources?: ReadonlyArray<unknown> } & Record<string, unknown>;
+  }
+
+  function makeStubEngine(calls: RecordedCall[]) {
+    return {
+      query: async (
+        query: string,
+        context: { sources?: ReadonlyArray<unknown> } & Record<string, unknown>,
+      ) => {
+        calls.push({ query, context });
+        return {
+          resultType: 'bindings' as const,
+          execute: async (): Promise<AsyncIterable<unknown>> => ({
+            [Symbol.asyncIterator]: async function* () {
+              /* zero bindings */
+            },
+          }),
+        };
+      },
+    };
+  }
+
+  it('routes a single-endpoint upstream to an endpoint-shaped Comunica context (pass-through)', async () => {
+    const calls: RecordedCall[] = [];
+    const stub = makeStubEngine(calls);
+
+    const registry = parseSourceSpecs([
+      { id: 'live', endpoint: 'https://example.org/sparql' },
       {
         id: 'kept',
         from: ['@live'],
@@ -153,12 +209,57 @@ describe('resolveView — endpoint upstream', () => {
     ]);
     const view = registry[1] as ParsedViewSource;
 
-    const store = await resolveView({ view, registry });
-    const quads = store.getQuads(null, null, null, null);
-    expect(quads).toHaveLength(1);
-    expect(quads[0].subject.value).toBe('http://example.org/keep');
+    await resolveView({
+      view,
+      registry,
+      engine: stub as unknown as Parameters<typeof resolveView>[0]['engine'],
+    });
+
+    expect(calls.length).toBeGreaterThan(0);
+    const last = calls[calls.length - 1];
+    expect(last.query).toContain('FILTER');
+    const sources = last.context.sources ?? [];
+    expect(sources).toHaveLength(1);
+    expect(sources[0]).toEqual({
+      type: 'sparql',
+      value: 'https://example.org/sparql',
+    });
   });
 
+  it('routes a glob upstream to a Store-shaped Comunica context (materialized)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sparqly-view-resolver-dispatch-'));
+    try {
+      const a = join(dir, 'a.ttl');
+      await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
+
+      const calls: RecordedCall[] = [];
+      const stub = makeStubEngine(calls);
+
+      const registry = parseSourceSpecs([
+        { id: 'raw', glob: a },
+        {
+          id: 'plain',
+          from: ['@raw'],
+          query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        },
+      ]);
+      const view = registry[1] as ParsedViewSource;
+
+      await resolveView({
+        view,
+        registry,
+        engine: stub as unknown as Parameters<typeof resolveView>[0]['engine'],
+      });
+
+      expect(calls.length).toBeGreaterThan(0);
+      const last = calls[calls.length - 1];
+      const sources = last.context.sources ?? [];
+      expect(sources).toHaveLength(1);
+      expect(sources[0]).toBeInstanceOf(Store);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('resolveView — view-on-view composition', () => {

@@ -96,7 +96,7 @@ describe('loadQuerySources — materialization fallbacks', () => {
     expect(result.files).toHaveLength(1);
   });
 
-  it('materializes a registry of {endpoint, view-of-endpoint} via the view path', async () => {
+  it('materializes a registry of {endpoint, view-of-endpoint} via the view path (single-endpoint view passes through)', async () => {
     endpoint = await startFakeSparqlEndpoint(() => ({
       contentType: 'application/sparql-results+json',
       body: JSON.stringify({
@@ -119,7 +119,7 @@ describe('loadQuerySources — materialization fallbacks', () => {
         id: 'snap',
         from: ['@ep'],
         query:
-          'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+          'PREFIX ex: <http://example.org/> SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
       },
     ]);
 

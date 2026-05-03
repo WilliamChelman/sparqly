@@ -2,9 +2,9 @@ import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import { DataFactory, Store, type Quad } from 'n3';
-import { loadEndpointToStore } from './endpoint-load';
 import { loadRdf } from './rdf-loader';
 import {
+  type ParsedEndpointSource,
   type ParsedSource,
   type ParsedViewSource,
 } from './source-spec';
@@ -13,6 +13,7 @@ import {
   storeView as cacheStore,
   type ViewCacheBinding,
 } from './view-cache';
+import { resolveViewPassThrough } from './view-pass-through';
 import { validateViewQuery } from './view-query-validate';
 
 export interface ResolveViewOptions {
@@ -26,17 +27,18 @@ export interface ResolveViewOptions {
   cacheDir?: string;
   /** Injectable clock; defaults to `Date.now`. */
   now?: () => number;
+  /** Test seam: inject a Comunica engine. */
+  engine?: ComunicaQueryEngine;
 }
 
-export async function resolveView(
-  opts: ResolveViewOptions,
-): Promise<Store> {
+export async function resolveView(opts: ResolveViewOptions): Promise<Store> {
   return resolveViewWithCache(
     opts.view,
     opts.registry,
     [opts.view.id],
     opts.cacheDir,
     opts.now,
+    opts.engine,
   );
 }
 
@@ -46,6 +48,7 @@ async function resolveViewWithCache(
   stack: ReadonlyArray<string>,
   cacheDir: string | undefined,
   now: (() => number) | undefined,
+  engine: ComunicaQueryEngine | undefined,
 ): Promise<Store> {
   if (view.cache && cacheDir) {
     const upstream = collectCacheUpstream(view, registry);
@@ -57,18 +60,25 @@ async function resolveViewWithCache(
       registry,
       loadProbeStore:
         view.cache.strategy === 'freshness'
-          ? () => loadUpstream(view, registry, stack, cacheDir, now)
+          ? () => loadUpstream(view, registry, stack, cacheDir, now, engine)
           : undefined,
     };
     const hit = await cacheLookup(binding);
     if (hit.freshness === 'fresh' && hit.store) {
       return hit.store;
     }
-    const fresh = await resolveViewInternal(view, registry, stack, cacheDir, now);
+    const fresh = await resolveViewInternal(
+      view,
+      registry,
+      stack,
+      cacheDir,
+      now,
+      engine,
+    );
     await cacheStore(binding, fresh);
     return fresh;
   }
-  return resolveViewInternal(view, registry, stack, cacheDir, now);
+  return resolveViewInternal(view, registry, stack, cacheDir, now, engine);
 }
 
 function collectCacheUpstream(
@@ -94,11 +104,38 @@ async function resolveViewInternal(
   stack: ReadonlyArray<string>,
   cacheDir: string | undefined,
   now: (() => number) | undefined,
+  engine: ComunicaQueryEngine | undefined,
 ): Promise<Store> {
   const query = await loadViewQuery(view);
   validateViewQuery(query);
-  const upstreamStore = await loadUpstream(view, registry, stack, cacheDir, now);
-  return runViewQuery(upstreamStore, query);
+  const singleEndpoint = singleEndpointUpstream(view, registry);
+  if (singleEndpoint) {
+    return resolveViewPassThrough({
+      endpoint: singleEndpoint,
+      viewQuery: query,
+      engine,
+    });
+  }
+  const upstreamStore = await loadUpstream(
+    view,
+    registry,
+    stack,
+    cacheDir,
+    now,
+    engine,
+  );
+  return runViewQuery(upstreamStore, query, engine);
+}
+
+function singleEndpointUpstream(
+  view: ParsedViewSource,
+  registry: ReadonlyArray<ParsedSource>,
+): ParsedEndpointSource | undefined {
+  if (view.from.length !== 1) return undefined;
+  const byId = buildRegistryById(registry);
+  const upstream = byId.get(view.from[0]);
+  if (!upstream || upstream.kind !== 'endpoint') return undefined;
+  return upstream;
 }
 
 async function loadViewQuery(view: ParsedViewSource): Promise<string> {
@@ -118,6 +155,7 @@ async function loadUpstream(
   stack: ReadonlyArray<string>,
   cacheDir: string | undefined,
   now: (() => number) | undefined,
+  engine: ComunicaQueryEngine | undefined,
 ): Promise<Store> {
   const merged = new Store();
   const byId = buildRegistryById(registry);
@@ -150,18 +188,20 @@ async function loadUpstream(
         [...stack, refId],
         cacheDir,
         now,
+        engine,
       );
       for (const quad of sub.getQuads(null, null, null, null)) {
         merged.addQuad(quad);
       }
       continue;
     }
-    if (upstream.kind === 'endpoint') {
-      const sub = await loadEndpointToStore(upstream);
-      for (const quad of sub.getQuads(null, null, null, null)) {
-        merged.addQuad(quad);
-      }
-      continue;
+    if (upstream.kind !== 'glob') {
+      // Endpoint upstreams in a multi/mixed `from:` are rejected at parse time
+      // (see source-spec.validateSourceGraph); a single-endpoint upstream is
+      // routed via pass-through above. So this branch is unreachable.
+      throw new Error(
+        `view "${view.id}": unexpected upstream kind "${(upstream as { kind: string }).kind}" for ref @${refId}`,
+      );
     }
     const sub = await loadRdf({
       sources: upstream.glob,
@@ -189,10 +229,11 @@ function buildRegistryById(
 async function runViewQuery(
   source: Store,
   query: string,
+  engine: ComunicaQueryEngine | undefined,
 ): Promise<Store> {
-  const engine = new ComunicaQueryEngine();
+  const e = engine ?? new ComunicaQueryEngine();
   const out = new Store();
-  const result = await engine.query(query, { sources: [source] });
+  const result = await e.query(query, { sources: [source] });
   if (result.resultType === 'bindings') {
     const bindings = await result.execute();
     for await (const b of bindings as AsyncIterable<{

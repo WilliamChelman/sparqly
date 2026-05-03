@@ -9,23 +9,12 @@ import {
 import { hashFixture, leadingHash } from './helpers/hash';
 import { runCli } from './helpers/run-cli';
 
-const SPARQL_TWO_BINDINGS_JSON = JSON.stringify({
-  head: { vars: ['s', 'p', 'o'] },
-  results: {
-    bindings: [
-      {
-        s: { type: 'uri', value: 'http://example.org/keep' },
-        p: { type: 'uri', value: 'http://example.org/p' },
-        o: { type: 'uri', value: 'http://example.org/v1' },
-      },
-      {
-        s: { type: 'uri', value: 'http://example.org/drop' },
-        p: { type: 'uri', value: 'http://example.org/p' },
-        o: { type: 'uri', value: 'http://example.org/v2' },
-      },
-    ],
-  },
-});
+// Pass-through forwards the CONSTRUCT verbatim; the fake endpoint must
+// respond with turtle (the wire format for CONSTRUCT). The fixture is the
+// post-filter slice — i.e. what a real endpoint would return for the
+// scoping query below.
+const KEPT_TURTLE =
+  '@prefix ex: <http://example.org/> .\nex:keep ex:p ex:v1 .\n';
 
 const SCOPE_QUERY =
   'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }';
@@ -90,7 +79,8 @@ describe('sparqly hash — inline scoping query (anonymous view)', () => {
 
   it('--query: hashes a scoped slice of a SPARQL endpoint, equal to hashing the same slice from a turtle file', async () => {
     endpoint = await startFakeSparqlEndpoint(() => ({
-      body: SPARQL_TWO_BINDINGS_JSON,
+      contentType: 'text/turtle',
+      body: KEPT_TURTLE,
     }));
 
     const ttlPath = join(scratch, 'kept.ttl');
@@ -119,7 +109,8 @@ describe('sparqly hash — inline scoping query (anonymous view)', () => {
 
   it('--query-file: behaves equivalently to --query', async () => {
     endpoint = await startFakeSparqlEndpoint(() => ({
-      body: SPARQL_TWO_BINDINGS_JSON,
+      contentType: 'text/turtle',
+      body: KEPT_TURTLE,
     }));
     const queryPath = join(scratch, 'scope.rq');
     await writeFile(queryPath, SCOPE_QUERY);
@@ -187,41 +178,12 @@ describe('sparqly hash --compare-with — per-side inline scoping', () => {
   let secondaryEndpoint: FakeSparqlEndpoint | undefined;
   let scratch: string;
 
-  const PRIMARY_BINDINGS = JSON.stringify({
-    head: { vars: ['s', 'p', 'o'] },
-    results: {
-      bindings: [
-        {
-          s: { type: 'uri', value: 'http://example.org/keep' },
-          p: { type: 'uri', value: 'http://example.org/p' },
-          o: { type: 'uri', value: 'http://example.org/v1' },
-        },
-        {
-          s: { type: 'uri', value: 'http://example.org/drop' },
-          p: { type: 'uri', value: 'http://example.org/p' },
-          o: { type: 'uri', value: 'http://example.org/v2' },
-        },
-      ],
-    },
-  });
-
-  const SECONDARY_BINDINGS = JSON.stringify({
-    head: { vars: ['s', 'p', 'o'] },
-    results: {
-      bindings: [
-        {
-          s: { type: 'uri', value: 'http://example.org/keep' },
-          p: { type: 'uri', value: 'http://example.org/p' },
-          o: { type: 'uri', value: 'http://example.org/v1' },
-        },
-        {
-          s: { type: 'uri', value: 'http://example.org/extra' },
-          p: { type: 'uri', value: 'http://example.org/p' },
-          o: { type: 'uri', value: 'http://example.org/v3' },
-        },
-      ],
-    },
-  });
+  // Pass-through delegates filtering to the endpoint, so the fixtures are
+  // the post-filter slices — both sides return the same kept triple.
+  const PRIMARY_TURTLE =
+    '@prefix ex: <http://example.org/> .\nex:keep ex:p ex:v1 .\n';
+  const SECONDARY_TURTLE =
+    '@prefix ex: <http://example.org/> .\nex:keep ex:p ex:v1 .\n';
 
   const PRIMARY_SCOPE_QUERY =
     'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }';
@@ -244,10 +206,10 @@ describe('sparqly hash --compare-with — per-side inline scoping', () => {
 
   it('--query and --compare-with-query scope each side independently and match on the kept slice', async () => {
     primaryEndpoint = await startFakeSparqlEndpoint(() => ({
-      body: PRIMARY_BINDINGS,
+      contentType: 'text/turtle', body: PRIMARY_TURTLE,
     }));
     secondaryEndpoint = await startFakeSparqlEndpoint(() => ({
-      body: SECONDARY_BINDINGS,
+      contentType: 'text/turtle', body: SECONDARY_TURTLE,
     }));
 
     const result = await runCli([
@@ -270,10 +232,10 @@ describe('sparqly hash --compare-with — per-side inline scoping', () => {
 
   it('--compare-with-query-file behaves equivalently to --compare-with-query', async () => {
     primaryEndpoint = await startFakeSparqlEndpoint(() => ({
-      body: PRIMARY_BINDINGS,
+      contentType: 'text/turtle', body: PRIMARY_TURTLE,
     }));
     secondaryEndpoint = await startFakeSparqlEndpoint(() => ({
-      body: SECONDARY_BINDINGS,
+      contentType: 'text/turtle', body: SECONDARY_TURTLE,
     }));
 
     const compareQueryPath = join(scratch, 'compare-scope.rq');
@@ -332,10 +294,10 @@ describe('sparqly hash --compare-with — per-side inline scoping', () => {
 
   it('accepts a SPARQL endpoint on the --compare-with side when --compare-with-query is provided', async () => {
     primaryEndpoint = await startFakeSparqlEndpoint(() => ({
-      body: PRIMARY_BINDINGS,
+      contentType: 'text/turtle', body: PRIMARY_TURTLE,
     }));
     secondaryEndpoint = await startFakeSparqlEndpoint(() => ({
-      body: SECONDARY_BINDINGS,
+      contentType: 'text/turtle', body: SECONDARY_TURTLE,
     }));
 
     const result = await runCli([
