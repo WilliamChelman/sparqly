@@ -38,6 +38,11 @@ export interface ParsedReferenceSource extends SourceSpecCommonFields {
   ref: string;
 }
 
+export interface ParsedEmptySource extends SourceSpecCommonFields {
+  kind: 'empty';
+  id: string;
+}
+
 export interface ParsedViewCacheTtl {
   strategy: 'ttl';
   ttlMs: number;
@@ -80,7 +85,8 @@ export type ParsedSource =
   | ParsedGlobSource
   | ParsedEndpointSource
   | ParsedReferenceSource
-  | ParsedViewSource;
+  | ParsedViewSource
+  | ParsedEmptySource;
 
 export interface SourceSpecObjectInput
   extends SourceSpecCommonFields,
@@ -89,6 +95,7 @@ export interface SourceSpecObjectInput
   glob?: string;
   endpoint?: string;
   from?: string;
+  empty?: true;
   query?: string;
   queryFile?: string;
   cache?: ViewCacheInput;
@@ -152,15 +159,21 @@ export function parseSourceSpec(input: SourceSpecInput): ParsedSource {
   const hasGlob = input.glob !== undefined;
   const hasEndpoint = input.endpoint !== undefined;
   const hasFrom = input.from !== undefined;
-  const setCount = [hasGlob, hasEndpoint, hasFrom].filter(Boolean).length;
+  const hasEmpty = input.empty === true;
+  const setCount = [hasGlob, hasEndpoint, hasFrom, hasEmpty].filter(
+    Boolean,
+  ).length;
   if (setCount !== 1) {
     throw new Error(
-      'source-spec object must declare exactly one of `glob:`, `endpoint:`, or `from:`',
+      'source-spec object must declare exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`',
     );
   }
   if (input.id !== undefined) validateSourceId(input.id);
   if (hasFrom) {
     return parseView(input);
+  }
+  if (hasEmpty) {
+    return parseEmpty(input);
   }
   if (input.cache !== undefined) {
     throw new Error(
@@ -195,6 +208,30 @@ function rejectGlobGraphFieldsOnEndpoint(input: SourceSpecObjectInput): void {
       );
     }
   }
+}
+
+const EMPTY_FORBIDDEN_KEYS = [
+  ...GLOB_GRAPH_FIELD_KEYS,
+  'auth',
+  'headers',
+  'timeoutMs',
+  'query',
+  'queryFile',
+  'cache',
+] as const;
+
+function parseEmpty(input: SourceSpecObjectInput): ParsedEmptySource {
+  if (input.id === undefined) {
+    throw new Error('empty source: `id` is required');
+  }
+  for (const key of EMPTY_FORBIDDEN_KEYS) {
+    if ((input as Record<string, unknown>)[key] !== undefined) {
+      throw new Error(
+        `empty source: \`${key}\` is not valid on empty sources`,
+      );
+    }
+  }
+  return { kind: 'empty', id: input.id };
 }
 
 const VIEW_REF_PREFIX = /^@(.+)$/;

@@ -198,6 +198,38 @@ describe('resolveView — dispatch (stubbed Comunica engine)', () => {
     });
   });
 
+  it('routes an empty upstream to a Store-shaped Comunica context with the view query verbatim', async () => {
+    const calls: RecordedCall[] = [];
+    const stub = makeStubEngine(calls);
+
+    const registry = parseSourceSpecs([
+      { id: 'composer', empty: true },
+      {
+        id: 'composed',
+        from: '@composer',
+        query:
+          'CONSTRUCT { ?s ?p ?o } WHERE { SERVICE <https://example.org/sparql> { ?s ?p ?o } }',
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+
+    await resolveView({
+      view,
+      registry,
+      engine: stub as unknown as Parameters<typeof resolveView>[0]['engine'],
+    });
+
+    expect(calls.length).toBeGreaterThan(0);
+    const last = calls[calls.length - 1];
+    // SERVICE clause is preserved — Comunica's local engine dispatches it.
+    expect(last.query).toContain('SERVICE');
+    const sources = last.context.sources ?? [];
+    expect(sources).toHaveLength(1);
+    expect(sources[0]).toBeInstanceOf(Store);
+    // The Store the view runs against starts empty.
+    expect((sources[0] as Store).size).toBe(0);
+  });
+
   it('routes a glob upstream to a Store-shaped Comunica context (materialized)', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sparqly-view-resolver-dispatch-'));
     try {
@@ -230,6 +262,99 @@ describe('resolveView — dispatch (stubbed Comunica engine)', () => {
       expect(sources[0]).toBeInstanceOf(Store);
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('resolveView — empty-source SERVICE composition (e2e)', () => {
+  let endpoint: FakeSparqlEndpoint | undefined;
+
+  const DATA_TURTLE =
+    '@prefix ex: <http://example.org/> .\n' +
+    'ex:keep ex:p ex:v1 .\n' +
+    'ex:drop ex:p ex:v2 .\n';
+
+  afterEach(async () => {
+    if (endpoint) await endpoint.close();
+    endpoint = undefined;
+  });
+
+  it('runs a view query containing SERVICE against an empty upstream and returns the federated bindings', async () => {
+    endpoint = await startFakeSparqlEndpoint(({ query }) => {
+      if (/^\s*ASK\b/i.test(query)) {
+        return {
+          contentType: 'application/sparql-results+json',
+          body: JSON.stringify({ head: {}, boolean: true }),
+        };
+      }
+      return { contentType: 'text/turtle', body: DATA_TURTLE };
+    });
+
+    const registry = parseSourceSpecs([
+      { id: 'composer', empty: true },
+      {
+        id: 'composed',
+        from: '@composer',
+        query: `PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { SERVICE <${endpoint.url}> { ?s ?p ?o } }`,
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+
+    const store = await resolveView({ view, registry });
+    const subjects = store
+      .getQuads(null, null, null, null)
+      .map((q) => q.subject.value)
+      .sort();
+    expect(subjects).toEqual([
+      'http://example.org/drop',
+      'http://example.org/keep',
+    ]);
+  });
+
+  it('caches an empty-source view with a freshness ASK that uses SERVICE; the cached snapshot is returned while the probe still passes', async () => {
+    let serveCurrent = DATA_TURTLE;
+    endpoint = await startFakeSparqlEndpoint(({ query }) => {
+      if (/^\s*ASK\b/i.test(query)) {
+        return {
+          contentType: 'application/sparql-results+json',
+          body: JSON.stringify({ head: {}, boolean: true }),
+        };
+      }
+      return { contentType: 'text/turtle', body: serveCurrent };
+    });
+
+    const cacheDir = await mkdtemp(join(tmpdir(), 'sparqly-empty-svc-cache-'));
+    try {
+      const registry = parseSourceSpecs([
+        { id: 'composer', empty: true },
+        {
+          id: 'composed',
+          from: '@composer',
+          query: `PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { SERVICE <${endpoint.url}> { ?s ?p ?o } }`,
+          cache: {
+            freshness: `ASK { SERVICE <${endpoint.url}> { ?s ?p ?o } }`,
+          },
+        },
+      ]);
+      const view = registry[1] as ParsedViewSource;
+
+      const first = await resolveView({ view, registry, cacheDir });
+      expect(
+        first.getQuads(null, null, null, null).map((q) => q.subject.value).sort(),
+      ).toEqual(['http://example.org/drop', 'http://example.org/keep']);
+
+      // Replace what the endpoint serves on its data path — the cache must
+      // continue to win because the freshness ASK still returns true.
+      serveCurrent =
+        '@prefix ex: <http://example.org/> .\n' +
+        'ex:totally ex:different ex:now .\n';
+
+      const second = await resolveView({ view, registry, cacheDir });
+      expect(
+        second.getQuads(null, null, null, null).map((q) => q.subject.value).sort(),
+      ).toEqual(['http://example.org/drop', 'http://example.org/keep']);
+    } finally {
+      await rm(cacheDir, { recursive: true, force: true });
     }
   });
 });
@@ -572,6 +697,43 @@ describe('resolveView — view-cache integration', () => {
     expect(
       reEvaluated.getQuads(null, null, null, null).map((q) => q.subject.value).sort(),
     ).toEqual(['http://example.org/one', 'http://example.org/two']);
+  });
+
+  it('caches an empty-source view: ttl hit returns the stored snapshot without re-running the engine', async () => {
+    const registry = parseSourceSpecs([
+      { id: 'composer', empty: true },
+      {
+        id: 'cached',
+        from: '@composer',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+
+    let calls = 0;
+    const engine = {
+      query: async (
+        _query: string,
+        _ctx: { sources?: ReadonlyArray<unknown> } & Record<string, unknown>,
+      ) => {
+        calls += 1;
+        return {
+          resultType: 'quads' as const,
+          execute: async (): Promise<AsyncIterable<unknown>> => ({
+            [Symbol.asyncIterator]: async function* () {
+              /* zero quads — empty Store, no SERVICE-resolved data */
+            },
+          }),
+        };
+      },
+    } as unknown as Parameters<typeof resolveView>[0]['engine'];
+
+    await resolveView({ view, registry, cacheDir, engine });
+    expect(calls).toBe(1);
+    // Second call hits the cache; engine must not be invoked again.
+    await resolveView({ view, registry, cacheDir, engine });
+    expect(calls).toBe(1);
   });
 
   it('after TTL expiry the resolver re-evaluates upstream', async () => {

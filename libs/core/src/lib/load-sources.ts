@@ -47,6 +47,11 @@ export async function loadSources(
       }
       continue;
     }
+    if (rawSource.kind === 'empty') {
+      // An empty source contributes no quads on its own. It only matters as
+      // the upstream of a view whose query composes data via SERVICE clauses.
+      continue;
+    }
     const source = rawSource as ParsedGlobSource | ParsedEndpointSource;
 
     if (source.kind === 'endpoint') {

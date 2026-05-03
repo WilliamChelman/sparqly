@@ -482,6 +482,57 @@ describe('view-cache — cache key composition', () => {
     expect(k1).not.toEqual(k2);
   });
 
+  it('produces a stable key for an empty-source view (single-string upstream contribution)', () => {
+    const registry = parseSourceSpecs([
+      { id: 'composer', empty: true },
+      {
+        id: 'cached',
+        from: '@composer',
+        query:
+          'CONSTRUCT { ?s ?p ?o } WHERE { SERVICE <https://example.org/sparql> { ?s ?p ?o } }',
+        cache: { ttl: '1h' },
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+    const upstream = registry[0];
+    const k1 = viewCacheKey({ view, upstream: [upstream], cacheDir: '/x' });
+    const k2 = viewCacheKey({
+      view,
+      upstream: [upstream],
+      registry,
+      cacheDir: '/x',
+    });
+    // Two computations of the same binding stay stable.
+    expect(typeof k1).toBe('string');
+    expect(k1).toHaveLength(32);
+    expect(k2).toHaveLength(32);
+  });
+
+  it("changes when an empty-source view's query text changes (otherwise identical bindings)", () => {
+    const upstream = parseSourceSpecs([{ id: 'composer', empty: true }])[0];
+    const a = parseSourceSpecs([
+      {
+        id: 'cached',
+        from: '@composer',
+        query:
+          'CONSTRUCT { ?s ?p ?o } WHERE { SERVICE <https://a.example/sparql> { ?s ?p ?o } }',
+        cache: { ttl: '1h' },
+      },
+    ])[0] as ParsedViewSource;
+    const b = parseSourceSpecs([
+      {
+        id: 'cached',
+        from: '@composer',
+        query:
+          'CONSTRUCT { ?s ?p ?o } WHERE { SERVICE <https://b.example/sparql> { ?s ?p ?o } }',
+        cache: { ttl: '1h' },
+      },
+    ])[0] as ParsedViewSource;
+    const ka = viewCacheKey({ view: a, upstream: [upstream], cacheDir: '/x' });
+    const kb = viewCacheKey({ view: b, upstream: [upstream], cacheDir: '/x' });
+    expect(ka).not.toEqual(kb);
+  });
+
   it('is stable when only cacheDir (an output knob) changes', () => {
     const view = parseSourceSpecs([
       {

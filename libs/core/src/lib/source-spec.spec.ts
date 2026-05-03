@@ -74,13 +74,100 @@ describe('parseSourceSpec — object form', () => {
         glob: 'data/*.ttl',
         endpoint: 'https://example.com/sparql',
       }),
-    ).toThrow(/exactly one of `glob:`, `endpoint:`, or `from:`/);
+    ).toThrow(/exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`/);
   });
 
   it('rejects an object with no glob:, endpoint:, or from:', () => {
     expect(() => parseSourceSpec({ id: 'orphan' })).toThrow(
-      /exactly one of `glob:`, `endpoint:`, or `from:`/,
+      /exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`/,
     );
+  });
+});
+
+describe('parseSourceSpec — empty source', () => {
+  it('parses { id, empty: true } as a `kind: empty` source', () => {
+    expect(parseSourceSpec({ id: 'composer', empty: true })).toEqual({
+      kind: 'empty',
+      id: 'composer',
+    });
+  });
+
+  it('rejects empty: true combined with glob:', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'mix',
+        // @ts-expect-error — empty: true is mutually exclusive with glob
+        empty: true,
+        glob: 'data/*.ttl',
+      }),
+    ).toThrow(
+      /exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`/,
+    );
+  });
+
+  it('rejects empty: true combined with endpoint:', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'mix',
+        // @ts-expect-error — empty: true is mutually exclusive with endpoint
+        empty: true,
+        endpoint: 'https://example.com/sparql',
+      }),
+    ).toThrow(
+      /exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`/,
+    );
+  });
+
+  it('rejects empty: true combined with from:', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'mix',
+        // @ts-expect-error — empty: true is mutually exclusive with from
+        empty: true,
+        from: '@raw',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      }),
+    ).toThrow(
+      /exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`/,
+    );
+  });
+
+  it('requires an id on empty sources', () => {
+    expect(() =>
+      // @ts-expect-error — id is required on empty sources
+      parseSourceSpec({ empty: true }),
+    ).toThrow(/empty source.*`id` is required/i);
+  });
+
+  it('rejects empty: false (must opt in with `true`)', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'composer',
+        // @ts-expect-error — empty must be `true`
+        empty: false,
+      }),
+    ).toThrow(
+      /exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`/,
+    );
+  });
+
+  it('rejects unknown extra fields on an empty source', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'composer',
+        empty: true,
+        // @ts-expect-error — graphMode is glob-only
+        graphMode: 'preserve',
+      }),
+    ).toThrow(/empty source/i);
+  });
+
+  it('treats `@empty` as a regular reference, not a magic empty-source string', () => {
+    // No string shorthand for empty sources — object form only (per ADR-0004).
+    expect(parseSourceSpec('@empty')).toEqual({
+      kind: 'reference',
+      ref: 'empty',
+    });
   });
 });
 
@@ -189,7 +276,7 @@ describe('parseSourceSpec — view discriminant', () => {
         glob: 'data/*.ttl',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       }),
-    ).toThrow(/exactly one of `glob:`, `endpoint:`, or `from:`/);
+    ).toThrow(/exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`/);
   });
 
   it('rejects a view that also declares endpoint:', () => {
@@ -200,7 +287,7 @@ describe('parseSourceSpec — view discriminant', () => {
         endpoint: 'https://example.org/sparql',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       }),
-    ).toThrow(/exactly one of `glob:`, `endpoint:`, or `from:`/);
+    ).toThrow(/exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`/);
   });
 });
 

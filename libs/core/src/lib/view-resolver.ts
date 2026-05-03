@@ -185,6 +185,9 @@ async function loadUpstream(
       engine,
     );
   }
+  if (upstream.kind === 'empty') {
+    return new Store();
+  }
   if (upstream.kind !== 'glob') {
     // Endpoint upstreams are routed via pass-through above; this branch is
     // unreachable for the current source kinds.

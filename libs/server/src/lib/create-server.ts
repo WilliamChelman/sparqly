@@ -6,6 +6,7 @@ import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
+import { Store } from 'n3';
 import {
   type GraphMode,
   loadQuerySources,
@@ -355,15 +356,22 @@ async function runAskAgainstUpstream(
     byId.set(src.id, src);
   }
   const upstream = byId.get(view.from);
-  if (!upstream || upstream.kind !== 'endpoint') {
+  if (!upstream) {
     throw new Error(
-      `freshness watch supports endpoint upstreams only; view "${view.id}" upstream is ${upstream?.kind ?? 'missing'}`,
+      `freshness watch: view "${view.id}" upstream "@${view.from}" is missing from the registry`,
+    );
+  }
+  if (upstream.kind !== 'endpoint' && upstream.kind !== 'empty') {
+    throw new Error(
+      `freshness watch supports endpoint or empty upstreams; view "${view.id}" upstream is ${upstream.kind}`,
     );
   }
   const engine = new ComunicaQueryEngine();
-  const result = await engine.query(askQuery, {
-    sources: [{ type: 'sparql', value: upstream.endpoint }],
-  });
+  const source =
+    upstream.kind === 'endpoint'
+      ? { type: 'sparql', value: upstream.endpoint }
+      : new Store();
+  const result = await engine.query(askQuery, { sources: [source] });
   if (result.resultType !== 'boolean') {
     throw new Error(
       `cache.freshness query must be an ASK; got ${String(result.resultType)}`,
