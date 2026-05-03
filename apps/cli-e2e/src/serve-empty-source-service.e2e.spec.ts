@@ -50,6 +50,7 @@ describe('sparqly serve — empty source with SERVICE composition', () => {
           - id: composer
             empty: true
           - id: composed
+            default: true
             from: "@composer"
             query: |
               CONSTRUCT { ?s ?p ?o } WHERE {

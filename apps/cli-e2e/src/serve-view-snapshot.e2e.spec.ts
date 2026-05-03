@@ -40,6 +40,7 @@ describe('sparqly serve — view source materialized snapshot', () => {
           - id: raw
             glob: "${ttlPath}"
           - id: kept
+            default: true
             from: "@raw"
             query: |
               PREFIX ex: <http://example.org/>
@@ -62,21 +63,19 @@ describe('sparqly serve — view source materialized snapshot', () => {
       }>
     ).map((b) => `${b.s.value} ${b.p.value} ${b.o.value}`);
 
-    expect(triples).toContain(
-      'http://example.org/keep http://example.org/p http://example.org/v1',
-    );
-    expect(triples).toContain(
-      'http://example.org/drop http://example.org/p http://example.org/v2',
-    );
+    // The target is the `kept` view; the served store is the view's output
+    // only — the raw glob is the view's upstream, not a sibling merged in.
     expect(triples).toContain(
       'http://example.org/keep http://example.org/r http://example.org/v1',
     );
-    expect(
-      triples.find(
-        (t) =>
-          t ===
-          'http://example.org/drop http://example.org/r http://example.org/v2',
-      ),
-    ).toBeUndefined();
+    expect(triples).not.toContain(
+      'http://example.org/keep http://example.org/p http://example.org/v1',
+    );
+    expect(triples).not.toContain(
+      'http://example.org/drop http://example.org/p http://example.org/v2',
+    );
+    expect(triples).not.toContain(
+      'http://example.org/drop http://example.org/r http://example.org/v2',
+    );
   });
 });
