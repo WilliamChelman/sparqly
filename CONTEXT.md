@@ -5,7 +5,7 @@ A CLI for querying, hashing, diffing, formatting, and serving RDF, built around 
 ## Language
 
 **Source**:
-A declared input that produces RDF. One of: `glob`, `endpoint`, `view`, `reference`.
+A declared input that produces RDF. One of: `glob`, `endpoint`, `empty`, `view`, `reference`.
 
 **Glob source**:
 A `kind: 'glob'` source that matches RDF files on disk via a glob pattern.
@@ -13,21 +13,24 @@ A `kind: 'glob'` source that matches RDF files on disk via a glob pattern.
 **Endpoint source**:
 A `kind: 'endpoint'` source whose value is the URL of a remote SPARQL HTTP endpoint.
 
+**Empty source**:
+A `kind: 'empty'` source declared with `{ id, empty: true }` that produces an empty in-memory `Store`. It exists to host a view whose query composes data via `SERVICE` clauses, so users can federate across endpoints whose own SPARQL implementation does not support `SERVICE`.
+
 **View**:
-A `kind: 'view'` source declared with `id`, `from: [@ref...]` (one or more upstream refs), and a SPARQL `query` (or `queryFile`) that scopes those upstreams. Only `CONSTRUCT` and `SELECT-{?s,?p,?o[,?g]}` are accepted as the view query.
+A `kind: 'view'` source declared with `id`, `from: '@ref'` (exactly one upstream ref), and a SPARQL `query` (or `queryFile`) that scopes that upstream. Only `CONSTRUCT` and `SELECT-{?s,?p,?o[,?g]}` are accepted as the view query. Multi-source composition is intentionally not provided at the source-spec level — use `SERVICE` clauses inside the view query, optionally hosted on an **empty source**.
 
 **Anonymous view**:
 A view synthesized at command time from `--query`/`--query-file` on `hash` or `diff`. Same resolution semantics as a declared view; never cached. Built by `resolveAnonymousView`.
 
 **Upstream**:
-The source(s) a view references via `from:`. May include other views, in which case resolution recurses.
+The single source a view references via `from:`. May be a glob, endpoint, empty, or another view (in which case resolution recurses).
 
 **Materialized resolution**:
-Loading every triple from the upstream(s) into a local in-memory `Store`, then executing the view query against that Store. The default for glob upstreams and for any multi/mixed upstream set.
+Loading the upstream into a local in-memory `Store`, then executing the view query against that Store. The default for glob, empty, and view upstreams. For an empty upstream the Store starts empty and any data flows in via `SERVICE` clauses inside the query, dispatched by Comunica.
 _Avoid_: "in-memory mode", "fetch-then-query"
 
 **Pass-through resolution**:
-Forwarding the user's query to a single remote endpoint over the SPARQL protocol via Comunica federation, so the endpoint executes it and returns only the result. Used by the `query` command for a single endpoint source, and by views whose `from:` is exactly one endpoint ref.
+Forwarding the user's query to the upstream endpoint over the SPARQL protocol via Comunica federation, so the endpoint executes it and returns only the result. Used by the `query` command for a single endpoint source, and by views whose `from:` is an endpoint ref. `SERVICE` clauses inside a pass-through query are evaluated by the upstream endpoint, so cross-endpoint composition via SERVICE only works if that endpoint supports it; otherwise host the query on an **empty source** instead.
 _Avoid_: "pushdown" (informal; the codebase term is pass-through), "federation" (federation is the *mechanism*, pass-through is the *mode*)
 
 **Result cache**:
@@ -42,10 +45,10 @@ RDFC-1.0 normalization producing a stable N-Quads serialization, used by `hash` 
 
 ## Relationships
 
-- A **View** has one or more **Upstream** sources via `from:`.
-- An **Upstream** is itself a **Source** (glob, endpoint, view, or reference).
-- A **View** whose `from:` is exactly one **Endpoint source** resolves via **pass-through**; all other shapes resolve via **materialized**.
-- A **View** with `cache:` declared writes to the **Result cache** after resolution; `cache.strategy: 'freshness'` triggers a **Freshness probe** on lookup.
+- A **View** has exactly one **Upstream** source via `from:`.
+- An **Upstream** is itself a **Source** (glob, endpoint, empty, or view; reference is rejected).
+- A **View** whose `from:` is an **Endpoint source** resolves via **pass-through**; glob, empty, and view upstreams resolve via **materialized**.
+- A **View** with `cache:` declared writes to the **Result cache** after resolution; `cache.strategy: 'freshness'` triggers a **Freshness probe** on lookup. On an **empty source** view the probe must contain `SERVICE` clauses to be meaningful, since the local Store is empty.
 - The **`query` command** uses **pass-through** when a single endpoint source is given; otherwise it uses **materialized** resolution via `loadQuerySources`.
 - **`hash`** and **`diff`** always **canonicalize** the resolved Store and refuse a raw endpoint source — endpoints must be wrapped in a view (declared or anonymous) so a scoping query exists.
 
