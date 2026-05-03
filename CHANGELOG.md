@@ -1,3 +1,14 @@
+## [0.11.0](https://github.com/WilliamChelman/sparqly/compare/v0.10.0...v0.11.0) (2026-05-03)
+
+### ⚠ BREAKING CHANGES
+
+* **core:** narrow view `from:` to a single ref (#99)
+
+### Features
+
+* **core:** add empty source kind for SERVICE composition ([#100](https://github.com/WilliamChelman/sparqly/issues/100)) ([4d2ef60](https://github.com/WilliamChelman/sparqly/commit/4d2ef605365cd8e91449c251566e94dc3c961284))
+* **core:** narrow view `from:` to a single ref ([#99](https://github.com/WilliamChelman/sparqly/issues/99)) ([d1053f2](https://github.com/WilliamChelman/sparqly/commit/d1053f20dbbbdcffba5d8b0deb772ed8e5866162))
+
 ## [0.10.0](https://github.com/WilliamChelman/sparqly/compare/v0.9.0...v0.10.0) (2026-05-03)
 
 ### ⚠ BREAKING CHANGES
