@@ -1,3 +1,35 @@
+## [0.10.0](https://github.com/WilliamChelman/sparqly/compare/v0.9.0...v0.10.0) (2026-05-03)
+
+### ⚠ BREAKING CHANGES
+
+* **core:** views with from: [@endpoint] no longer materialize the
+endpoint with `SELECT ?s ?p ?o WHERE { ?s ?p ?o }`; the view query is
+forwarded directly. Endpoints must execute the user's query (typically
+CONSTRUCT) and return the appropriate wire format.
+* **core:** remove graph and graphMode from endpoint sources
+* **core:** remove prefilter and prefilterFile from glob/endpoint sources
+
+### Features
+
+* **cli:** diff --left-query/--right-query and symmetric --query scope each side ([328f4c4](https://github.com/WilliamChelman/sparqly/commit/328f4c4bf076afe74efba2ebe42747477709e8db))
+* **cli:** hash --compare-with-query / --compare-with-query-file scope each side ([5d3d151](https://github.com/WilliamChelman/sparqly/commit/5d3d151fb074eef5a106955313c569b86e569b42))
+* **cli:** hash --query / --query-file scope a single source via anonymous view ([baa772b](https://github.com/WilliamChelman/sparqly/commit/baa772bea4d5d97d91189c690bdfdb6451eaae8e))
+* **cli:** sparqly cache list and clear commands ([#89](https://github.com/WilliamChelman/sparqly/issues/89)) ([a540599](https://github.com/WilliamChelman/sparqly/commit/a54059940c21169c399752b0222c9876817f899c))
+* **core:** DAG-walk cache invalidation across view chains ([#88](https://github.com/WilliamChelman/sparqly/issues/88)) ([c55c8ad](https://github.com/WilliamChelman/sparqly/commit/c55c8ada1463c51a5ac3248f57bb35349542b306))
+* **core:** introduce `view` source kind over glob upstream ([8cd0960](https://github.com/WilliamChelman/sparqly/commit/8cd0960691f41f180c9a9ff69344ae3062e22d5f))
+* **core:** reject mixed/multi-endpoint view.from at parse time ([#94](https://github.com/WilliamChelman/sparqly/issues/94)) ([df408c4](https://github.com/WilliamChelman/sparqly/commit/df408c4c90a68581da2536ba8991343f08eee3a4)), closes [#97](https://github.com/WilliamChelman/sparqly/issues/97)
+* **core:** remove graph and graphMode from endpoint sources ([a038f9c](https://github.com/WilliamChelman/sparqly/commit/a038f9c593b37ba7965a18d0d899f49354514214)), closes [#78](https://github.com/WilliamChelman/sparqly/issues/78)
+* **core:** remove prefilter and prefilterFile from glob/endpoint sources ([964f89e](https://github.com/WilliamChelman/sparqly/commit/964f89ea257ecde765b500c601a1e404749f144f)), closes [#81](https://github.com/WilliamChelman/sparqly/issues/81)
+* **core:** view pass-through for single-endpoint upstreams ([97f7c83](https://github.com/WilliamChelman/sparqly/commit/97f7c83e382ae2807833887806b275c8556ebccc)), closes [#95](https://github.com/WilliamChelman/sparqly/issues/95)
+* **core:** view resolver supports endpoint and view-on-view upstream ([ad35442](https://github.com/WilliamChelman/sparqly/commit/ad35442f246a6ddfa3a85c0bef96f051f3ef7325)), closes [#80](https://github.com/WilliamChelman/sparqly/issues/80)
+* **core:** view-cache foundation with TTL strategy ([#86](https://github.com/WilliamChelman/sparqly/issues/86)) ([a11280f](https://github.com/WilliamChelman/sparqly/commit/a11280ff2c4da5d404763a85b746906b3a106573)), closes [#83](https://github.com/WilliamChelman/sparqly/issues/83)
+* **core:** view-cache freshness ASK and everlasting strategies ([#87](https://github.com/WilliamChelman/sparqly/issues/87)) ([78f43ab](https://github.com/WilliamChelman/sparqly/commit/78f43ab19a43d74230dcf072dbc24f8930b85a60))
+* **server:** serve --watch refreshes views on file/ttl/freshness triggers ([c9c2275](https://github.com/WilliamChelman/sparqly/commit/c9c22754865033ee3b510333017cde03a9159dc4))
+
+### Bug Fixes
+
+* **server:** declare @comunica/query-sparql as a dependency ([eaa3cd0](https://github.com/WilliamChelman/sparqly/commit/eaa3cd0e1a46682fd2e01b4586f68062442bc6e3))
+
 ## [0.9.0](https://github.com/WilliamChelman/sparqly/compare/v0.8.0...v0.9.0) (2026-05-02)
 
 ### ⚠ BREAKING CHANGES
