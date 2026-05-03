@@ -1,3 +1,4 @@
+import { ANNOTATE_TRANSFORM } from './annotate-transform';
 import { GRAPH_NAME_TRANSFORM } from './graph-name-transform';
 import {
   parseTransformList,
@@ -167,6 +168,7 @@ function rejectLegacyGlobGraphFields(input: SourceSpecObjectInput): void {
  */
 export const TRANSFORM_REGISTRY: ReadonlyArray<TransformDefinition> = [
   GRAPH_NAME_TRANSFORM,
+  ANNOTATE_TRANSFORM,
 ];
 
 export interface ParseSourceSpecContext {

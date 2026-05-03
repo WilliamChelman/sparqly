@@ -567,6 +567,61 @@ describe('parseSourceSpec — graphName transform on glob sources', () => {
   });
 });
 
+describe('parseSourceSpec — annotate transform on glob sources', () => {
+  it('accepts annotate with no fields (defaults)', () => {
+    const parsed = parseSourceSpec({
+      glob: 'data/*.ttl',
+      transforms: [{ annotate: {} }],
+    });
+    expect(parsed.kind).toBe('glob');
+    if (parsed.kind === 'glob') {
+      expect(parsed.transforms?.[0].key).toBe('annotate');
+    }
+  });
+
+  it('accepts annotate: null as defaults', () => {
+    const parsed = parseSourceSpec({
+      glob: 'data/*.ttl',
+      // @ts-expect-error — null collapses to defaults
+      transforms: [{ annotate: null }],
+    });
+    expect(parsed.kind).toBe('glob');
+    if (parsed.kind === 'glob') {
+      expect(parsed.transforms?.[0].key).toBe('annotate');
+    }
+  });
+
+  it('accepts each subset of source/file/line overrides', () => {
+    for (const overrides of [
+      { source: 'http://my/source' },
+      { file: 'http://my/file' },
+      { line: 'http://my/line' },
+      {
+        source: 'http://my/source',
+        file: 'http://my/file',
+        line: 'http://my/line',
+      },
+    ]) {
+      expect(() =>
+        parseSourceSpec({
+          glob: 'data/*.ttl',
+          transforms: [{ annotate: overrides }],
+        }),
+      ).not.toThrow();
+    }
+  });
+
+  it('rejects unknown fields under annotate', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        // @ts-expect-error — unknown field
+        transforms: [{ annotate: { bogus: 'x' } }],
+      }),
+    ).toThrow(/annotate.*unknown key.*bogus/);
+  });
+});
+
 describe('parseSourceSpec — transforms field (closed registry)', () => {
   it('accepts an empty transforms list on a glob source and surfaces it as []', () => {
     const parsed = parseSourceSpec({ glob: 'data/*.ttl', transforms: [] });
