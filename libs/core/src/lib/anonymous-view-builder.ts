@@ -44,7 +44,7 @@ export async function resolveAnonymousView(
   const view: ParsedViewSource = {
     kind: 'view',
     id: ANON_VIEW_ID,
-    from: [upstreamId],
+    from: upstreamId,
     ...(hasQuery ? { query: input.query } : {}),
     ...(hasQueryFile ? { queryFile: input.queryFile } : {}),
   };

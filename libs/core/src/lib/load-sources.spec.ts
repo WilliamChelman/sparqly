@@ -335,7 +335,7 @@ describe('loadSources — per-source pipeline', () => {
       { id: 'raw', glob: a },
       {
         id: 'derived',
-        from: ['@raw'],
+        from: '@raw',
         query:
           'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:r ?o } WHERE { ?s ex:p ?o }',
       },

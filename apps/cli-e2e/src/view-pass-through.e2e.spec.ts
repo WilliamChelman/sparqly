@@ -141,7 +141,7 @@ describe('view pass-through — diff --query / --left-query / --right-query', ()
   });
 });
 
-describe('view pass-through — declared view with from: [@endpoint]', () => {
+describe('view pass-through — declared view with from: @endpoint', () => {
   let endpoint: FakeSparqlEndpoint | undefined;
   let dir: string;
 
@@ -167,7 +167,7 @@ describe('view pass-through — declared view with from: [@endpoint]', () => {
           - id: ep
             endpoint: "${endpoint.url}"
           - id: snap
-            from: ["@ep"]
+            from: "@ep"
             query: ${JSON.stringify(SCOPE_QUERY)}
       ` + '\n',
     );

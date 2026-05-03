@@ -106,7 +106,7 @@ describe('sparqly serve --watch with mixed glob and SPARQL sources', () => {
           - id: ep
             endpoint: "${endpoint.url}"
           - id: snap
-            from: ["@ep"]
+            from: "@ep"
             query: "SELECT ?s ?p ?o WHERE { ?s ?p ?o }"
       ` + '\n',
     );

@@ -72,7 +72,7 @@ describe('sparqly serve --watch with views', () => {
           - id: raw
             glob: "${ttlPath}"
           - id: people
-            from: ["@raw"]
+            from: "@raw"
             query: |
               PREFIX ex: <http://example.org/>
               CONSTRUCT { ?s ex:name ?n } WHERE { ?s ex:name ?n }
@@ -171,7 +171,7 @@ describe('sparqly serve --watch with views', () => {
             - id: ep
               endpoint: "${endpoint.url}"
             - id: snap
-              from: ["@ep"]
+              from: "@ep"
               query: |
                 CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }
               cache:
@@ -268,7 +268,7 @@ describe('sparqly serve --watch with views', () => {
             - id: ep
               endpoint: "${endpoint.url}"
             - id: snap
-              from: ["@ep"]
+              from: "@ep"
               query: |
                 CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }
               cache:

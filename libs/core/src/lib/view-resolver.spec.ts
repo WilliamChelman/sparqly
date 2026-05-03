@@ -57,7 +57,7 @@ describe('resolveView — glob upstream', () => {
       { id: 'raw', glob: a },
       {
         id: 'kept',
-        from: ['@raw'],
+        from: '@raw',
         query:
           'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }',
       },
@@ -68,34 +68,6 @@ describe('resolveView — glob upstream', () => {
     const quads = store.getQuads(null, null, null, null);
     expect(quads).toHaveLength(1);
     expect(quads[0].subject.value).toBe('http://example.org/keep');
-  });
-
-  it('runs a SELECT-{?s,?p,?o} view over multiple glob upstreams', async () => {
-    const a = join(dir, 'a.ttl');
-    const b = join(dir, 'b.ttl');
-    await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
-    await writeFile(b, '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .');
-
-    const registry = parseSourceSpecs([
-      { id: 'r1', glob: a },
-      { id: 'r2', glob: b },
-      {
-        id: 'all',
-        from: ['@r1', '@r2'],
-        query: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
-      },
-    ]);
-    const view = registry[2] as ParsedViewSource;
-
-    const store = await resolveView({ view, registry });
-    const subjects = store
-      .getQuads(null, null, null, null)
-      .map((q) => q.subject.value)
-      .sort();
-    expect(subjects).toEqual([
-      'http://example.org/a',
-      'http://example.org/c',
-    ]);
   });
 
   it('reads queryFile relative to cwd and uses it', async () => {
@@ -117,7 +89,7 @@ describe('resolveView — glob upstream', () => {
       );
       const registry = parseSourceSpecs([
         { id: 'raw', glob: a },
-        { id: 'kept', from: ['@raw'], queryFile: 'view.rq' },
+        { id: 'kept', from: '@raw', queryFile: 'view.rq' },
       ]);
       const view = registry[1] as ParsedViewSource;
 
@@ -149,7 +121,7 @@ describe('resolveView — endpoint upstream', () => {
       { id: 'live', endpoint: endpoint.url },
       {
         id: 'kept',
-        from: ['@live'],
+        from: '@live',
         query:
           'PREFIX ex: <http://example.org/> SELECT ?s ?p ?o WHERE { ?s ?p ?o FILTER(?s = ex:keep) }',
       },
@@ -202,7 +174,7 @@ describe('resolveView — dispatch (stubbed Comunica engine)', () => {
       { id: 'live', endpoint: 'https://example.org/sparql' },
       {
         id: 'kept',
-        from: ['@live'],
+        from: '@live',
         query:
           'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }',
       },
@@ -239,7 +211,7 @@ describe('resolveView — dispatch (stubbed Comunica engine)', () => {
         { id: 'raw', glob: a },
         {
           id: 'plain',
-          from: ['@raw'],
+          from: '@raw',
           query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         },
       ]);
@@ -288,13 +260,13 @@ describe('resolveView — view-on-view composition', () => {
       { id: 'raw', glob: a },
       {
         id: 'no-other',
-        from: ['@raw'],
+        from: '@raw',
         query:
           'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s != ex:other) }',
       },
       {
         id: 'kept',
-        from: ['@no-other'],
+        from: '@no-other',
         query:
           'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }',
       },
@@ -323,7 +295,7 @@ describe('resolveView — failure surfacing', () => {
     const registry = parseSourceSpecs([
       {
         id: 'v',
-        from: ['@nope'],
+        from: '@nope',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       },
     ]);
@@ -337,7 +309,7 @@ describe('resolveView — failure surfacing', () => {
     const registry = parseSourceSpecs([
       {
         id: 'loop',
-        from: ['@loop'],
+        from: '@loop',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       },
     ]);
@@ -351,12 +323,12 @@ describe('resolveView — failure surfacing', () => {
     const registry = parseSourceSpecs([
       {
         id: 'a',
-        from: ['@b'],
+        from: '@b',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       },
       {
         id: 'b',
-        from: ['@a'],
+        from: '@a',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       },
     ]);
@@ -369,7 +341,7 @@ describe('resolveView — failure surfacing', () => {
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
     const registry = parseSourceSpecs([
       { id: 'raw', glob: a },
-      { id: 'bad', from: ['@raw'], query: 'NOT A QUERY' },
+      { id: 'bad', from: '@raw', query: 'NOT A QUERY' },
     ]);
     const view = registry[1] as ParsedViewSource;
     await expect(resolveView({ view, registry })).rejects.toThrow();
@@ -400,7 +372,7 @@ describe('resolveView — view-cache integration', () => {
       { id: 'raw', glob: a },
       {
         id: 'plain',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       },
     ]);
@@ -425,7 +397,7 @@ describe('resolveView — view-cache integration', () => {
       { id: 'raw', glob: a },
       {
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query:
           'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }',
         cache: { ttl: '1h' },
@@ -465,7 +437,7 @@ describe('resolveView — view-cache integration', () => {
       { id: 'raw', glob: a },
       {
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: {
           freshness:
@@ -517,7 +489,7 @@ describe('resolveView — view-cache integration', () => {
       { id: 'raw', glob: a },
       {
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { everlasting: true },
       },
@@ -553,13 +525,13 @@ describe('resolveView — view-cache integration', () => {
       { id: 'raw', glob: a },
       {
         id: 'mid',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
       {
         id: 'leaf',
-        from: ['@mid'],
+        from: '@mid',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
@@ -612,7 +584,7 @@ describe('resolveView — view-cache integration', () => {
       { id: 'raw', glob: a },
       {
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1s' },
       },

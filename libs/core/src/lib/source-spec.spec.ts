@@ -85,17 +85,17 @@ describe('parseSourceSpec — object form', () => {
 });
 
 describe('parseSourceSpec — view discriminant', () => {
-  it('parses a view with from refs, an inline query, and an id', () => {
+  it('parses a view with a single string from ref, an inline query, and an id', () => {
     expect(
       parseSourceSpec({
         id: 'filtered',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       }),
     ).toEqual({
       kind: 'view',
       id: 'filtered',
-      from: ['raw'],
+      from: 'raw',
       query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
     });
   });
@@ -104,35 +104,49 @@ describe('parseSourceSpec — view discriminant', () => {
     expect(
       parseSourceSpec({
         id: 'filtered',
-        from: ['@raw'],
+        from: '@raw',
         queryFile: './scope.rq',
       }),
     ).toEqual({
       kind: 'view',
       id: 'filtered',
-      from: ['raw'],
+      from: 'raw',
       queryFile: './scope.rq',
     });
   });
 
-  it('parses a view with multiple from refs', () => {
-    expect(
+  it('rejects `from:` given as an array (any length) and points at SERVICE for composition', () => {
+    expect(() =>
       parseSourceSpec({
         id: 'fanned',
+        // @ts-expect-error — array form is no longer accepted
         from: ['@a', '@b'],
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       }),
-    ).toMatchObject({
-      kind: 'view',
-      from: ['a', 'b'],
-    });
+    ).toThrow(/`from:`.*single.*ref.*SERVICE/i);
+    expect(() =>
+      parseSourceSpec({
+        id: 'one-element',
+        // @ts-expect-error — single-element arrays are also rejected
+        from: ['@a'],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      }),
+    ).toThrow(/`from:`.*single.*ref.*SERVICE/i);
+    expect(() =>
+      parseSourceSpec({
+        id: 'empty',
+        // @ts-expect-error — empty arrays are also rejected
+        from: [],
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      }),
+    ).toThrow(/`from:`.*single.*ref.*SERVICE/i);
   });
 
   it('rejects a view with both query and queryFile', () => {
     expect(() =>
       parseSourceSpec({
         id: 'filtered',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         queryFile: './scope.rq',
       }),
@@ -143,7 +157,7 @@ describe('parseSourceSpec — view discriminant', () => {
     expect(() =>
       parseSourceSpec({
         id: 'filtered',
-        from: ['@raw'],
+        from: '@raw',
       }),
     ).toThrow(/view.*exactly one of `query`.*`queryFile`/i);
   });
@@ -151,27 +165,17 @@ describe('parseSourceSpec — view discriminant', () => {
   it('rejects a view without an id', () => {
     expect(() =>
       parseSourceSpec({
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       }),
     ).toThrow(/view.*id.*required/i);
   });
 
-  it('rejects a view with an empty from list', () => {
+  it('rejects a from value that is not a `@id` reference', () => {
     expect(() =>
       parseSourceSpec({
         id: 'filtered',
-        from: [],
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      }),
-    ).toThrow(/view.*from.*at least one/i);
-  });
-
-  it('rejects a from entry that is not a `@id` reference', () => {
-    expect(() =>
-      parseSourceSpec({
-        id: 'filtered',
-        from: ['raw'],
+        from: 'raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       }),
     ).toThrow(/from.*ref.*@/i);
@@ -181,7 +185,7 @@ describe('parseSourceSpec — view discriminant', () => {
     expect(() =>
       parseSourceSpec({
         id: 'mix',
-        from: ['@raw'],
+        from: '@raw',
         glob: 'data/*.ttl',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       }),
@@ -192,7 +196,7 @@ describe('parseSourceSpec — view discriminant', () => {
     expect(() =>
       parseSourceSpec({
         id: 'mix',
-        from: ['@raw'],
+        from: '@raw',
         endpoint: 'https://example.org/sparql',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       }),
@@ -205,14 +209,14 @@ describe('parseSourceSpec — view cache block', () => {
     expect(
       parseSourceSpec({
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       }),
     ).toEqual({
       kind: 'view',
       id: 'cached',
-      from: ['raw'],
+      from: 'raw',
       query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       cache: { strategy: 'ttl', ttlMs: 60 * 60 * 1000 },
     });
@@ -222,7 +226,7 @@ describe('parseSourceSpec — view cache block', () => {
     expect(
       parseSourceSpec({
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '5m', cacheDir: './tmp/my-cache' },
       }),
@@ -235,7 +239,7 @@ describe('parseSourceSpec — view cache block', () => {
     expect(
       parseSourceSpec({
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: 1500 },
       }),
@@ -246,7 +250,7 @@ describe('parseSourceSpec — view cache block', () => {
     expect(
       parseSourceSpec({
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { freshness: 'ASK { ?s ?p ?o }' },
       }),
@@ -259,7 +263,7 @@ describe('parseSourceSpec — view cache block', () => {
     expect(
       parseSourceSpec({
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { everlasting: true },
       }),
@@ -272,7 +276,7 @@ describe('parseSourceSpec — view cache block', () => {
     expect(() =>
       parseSourceSpec({
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         // @ts-expect-error — must declare exactly one strategy
         cache: {},
@@ -284,7 +288,7 @@ describe('parseSourceSpec — view cache block', () => {
     expect(() =>
       parseSourceSpec({
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: 'forever' },
       }),
@@ -295,7 +299,7 @@ describe('parseSourceSpec — view cache block', () => {
     expect(() =>
       parseSourceSpec({
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h', freshness: 'ASK { ?s ?p ?o }' },
       }),
@@ -306,7 +310,7 @@ describe('parseSourceSpec — view cache block', () => {
     expect(() =>
       parseSourceSpec({
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h', everlasting: true },
       }),
@@ -317,7 +321,7 @@ describe('parseSourceSpec — view cache block', () => {
     expect(() =>
       parseSourceSpec({
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { freshness: 'ASK { ?s ?p ?o }', everlasting: true },
       }),
@@ -328,7 +332,7 @@ describe('parseSourceSpec — view cache block', () => {
     expect(() =>
       parseSourceSpec({
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { everlasting: false },
       }),
@@ -339,7 +343,7 @@ describe('parseSourceSpec — view cache block', () => {
     expect(() =>
       parseSourceSpec({
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { freshness: '' },
       }),
@@ -350,7 +354,7 @@ describe('parseSourceSpec — view cache block', () => {
     expect(() =>
       parseSourceSpec({
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         // @ts-expect-error — `bogus` is not a known cache key
         cache: { ttl: '1h', bogus: true },
@@ -581,48 +585,25 @@ describe('parseSourceSpec — endpoint HTTP fields (auth, headers, timeoutMs)', 
   });
 });
 
-describe('parseSourceSpecs — endpoint-mixing rejection', () => {
+describe('parseSourceSpecs — view from: single-ref invariant', () => {
   const VIEW_QUERY = 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }';
-  const TRACKING_URL = 'https://github.com/WilliamChelman/sparqly/issues/97';
 
-  it('rejects a view that mixes an endpoint ref with a glob ref', () => {
+  it('accepts a view whose `from` is a single endpoint ref', () => {
     expect(() =>
       parseSourceSpecs([
         { endpoint: 'https://example.com/sparql', id: 'live' },
-        { glob: 'data/*.ttl', id: 'files' },
-        { id: 'mixed', from: ['@live', '@files'], query: VIEW_QUERY },
-      ]),
-    ).toThrow(new RegExp(TRACKING_URL.replace(/\//g, '\\/')));
-  });
-
-  it('accepts a view whose `from` lists exactly one endpoint ref', () => {
-    expect(() =>
-      parseSourceSpecs([
-        { endpoint: 'https://example.com/sparql', id: 'live' },
-        { id: 'scoped', from: ['@live'], query: VIEW_QUERY },
+        { id: 'scoped', from: '@live', query: VIEW_QUERY },
       ]),
     ).not.toThrow();
   });
 
-  it('rejects a view that mixes an endpoint ref with another view ref', () => {
+  it('accepts a view whose `from` is a single glob ref', () => {
     expect(() =>
       parseSourceSpecs([
-        { endpoint: 'https://example.com/sparql', id: 'live' },
         { glob: 'data/*.ttl', id: 'files' },
-        { id: 'sub', from: ['@files'], query: VIEW_QUERY },
-        { id: 'mixed', from: ['@live', '@sub'], query: VIEW_QUERY },
+        { id: 'scoped', from: '@files', query: VIEW_QUERY },
       ]),
-    ).toThrow(new RegExp(TRACKING_URL.replace(/\//g, '\\/')));
-  });
-
-  it('rejects a view that lists two endpoint refs', () => {
-    expect(() =>
-      parseSourceSpecs([
-        { endpoint: 'https://a.example.com/sparql', id: 'live-a' },
-        { endpoint: 'https://b.example.com/sparql', id: 'live-b' },
-        { id: 'fanned', from: ['@live-a', '@live-b'], query: VIEW_QUERY },
-      ]),
-    ).toThrow(new RegExp(TRACKING_URL.replace(/\//g, '\\/')));
+    ).not.toThrow();
   });
 });
 

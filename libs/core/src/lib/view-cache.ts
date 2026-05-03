@@ -89,10 +89,9 @@ function computeViewCacheKey(
       ? `q:${binding.view.query}`
       : `qf:${binding.view.queryFile ?? ''}`;
   const upstreamContribs = upstreamKeyContributions(binding, stack);
-  const fromRefs = [...binding.view.from].sort().join(',');
   const material = [
     `view:${binding.view.id}`,
-    `from:${fromRefs}`,
+    `from:${binding.view.from}`,
     queryText,
     `upstream:\n${upstreamContribs.join('\n')}`,
   ].join('\n');
@@ -128,34 +127,27 @@ function upstreamContribsViaRegistry(
   stack: ReadonlyArray<string>,
 ): string[] {
   const byId = indexRegistryById(registry);
-  const contribs: string[] = [];
-  for (const refId of view.from) {
-    if (stack.includes(refId)) {
-      // Cycle guard: surface the cycle marker rather than recursing forever.
-      contribs.push(`cycle:${refId}`);
-      continue;
-    }
-    const upstream = byId.get(refId);
-    if (!upstream) {
-      contribs.push(`missing:${refId}`);
-      continue;
-    }
-    if (upstream.kind === 'view') {
-      const subKey = computeViewCacheKey(
-        {
-          view: upstream,
-          upstream: [],
-          cacheDir: '',
-          registry,
-        },
-        [...stack, view.id],
-      );
-      contribs.push(`view:${refId}:${subKey}`);
-      continue;
-    }
-    contribs.push(stableStringify(upstream));
+  const refId = view.from;
+  if (stack.includes(refId)) {
+    return [`cycle:${refId}`];
   }
-  return contribs.sort();
+  const upstream = byId.get(refId);
+  if (!upstream) {
+    return [`missing:${refId}`];
+  }
+  if (upstream.kind === 'view') {
+    const subKey = computeViewCacheKey(
+      {
+        view: upstream,
+        upstream: [],
+        cacheDir: '',
+        registry,
+      },
+      [...stack, view.id],
+    );
+    return [`view:${refId}:${subKey}`];
+  }
+  return [stableStringify(upstream)];
 }
 
 export async function lookup(
@@ -199,37 +191,33 @@ async function ancestorFreshness(
   const registry = binding.registry;
   if (!registry) return 'fresh';
   const byId = indexRegistryById(registry);
-  for (const refId of binding.view.from) {
-    if (stack.includes(refId)) continue;
-    const upstream = byId.get(refId);
-    if (!upstream || upstream.kind !== 'view') continue;
-    const subBinding: ViewCacheBinding = {
-      view: upstream,
-      upstream: [],
-      cacheDir: ancestorCacheDir(binding, upstream),
-      registry,
-      now: binding.now,
-    };
-    if (upstream.cache !== undefined) {
-      // Skip freshness-ASK ancestors when no probe loader is plumbed:
-      // their own resolver pass handles ASK probing, and asserting their
-      // freshness here would require resolving their upstream — a coupling
-      // we do not want from inside view-cache.
-      if (
-        upstream.cache.strategy === 'freshness' &&
-        binding.loadProbeStore === undefined
-      ) {
-        continue;
-      }
-      const sub = await lookup(subBinding);
-      if (sub.freshness !== 'fresh') return sub.freshness;
-      continue;
+  const refId = binding.view.from;
+  if (stack.includes(refId)) return 'fresh';
+  const upstream = byId.get(refId);
+  if (!upstream || upstream.kind !== 'view') return 'fresh';
+  const subBinding: ViewCacheBinding = {
+    view: upstream,
+    upstream: [],
+    cacheDir: ancestorCacheDir(binding, upstream),
+    registry,
+    now: binding.now,
+  };
+  if (upstream.cache !== undefined) {
+    // Skip freshness-ASK ancestors when no probe loader is plumbed:
+    // their own resolver pass handles ASK probing, and asserting their
+    // freshness here would require resolving their upstream — a coupling
+    // we do not want from inside view-cache.
+    if (
+      upstream.cache.strategy === 'freshness' &&
+      binding.loadProbeStore === undefined
+    ) {
+      return 'fresh';
     }
-    // Uncached intermediate view: keep walking upward.
-    const deeper = await ancestorFreshness(subBinding, [...stack, refId]);
-    if (deeper !== 'fresh') return deeper;
+    const sub = await lookup(subBinding);
+    return sub.freshness;
   }
-  return 'fresh';
+  // Uncached intermediate view: keep walking upward.
+  return ancestorFreshness(subBinding, [...stack, refId]);
 }
 
 function ancestorCacheDir(

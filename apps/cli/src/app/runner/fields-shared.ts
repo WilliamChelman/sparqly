@@ -35,7 +35,7 @@ const sourceObjectSchema = z
     id: z.string().optional(),
     glob: z.string().optional(),
     endpoint: z.string().optional(),
-    from: z.array(z.string()).optional(),
+    from: z.string().optional(),
     query: z.string().optional(),
     queryFile: z.string().optional(),
     cache: cacheBlockSchema.optional(),

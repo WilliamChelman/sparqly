@@ -40,7 +40,7 @@ describe('sparqly serve — view source materialized snapshot', () => {
           - id: raw
             glob: "${ttlPath}"
           - id: kept
-            from: ["@raw"]
+            from: "@raw"
             query: |
               PREFIX ex: <http://example.org/>
               CONSTRUCT { ?s ex:r ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }

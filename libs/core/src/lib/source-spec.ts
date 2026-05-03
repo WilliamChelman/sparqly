@@ -63,7 +63,7 @@ export type ParsedViewCache =
 export interface ParsedViewSource {
   kind: 'view';
   id: string;
-  from: ReadonlyArray<string>;
+  from: string;
   query?: string;
   queryFile?: string;
   cache?: ParsedViewCache;
@@ -88,7 +88,7 @@ export interface SourceSpecObjectInput
     EndpointHttpFields {
   glob?: string;
   endpoint?: string;
-  from?: ReadonlyArray<string>;
+  from?: string;
   query?: string;
   queryFile?: string;
   cache?: ViewCacheInput;
@@ -203,25 +203,23 @@ function parseView(input: SourceSpecObjectInput): ParsedViewSource {
   if (input.id === undefined) {
     throw new Error('view source: `id` is required');
   }
-  const from = input.from as ReadonlyArray<string>;
-  if (from.length === 0) {
-    throw new Error('view source: `from` must list at least one ref');
+  if (Array.isArray(input.from)) {
+    throw new Error(
+      'view source: `from:` must be a single `@id` ref string; multi-source composition is expressed in SPARQL via `SERVICE` clauses inside the view query',
+    );
   }
-  const refs: string[] = [];
-  for (const entry of from) {
-    if (typeof entry !== 'string') {
-      throw new Error(
-        'view source: each `from` entry must be a `@id` ref string',
-      );
-    }
-    const match = VIEW_REF_PREFIX.exec(entry);
-    if (!match) {
-      throw new Error(
-        `view source: \`from\` entry ${JSON.stringify(entry)} must be a \`@id\` ref (e.g. \`@my-source\`)`,
-      );
-    }
-    refs.push(match[1]);
+  if (typeof input.from !== 'string') {
+    throw new Error(
+      'view source: `from` must be a `@id` ref string (e.g. `@my-source`)',
+    );
   }
+  const match = VIEW_REF_PREFIX.exec(input.from);
+  if (!match) {
+    throw new Error(
+      `view source: \`from\` entry ${JSON.stringify(input.from)} must be a \`@id\` ref (e.g. \`@my-source\`)`,
+    );
+  }
+  const ref = match[1];
   const hasQuery = input.query !== undefined;
   const hasQueryFile = input.queryFile !== undefined;
   if (hasQuery && hasQueryFile) {
@@ -237,7 +235,7 @@ function parseView(input: SourceSpecObjectInput): ParsedViewSource {
   const out: ParsedViewSource = {
     kind: 'view',
     id: input.id,
-    from: refs,
+    from: ref,
   };
   if (hasQuery) out.query = input.query;
   if (hasQueryFile) out.queryFile = input.queryFile;
@@ -418,9 +416,6 @@ export interface ParseSourceSpecsContext {
   locations?: ReadonlyArray<string>;
 }
 
-export const VIEW_ENDPOINT_MIXING_TRACKING_URL =
-  'https://github.com/WilliamChelman/sparqly/issues/97';
-
 export function parseSourceSpecs(
   inputs: ReadonlyArray<SourceSpecInput>,
   ctx?: ParseSourceSpecsContext,
@@ -440,23 +435,5 @@ export function parseSourceSpecs(
     }
     seen.set(id, i);
   }
-  validateSourceGraph(parsed);
   return parsed;
-}
-
-function validateSourceGraph(parsed: ReadonlyArray<ParsedSource>): void {
-  const byId = new Map<string, ParsedSource>();
-  for (const source of parsed) {
-    if (source.id !== undefined) byId.set(source.id, source);
-  }
-  for (const source of parsed) {
-    if (source.kind !== 'view') continue;
-    const refKinds = source.from.map((ref) => byId.get(ref)?.kind);
-    const hasEndpoint = refKinds.some((k) => k === 'endpoint');
-    if (hasEndpoint && source.from.length > 1) {
-      throw new Error(
-        `view "${source.id}": \`from\` may not mix an endpoint ref with other refs (multi/heterogeneous federation is not yet supported; tracking: ${VIEW_ENDPOINT_MIXING_TRACKING_URL})`,
-      );
-    }
-  }
 }

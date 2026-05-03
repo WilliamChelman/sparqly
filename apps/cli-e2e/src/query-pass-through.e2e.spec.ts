@@ -97,7 +97,7 @@ describe('sparqly query — pass-through federation', () => {
           - id: ep
             endpoint: "${endpoint.url}"
           - id: snap
-            from: ["@ep"]
+            from: "@ep"
             query: "PREFIX ex: <http://example.org/> SELECT ?s ?p ?o WHERE { ?s ?p ?o }"
       ` + '\n',
     );

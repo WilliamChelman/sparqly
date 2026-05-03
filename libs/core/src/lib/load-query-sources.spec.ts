@@ -117,7 +117,7 @@ describe('loadQuerySources — materialization fallbacks', () => {
       { id: 'ep', endpoint: endpoint.url },
       {
         id: 'snap',
-        from: ['@ep'],
+        from: '@ep',
         query:
           'PREFIX ex: <http://example.org/> SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
       },
@@ -150,7 +150,7 @@ describe('loadQuerySources — view forces materialization', () => {
       { id: 'raw', glob: join(dir, '*.ttl') },
       {
         id: 'derived',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       },
     ]);

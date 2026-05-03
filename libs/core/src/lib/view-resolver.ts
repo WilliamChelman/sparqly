@@ -90,12 +90,8 @@ function collectCacheUpstream(
     if (src.kind === 'reference' || src.id === undefined) continue;
     byId.set(src.id, src);
   }
-  const out: ParsedSource[] = [];
-  for (const refId of view.from) {
-    const upstream = byId.get(refId);
-    if (upstream) out.push(upstream);
-  }
-  return out;
+  const upstream = byId.get(view.from);
+  return upstream ? [upstream] : [];
 }
 
 async function resolveViewInternal(
@@ -131,9 +127,8 @@ function singleEndpointUpstream(
   view: ParsedViewSource,
   registry: ReadonlyArray<ParsedSource>,
 ): ParsedEndpointSource | undefined {
-  if (view.from.length !== 1) return undefined;
   const byId = buildRegistryById(registry);
-  const upstream = byId.get(view.from[0]);
+  const upstream = byId.get(view.from);
   if (!upstream || upstream.kind !== 'endpoint') return undefined;
   return upstream;
 }
@@ -157,61 +152,51 @@ async function loadUpstream(
   now: (() => number) | undefined,
   engine: ComunicaQueryEngine | undefined,
 ): Promise<Store> {
-  const merged = new Store();
+  const refId = view.from;
   const byId = buildRegistryById(registry);
-  for (const refId of view.from) {
-    if (stack.includes(refId)) {
-      throw new Error(
-        `view "${view.id}": cycle detected on \`from:\` ref @${refId} (chain: ${stack
-          .map((id) => `@${id}`)
-          .join(' -> ')} -> @${refId})`,
-      );
-    }
-    const upstream = byId.get(refId);
-    if (!upstream) {
-      const known = [...byId.keys()];
-      const list =
-        known.length === 0 ? '<none>' : known.map((k) => `@${k}`).join(', ');
-      throw new Error(
-        `view "${view.id}": unknown @id reference "@${refId}"; defined ids: ${list}`,
-      );
-    }
-    if (upstream.kind === 'reference') {
-      throw new Error(
-        `view "${view.id}": reference upstream "@${refId}" is not yet supported`,
-      );
-    }
-    if (upstream.kind === 'view') {
-      const sub = await resolveViewWithCache(
-        upstream,
-        registry,
-        [...stack, refId],
-        cacheDir,
-        now,
-        engine,
-      );
-      for (const quad of sub.getQuads(null, null, null, null)) {
-        merged.addQuad(quad);
-      }
-      continue;
-    }
-    if (upstream.kind !== 'glob') {
-      // Endpoint upstreams in a multi/mixed `from:` are rejected at parse time
-      // (see source-spec.validateSourceGraph); a single-endpoint upstream is
-      // routed via pass-through above. So this branch is unreachable.
-      throw new Error(
-        `view "${view.id}": unexpected upstream kind "${(upstream as { kind: string }).kind}" for ref @${refId}`,
-      );
-    }
-    const sub = await loadRdf({
-      sources: upstream.glob,
-      graphMode: upstream.graphMode ?? 'preserve',
-    });
-    for (const quad of sub.store.getQuads(null, null, null, null)) {
-      merged.addQuad(quad);
-    }
+  if (stack.includes(refId)) {
+    throw new Error(
+      `view "${view.id}": cycle detected on \`from:\` ref @${refId} (chain: ${stack
+        .map((id) => `@${id}`)
+        .join(' -> ')} -> @${refId})`,
+    );
   }
-  return merged;
+  const upstream = byId.get(refId);
+  if (!upstream) {
+    const known = [...byId.keys()];
+    const list =
+      known.length === 0 ? '<none>' : known.map((k) => `@${k}`).join(', ');
+    throw new Error(
+      `view "${view.id}": unknown @id reference "@${refId}"; defined ids: ${list}`,
+    );
+  }
+  if (upstream.kind === 'reference') {
+    throw new Error(
+      `view "${view.id}": reference upstream "@${refId}" is not yet supported`,
+    );
+  }
+  if (upstream.kind === 'view') {
+    return resolveViewWithCache(
+      upstream,
+      registry,
+      [...stack, refId],
+      cacheDir,
+      now,
+      engine,
+    );
+  }
+  if (upstream.kind !== 'glob') {
+    // Endpoint upstreams are routed via pass-through above; this branch is
+    // unreachable for the current source kinds.
+    throw new Error(
+      `view "${view.id}": unexpected upstream kind "${(upstream as { kind: string }).kind}" for ref @${refId}`,
+    );
+  }
+  const sub = await loadRdf({
+    sources: upstream.glob,
+    graphMode: upstream.graphMode ?? 'preserve',
+  });
+  return sub.store;
 }
 
 function buildRegistryById(

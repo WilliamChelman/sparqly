@@ -354,12 +354,7 @@ async function runAskAgainstUpstream(
     if (src.kind === 'reference' || src.id === undefined) continue;
     byId.set(src.id, src);
   }
-  if (view.from.length !== 1) {
-    throw new Error(
-      `freshness watch supports a single endpoint upstream; view "${view.id}" has ${view.from.length}`,
-    );
-  }
-  const upstream = byId.get(view.from[0]);
+  const upstream = byId.get(view.from);
   if (!upstream || upstream.kind !== 'endpoint') {
     throw new Error(
       `freshness watch supports endpoint upstreams only; view "${view.id}" upstream is ${upstream?.kind ?? 'missing'}`,

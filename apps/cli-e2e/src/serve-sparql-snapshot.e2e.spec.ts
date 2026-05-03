@@ -60,7 +60,7 @@ describe('sparqly serve — view-of-endpoint materialized snapshot (US 47)', () 
           - id: ep
             endpoint: "${endpoint?.url}"
           - id: snap
-            from: ["@ep"]
+            from: "@ep"
             query: "SELECT ?s ?p ?o WHERE { ?s ?p ?o }"
       ` + '\n',
     );

@@ -65,7 +65,7 @@ describe('view-cache — lookup', () => {
       { id: 'raw', glob: 'data/*.ttl' },
       {
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
@@ -87,7 +87,7 @@ describe('view-cache — lookup', () => {
       { id: 'raw', glob: 'data/*.ttl' },
       {
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
@@ -142,7 +142,7 @@ describe('view-cache — ttl expiry', () => {
       { id: 'raw', glob: 'data/*.ttl' },
       {
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1s' },
       },
@@ -188,7 +188,7 @@ describe('view-cache — everlasting strategy', () => {
       { id: 'raw', glob: 'data/*.ttl' },
       {
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { everlasting: true },
       },
@@ -275,7 +275,7 @@ describe('view-cache — freshness ASK strategy', () => {
       { id: 'raw', glob: 'data/*.ttl' },
       {
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { freshness: askQuery },
       },
@@ -338,7 +338,7 @@ describe('view-cache — cache key composition', () => {
     const a = parseSourceSpecs([
       {
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
@@ -346,7 +346,7 @@ describe('view-cache — cache key composition', () => {
     const b = parseSourceSpecs([
       {
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query:
           'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s != ?o) }',
         cache: { ttl: '1h' },
@@ -361,7 +361,7 @@ describe('view-cache — cache key composition', () => {
     const view = parseSourceSpecs([
       {
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
@@ -377,7 +377,7 @@ describe('view-cache — cache key composition', () => {
     const view = parseSourceSpecs([
       {
         id: 'cached',
-        from: ['@live'],
+        from: '@live',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
@@ -398,12 +398,12 @@ describe('view-cache — cache key composition', () => {
       { id: 'raw', glob: 'data/*.ttl' },
       {
         id: 'a',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       },
       {
         id: 'b',
-        from: ['@a'],
+        from: '@a',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
@@ -412,12 +412,12 @@ describe('view-cache — cache key composition', () => {
       { id: 'raw', glob: 'other/*.ttl' },
       {
         id: 'a',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       },
       {
         id: 'b',
-        from: ['@a'],
+        from: '@a',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
@@ -442,12 +442,12 @@ describe('view-cache — cache key composition', () => {
       { id: 'raw', glob: 'data/*.ttl' },
       {
         id: 'a',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       },
       {
         id: 'b',
-        from: ['@a'],
+        from: '@a',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
@@ -456,13 +456,13 @@ describe('view-cache — cache key composition', () => {
       { id: 'raw', glob: 'data/*.ttl' },
       {
         id: 'a',
-        from: ['@raw'],
+        from: '@raw',
         query:
           'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s != ?o) }',
       },
       {
         id: 'b',
-        from: ['@a'],
+        from: '@a',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
@@ -486,7 +486,7 @@ describe('view-cache — cache key composition', () => {
     const view = parseSourceSpecs([
       {
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
@@ -516,13 +516,13 @@ describe('view-cache — DAG-walk invalidation', () => {
       { id: 'raw', glob: 'data/*.ttl' },
       {
         id: 'a',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
       {
         id: 'b',
-        from: ['@a'],
+        from: '@a',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
@@ -558,7 +558,7 @@ describe('view-cache — cacheDir resolution', () => {
     return parseSourceSpecs([
       {
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
@@ -569,7 +569,7 @@ describe('view-cache — cacheDir resolution', () => {
     return parseSourceSpecs([
       {
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h', cacheDir },
       },
@@ -626,7 +626,7 @@ describe('view-cache — listCachedEntries', () => {
       { id: 'raw', glob: 'data/*.ttl' },
       {
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
@@ -671,7 +671,7 @@ describe('view-cache — listCachedEntries', () => {
       { id: 'raw', glob: 'data/*.ttl' },
       {
         id: 'cached',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1s' },
       },
@@ -713,13 +713,13 @@ describe('view-cache — clearCacheDir', () => {
       { id: 'raw', glob: 'data/*.ttl' },
       {
         id: 'a',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
       {
         id: 'b',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s != ?o) }',
         cache: { everlasting: true },
       },
@@ -770,13 +770,13 @@ describe('view-cache — removeCacheEntry', () => {
       { id: 'raw', glob: 'data/*.ttl' },
       {
         id: 'a',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1h' },
       },
       {
         id: 'b',
-        from: ['@raw'],
+        from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s != ?o) }',
         cache: { ttl: '1h' },
       },
