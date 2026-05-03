@@ -159,52 +159,6 @@ describe('resolveView — endpoint upstream', () => {
     expect(quads[0].subject.value).toBe('http://example.org/keep');
   });
 
-  it('runs a view query over a mixed glob+endpoint upstream', async () => {
-    endpoint = await startFakeSparqlEndpoint(() => ({
-      body: JSON.stringify({
-        head: { vars: ['s', 'p', 'o'] },
-        results: {
-          bindings: [
-            {
-              s: { type: 'uri', value: 'http://example.org/from-endpoint' },
-              p: { type: 'uri', value: 'http://example.org/p' },
-              o: { type: 'uri', value: 'http://example.org/x' },
-            },
-          ],
-        },
-      }),
-    }));
-    const dir = await mkdtemp(join(tmpdir(), 'sparqly-view-resolver-mixed-'));
-    try {
-      const a = join(dir, 'a.ttl');
-      await writeFile(
-        a,
-        '@prefix ex: <http://example.org/> . ex:from-glob ex:p ex:y .',
-      );
-      const registry = parseSourceSpecs([
-        { id: 'files', glob: a },
-        { id: 'live', endpoint: endpoint.url },
-        {
-          id: 'merged',
-          from: ['@files', '@live'],
-          query: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
-        },
-      ]);
-      const view = registry[2] as ParsedViewSource;
-
-      const store = await resolveView({ view, registry });
-      const subjects = store
-        .getQuads(null, null, null, null)
-        .map((q) => q.subject.value)
-        .sort();
-      expect(subjects).toEqual([
-        'http://example.org/from-endpoint',
-        'http://example.org/from-glob',
-      ]);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
 });
 
 describe('resolveView — view-on-view composition', () => {

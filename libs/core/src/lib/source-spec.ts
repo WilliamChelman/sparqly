@@ -418,6 +418,9 @@ export interface ParseSourceSpecsContext {
   locations?: ReadonlyArray<string>;
 }
 
+export const VIEW_ENDPOINT_MIXING_TRACKING_URL =
+  'https://github.com/WilliamChelman/sparqly/issues/97';
+
 export function parseSourceSpecs(
   inputs: ReadonlyArray<SourceSpecInput>,
   ctx?: ParseSourceSpecsContext,
@@ -437,5 +440,23 @@ export function parseSourceSpecs(
     }
     seen.set(id, i);
   }
+  validateSourceGraph(parsed);
   return parsed;
+}
+
+function validateSourceGraph(parsed: ReadonlyArray<ParsedSource>): void {
+  const byId = new Map<string, ParsedSource>();
+  for (const source of parsed) {
+    if (source.id !== undefined) byId.set(source.id, source);
+  }
+  for (const source of parsed) {
+    if (source.kind !== 'view') continue;
+    const refKinds = source.from.map((ref) => byId.get(ref)?.kind);
+    const hasEndpoint = refKinds.some((k) => k === 'endpoint');
+    if (hasEndpoint && source.from.length > 1) {
+      throw new Error(
+        `view "${source.id}": \`from\` may not mix an endpoint ref with other refs (multi/heterogeneous federation is not yet supported; tracking: ${VIEW_ENDPOINT_MIXING_TRACKING_URL})`,
+      );
+    }
+  }
 }

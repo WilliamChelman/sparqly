@@ -581,6 +581,51 @@ describe('parseSourceSpec — endpoint HTTP fields (auth, headers, timeoutMs)', 
   });
 });
 
+describe('parseSourceSpecs — endpoint-mixing rejection', () => {
+  const VIEW_QUERY = 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }';
+  const TRACKING_URL = 'https://github.com/WilliamChelman/sparqly/issues/97';
+
+  it('rejects a view that mixes an endpoint ref with a glob ref', () => {
+    expect(() =>
+      parseSourceSpecs([
+        { endpoint: 'https://example.com/sparql', id: 'live' },
+        { glob: 'data/*.ttl', id: 'files' },
+        { id: 'mixed', from: ['@live', '@files'], query: VIEW_QUERY },
+      ]),
+    ).toThrow(new RegExp(TRACKING_URL.replace(/\//g, '\\/')));
+  });
+
+  it('accepts a view whose `from` lists exactly one endpoint ref', () => {
+    expect(() =>
+      parseSourceSpecs([
+        { endpoint: 'https://example.com/sparql', id: 'live' },
+        { id: 'scoped', from: ['@live'], query: VIEW_QUERY },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('rejects a view that mixes an endpoint ref with another view ref', () => {
+    expect(() =>
+      parseSourceSpecs([
+        { endpoint: 'https://example.com/sparql', id: 'live' },
+        { glob: 'data/*.ttl', id: 'files' },
+        { id: 'sub', from: ['@files'], query: VIEW_QUERY },
+        { id: 'mixed', from: ['@live', '@sub'], query: VIEW_QUERY },
+      ]),
+    ).toThrow(new RegExp(TRACKING_URL.replace(/\//g, '\\/')));
+  });
+
+  it('rejects a view that lists two endpoint refs', () => {
+    expect(() =>
+      parseSourceSpecs([
+        { endpoint: 'https://a.example.com/sparql', id: 'live-a' },
+        { endpoint: 'https://b.example.com/sparql', id: 'live-b' },
+        { id: 'fanned', from: ['@live-a', '@live-b'], query: VIEW_QUERY },
+      ]),
+    ).toThrow(new RegExp(TRACKING_URL.replace(/\//g, '\\/')));
+  });
+});
+
 describe('parseSourceSpecs — id collision detection', () => {
   it('parses each entry without an id without complaint', () => {
     const parsed = parseSourceSpecs([
