@@ -186,7 +186,7 @@ describe('sparqly diff — core properties', () => {
       expect(result.stderr).toMatch(/broken\.ttl/);
     });
 
-    it('exits 2 when only one positional argument is given', async () => {
+    it('exits 2 when only one positional argument is given (right side has no target)', async () => {
       const result = await runCli([
         'diff',
         '--quiet',
@@ -194,7 +194,7 @@ describe('sparqly diff — core properties', () => {
       ]);
 
       expect(result.exitCode).toBe(2);
-      expect(result.stderr).toMatch(/two source specs/);
+      expect(result.stderr).toMatch(/registry is empty|no target source/i);
     });
 
     it('exits 2 when more than two positional arguments are given', async () => {

@@ -4,11 +4,13 @@ import { resolve as resolvePath } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { z } from 'zod';
 import {
-  canonicalizeRdf,
   canonicalizeStore,
-  parseSourceSpec,
+  parseSourceSpecs,
   resolveAnonymousView,
+  resolveSource,
+  selectTarget,
   type GraphMode,
+  type ParsedSource,
   type SourceSpecInput,
 } from 'core';
 import { configureLogger } from '../logging';
@@ -18,13 +20,14 @@ import {
   coercedBooleanSchema,
   graphModeFieldFor,
   outFieldFor,
-  sourcesField,
+  sourceField,
   verbosityFieldsFor,
 } from '../runner/fields-shared';
 import type { CommandSpec } from '../runner/spec';
 
 interface HashConfig {
-  sources?: string | string[];
+  sources?: SourceSpecInput[];
+  source?: SourceSpecInput;
   graphMode?: GraphMode;
   json?: boolean;
   compareWith?: string;
@@ -52,6 +55,13 @@ class HashCompareError extends Error {
   }
 }
 
+const sourceSpecObjectSchema = z.record(z.string(), z.unknown());
+
+const sourcesRegistryField: FieldDescriptor = {
+  key: 'sources',
+  schema: z.array(z.union([z.string(), sourceSpecObjectSchema])),
+};
+
 const compareWithField: FieldDescriptor = {
   key: 'compareWith',
   schema: z.string(),
@@ -60,7 +70,7 @@ const compareWithField: FieldDescriptor = {
     {
       spec: '--compare-with <source>',
       description:
-        "Hash a second source spec (file path or glob) with the same loader options and compare against the primary source. Exit 0 on match (stdout 'match: <hash>'), 1 on mismatch (stdout shows both labeled hashes), 2 on error. Requires exactly one primary source. SPARQL endpoint sources are rejected on this side (use a `view` source kind to scope an endpoint).",
+        "Hash a second target source (an `@id` ref into the registry, or an inline glob/URL) with the same loader options and compare against the primary target. Exit 0 on match (stdout 'match: <hash>'), 1 on mismatch (stdout shows both labeled hashes), 2 on error. SPARQL endpoint targets are rejected on this side (use a `view` source kind to scope an endpoint, or pass --compare-with-query/--compare-with-query-file).",
     },
   ],
 };
@@ -73,7 +83,7 @@ const queryField: FieldDescriptor = {
     {
       spec: '--query <sparql>',
       description:
-        "Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the source. Required for SPARQL endpoint sources; otherwise optional. Lowers to an anonymous, uncached view. Mutually exclusive with --query-file. Requires exactly one source.",
+        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the target source. Required for SPARQL endpoint targets; otherwise optional. Lowers to an anonymous, uncached view. Mutually exclusive with --query-file.',
     },
   ],
 };
@@ -86,7 +96,7 @@ const queryFileField: FieldDescriptor = {
     {
       spec: '--query-file <path>',
       description:
-        'Path to a SPARQL file (relative to CWD) used as the inline scoping query. Mutually exclusive with --query. Requires exactly one source.',
+        'Path to a SPARQL file (relative to CWD) used as the inline scoping query. Mutually exclusive with --query.',
     },
   ],
 };
@@ -99,7 +109,7 @@ const compareWithQueryField: FieldDescriptor = {
     {
       spec: '--compare-with-query <sparql>',
       description:
-        "Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the --compare-with side. Required for SPARQL endpoint sources on that side; otherwise optional. Lowers to an anonymous, uncached view. Mutually exclusive with --compare-with-query-file. Requires --compare-with.",
+        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the --compare-with side. Required for SPARQL endpoint targets on that side; otherwise optional. Lowers to an anonymous, uncached view. Mutually exclusive with --compare-with-query-file. Requires --compare-with.',
     },
   ],
 };
@@ -126,17 +136,36 @@ const jsonField: FieldDescriptor = {
     {
       spec: '--json',
       description:
-        'Emit a JSON array of { source, hash } objects in input order instead of the default <hash>  <source-spec> lines. Not applicable in --compare-with mode.',
+        'Emit a JSON object { source, hash } instead of the default `<hash>  <source-spec>` line. Not applicable in --compare-with mode.',
     },
   ],
 };
 
+export function resolveHashTarget(config: HashConfig): ParsedSource {
+  const registry = parseSourceSpecs(config.sources ?? []);
+  const targetArg =
+    typeof config.source === 'string' ? config.source : undefined;
+  if (config.source !== undefined && targetArg === undefined) {
+    return parseSourceSpecs([config.source])[0];
+  }
+  return selectTarget(registry, targetArg);
+}
+
+function resolveCompareTarget(
+  config: HashConfig,
+  compareWith: string,
+): ParsedSource {
+  const registry = parseSourceSpecs(config.sources ?? []);
+  return selectTarget(registry, compareWith);
+}
+
 export const hashSpec: CommandSpec<HashConfig> = {
   name: 'hash',
   description:
-    'Compute a stable SHA-256 over the canonicalized RDF content of one or more sources. Materializes the *result*; for endpoint-backed views the query passes through to the endpoint. A SPARQL endpoint source is rejected as a raw input (wrap it in a `view` source kind to scope it). Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL hash is only as deterministic as the endpoint.',
+    'Compute a stable SHA-256 over the canonicalized RDF content of a target source (an `@id` ref into the config registry, or an inline glob/URL). Materializes the *result*; for endpoint-backed views the query passes through to the endpoint. A SPARQL endpoint target is rejected as a raw input (wrap it in a `view` source kind to scope it, or pass `--query`/`--query-file` to scope it inline). Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL hash is only as deterministic as the endpoint.',
   fields: [
-    sourcesField,
+    sourceField,
+    sourcesRegistryField,
     graphModeFieldFor('hash'),
     jsonField,
     compareWithField,
@@ -147,7 +176,7 @@ export const hashSpec: CommandSpec<HashConfig> = {
     outFieldFor('hash'),
     ...verbosityFieldsFor('hash'),
   ],
-  positionals: [{ field: 'sources', name: 'glob' }],
+  positionals: [{ field: 'source', name: 'glob' }],
   refine: (schema) =>
     (schema as z.ZodObject).superRefine(
       (val: Record<string, unknown>, ctx) => {
@@ -159,36 +188,6 @@ export const hashSpec: CommandSpec<HashConfig> = {
             message:
               '`--query` and `--query-file` are mutually exclusive on `hash`',
             path: ['query'],
-          });
-        }
-        const hasInlineScope = hasQuery || hasQueryFile;
-
-        const sources = val.sources;
-        const sourceList: SourceSpecInput[] =
-          sources === undefined
-            ? []
-            : Array.isArray(sources)
-              ? (sources as SourceSpecInput[])
-              : [sources as SourceSpecInput];
-
-        if (hasInlineScope && sourceList.length > 1) {
-          ctx.addIssue({
-            code: 'custom',
-            message: `\`--query\`/\`--query-file\` requires exactly one source (got ${sourceList.length}); express unions through a declared \`view\` source kind`,
-            path: ['sources'],
-          });
-        }
-
-        if (!hasInlineScope) {
-          sourceList.forEach((entry, i) => {
-            const violation = rawEndpoint(entry);
-            if (violation) {
-              ctx.addIssue({
-                code: 'custom',
-                message: `SPARQL endpoint ${violation} cannot be hashed directly (hash materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
-                path: ['sources', i],
-              });
-            }
           });
         }
 
@@ -213,16 +212,6 @@ export const hashSpec: CommandSpec<HashConfig> = {
             path: ['compareWithQuery'],
           });
         }
-        if (typeof compareWith === 'string' && !hasCompareInlineScope) {
-          const violation = rawEndpoint(compareWith);
-          if (violation) {
-            ctx.addIssue({
-              code: 'custom',
-              message: `SPARQL endpoint ${violation} cannot be hashed directly (hash materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--compare-with-query\`/\`--compare-with-query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
-              path: ['compareWith'],
-            });
-          }
-        }
       },
     ),
   exitCode: (err, ctx) => {
@@ -244,23 +233,6 @@ export const hashSpec: CommandSpec<HashConfig> = {
       );
     }
 
-    const sourceSpecs =
-      config.sources === undefined
-        ? []
-        : Array.isArray(config.sources)
-          ? config.sources
-          : [config.sources];
-
-    if (isCompareMode) {
-      if (sourceSpecs.length !== 1) {
-        throw new HashCompareError(
-          '--compare-with requires exactly one primary source',
-        );
-      }
-    } else if (sourceSpecs.length === 0) {
-      throw new Error('a sources glob is required');
-    }
-
     const logger = new Logger('sparqly');
     const graphMode = config.graphMode as GraphMode | undefined;
     const inlineQuery = await loadInlineScopeQuery(config);
@@ -271,8 +243,22 @@ export const hashSpec: CommandSpec<HashConfig> = {
       let primary: { source: string; hash: string };
       let secondary: { source: string; hash: string };
       try {
-        primary = await hashSource(sourceSpecs[0], graphMode, inlineQuery, logger);
-        secondary = await hashSource(compareSpec, graphMode, compareInlineQuery, logger);
+        const primaryTarget = resolveHashTarget(config);
+        const secondaryTarget = resolveCompareTarget(config, compareSpec);
+        primary = await hashTarget(
+          primaryTarget,
+          config,
+          graphMode,
+          inlineQuery,
+          logger,
+        );
+        secondary = await hashTarget(
+          secondaryTarget,
+          config,
+          graphMode,
+          compareInlineQuery,
+          logger,
+        );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         throw new HashCompareError(message);
@@ -287,14 +273,12 @@ export const hashSpec: CommandSpec<HashConfig> = {
       throw new HashMismatchSignal('hash mismatch');
     }
 
-    const results: Array<{ source: string; hash: string }> = [];
-    for (const spec of sourceSpecs) {
-      results.push(await hashSource(spec, graphMode, inlineQuery, logger));
-    }
+    const target = resolveHashTarget(config);
+    const result = await hashTarget(target, config, graphMode, inlineQuery, logger);
 
     const body = config.json
-      ? `${JSON.stringify(results)}\n`
-      : results.map(({ hash, source }) => `${hash}  ${source}\n`).join('');
+      ? `${JSON.stringify(result)}\n`
+      : `${result.hash}  ${result.source}\n`;
 
     if (config.out !== undefined) {
       await writeOutputToFile({
@@ -308,45 +292,66 @@ export const hashSpec: CommandSpec<HashConfig> = {
   },
 };
 
-function rawEndpoint(entry: SourceSpecInput): string | null {
-  let parsed;
-  try {
-    parsed = parseSourceSpec(entry);
-  } catch {
-    return null;
-  }
-  if (parsed.kind !== 'endpoint') return null;
-  return parsed.endpoint;
+function targetLabel(target: ParsedSource): string {
+  if (target.id !== undefined) return `@${target.id}`;
+  if (target.kind === 'glob') return target.glob;
+  if (target.kind === 'endpoint') return target.endpoint;
+  if (target.kind === 'empty') return `@${target.id ?? 'empty'}`;
+  if (target.kind === 'view') return `@${target.id}`;
+  return '<unknown>';
 }
 
-async function hashSource(
-  spec: string,
+async function hashTarget(
+  target: ParsedSource,
+  config: HashConfig,
   graphMode: GraphMode | undefined,
   inlineQuery: string | undefined,
   logger: Logger,
 ): Promise<{ source: string; hash: string }> {
+  const label = targetLabel(target);
   const start = Date.now();
+
   if (inlineQuery !== undefined) {
+    const upstreamSpec = anonymousUpstream(target);
     const store = await resolveAnonymousView({
-      source: spec,
+      source: upstreamSpec,
       query: inlineQuery,
     });
     const { canonicalText } = await canonicalizeStore(store);
     const hash = createHash('sha256').update(canonicalText).digest('hex');
     logger.log(
-      `Materialized anonymous view (${store.size} quads), canonicalized + hashed '${spec}' in ${Date.now() - start}ms`,
+      `Materialized anonymous view (${store.size} quads), canonicalized + hashed '${label}' in ${Date.now() - start}ms`,
     );
-    return { source: spec, hash };
+    return { source: label, hash };
   }
-  const { store, files, canonicalText } = await canonicalizeRdf({
-    sources: spec,
-    graphMode,
-  });
+
+  if (target.kind === 'endpoint') {
+    throw new Error(
+      `SPARQL endpoint ${target.endpoint} cannot be hashed directly (hash materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
+    );
+  }
+
+  const registry = parseSourceSpecs(config.sources ?? []);
+  const sources = await resolveSource(target, { graphMode, registry });
+  if (sources.mode === 'pass-through') {
+    throw new Error(
+      `SPARQL endpoint ${sources.endpoint.endpoint} cannot be hashed directly (hash materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
+    );
+  }
+  const { canonicalText } = await canonicalizeStore(sources.store);
   const hash = createHash('sha256').update(canonicalText).digest('hex');
   logger.log(
-    `Loaded ${files.length} file(s) (${store.size} quads), canonicalized + hashed '${spec}' in ${Date.now() - start}ms`,
+    `Loaded ${sources.files.length} file(s) (${sources.store.size} quads), canonicalized + hashed '${label}' in ${Date.now() - start}ms`,
   );
-  return { source: spec, hash };
+  return { source: label, hash };
+}
+
+function anonymousUpstream(target: ParsedSource): SourceSpecInput {
+  if (target.kind === 'glob') return target.glob;
+  if (target.kind === 'endpoint') return target.endpoint;
+  throw new Error(
+    `--query/--query-file scope a glob or SPARQL endpoint upstream; target ${targetLabel(target)} is a ${target.kind} source — drop the inline scope (it already has a query) or point at a glob/endpoint`,
+  );
 }
 
 async function loadInlineScopeQuery(

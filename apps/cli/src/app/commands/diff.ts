@@ -4,16 +4,18 @@ import { Logger } from '@nestjs/common';
 import { Parser } from 'n3';
 import { z } from 'zod';
 import {
-  canonicalizeRdf,
   canonicalizeStore,
   diffCanonicalStatements,
   formatRdf,
   formatRdfDiff,
-  parseSourceSpec,
+  parseSourceSpecs,
   resolveAnonymousView,
+  resolveSource,
+  selectTarget,
   shortenNQuadLine,
   type FormatSerialization,
   type GraphMode,
+  type ParsedSource,
   type RdfDiffResult,
   type SourceSpecInput,
 } from 'core';
@@ -25,6 +27,7 @@ import {
   graphModeFieldFor,
   outFieldFor,
   prefixesField,
+  singleSourceSchema,
   verbosityFieldsFor,
 } from '../runner/fields-shared';
 import type { CommandSpec } from '../runner/spec';
@@ -33,8 +36,9 @@ const DIFF_FORMATS = ['human', 'json', 'rdf-patch', 'turtle'] as const;
 type DiffFormat = (typeof DIFF_FORMATS)[number];
 
 interface DiffConfig {
-  left?: string;
-  right?: string;
+  sources?: SourceSpecInput[];
+  left?: SourceSpecInput;
+  right?: SourceSpecInput;
   graphMode?: GraphMode;
   format?: DiffFormat;
   prefixes?: Record<string, string>;
@@ -58,28 +62,35 @@ class DiffPresentSignal extends Error {
   }
 }
 
+const sourceSpecObjectSchema = z.record(z.string(), z.unknown());
+
+const sourcesRegistryField: FieldDescriptor = {
+  key: 'sources',
+  schema: z.array(z.union([z.string(), sourceSpecObjectSchema])),
+};
+
 const leftField: FieldDescriptor = {
   key: 'left',
-  schema: z.union([z.string(), z.array(z.string()).min(1)]),
+  schema: singleSourceSchema,
   env: ['SPARQLY_DIFF_LEFT'],
   flags: [
     {
       spec: '--left <source>',
       description:
-        'Left-hand source spec (file path or glob). Alternative to the first positional argument.',
+        'Left-hand target source: an `@id` ref into the config registry, or an inline glob/URL. Alternative to the first positional argument.',
     },
   ],
 };
 
 const rightField: FieldDescriptor = {
   key: 'right',
-  schema: z.union([z.string(), z.array(z.string()).min(1)]),
+  schema: singleSourceSchema,
   env: ['SPARQLY_DIFF_RIGHT'],
   flags: [
     {
       spec: '--right <source>',
       description:
-        'Right-hand source spec (file path or glob). Alternative to the second positional argument.',
+        'Right-hand target source: an `@id` ref into the config registry, or an inline glob/URL. Alternative to the second positional argument.',
     },
   ],
 };
@@ -92,7 +103,7 @@ const queryField: FieldDescriptor = {
     {
       spec: '--query <sparql>',
       description:
-        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes BOTH sides identically. Required for SPARQL endpoint sources; otherwise optional. Lowers to an anonymous, uncached view per side. Mutually exclusive with --query-file. Requires exactly one source per side.',
+        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes BOTH sides identically. Required for SPARQL endpoint targets; otherwise optional. Lowers to an anonymous, uncached view per side. Mutually exclusive with --query-file.',
     },
   ],
 };
@@ -105,7 +116,7 @@ const queryFileField: FieldDescriptor = {
     {
       spec: '--query-file <path>',
       description:
-        'Path to a SPARQL file (relative to CWD) used as the inline scoping query for both sides. Mutually exclusive with --query. Requires exactly one source per side.',
+        'Path to a SPARQL file (relative to CWD) used as the inline scoping query for both sides. Mutually exclusive with --query.',
     },
   ],
 };
@@ -118,7 +129,7 @@ const leftQueryField: FieldDescriptor = {
     {
       spec: '--left-query <sparql>',
       description:
-        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the LEFT side. Required for SPARQL endpoint sources on that side; otherwise optional. Lowers to an anonymous, uncached view. Mutually exclusive with --left-query-file and with the symmetric --query/--query-file.',
+        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the LEFT side. Required for SPARQL endpoint targets on that side; otherwise optional. Lowers to an anonymous, uncached view. Mutually exclusive with --left-query-file and with the symmetric --query/--query-file.',
     },
   ],
 };
@@ -144,7 +155,7 @@ const rightQueryField: FieldDescriptor = {
     {
       spec: '--right-query <sparql>',
       description:
-        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the RIGHT side. Required for SPARQL endpoint sources on that side; otherwise optional. Lowers to an anonymous, uncached view. Mutually exclusive with --right-query-file and with the symmetric --query/--query-file.',
+        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the RIGHT side. Required for SPARQL endpoint targets on that side; otherwise optional. Lowers to an anonymous, uncached view. Mutually exclusive with --right-query-file and with the symmetric --query/--query-file.',
     },
   ],
 };
@@ -175,13 +186,27 @@ const formatField: FieldDescriptor = {
   ],
 };
 
+export function resolveDiffSide(
+  config: DiffConfig,
+  side: 'left' | 'right',
+): ParsedSource {
+  const registry = parseSourceSpecs(config.sources ?? []);
+  const value = config[side];
+  const targetArg = typeof value === 'string' ? value : undefined;
+  if (value !== undefined && targetArg === undefined) {
+    return parseSourceSpecs([value])[0];
+  }
+  return selectTarget(registry, targetArg);
+}
+
 export const diffSpec: CommandSpec<DiffConfig> = {
   name: 'diff',
   description:
-    'Compute a semantic diff between two RDF sources via RDFC-1.0 canonicalization. Materializes the *result* on both sides; for endpoint-backed views the query passes through to the endpoint. A SPARQL endpoint source is rejected as a raw input on either side (wrap it in a `view` source kind to scope it). Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL diff is only as deterministic as the endpoint. Note: RDFC-1.0 does not normalize literal lexical forms.',
+    'Compute a semantic diff between two target sources via RDFC-1.0 canonicalization. Each side accepts an `@id` ref into the config registry or an inline glob/URL. Materializes the *result* on both sides; for endpoint-backed views the query passes through to the endpoint. A SPARQL endpoint target is rejected as a raw input on either side (wrap it in a `view` source kind to scope it, or pass `--query`/`--query-file`/`--left-query`/`--right-query`). Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL diff is only as deterministic as the endpoint. Note: RDFC-1.0 does not normalize literal lexical forms.',
   fields: [
     leftField,
     rightField,
+    sourcesRegistryField,
     graphModeFieldFor('diff'),
     queryField,
     queryFileField,
@@ -246,37 +271,6 @@ export const diffSpec: CommandSpec<DiffConfig> = {
               path: [sideQueryFileKey],
             });
           }
-
-          const value = val[side];
-          if (value === undefined) continue;
-          const list: SourceSpecInput[] = Array.isArray(value)
-            ? (value as SourceSpecInput[])
-            : [value as SourceSpecInput];
-
-          const sideHasInlineScope =
-            symInlineScope || hasSideQuery || hasSideQueryFile;
-
-          if (sideHasInlineScope && list.length > 1) {
-            ctx.addIssue({
-              code: 'custom',
-              message: `\`--query\`/\`--query-file\` requires exactly one source per side (got ${list.length} on ${side}); express unions through a declared \`view\` source kind`,
-              path: [side],
-            });
-            continue;
-          }
-
-          if (sideHasInlineScope) continue;
-
-          list.forEach((entry, i) => {
-            const violation = rawEndpoint(entry);
-            if (violation) {
-              ctx.addIssue({
-                code: 'custom',
-                message: `SPARQL endpoint ${violation} cannot be diffed directly on the ${side} side (diff materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly diff\`)`,
-                path: Array.isArray(value) ? [side, i] : [side],
-              });
-            }
-          });
         }
       },
     ),
@@ -289,10 +283,6 @@ export const diffSpec: CommandSpec<DiffConfig> = {
       verbose: config.verbose === true,
       quiet: config.quiet === true,
     });
-
-    if (config.left === undefined || config.right === undefined) {
-      throw new Error('diff requires two source specs (left and right)');
-    }
 
     const logger = new Logger('sparqly');
     const graphMode = config.graphMode;
@@ -313,10 +303,13 @@ export const diffSpec: CommandSpec<DiffConfig> = {
       ),
     ]);
 
+    const leftTarget = resolveDiffSide(config, 'left');
+    const rightTarget = resolveDiffSide(config, 'right');
+
     const start = Date.now();
     const [leftResult, rightResult] = await Promise.all([
-      canonicalizeSide(config.left, graphMode, leftInlineQuery),
-      canonicalizeSide(config.right, graphMode, rightInlineQuery),
+      canonicalizeSide(leftTarget, config, graphMode, leftInlineQuery, 'left'),
+      canonicalizeSide(rightTarget, config, graphMode, rightInlineQuery, 'right'),
     ]);
     logger.log(
       `Loaded ${leftResult.fileCount} left + ${rightResult.fileCount} right file(s), canonicalized in ${Date.now() - start}ms`,
@@ -420,25 +413,59 @@ interface SideCanonicalResult {
   prefixes: Record<string, Record<string, string>>;
 }
 
+function targetLabel(target: ParsedSource): string {
+  if (target.id !== undefined) return `@${target.id}`;
+  if (target.kind === 'glob') return target.glob;
+  if (target.kind === 'endpoint') return target.endpoint;
+  return `<${target.kind}>`;
+}
+
+function anonymousUpstream(
+  target: ParsedSource,
+  side: 'left' | 'right',
+): SourceSpecInput {
+  if (target.kind === 'glob') return target.glob;
+  if (target.kind === 'endpoint') return target.endpoint;
+  throw new Error(
+    `--query/--query-file/--${side}-query scope a glob or SPARQL endpoint upstream; ${side} target ${targetLabel(target)} is a ${target.kind} source — drop the inline scope (it already has a query) or point at a glob/endpoint`,
+  );
+}
+
 async function canonicalizeSide(
-  source: string | string[],
+  target: ParsedSource,
+  config: DiffConfig,
   graphMode: GraphMode | undefined,
   inlineQuery: string | undefined,
+  side: 'left' | 'right',
 ): Promise<SideCanonicalResult> {
   if (inlineQuery !== undefined) {
-    const spec = Array.isArray(source) ? source[0] : source;
+    const upstream = anonymousUpstream(target, side);
     const store = await resolveAnonymousView({
-      source: spec,
+      source: upstream,
       query: inlineQuery,
     });
     const { canonicalStatements } = await canonicalizeStore(store);
     return { fileCount: 0, canonicalStatements, prefixes: {} };
   }
-  const result = await canonicalizeRdf({ sources: source, graphMode });
+
+  if (target.kind === 'endpoint') {
+    throw new Error(
+      `SPARQL endpoint ${target.endpoint} cannot be diffed directly on the ${side} side (diff materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly diff\`)`,
+    );
+  }
+
+  const registry = parseSourceSpecs(config.sources ?? []);
+  const sources = await resolveSource(target, { graphMode, registry });
+  if (sources.mode === 'pass-through') {
+    throw new Error(
+      `SPARQL endpoint ${sources.endpoint.endpoint} cannot be diffed directly on the ${side} side (diff materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly diff\`)`,
+    );
+  }
+  const { canonicalStatements } = await canonicalizeStore(sources.store);
   return {
-    fileCount: result.files.length,
-    canonicalStatements: result.canonicalStatements,
-    prefixes: result.prefixes,
+    fileCount: sources.files.length,
+    canonicalStatements,
+    prefixes: sources.prefixes,
   };
 }
 
@@ -464,17 +491,6 @@ async function loadSideInlineScopeQuery(
     return readFile(path, 'utf8');
   }
   return symmetric;
-}
-
-function rawEndpoint(entry: SourceSpecInput): string | null {
-  let parsed;
-  try {
-    parsed = parseSourceSpec(entry);
-  } catch {
-    return null;
-  }
-  if (parsed.kind !== 'endpoint') return null;
-  return parsed.endpoint;
 }
 
 export { DiffPresentSignal, DIFF_FORMATS };

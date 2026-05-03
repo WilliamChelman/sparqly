@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { blockSchemaFromFields, defaultsFromFields } from '../runner/field';
-import { diffSpec } from './diff';
+import { diffSpec, resolveDiffSide } from './diff';
 
 describe('diffSpec', () => {
   it('declares two positionals bound to left and right', () => {
@@ -39,5 +39,101 @@ describe('diffSpec', () => {
 
   it('exitCode returns 2 by default for unknown errors', () => {
     expect(diffSpec.exitCode(new Error('boom'))).toBe(2);
+  });
+});
+
+describe('diffSpec — single-target shape', () => {
+  for (const side of ['left', 'right'] as const) {
+    it(`exposes a --${side} flag (singular) that accepts one source`, () => {
+      const flags =
+        diffSpec.fields.find((f) => f.key === side)?.flags ?? [];
+      expect(flags.length).toBeGreaterThan(0);
+      for (const f of flags) {
+        expect(f.spec).toMatch(new RegExp(`--${side}\\b`));
+      }
+    });
+  }
+
+  for (const side of ['left', 'right'] as const) {
+    it(`rejects an array --${side} value with the new ADR-0005-linked wording`, () => {
+      const schema = blockSchemaFromFields(diffSpec.fields);
+      const result = schema.safeParse({ [side]: ['a/*.ttl', 'b/*.ttl'] });
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      const message = result.error.issues.map((i) => i.message).join('\n');
+      expect(message).toMatch(/single/i);
+      expect(message).toMatch(/SERVICE/);
+      expect(message).toMatch(/empty/);
+      expect(message).toMatch(/ADR-0005|0005-single-target-source/);
+    });
+  }
+});
+
+describe('resolveDiffSide — selection precedence', () => {
+  it('auto-picks the sole registry entry when no positional/flag is given', () => {
+    const target = resolveDiffSide(
+      { sources: [{ id: 'files', glob: 'data/*.ttl' }] },
+      'left',
+    );
+    expect(target).toMatchObject({ kind: 'glob', id: 'files' });
+  });
+
+  it('falls back to the `default: true` entry when no positional/flag is given', () => {
+    const target = resolveDiffSide(
+      {
+        sources: [
+          { id: 'files', glob: 'data/*.ttl' },
+          { id: 'live', endpoint: 'https://example.com/sparql', default: true },
+        ],
+      },
+      'right',
+    );
+    expect(target).toMatchObject({ kind: 'endpoint', id: 'live' });
+  });
+
+  it('errors with the available `@ids` when the registry is ambiguous and no flag is given', () => {
+    expect(() =>
+      resolveDiffSide(
+        {
+          sources: [
+            { id: 'files', glob: 'data/*.ttl' },
+            { id: 'live', endpoint: 'https://example.com/sparql' },
+          ],
+        },
+        'left',
+      ),
+    ).toThrow(/@files.*@live/s);
+  });
+
+  it('inline positional wins over a `default: true` entry', () => {
+    const target = resolveDiffSide(
+      {
+        sources: [
+          { id: 'live', endpoint: 'https://example.com/sparql', default: true },
+        ],
+        left: 'adhoc/*.ttl',
+      },
+      'left',
+    );
+    expect(target).toEqual({ kind: 'glob', glob: 'adhoc/*.ttl' });
+  });
+
+  it('explicit `@id` ref wins over a `default: true` entry', () => {
+    const target = resolveDiffSide(
+      {
+        sources: [
+          { id: 'files', glob: 'data/*.ttl' },
+          { id: 'live', endpoint: 'https://example.com/sparql', default: true },
+        ],
+        right: '@files',
+      },
+      'right',
+    );
+    expect(target).toMatchObject({ kind: 'glob', id: 'files' });
+  });
+
+  it('does not require any `sources` registry when an inline source is provided', () => {
+    const target = resolveDiffSide({ left: 'adhoc/*.ttl' }, 'left');
+    expect(target).toEqual({ kind: 'glob', glob: 'adhoc/*.ttl' });
   });
 });

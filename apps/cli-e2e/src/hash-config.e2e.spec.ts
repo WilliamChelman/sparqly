@@ -23,10 +23,10 @@ describe('sparqly hash — config file + env precedence', () => {
     await rm(scratch, { recursive: true, force: true });
   });
 
-  it('reads sources from the config file when no CLI/env override is given', async () => {
+  it('reads the sole registry entry from the config file when no CLI/env override is given', async () => {
     const single = hashFixture('domain.ttl');
     const configPath = join(scratch, 'sparqly.hash.yaml');
-    await writeFile(configPath, `sources: "${single}"\n`);
+    await writeFile(configPath, `sources:\n  - "${single}"\n`);
 
     const result = await runCli(['hash', '--quiet', '--config', configPath], {
       env: CLEARED_ENV,
@@ -38,27 +38,11 @@ describe('sparqly hash — config file + env precedence', () => {
     expect(lines[0]).toMatch(hashLineRe(single));
   });
 
-  it('SPARQLY_HASH_SOURCES env is ignored; the config-file value still wins', async () => {
-    const fromConfig = hashFixture('parts/one.ttl');
-    const fromEnv = hashFixture('domain.ttl');
-    const configPath = join(scratch, 'sparqly.hash.yaml');
-    await writeFile(configPath, `sources: "${fromConfig}"\n`);
-
-    const result = await runCli(['hash', '--quiet', '--config', configPath], {
-      env: { ...CLEARED_ENV, SPARQLY_HASH_SOURCES: fromEnv },
-    });
-
-    expect(result.exitCode).toBe(0);
-    const lines = nonEmptyLines(result.stdout);
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatch(hashLineRe(fromConfig));
-  });
-
-  it('CLI --sources overrides the config file', async () => {
+  it('CLI --source overrides the registry default', async () => {
     const fromConfig = hashFixture('parts/one.ttl');
     const fromCli = hashFixture('domain.ttl');
     const configPath = join(scratch, 'sparqly.hash.yaml');
-    await writeFile(configPath, `sources: "${fromConfig}"\n`);
+    await writeFile(configPath, `sources:\n  - "${fromConfig}"\n`);
 
     const result = await runCli(
       [
@@ -66,7 +50,7 @@ describe('sparqly hash — config file + env precedence', () => {
         '--quiet',
         '--config',
         configPath,
-        '--sources',
+        '--source',
         fromCli,
       ],
       { env: CLEARED_ENV },
@@ -78,13 +62,14 @@ describe('sparqly hash — config file + env precedence', () => {
     expect(lines[0]).toMatch(hashLineRe(fromCli));
   });
 
-  it('json: true in the config file is equivalent to --json', async () => {
+  it('json: true in the config file is equivalent to --json (single object)', async () => {
     const single = hashFixture('domain.ttl');
     const configPath = join(scratch, 'sparqly.hash.yaml');
     await writeFile(
       configPath,
       dedent`
-        sources: "${single}"
+        sources:
+          - "${single}"
         json: true
       ` + '\n',
     );
@@ -94,13 +79,12 @@ describe('sparqly hash — config file + env precedence', () => {
     });
 
     expect(result.exitCode).toBe(0);
-    const parsed = JSON.parse(result.stdout) as Array<{
+    const parsed = JSON.parse(result.stdout) as {
       source: string;
       hash: string;
-    }>;
-    expect(parsed).toHaveLength(1);
-    expect(parsed[0].source).toBe(single);
-    expect(parsed[0].hash).toMatch(/^[0-9a-f]{64}$/);
+    };
+    expect(parsed.source).toBe(single);
+    expect(parsed.hash).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('SPARQLY_HASH_COMPARE_WITH env triggers compare mode', async () => {
@@ -122,7 +106,8 @@ describe('sparqly hash — config file + env precedence', () => {
     await writeFile(
       configPath,
       dedent`
-        sources: "${single}"
+        sources:
+          - "${single}"
         compareWith: "${partsGlob}"
       ` + '\n',
     );
@@ -135,7 +120,7 @@ describe('sparqly hash — config file + env precedence', () => {
     expect(result.stdout).toMatch(/^match: [0-9a-f]{64}\n$/);
   });
 
-  it('SPARQLY_HASH_JSON=true is equivalent to --json', async () => {
+  it('SPARQLY_HASH_JSON=true is equivalent to --json (single object)', async () => {
     const single = hashFixture('domain.ttl');
 
     const result = await runCli(['hash', '--quiet', single], {
@@ -143,16 +128,15 @@ describe('sparqly hash — config file + env precedence', () => {
     });
 
     expect(result.exitCode).toBe(0);
-    const parsed = JSON.parse(result.stdout) as Array<{
+    const parsed = JSON.parse(result.stdout) as {
       source: string;
       hash: string;
-    }>;
-    expect(parsed).toHaveLength(1);
-    expect(parsed[0].source).toBe(single);
-    expect(parsed[0].hash).toMatch(/^[0-9a-f]{64}$/);
+    };
+    expect(parsed.source).toBe(single);
+    expect(parsed.hash).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it('sources accepts an array in the config file', async () => {
+  it('an ambiguous multi-entry registry without `default: true` errors with available `@ids`', async () => {
     const a = hashFixture('parts/one.ttl');
     const b = hashFixture('parts/two.ttl');
     const configPath = join(scratch, 'sparqly.hash.yaml');
@@ -160,8 +144,34 @@ describe('sparqly hash — config file + env precedence', () => {
       configPath,
       dedent`
         sources:
-          - "${a}"
-          - "${b}"
+          - id: alpha
+            glob: "${a}"
+          - id: beta
+            glob: "${b}"
+      ` + '\n',
+    );
+
+    const result = await runCli(['hash', '--quiet', '--config', configPath], {
+      env: CLEARED_ENV,
+    });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/@alpha.*@beta/s);
+  });
+
+  it('a registry entry marked `default: true` is auto-picked when no --source is given', async () => {
+    const a = hashFixture('parts/one.ttl');
+    const b = hashFixture('parts/two.ttl');
+    const configPath = join(scratch, 'sparqly.hash.yaml');
+    await writeFile(
+      configPath,
+      dedent`
+        sources:
+          - id: alpha
+            glob: "${a}"
+          - id: beta
+            glob: "${b}"
+            default: true
       ` + '\n',
     );
 
@@ -171,8 +181,7 @@ describe('sparqly hash — config file + env precedence', () => {
 
     expect(result.exitCode).toBe(0);
     const lines = nonEmptyLines(result.stdout);
-    expect(lines).toHaveLength(2);
-    expect(lines[0]).toMatch(hashLineRe(a));
-    expect(lines[1]).toMatch(hashLineRe(b));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/^[0-9a-f]{64} {2}@beta$/);
   });
 });

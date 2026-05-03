@@ -91,27 +91,7 @@ describe('sparqly hash --compare-with', () => {
 
     expect(result.exitCode).toBe(2);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toMatch(/--compare-with.*one primary source/);
-  });
-
-  it('exits 2 when multiple primary sources are provided', async () => {
-    const a = hashFixture('parts/one.ttl');
-    const b = hashFixture('parts/two.ttl');
-
-    const result = await runCli([
-      'hash',
-      '--quiet',
-      '--sources',
-      a,
-      '--sources',
-      b,
-      '--compare-with',
-      a,
-    ]);
-
-    expect(result.exitCode).toBe(2);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toMatch(/--compare-with.*one primary source/);
+    expect(result.stderr).toMatch(/registry is empty|no target source/i);
   });
 
   it('applies --graph-mode=flatten to both sides so a .trig with named graphs matches the equivalent triples-only .ttl', async () => {
