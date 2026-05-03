@@ -175,6 +175,7 @@ describe('view pass-through — declared view with from: @endpoint', () => {
     const result = await runCli(
       [
         'query',
+        '@snap',
         '--config',
         configPath,
         '-q',
@@ -186,10 +187,6 @@ describe('view pass-through — declared view with from: @endpoint', () => {
     expect(result.exitCode, result.stderr).toBe(0);
     const seen = recording.captured();
     expect(seen.length).toBeGreaterThan(0);
-    // Pass-through proof: the view's scoped query (FILTER) reaches the endpoint
-    // verbatim. The registry also declares `ep` as a standalone top-level
-    // source which loadSources legitimately materializes; that path is
-    // orthogonal to this slice and is not asserted against here.
     expect(seen.some((q) => q.includes('FILTER'))).toBe(true);
   });
 });

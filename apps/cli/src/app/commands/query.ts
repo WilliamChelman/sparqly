@@ -2,13 +2,17 @@ import { readFile } from 'node:fs/promises';
 import { Logger } from '@nestjs/common';
 import { z } from 'zod';
 import {
-  QueryEngine,
-  SUPPORTED_FORMATS,
   formatRdf,
-  loadQuerySources,
   parseRdfString,
+  parseSourceSpecs,
   parseSparqlPrefixes,
+  QueryEngine,
+  resolveSource,
+  selectTarget,
+  SUPPORTED_FORMATS,
   type GraphMode,
+  type ParsedSource,
+  type SourceSpecInput,
   type SparqlFormat,
 } from 'core';
 import { configureLogger } from '../logging';
@@ -20,13 +24,14 @@ import {
   mutableFieldsFor,
   outFieldFor,
   prefixesField,
-  sourcesField,
+  sourceField,
   verbosityFieldsFor,
 } from '../runner/fields-shared';
 import type { CommandSpec } from '../runner/spec';
 
 interface QueryConfig {
-  sources?: string | string[];
+  sources?: SourceSpecInput[];
+  source?: SourceSpecInput;
   query?: string;
   queryFile?: string;
   format?: SparqlFormat;
@@ -38,6 +43,13 @@ interface QueryConfig {
   verbose?: boolean;
   quiet?: boolean;
 }
+
+const sourceSpecObjectSchema = z.record(z.string(), z.unknown());
+
+const sourcesRegistryField: FieldDescriptor = {
+  key: 'sources',
+  schema: z.array(z.union([z.string(), sourceSpecObjectSchema])),
+};
 
 const queryField: FieldDescriptor = {
   key: 'query',
@@ -75,11 +87,22 @@ const formatField: FieldDescriptor = {
   ],
 };
 
+export function resolveQueryTarget(config: QueryConfig): ParsedSource {
+  const registry = parseSourceSpecs(config.sources ?? []);
+  const targetArg =
+    typeof config.source === 'string' ? config.source : undefined;
+  if (config.source !== undefined && targetArg === undefined) {
+    return parseSourceSpecs([config.source])[0];
+  }
+  return selectTarget(registry, targetArg);
+}
+
 export const querySpec: CommandSpec<QueryConfig> = {
   name: 'query',
-  description: 'Run a SPARQL query against a glob of RDF files',
+  description: 'Run a SPARQL query against a target source (an `@id` ref into the config registry, or an inline glob/URL)',
   fields: [
-    sourcesField,
+    sourceField,
+    sourcesRegistryField,
     queryField,
     queryFileField,
     formatField,
@@ -90,17 +113,13 @@ export const querySpec: CommandSpec<QueryConfig> = {
     outFieldFor('query'),
     ...verbosityFieldsFor('query'),
   ],
-  positionals: [{ field: 'sources', name: 'glob' }],
+  positionals: [{ field: 'source', name: 'glob' }],
   exitCode: () => 1,
   handler: async (config) => {
     configureLogger({
       verbose: config.verbose === true,
       quiet: config.quiet === true,
     });
-
-    if (!config.sources) {
-      throw new Error('a sources glob is required');
-    }
 
     const stdinQuery = await readStdin();
     const querySources: string[] = [];
@@ -136,11 +155,11 @@ export const querySpec: CommandSpec<QueryConfig> = {
     const format = config.format;
     const mutable = config.mutable === true;
 
+    const target = resolveQueryTarget(config);
+    const registry = parseSourceSpecs(config.sources ?? []);
+
     const loadStart = Date.now();
-    const inputs = Array.isArray(config.sources)
-      ? config.sources
-      : [config.sources];
-    const sources = await loadQuerySources(inputs, { graphMode });
+    const sources = await resolveSource(target, { graphMode, registry });
     let engine: QueryEngine;
     if (sources.mode === 'pass-through') {
       logger.log(

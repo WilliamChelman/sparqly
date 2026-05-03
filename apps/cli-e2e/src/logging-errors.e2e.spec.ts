@@ -77,7 +77,7 @@ describe('sparqly query — error paths (US 22)', () => {
     const result = await runCli(['query', '-q', SELECT_ALL]);
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/sources glob is required/);
+    expect(result.stderr).toMatch(/registry is empty|target source/);
   });
 
   it('missing query exits non-zero with a clear error', async () => {
