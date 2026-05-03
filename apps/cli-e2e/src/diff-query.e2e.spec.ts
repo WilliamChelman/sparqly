@@ -244,7 +244,7 @@ describe('sparqly diff — inline scoping query: error matrix', () => {
     );
   });
 
-  it('rejects more than one source on the left when --left-query is provided (via config)', async () => {
+  it('rejects an array `left:` value with the ADR-0005 single-target wording', async () => {
     const configPath = join(scratch, 'multi-left.yaml');
     await writeFile(
       configPath,
@@ -266,7 +266,7 @@ describe('sparqly diff — inline scoping query: error matrix', () => {
     ]);
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/exactly one source|single source|one source/i);
+    expect(result.stderr).toMatch(/single .*--source|ADR-0005|0005-single-target-source/);
   });
 
   it('accepts a SPARQL endpoint on the left when --left-query is provided', async () => {
@@ -323,7 +323,7 @@ describe('sparqly diff — inline scoping query: error matrix', () => {
     }
   });
 
-  it('rejects more than one source on either side when symmetric --query is provided (via config)', async () => {
+  it('rejects an array side value when symmetric --query is provided (single-target wording)', async () => {
     const configPath = join(scratch, 'multi-sym.yaml');
     await writeFile(
       configPath,
@@ -345,6 +345,6 @@ describe('sparqly diff — inline scoping query: error matrix', () => {
     ]);
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/exactly one source|single source|one source/i);
+    expect(result.stderr).toMatch(/single .*--source|ADR-0005|0005-single-target-source/);
   });
 });

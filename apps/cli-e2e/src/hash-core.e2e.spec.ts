@@ -110,7 +110,7 @@ describe('sparqly hash — argv and flag validation', () => {
     expect(result.stderr).toMatch(/unknown.*--graph-mode/i);
   });
 
-  it('exits non-zero when no sources are provided', async () => {
+  it('exits non-zero when no target source is provided', async () => {
     const result = await runCli(['hash', '--quiet'], {
       env: {
         SPARQLY_HASH_COMPARE_WITH: undefined,
@@ -119,6 +119,6 @@ describe('sparqly hash — argv and flag validation', () => {
     });
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/sources/i);
+    expect(result.stderr).toMatch(/registry is empty|no target source/i);
   });
 });

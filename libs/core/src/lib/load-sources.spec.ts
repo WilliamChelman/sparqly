@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadSources } from './load-sources';
+import { parseSourceSpec, parseSourceSpecs } from './source-spec';
 import {
   startFakeSparqlEndpoint,
   type FakeSparqlEndpoint,
@@ -26,7 +27,7 @@ const SPARQL_JSON_TWO_BINDINGS = JSON.stringify({
   },
 });
 
-describe('loadSources', () => {
+describe('loadSources — single-target glob', () => {
   let dir: string;
 
   beforeEach(async () => {
@@ -37,36 +38,36 @@ describe('loadSources', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it('loads a glob string source through the parser end-to-end', async () => {
+  it('loads a glob target into the materialized Store', async () => {
     await writeFile(
       join(dir, 'a.ttl'),
       '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
     );
-    const { store, files } = await loadSources([join(dir, '*.ttl')]);
+    const target = parseSourceSpec(join(dir, '*.ttl'));
+    const { store, files } = await loadSources(target);
     expect(files).toHaveLength(1);
     expect(store.size).toBe(1);
   });
 
-  it('loads an object-form glob source (exotic @ path supported)', async () => {
-    const archive = join(dir, '@archive');
+  it('loads an object-form glob target (exotic @ paths supported)', async () => {
     await writeFile(
       join(dir, 'a.ttl'),
       '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
     );
-    // Use the exotic-path object form to escape the @ discriminator.
-    void archive;
-    const { store } = await loadSources([{ glob: join(dir, '*.ttl') }]);
+    const target = parseSourceSpec({ glob: join(dir, '*.ttl') });
+    const { store } = await loadSources(target);
     expect(store.size).toBe(1);
   });
 
-  it('rejects an @id reference string with a not-yet-supported error pointing at #60', async () => {
-    await expect(loadSources(['@my-source'])).rejects.toThrow(
+  it('rejects an @id reference target with a not-yet-supported error pointing at #60', async () => {
+    const target = parseSourceSpec('@my-source');
+    await expect(loadSources(target)).rejects.toThrow(
       /@id reference sources are not yet supported.*issues\/60/,
     );
   });
 });
 
-describe('loadSources — SPARQL endpoint sources', () => {
+describe('loadSources — single-target SPARQL endpoint', () => {
   let endpoint: FakeSparqlEndpoint | undefined;
 
   afterEach(async () => {
@@ -74,13 +75,14 @@ describe('loadSources — SPARQL endpoint sources', () => {
     endpoint = undefined;
   });
 
-  it('loads quads from a string-form endpoint URL into the merged store', async () => {
+  it('materializes endpoint quads into the Store (no pass-through)', async () => {
     endpoint = await startFakeSparqlEndpoint(() => ({
       contentType: 'application/sparql-results+json',
       body: SPARQL_JSON_TWO_BINDINGS,
     }));
 
-    const { store } = await loadSources([endpoint.url]);
+    const target = parseSourceSpec(endpoint.url);
+    const { store } = await loadSources(target);
 
     expect(store.size).toBe(2);
     const subjects = store
@@ -93,13 +95,14 @@ describe('loadSources — SPARQL endpoint sources', () => {
     ]);
   });
 
-  it('loads quads from an object-form endpoint source', async () => {
+  it('loads quads from an object-form endpoint target', async () => {
     endpoint = await startFakeSparqlEndpoint(() => ({
       contentType: 'application/sparql-results+json',
       body: SPARQL_JSON_TWO_BINDINGS,
     }));
 
-    const { store } = await loadSources([{ endpoint: endpoint.url }]);
+    const target = parseSourceSpec({ endpoint: endpoint.url });
+    const { store } = await loadSources(target);
 
     expect(store.size).toBe(2);
   });
@@ -110,7 +113,8 @@ describe('loadSources — SPARQL endpoint sources', () => {
       body: SPARQL_JSON_TWO_BINDINGS,
     }));
 
-    const { store } = await loadSources([{ endpoint: endpoint.url }]);
+    const target = parseSourceSpec({ endpoint: endpoint.url });
+    const { store } = await loadSources(target);
 
     const quads = store.getQuads(null, null, null, null);
     expect(quads).toHaveLength(2);
@@ -119,26 +123,22 @@ describe('loadSources — SPARQL endpoint sources', () => {
     }
   });
 
-  it('rejects an endpoint source carrying graphMode at parse time', async () => {
-    await expect(
-      loadSources([
-        {
-          endpoint: 'https://example.com/sparql',
-          graphMode: 'forceAll',
-        } as unknown as Parameters<typeof loadSources>[0][number],
-      ]),
-    ).rejects.toThrow(/graphMode.*endpoint.*view/i);
+  it('rejects an endpoint target carrying graphMode at parse time', async () => {
+    expect(() =>
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        graphMode: 'forceAll',
+      } as unknown as Parameters<typeof parseSourceSpec>[0]),
+    ).toThrow(/graphMode.*endpoint.*view/i);
   });
 
-  it('rejects an endpoint source carrying graph at parse time', async () => {
-    await expect(
-      loadSources([
-        {
-          endpoint: 'https://example.com/sparql',
-          graph: 'urn:my:custom-endpoint-graph',
-        } as unknown as Parameters<typeof loadSources>[0][number],
-      ]),
-    ).rejects.toThrow(/\bgraph\b.*endpoint.*view/i);
+  it('rejects an endpoint target carrying graph at parse time', async () => {
+    expect(() =>
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        graph: 'urn:my:custom-endpoint-graph',
+      } as unknown as Parameters<typeof parseSourceSpec>[0]),
+    ).toThrow(/\bgraph\b.*endpoint.*view/i);
   });
 
   it('surfaces source identity and HTTP status on a 5xx error', async () => {
@@ -148,19 +148,20 @@ describe('loadSources — SPARQL endpoint sources', () => {
       body: 'upstream busy',
     }));
 
-    await expect(loadSources([endpoint.url])).rejects.toThrow(
+    const target = parseSourceSpec(endpoint.url);
+    await expect(loadSources(target)).rejects.toThrow(
       new RegExp(`endpoint ${endpoint.url}.*503`),
     );
   });
 
   it('surfaces source identity on a TLS / connection failure', async () => {
-    // Pick a port that is not listening to force ECONNREFUSED.
     const dead = 'http://127.0.0.1:1/sparql';
-    await expect(loadSources([dead])).rejects.toThrow(/endpoint .*1\/sparql/);
+    const target = parseSourceSpec(dead);
+    await expect(loadSources(target)).rejects.toThrow(/endpoint .*1\/sparql/);
   });
 });
 
-describe('loadSources — SPARQL auth, headers, and timeoutMs', () => {
+describe('loadSources — endpoint auth, headers, and timeoutMs', () => {
   let endpoint: FakeSparqlEndpoint | undefined;
 
   afterEach(async () => {
@@ -179,12 +180,11 @@ describe('loadSources — SPARQL auth, headers, and timeoutMs', () => {
       };
     });
 
-    await loadSources([
-      {
-        endpoint: endpoint.url,
-        auth: { type: 'bearer', token: 'tk-1' },
-      },
-    ]);
+    const target = parseSourceSpec({
+      endpoint: endpoint.url,
+      auth: { type: 'bearer', token: 'tk-1' },
+    });
+    await loadSources(target);
 
     expect(observed).toBe('Bearer tk-1');
   });
@@ -200,12 +200,11 @@ describe('loadSources — SPARQL auth, headers, and timeoutMs', () => {
       };
     });
 
-    await loadSources([
-      {
-        endpoint: endpoint.url,
-        auth: { type: 'basic', username: 'alice', password: 'hunter2' },
-      },
-    ]);
+    const target = parseSourceSpec({
+      endpoint: endpoint.url,
+      auth: { type: 'basic', username: 'alice', password: 'hunter2' },
+    });
+    await loadSources(target);
 
     const expected = `Basic ${Buffer.from('alice:hunter2', 'utf8').toString(
       'base64',
@@ -223,12 +222,11 @@ describe('loadSources — SPARQL auth, headers, and timeoutMs', () => {
       };
     });
 
-    await loadSources([
-      {
-        endpoint: endpoint.url,
-        headers: { 'X-Tenant': 'acme', 'X-Trace': 'abc' },
-      },
-    ]);
+    const target = parseSourceSpec({
+      endpoint: endpoint.url,
+      headers: { 'X-Tenant': 'acme', 'X-Trace': 'abc' },
+    });
+    await loadSources(target);
 
     const tenant = observed['x-tenant'];
     const trace = observed['x-trace'];
@@ -245,9 +243,10 @@ describe('loadSources — SPARQL auth, headers, and timeoutMs', () => {
       };
     });
 
-    await expect(
-      loadSources([{ endpoint: endpoint.url, timeoutMs: 25 }]),
-    ).rejects.toThrow(new RegExp(`endpoint ${endpoint.url}`));
+    const target = parseSourceSpec({ endpoint: endpoint.url, timeoutMs: 25 });
+    await expect(loadSources(target)).rejects.toThrow(
+      new RegExp(`endpoint ${endpoint.url}`),
+    );
   });
 
   it('default timeoutMs (30s) lets a fast endpoint succeed', async () => {
@@ -256,7 +255,8 @@ describe('loadSources — SPARQL auth, headers, and timeoutMs', () => {
       body: SPARQL_JSON_TWO_BINDINGS,
     }));
 
-    const { store } = await loadSources([{ endpoint: endpoint.url }]);
+    const target = parseSourceSpec({ endpoint: endpoint.url });
+    const { store } = await loadSources(target);
     expect(store.size).toBe(2);
   });
 
@@ -270,13 +270,12 @@ describe('loadSources — SPARQL auth, headers, and timeoutMs', () => {
       };
     });
 
-    await loadSources([
-      {
-        endpoint: endpoint.url,
-        auth: { type: 'bearer', token: 'tk-1' },
-        headers: { 'X-Tenant': 'acme' },
-      },
-    ]);
+    const target = parseSourceSpec({
+      endpoint: endpoint.url,
+      auth: { type: 'bearer', token: 'tk-1' },
+      headers: { 'X-Tenant': 'acme' },
+    });
+    await loadSources(target);
 
     const auth = observed['authorization'];
     const tenant = observed['x-tenant'];
@@ -285,7 +284,7 @@ describe('loadSources — SPARQL auth, headers, and timeoutMs', () => {
   });
 });
 
-describe('loadSources — per-source pipeline', () => {
+describe('loadSources — single-target view walks its `from:` chain', () => {
   let dir: string;
 
   beforeEach(async () => {
@@ -296,31 +295,20 @@ describe('loadSources — per-source pipeline', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it('per-source graphMode wins over the global graphMode', async () => {
+  it('per-source graphMode on a glob target wins over the global graphMode', async () => {
     const a = join(dir, 'a.ttl');
-    const b = join(dir, 'b.ttl');
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
-    await writeFile(b, '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .');
 
-    const { store } = await loadSources(
-      [
-        { glob: a, graphMode: 'forceAll' },
-        { glob: b },
-      ],
-      { graphMode: 'preserve' },
-    );
+    const target = parseSourceSpec({ glob: a, graphMode: 'forceAll' });
+    const { store } = await loadSources(target, { graphMode: 'preserve' });
 
     const quads = store.getQuads(null, null, null, null);
-    const byGraph = new Map<string, number>();
-    for (const q of quads) {
-      const key = q.graph.termType === 'DefaultGraph' ? '<default>' : q.graph.value;
-      byGraph.set(key, (byGraph.get(key) ?? 0) + 1);
-    }
-    expect(byGraph.get(`file://${a}`)).toBe(1);
-    expect(byGraph.get('<default>')).toBe(1);
+    expect(quads).toHaveLength(1);
+    expect(quads[0].graph.termType).toBe('NamedNode');
+    expect(quads[0].graph.value).toBe(`file://${a}`);
   });
 
-  it('dispatches view sources through the view-resolver and merges their quads', async () => {
+  it('walks a view target through its `from:` chain in the registry', async () => {
     const a = join(dir, 'a.ttl');
     await writeFile(
       a,
@@ -331,7 +319,7 @@ describe('loadSources — per-source pipeline', () => {
       ].join('\n'),
     );
 
-    const { store } = await loadSources([
+    const registry = parseSourceSpecs([
       { id: 'raw', glob: a },
       {
         id: 'derived',
@@ -340,22 +328,28 @@ describe('loadSources — per-source pipeline', () => {
           'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:r ?o } WHERE { ?s ex:p ?o }',
       },
     ]);
+    const derived = registry.find((s) => s.id === 'derived');
+    if (derived === undefined) throw new Error('derived view not found');
+
+    const { store } = await loadSources(derived, { registry });
 
     const predicates = new Set(
       store.getQuads(null, null, null, null).map((q) => q.predicate.value),
     );
-    expect(predicates.has('http://example.org/p')).toBe(true);
     expect(predicates.has('http://example.org/r')).toBe(true);
-    expect(store.size).toBe(4);
+    expect(store.size).toBe(2);
   });
 
   it('per-source graph: IRI overrides the synthetic file:// graph IRI', async () => {
     const a = join(dir, 'a.ttl');
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
 
-    const { store } = await loadSources([
-      { glob: a, graphMode: 'forceAll', graph: 'urn:my:custom-graph' },
-    ]);
+    const target = parseSourceSpec({
+      glob: a,
+      graphMode: 'forceAll',
+      graph: 'urn:my:custom-graph',
+    });
+    const { store } = await loadSources(target);
 
     const [quad] = store.getQuads(null, null, null, null);
     expect(quad.graph.termType).toBe('NamedNode');

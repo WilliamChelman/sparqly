@@ -156,21 +156,6 @@ describe('sparqly hash — inline scoping query (anonymous view)', () => {
     expect(result.stderr).toMatch(/--query.*--query-file|mutually exclusive/i);
   });
 
-  it('rejects more than one source when an inline scoping query is provided', async () => {
-    const result = await runCli([
-      'hash',
-      '--quiet',
-      '--query',
-      SCOPE_QUERY,
-      '-s',
-      hashFixture('domain.ttl'),
-      '-s',
-      hashFixture('parts/*.ttl'),
-    ]);
-
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/exactly one source|single source|one source/i);
-  });
 });
 
 describe('sparqly hash --compare-with — per-side inline scoping', () => {

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
-import { hashFixture, nonEmptyLines } from './helpers/hash';
+import { hashFixture } from './helpers/hash';
 
 describe('sparqly hash --out', () => {
   let scratch: string;
@@ -49,30 +49,6 @@ describe('sparqly hash --out', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe('');
     expect(await readFile(target, 'utf8')).toBe(baseline.stdout);
-  });
-
-  it('writes all results in input order for repeated --sources', async () => {
-    const a = hashFixture('parts/one.ttl');
-    const b = hashFixture('parts/two.ttl');
-
-    const target = join(scratch, 'multi.txt');
-    const result = await runCli([
-      'hash',
-      '--quiet',
-      '-s',
-      b,
-      '-s',
-      a,
-      '--out',
-      target,
-    ]);
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe('');
-    const lines = nonEmptyLines(await readFile(target, 'utf8'));
-    expect(lines).toHaveLength(2);
-    expect(lines[0].endsWith(`  ${b}`)).toBe(true);
-    expect(lines[1].endsWith(`  ${a}`)).toBe(true);
   });
 
   it('rejects --out combined with --compare-with with exit 2 and a clear error', async () => {
