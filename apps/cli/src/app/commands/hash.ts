@@ -134,7 +134,7 @@ const jsonField: FieldDescriptor = {
 export const hashSpec: CommandSpec<HashConfig> = {
   name: 'hash',
   description:
-    'Compute a stable SHA-256 over the canonicalized RDF content of one or more sources. Always materializes; a SPARQL endpoint source is rejected (wrap it in a `view` source kind to scope it). Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL hash is only as deterministic as the endpoint.',
+    'Compute a stable SHA-256 over the canonicalized RDF content of one or more sources. Materializes the *result*; for endpoint-backed views the query passes through to the endpoint. A SPARQL endpoint source is rejected as a raw input (wrap it in a `view` source kind to scope it). Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL hash is only as deterministic as the endpoint.',
   fields: [
     sourcesField,
     graphModeFieldFor('hash'),
@@ -185,7 +185,7 @@ export const hashSpec: CommandSpec<HashConfig> = {
             if (violation) {
               ctx.addIssue({
                 code: 'custom',
-                message: `SPARQL endpoint ${violation} cannot be hashed directly (hash always materializes; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
+                message: `SPARQL endpoint ${violation} cannot be hashed directly (hash materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
                 path: ['sources', i],
               });
             }
@@ -218,7 +218,7 @@ export const hashSpec: CommandSpec<HashConfig> = {
           if (violation) {
             ctx.addIssue({
               code: 'custom',
-              message: `SPARQL endpoint ${violation} cannot be hashed directly (hash always materializes; wrap the endpoint in a \`view\` source kind to scope it, pass \`--compare-with-query\`/\`--compare-with-query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
+              message: `SPARQL endpoint ${violation} cannot be hashed directly (hash materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--compare-with-query\`/\`--compare-with-query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
               path: ['compareWith'],
             });
           }

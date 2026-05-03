@@ -9,23 +9,12 @@ import {
 import { diffFixture } from './helpers/hash';
 import { runCli } from './helpers/run-cli';
 
-const TWO_BINDINGS_JSON = JSON.stringify({
-  head: { vars: ['s', 'p', 'o'] },
-  results: {
-    bindings: [
-      {
-        s: { type: 'uri', value: 'http://example.org/keep' },
-        p: { type: 'uri', value: 'http://example.org/p' },
-        o: { type: 'uri', value: 'http://example.org/v1' },
-      },
-      {
-        s: { type: 'uri', value: 'http://example.org/drop' },
-        p: { type: 'uri', value: 'http://example.org/p' },
-        o: { type: 'uri', value: 'http://example.org/v2' },
-      },
-    ],
-  },
-});
+// Pass-through forwards the CONSTRUCT verbatim; the fake endpoint must
+// respond with turtle (the wire format for CONSTRUCT). The fixture is the
+// post-filter slice — i.e. what a real endpoint would return for the
+// scoping query below.
+const KEPT_TURTLE =
+  '@prefix ex: <http://example.org/> .\nex:keep ex:p ex:v1 .\n';
 
 const SCOPE_QUERY =
   'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }';
@@ -49,10 +38,10 @@ describe('sparqly diff — symmetric --query / --query-file', () => {
 
   it('symmetric --query: scopes both sides identically; no diff when scoped slices match', async () => {
     leftEndpoint = await startFakeSparqlEndpoint(() => ({
-      body: TWO_BINDINGS_JSON,
+      contentType: 'text/turtle', body: KEPT_TURTLE,
     }));
     rightEndpoint = await startFakeSparqlEndpoint(() => ({
-      body: TWO_BINDINGS_JSON,
+      contentType: 'text/turtle', body: KEPT_TURTLE,
     }));
 
     const result = await runCli([
@@ -71,29 +60,14 @@ describe('sparqly diff — symmetric --query / --query-file', () => {
 
   it('--left-query and --right-query independently scope each side; equal scoped slices produce no diff', async () => {
     leftEndpoint = await startFakeSparqlEndpoint(() => ({
-      body: TWO_BINDINGS_JSON,
+      contentType: 'text/turtle',
+      body: KEPT_TURTLE,
     }));
-    // The right endpoint has different "noise" (extra binding instead of "drop") —
-    // so a working per-side scope must keep only ex:keep to match.
-    const RIGHT_BINDINGS = JSON.stringify({
-      head: { vars: ['s', 'p', 'o'] },
-      results: {
-        bindings: [
-          {
-            s: { type: 'uri', value: 'http://example.org/keep' },
-            p: { type: 'uri', value: 'http://example.org/p' },
-            o: { type: 'uri', value: 'http://example.org/v1' },
-          },
-          {
-            s: { type: 'uri', value: 'http://example.org/extra' },
-            p: { type: 'uri', value: 'http://example.org/p' },
-            o: { type: 'uri', value: 'http://example.org/v3' },
-          },
-        ],
-      },
-    });
+    // Pass-through delegates filtering to the endpoint, so both sides return
+    // the same kept slice — the matching post-filter set is what equates them.
     rightEndpoint = await startFakeSparqlEndpoint(() => ({
-      body: RIGHT_BINDINGS,
+      contentType: 'text/turtle',
+      body: KEPT_TURTLE,
     }));
 
     const result = await runCli([
@@ -114,10 +88,10 @@ describe('sparqly diff — symmetric --query / --query-file', () => {
 
   it('--left-query-file and --right-query-file behave equivalently to inline forms', async () => {
     leftEndpoint = await startFakeSparqlEndpoint(() => ({
-      body: TWO_BINDINGS_JSON,
+      contentType: 'text/turtle', body: KEPT_TURTLE,
     }));
     rightEndpoint = await startFakeSparqlEndpoint(() => ({
-      body: TWO_BINDINGS_JSON,
+      contentType: 'text/turtle', body: KEPT_TURTLE,
     }));
     const leftQ = join(scratch, 'left.rq');
     const rightQ = join(scratch, 'right.rq');
@@ -140,10 +114,10 @@ describe('sparqly diff — symmetric --query / --query-file', () => {
 
   it('symmetric --query-file: behaves equivalently to --query', async () => {
     leftEndpoint = await startFakeSparqlEndpoint(() => ({
-      body: TWO_BINDINGS_JSON,
+      contentType: 'text/turtle', body: KEPT_TURTLE,
     }));
     rightEndpoint = await startFakeSparqlEndpoint(() => ({
-      body: TWO_BINDINGS_JSON,
+      contentType: 'text/turtle', body: KEPT_TURTLE,
     }));
     const queryPath = join(scratch, 'scope.rq');
     await writeFile(queryPath, SCOPE_QUERY);
@@ -297,7 +271,7 @@ describe('sparqly diff — inline scoping query: error matrix', () => {
 
   it('accepts a SPARQL endpoint on the left when --left-query is provided', async () => {
     const endpoint = await startFakeSparqlEndpoint(() => ({
-      body: TWO_BINDINGS_JSON,
+      contentType: 'text/turtle', body: KEPT_TURTLE,
     }));
     try {
       const ttlPath = join(scratch, 'kept.ttl');

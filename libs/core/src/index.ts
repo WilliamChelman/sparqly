@@ -11,6 +11,7 @@ export * from './lib/resolve-source-references';
 export * from './lib/view-query-validate';
 export * from './lib/view-resolver';
 export * from './lib/view-cache';
+export * from './lib/view-pass-through';
 export * from './lib/anonymous-view-builder';
 export * from './lib/load-sources';
 export * from './lib/load-query-sources';
