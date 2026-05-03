@@ -13,13 +13,12 @@ describe('resolveSourceReferences', () => {
       {
         id: 'main',
         glob: 'data/*.ttl',
-        graphMode: 'flatten' as const,
-        graph: 'urn:my:graph',
+        transforms: [{ graphName: 'flatten' as const }],
       },
     ];
     const out = resolveSourceReferences(['@main'], { registry });
     expect(out).toEqual([
-      { glob: 'data/*.ttl', graphMode: 'flatten', graph: 'urn:my:graph' },
+      { glob: 'data/*.ttl', transforms: [{ graphName: 'flatten' }] },
     ]);
   });
 

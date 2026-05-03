@@ -295,12 +295,15 @@ describe('loadSources — single-target view walks its `from:` chain', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it('per-source graphMode on a glob target wins over the global graphMode', async () => {
+  it('runs a glob target through its `graphName: forceAll` transform with per-file context', async () => {
     const a = join(dir, 'a.ttl');
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
 
-    const target = parseSourceSpec({ glob: a, graphMode: 'forceAll' });
-    const { store } = await loadSources(target, { graphMode: 'preserve' });
+    const target = parseSourceSpec({
+      glob: a,
+      transforms: [{ graphName: 'forceAll' }],
+    });
+    const { store } = await loadSources(target);
 
     const quads = store.getQuads(null, null, null, null);
     expect(quads).toHaveLength(1);
@@ -340,14 +343,15 @@ describe('loadSources — single-target view walks its `from:` chain', () => {
     expect(store.size).toBe(2);
   });
 
-  it('per-source graph: IRI overrides the synthetic file:// graph IRI', async () => {
+  it('honours a `graphName: { mode: forceAll, graph }` override on a glob target', async () => {
     const a = join(dir, 'a.ttl');
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
 
     const target = parseSourceSpec({
       glob: a,
-      graphMode: 'forceAll',
-      graph: 'urn:my:custom-graph',
+      transforms: [
+        { graphName: { mode: 'forceAll', graph: 'urn:my:custom-graph' } },
+      ],
     });
     const { store } = await loadSources(target);
 

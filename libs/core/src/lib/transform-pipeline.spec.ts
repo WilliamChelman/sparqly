@@ -68,6 +68,20 @@ describe('applyTransformPipeline', () => {
     expect(out.size).toBe(2);
   });
 
+  it('threads the optional TransformContext to each transform unchanged', () => {
+    const seen: unknown[] = [];
+    const inspect: ParsedTransform = {
+      key: 'inspect',
+      apply: (s, ctx) => {
+        seen.push(ctx);
+        return s;
+      },
+    };
+    const ctx = { perFileRecords: new Map() };
+    applyTransformPipeline(new Store(), [inspect, inspect], ctx);
+    expect(seen).toEqual([ctx, ctx]);
+  });
+
   it('does not mutate the original input store, even when a transform returns a fresh Store', () => {
     const input = storeWith(
       quad(namedNode('urn:s'), namedNode('urn:p'), namedNode('urn:o')),

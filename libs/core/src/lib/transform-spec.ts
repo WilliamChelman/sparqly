@@ -1,6 +1,22 @@
 import type { Store } from 'n3';
+import type { RdfRecord } from './rdf-file-parser';
 
-export type TransformApply = (store: Store) => Store;
+/**
+ * Side-channel data threaded through the pipeline alongside the Store.
+ *
+ * Transforms that need provenance (e.g. `graphName: forceAll` rewrites quads
+ * to `file://${file}` graphs) cannot recover per-quad file origin from the
+ * merged Store alone, so the loader exposes per-file ordered records here.
+ */
+export interface TransformContext {
+  /** Per-file ordered records from the most recent glob load, keyed by absolute path. */
+  perFileRecords?: ReadonlyMap<string, ReadonlyArray<RdfRecord>>;
+}
+
+export type TransformApply = (
+  store: Store,
+  ctx?: TransformContext,
+) => Store;
 
 export interface TransformDefinition<TInput = unknown> {
   /** Discriminator key on the source-spec list item (e.g. `graphName`, `annotate`). */

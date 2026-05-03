@@ -1,9 +1,18 @@
 import { canonize } from 'rdf-canonize';
 import type { Store } from 'n3';
+import { parseGraphNameTransform } from './graph-name-transform';
 import { loadRdf, type GraphMode } from './rdf-loader';
+import { applyTransformPipeline } from './transform-pipeline';
+import type { ParsedTransform } from './transform-spec';
 
 export interface CanonicalizeOptions {
   sources: string | string[];
+  /**
+   * Optional default `graphName` mode. Synthesized into a `graphName`
+   * transform applied to the loaded store before canonicalization. Only
+   * provided by the CLI's `--graph-mode` flag; sources expressed via the
+   * source-spec should declare their own `transforms` pipeline.
+   */
   graphMode?: GraphMode;
 }
 
@@ -37,10 +46,26 @@ export async function canonicalizeStore(
 export async function canonicalizeRdf(
   options: CanonicalizeOptions,
 ): Promise<CanonicalizeResult> {
-  const { store, files, prefixes } = await loadRdf({
-    sources: options.sources,
-    graphMode: options.graphMode,
+  const loaded = await loadRdf({ sources: options.sources });
+  const transforms: ReadonlyArray<ParsedTransform> =
+    options.graphMode === undefined || options.graphMode === 'preserve'
+      ? []
+      : [
+          {
+            key: 'graphName',
+            apply: parseGraphNameTransform(options.graphMode),
+          },
+        ];
+  const transformed = applyTransformPipeline(loaded.store, transforms, {
+    perFileRecords: loaded.perFileRecords,
   });
-  const { canonicalText, canonicalStatements } = await canonicalizeStore(store);
-  return { files, store, prefixes, canonicalText, canonicalStatements };
+  const { canonicalText, canonicalStatements } =
+    await canonicalizeStore(transformed);
+  return {
+    files: loaded.files,
+    store: transformed,
+    prefixes: loaded.prefixes,
+    canonicalText,
+    canonicalStatements,
+  };
 }

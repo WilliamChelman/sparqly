@@ -1,4 +1,5 @@
-import { DataFactory, Store } from 'n3';
+import { Store } from 'n3';
+import { parseGraphNameTransform } from './graph-name-transform';
 import { loadRdf, type GraphMode, type LoadResult } from './rdf-loader';
 import {
   type ParsedEndpointSource,
@@ -7,6 +8,7 @@ import {
   type ParsedViewSource,
 } from './source-spec';
 import { applyTransformPipeline } from './transform-pipeline';
+import type { ParsedTransform } from './transform-spec';
 import { resolveView, type ResolveViewOptions } from './view-resolver';
 
 export type QuerySources =
@@ -19,7 +21,12 @@ export type QuerySources =
     };
 
 export interface ResolveSourceOptions {
-  /** Default per-source graphMode for glob loads. */
+  /**
+   * Default `graphName` mode applied when a glob target has no `transforms`
+   * declared. Synthesizes `[{ graphName: <mode> }]` for the target. Sources
+   * that already declare `transforms` are passed through unchanged. Used by
+   * the CLI/server `--graph-mode` flag.
+   */
   graphMode?: GraphMode;
   /**
    * Registry of sibling source-specs. Required when the target is a view, so
@@ -75,38 +82,30 @@ async function loadGlobIntoStore(
   source: ParsedGlobSource,
   defaultGraphMode: GraphMode | undefined,
 ): Promise<LoadResult> {
-  const merged = new Store();
-  const effectiveMode: GraphMode =
-    source.graphMode ?? defaultGraphMode ?? 'preserve';
-  const overrideGraph = source.graph
-    ? DataFactory.namedNode(source.graph)
-    : undefined;
-
-  const sub = await loadRdf({
-    sources: source.glob,
-    graphMode: effectiveMode,
+  const sub = await loadRdf({ sources: source.glob });
+  const transforms = effectiveTransforms(source, defaultGraphMode);
+  const transformed = applyTransformPipeline(sub.store, transforms, {
+    perFileRecords: sub.perFileRecords,
   });
-  const fileSyntheticIris = new Set(sub.files.map((f) => `file://${f}`));
-  for (const quad of sub.store.getQuads(null, null, null, null)) {
-    const rewritten =
-      overrideGraph &&
-      quad.graph.termType === 'NamedNode' &&
-      fileSyntheticIris.has(quad.graph.value)
-        ? DataFactory.quad(
-            quad.subject,
-            quad.predicate,
-            quad.object,
-            overrideGraph,
-          )
-        : quad;
-    merged.addQuad(rewritten);
-  }
-  const transformed = applyTransformPipeline(merged, source.transforms ?? []);
   return {
     store: transformed,
     files: [...sub.files],
     prefixes: { ...sub.prefixes },
+    perFileRecords: sub.perFileRecords,
   };
+}
+
+function effectiveTransforms(
+  source: ParsedGlobSource,
+  defaultGraphMode: GraphMode | undefined,
+): ReadonlyArray<ParsedTransform> {
+  if (source.transforms !== undefined) return source.transforms;
+  if (defaultGraphMode === undefined || defaultGraphMode === 'preserve') {
+    return [];
+  }
+  return [
+    { key: 'graphName', apply: parseGraphNameTransform(defaultGraphMode) },
+  ];
 }
 
 function materialized(

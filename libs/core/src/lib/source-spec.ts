@@ -1,4 +1,4 @@
-import type { GraphMode } from './rdf-loader';
+import { GRAPH_NAME_TRANSFORM } from './graph-name-transform';
 import {
   parseTransformList,
   type ParsedTransform,
@@ -13,11 +13,6 @@ export interface DefaultMarkerField {
   default?: true;
 }
 
-export interface GlobOnlyGraphFields {
-  graphMode?: GraphMode;
-  graph?: string;
-}
-
 export type SparqlAuth =
   | { type: 'bearer'; token: string }
   | { type: 'basic'; username: string; password: string };
@@ -30,7 +25,6 @@ export interface EndpointHttpFields {
 
 export interface ParsedGlobSource
   extends SourceSpecCommonFields,
-    GlobOnlyGraphFields,
     DefaultMarkerField {
   kind: 'glob';
   glob: string;
@@ -105,7 +99,6 @@ export type ParsedSource =
 
 export interface SourceSpecObjectInput
   extends SourceSpecCommonFields,
-    GlobOnlyGraphFields,
     EndpointHttpFields {
   glob?: string;
   endpoint?: string;
@@ -136,10 +129,7 @@ function pickDefault(input: SourceSpecObjectInput): DefaultMarkerField {
   return { default: true };
 }
 
-const GLOB_GRAPH_FIELD_KEYS = [
-  'graphMode',
-  'graph',
-] as const satisfies ReadonlyArray<keyof GlobOnlyGraphFields>;
+const LEGACY_GLOB_GRAPH_FIELD_KEYS = ['graphMode', 'graph'] as const;
 
 function validateSourceId(id: string): void {
   if (id.startsWith('@')) {
@@ -161,24 +151,23 @@ function pickCommon(input: SourceSpecObjectInput): SourceSpecCommonFields {
   return out;
 }
 
-function pickGlobGraph(input: SourceSpecObjectInput): GlobOnlyGraphFields {
-  const out: GlobOnlyGraphFields = {};
-  for (const k of GLOB_GRAPH_FIELD_KEYS) {
-    const v = input[k];
-    if (v !== undefined) (out as Record<string, unknown>)[k] = v;
+function rejectLegacyGlobGraphFields(input: SourceSpecObjectInput): void {
+  for (const key of LEGACY_GLOB_GRAPH_FIELD_KEYS) {
+    if ((input as Record<string, unknown>)[key] !== undefined) {
+      throw new Error(
+        `\`${key}\` was removed from the glob source-spec; express graph-name behaviour via the \`transforms\` pipeline (e.g. \`transforms: [{ graphName: 'forceAll' }]\`) — see ADR 0006`,
+      );
+    }
   }
-  return out;
 }
 
 /**
  * Closed registry of source transforms recognised by the source-spec parser.
- *
- * Empty in this slice (#111): the `transforms:` field parses, validates, and
- * threads through unchanged, but no transform keys are accepted yet — so any
- * non-empty list fails with "unknown transform key". Subsequent slices add
- * `graphName` and `annotate` here.
+ * Adding a transform: append a `TransformDefinition` here.
  */
-export const TRANSFORM_REGISTRY: ReadonlyArray<TransformDefinition> = [];
+export const TRANSFORM_REGISTRY: ReadonlyArray<TransformDefinition> = [
+  GRAPH_NAME_TRANSFORM,
+];
 
 export interface ParseSourceSpecContext {
   /** Override the closed transform registry (test stubs only). */
@@ -228,6 +217,7 @@ export function parseSourceSpec(
   const defaultMarker = pickDefault(input);
   if (hasGlob) {
     rejectEndpointOnlyFields(input);
+    rejectLegacyGlobGraphFields(input);
     const registry = ctx?.transformRegistry ?? TRANSFORM_REGISTRY;
     const transformsField =
       input.transforms === undefined
@@ -237,12 +227,11 @@ export function parseSourceSpec(
       kind: 'glob',
       glob: input.glob as string,
       ...common,
-      ...pickGlobGraph(input),
       ...transformsField,
       ...defaultMarker,
     };
   }
-  rejectGlobGraphFieldsOnEndpoint(input);
+  rejectLegacyEndpointGraphFields(input);
   rejectTransformsOn(input, 'endpoint');
   const http = pickEndpointHttp(input);
   return {
@@ -265,8 +254,8 @@ function rejectTransformsOn(
   }
 }
 
-function rejectGlobGraphFieldsOnEndpoint(input: SourceSpecObjectInput): void {
-  for (const key of GLOB_GRAPH_FIELD_KEYS) {
+function rejectLegacyEndpointGraphFields(input: SourceSpecObjectInput): void {
+  for (const key of LEGACY_GLOB_GRAPH_FIELD_KEYS) {
     if ((input as Record<string, unknown>)[key] !== undefined) {
       throw new Error(
         `\`${key}\` is not valid on endpoint sources; express endpoint graph behaviour through a view's query (see #78)`,
@@ -276,7 +265,7 @@ function rejectGlobGraphFieldsOnEndpoint(input: SourceSpecObjectInput): void {
 }
 
 const EMPTY_FORBIDDEN_KEYS = [
-  ...GLOB_GRAPH_FIELD_KEYS,
+  ...LEGACY_GLOB_GRAPH_FIELD_KEYS,
   'auth',
   'headers',
   'timeoutMs',

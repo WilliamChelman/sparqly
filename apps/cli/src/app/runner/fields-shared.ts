@@ -40,25 +40,12 @@ const sourceObjectSchema = z
     query: z.string().optional(),
     queryFile: z.string().optional(),
     cache: cacheBlockSchema.optional(),
-    graphMode: z.enum(GRAPH_MODES).optional(),
-    graph: z.string().optional(),
+    transforms: z.array(z.unknown()).optional(),
     auth: sparqlAuthSchema.optional(),
     headers: z.record(z.string(), z.string()).optional(),
     timeoutMs: z.number().int().positive().optional(),
   })
-  .strict()
-  .superRefine((value, ctx) => {
-    if (value.endpoint === undefined) return;
-    for (const key of ['graphMode', 'graph'] as const) {
-      if (value[key] !== undefined) {
-        ctx.addIssue({
-          code: 'custom',
-          path: [key],
-          message: `\`${key}\` is not valid on endpoint sources; express endpoint graph behaviour through a view's query (see #78)`,
-        });
-      }
-    }
-  });
+  .strict();
 
 const sourceSpecInputSchema = z.union([z.string(), sourceObjectSchema]);
 

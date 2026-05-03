@@ -39,7 +39,7 @@ describe('sourceField — single-target shape', () => {
   });
 });
 
-describe('sourceField — endpoint sources reject graph/graphMode', () => {
+describe('sourceField — legacy graph/graphMode fields are removed', () => {
   it('rejects an endpoint object that carries graphMode', () => {
     const result = schema.safeParse({
       source: { endpoint: 'https://example.com/sparql', graphMode: 'forceAll' },
@@ -54,16 +54,26 @@ describe('sourceField — endpoint sources reject graph/graphMode', () => {
     expect(result.success).toBe(false);
   });
 
-  it('still accepts a glob object with graphMode', () => {
+  it('rejects a glob object that carries graphMode (use transforms.graphName instead)', () => {
     const result = schema.safeParse({
       source: { glob: 'data/*.ttl', graphMode: 'forceAll' },
     });
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
   });
 
-  it('still accepts a glob object with graph', () => {
+  it('rejects a glob object that carries graph (use transforms.graphName instead)', () => {
     const result = schema.safeParse({
       source: { glob: 'data/*.ttl', graph: 'urn:g' },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a glob object that declares a transforms pipeline', () => {
+    const result = schema.safeParse({
+      source: {
+        glob: 'data/*.ttl',
+        transforms: [{ graphName: 'forceAll' }],
+      },
     });
     expect(result.success).toBe(true);
   });

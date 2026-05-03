@@ -1,5 +1,5 @@
 import type { Store } from 'n3';
-import type { ParsedTransform } from './transform-spec';
+import type { ParsedTransform, TransformContext } from './transform-spec';
 
 /**
  * Apply a parsed transform list to a Store as a left-to-right reduce.
@@ -10,10 +10,11 @@ import type { ParsedTransform } from './transform-spec';
 export function applyTransformPipeline(
   store: Store,
   transforms: ReadonlyArray<ParsedTransform>,
+  ctx?: TransformContext,
 ): Store {
   let current = store;
   for (const t of transforms) {
-    current = t.apply(current);
+    current = t.apply(current, ctx);
   }
   return current;
 }

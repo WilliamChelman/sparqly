@@ -1,6 +1,6 @@
-import { DataFactory, Store, type DefaultGraph, type NamedNode, type Quad } from 'n3';
+import { Store } from 'n3';
 import { glob } from 'tinyglobby';
-import { parseRdfFile } from './rdf-file-parser';
+import { parseRdfFile, type RdfRecord } from './rdf-file-parser';
 
 export const GRAPH_MODES = [
   'preserve',
@@ -13,7 +13,6 @@ export type GraphMode = (typeof GRAPH_MODES)[number];
 
 export interface LoadOptions {
   sources: string | string[];
-  graphMode?: GraphMode;
 }
 
 export interface LoadResult {
@@ -21,6 +20,14 @@ export interface LoadResult {
   files: string[];
   /** Prefixes declared in each parsed file, keyed by absolute file path. */
   prefixes: Record<string, Record<string, string>>;
+  /**
+   * Raw per-file records, in file order. Side-channel for the transform
+   * pipeline — transforms like `graphName` need per-quad file provenance that
+   * cannot be recovered from the merged Store alone. Omitted by callers that
+   * synthesize a `LoadResult` without a backing file load (e.g. endpoint
+   * loads in `loadSources`).
+   */
+  perFileRecords?: ReadonlyMap<string, ReadonlyArray<RdfRecord>>;
 }
 
 export async function loadRdf(options: LoadOptions): Promise<LoadResult> {
@@ -36,40 +43,23 @@ export async function loadRdf(options: LoadOptions): Promise<LoadResult> {
     );
   }
 
-  const mode: GraphMode = options.graphMode ?? 'preserve';
   const store = new Store();
   const prefixes: Record<string, Record<string, string>> = {};
+  const perFileRecords = new Map<string, ReadonlyArray<RdfRecord>>();
 
   for (const file of files) {
     try {
       const result = await parseRdfFile(file);
-      const fileGraph = DataFactory.namedNode(`file://${file}`);
       for (const { quad } of result.records) {
-        const target = targetGraph(quad, mode, fileGraph);
-        const out = target
-          ? DataFactory.quad(quad.subject, quad.predicate, quad.object, target)
-          : quad;
-        store.addQuad(out);
+        store.addQuad(quad);
       }
       prefixes[file] = result.prefixes;
+      perFileRecords.set(file, result.records);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(`Failed to parse ${file}: ${message}`);
     }
   }
 
-  return { store, files, prefixes };
-}
-
-function targetGraph(
-  quad: Quad,
-  mode: GraphMode,
-  fileGraph: NamedNode,
-): NamedNode | DefaultGraph | undefined {
-  if (mode === 'flatten') return DataFactory.defaultGraph();
-  if (mode === 'forceAll') return fileGraph;
-  if (mode === 'fillDefault' && quad.graph.termType === 'DefaultGraph') {
-    return fileGraph;
-  }
-  return undefined;
+  return { store, files, prefixes, perFileRecords };
 }
