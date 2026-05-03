@@ -30,8 +30,18 @@ Loading the upstream into a local in-memory `Store`, then executing the view que
 _Avoid_: "in-memory mode", "fetch-then-query"
 
 **Pass-through resolution**:
-Forwarding the user's query to the upstream endpoint over the SPARQL protocol via Comunica federation, so the endpoint executes it and returns only the result. Used by the `query` command for a single endpoint source, and by views whose `from:` is an endpoint ref. `SERVICE` clauses inside a pass-through query are evaluated by the upstream endpoint, so cross-endpoint composition via SERVICE only works if that endpoint supports it; otherwise host the query on an **empty source** instead.
+Forwarding the user's query to the upstream endpoint over the SPARQL protocol via Comunica federation, so the endpoint executes it and returns only the result. Used by the `query` command when its target source is an endpoint, and by views whose `from:` is an endpoint ref. `SERVICE` clauses inside a pass-through query are evaluated by the upstream endpoint, so cross-endpoint composition via SERVICE only works if that endpoint supports it; otherwise host the query on an **empty source** instead.
 _Avoid_: "pushdown" (informal; the codebase term is pass-through), "federation" (federation is the *mechanism*, pass-through is the *mode*)
+
+**Source registry**:
+The set of declared sources a command sees, derived from the config file (and/or a single inline positional). The registry may contain multiple entries because views need siblings to reference via `from:`, but a command runs against exactly one of them — the **target source**.
+
+**Target source**:
+The single source a command (`query`, `serve`, `hash`, `diff`) runs against. Selected by precedence: (1) explicit positional/flag — an `@id` ref or inline glob/URL — wins; (2) the entry marked `default: true` in the registry; (3) the sole entry when the registry has exactly one source; otherwise an error listing the available `@ids`. `kind: 'reference'` is rejected as a target. Multi-source merging at the command boundary is intentionally not provided — use `SERVICE` clauses (optionally hosted on an **empty source**) for cross-source composition.
+_Avoid_: "selected source", "active source"
+
+**Default source**:
+The registry entry marked `default: true`, picked as the **target source** when no positional/flag is given. At most one entry per registry may carry the marker.
 
 **Result cache**:
 The view cache's content. Stores the *result* of a view's query (bounded by the query's projection), not its upstream. Keyed on `view.id + from + query + upstream-spec`. Strategies: `ttl`, `freshness`, `everlasting`.
@@ -49,8 +59,9 @@ RDFC-1.0 normalization producing a stable N-Quads serialization, used by `hash` 
 - An **Upstream** is itself a **Source** (glob, endpoint, empty, or view; reference is rejected).
 - A **View** whose `from:` is an **Endpoint source** resolves via **pass-through**; glob, empty, and view upstreams resolve via **materialized**.
 - A **View** with `cache:` declared writes to the **Result cache** after resolution; `cache.strategy: 'freshness'` triggers a **Freshness probe** on lookup. On an **empty source** view the probe must contain `SERVICE` clauses to be meaningful, since the local Store is empty.
-- The **`query` command** uses **pass-through** when a single endpoint source is given; otherwise it uses **materialized** resolution via `loadQuerySources`.
-- **`hash`** and **`diff`** always **canonicalize** the resolved Store and refuse a raw endpoint source — endpoints must be wrapped in a view (declared or anonymous) so a scoping query exists.
+- The **`query` command** picks one **target source** from the **source registry** and resolves it: **pass-through** when the target is an endpoint, **materialized** otherwise (glob, empty, view).
+- The **`serve` command** picks one **target source** from the **source registry** and exposes it as a SPARQL endpoint, using the same resolution rules as `query`.
+- **`hash`** and **`diff`** also pick one **target source** and always **canonicalize** the resolved Store; they refuse a raw endpoint as target — endpoints must be wrapped in a view (declared or anonymous) so a scoping query exists.
 
 ## Example dialogue
 
