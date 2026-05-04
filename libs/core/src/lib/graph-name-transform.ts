@@ -1,5 +1,4 @@
 import { DataFactory, Store, type DefaultGraph, type NamedNode, type Quad } from 'n3';
-import type { RdfRecord } from './rdf-file-parser';
 import { GRAPH_MODES, type GraphMode } from './rdf-loader';
 import type {
   TransformApply,
@@ -41,15 +40,17 @@ function parseGraphNameSpec(raw: unknown): GraphNameSpec {
       throw new Error(`\`${KEY}\`: unknown key "${key}" (known: mode, graph)`);
     }
   }
-  if (obj.mode === undefined) {
+  const rawMode = obj['mode'];
+  if (rawMode === undefined) {
     throw new Error(`\`${KEY}\`: \`mode\` is required in the long form`);
   }
-  if (typeof obj.mode !== 'string') {
+  if (typeof rawMode !== 'string') {
     throw new Error(`\`${KEY}\`: \`mode\` must be a string`);
   }
-  const mode = parseMode(obj.mode);
-  if (obj.graph === undefined) return { mode };
-  if (typeof obj.graph !== 'string' || obj.graph.length === 0) {
+  const mode = parseMode(rawMode);
+  const rawGraph = obj['graph'];
+  if (rawGraph === undefined) return { mode };
+  if (typeof rawGraph !== 'string' || rawGraph.length === 0) {
     throw new Error(`\`${KEY}\`: \`graph\` must be a non-empty IRI string`);
   }
   if (GRAPH_OVERRIDE_FORBIDDEN.has(mode)) {
@@ -57,7 +58,7 @@ function parseGraphNameSpec(raw: unknown): GraphNameSpec {
       `\`${KEY}\`: \`graph\` is meaningless with mode "${mode}" (only forceAll and fillDefault accept an override)`,
     );
   }
-  return { mode, graph: DataFactory.namedNode(obj.graph) };
+  return { mode, graph: DataFactory.namedNode(rawGraph) };
 }
 
 function parseMode(raw: string): GraphMode {
