@@ -185,6 +185,49 @@ describe('composeHtmlDiff — golden fixtures', () => {
     expect(out).toBe(golden);
   });
 
+  it('record with no line (file-only, e.g. JSON-LD/RDF-XML): byte-identical to fixture', async () => {
+    const added = triple('e', 'r', 'f');
+    const out = composeHtmlDiff(
+      { added: [added], removed: [] },
+      {
+        left: new Map(),
+        right: new Map([[added, [{ file: 'file:///cwd/foo.jsonld' }]]]),
+      },
+      emptySnippets,
+      { cwd: '/cwd' },
+    );
+
+    const golden = await readOrWrite(
+      join(FIXTURES, 'line-not-available.html'),
+      out,
+    );
+    expect(out).toBe(golden);
+  });
+
+  it('source file unavailable at render time (snippet result is `unavailable`): byte-identical to fixture', async () => {
+    const added = triple('e', 'r', 'f');
+    const out = composeHtmlDiff(
+      { added: [added], removed: [] },
+      {
+        left: new Map(),
+        right: new Map([[added, [{ file: 'file:///cwd/foo.ttl', line: 5 }]]]),
+      },
+      new Map([
+        [
+          'file:///cwd/foo.ttl:5',
+          { kind: 'unavailable' as const, reason: 'missing' as const },
+        ],
+      ]),
+      { cwd: '/cwd', context: 3 },
+    );
+
+    const golden = await readOrWrite(
+      join(FIXTURES, 'source-file-unavailable.html'),
+      out,
+    );
+    expect(out).toBe(golden);
+  });
+
   it('snippet near bottom boundary (truncated bottom window): byte-identical to fixture', async () => {
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
