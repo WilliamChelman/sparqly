@@ -16,11 +16,44 @@ describe('diffSpec', () => {
     expect(r.success).toBe(false);
   });
 
-  it('accepts --format=turtle, human, json, rdf-patch', () => {
+  it('accepts --format=turtle, human, json, rdf-patch, html', () => {
     const schema = blockSchemaFromFields(diffSpec.fields);
-    for (const f of ['turtle', 'human', 'json', 'rdf-patch']) {
+    for (const f of ['turtle', 'human', 'json', 'rdf-patch', 'html']) {
       expect(schema.safeParse({ format: f }).success).toBe(true);
     }
+  });
+
+  it('rejects --context above 100', () => {
+    const schema = blockSchemaFromFields(diffSpec.fields);
+    expect(schema.safeParse({ context: 101 }).success).toBe(false);
+    expect(schema.safeParse({ context: 100 }).success).toBe(true);
+    expect(schema.safeParse({ context: 0 }).success).toBe(true);
+  });
+
+  it('rejects negative or non-integer --context', () => {
+    const schema = blockSchemaFromFields(diffSpec.fields);
+    expect(schema.safeParse({ context: -1 }).success).toBe(false);
+    expect(schema.safeParse({ context: 1.5 }).success).toBe(false);
+  });
+
+  it('rejects --context against any non-html format (loud-error, no silent ignore)', () => {
+    const schema = blockSchemaFromFields(diffSpec.fields);
+    // Refined schema lives on diffSpec.refine; build a refined version like the runner does.
+    const refined = diffSpec.refine
+      ? diffSpec.refine(schema as never)
+      : schema;
+    for (const f of ['human', 'json', 'rdf-patch', 'turtle']) {
+      const r = refined.safeParse({ format: f, context: 5 });
+      expect(r.success).toBe(false);
+      if (!r.success) {
+        const msg = r.error.issues.map((i) => i.message).join('\n');
+        expect(msg).toMatch(/--context/);
+        expect(msg).toMatch(/html/);
+      }
+    }
+    expect(refined.safeParse({ format: 'html', context: 5 }).success).toBe(
+      true,
+    );
   });
 
   it('declares default format=human and graphMode=preserve', () => {
