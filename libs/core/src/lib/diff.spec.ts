@@ -73,6 +73,78 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
     expect(parsed.added[0].g).toBeUndefined();
   });
 
+  it('json format with sourceRecords adds an optional `sourceRecords` field per added/removed entry, drawing left records on removed and right records on added', () => {
+    const left = [triple('c', 'q', 'd')];
+    const right = [triple('e', 'r', 'f')];
+    const diff = diffCanonicalStatements(left, right);
+
+    const out = formatRdfDiff(diff, 'json', {
+      cwd: '/cwd',
+      sourceRecords: {
+        left: new Map([
+          [triple('c', 'q', 'd'), [{ file: 'file:///cwd/a.ttl', line: 7 }]],
+        ]),
+        right: new Map([
+          [
+            triple('e', 'r', 'f'),
+            [
+              { file: 'file:///cwd/b.ttl', line: 3 },
+              { file: 'file:///cwd/b.ttl', line: 12 },
+            ],
+          ],
+        ]),
+      },
+    });
+
+    const parsed = JSON.parse(out);
+    expect(parsed.removed).toHaveLength(1);
+    expect(parsed.removed[0].sourceRecords).toEqual([
+      { file: 'file:///cwd/a.ttl', line: 7 },
+    ]);
+    expect(parsed.added).toHaveLength(1);
+    expect(parsed.added[0].sourceRecords).toEqual([
+      { file: 'file:///cwd/b.ttl', line: 3 },
+      { file: 'file:///cwd/b.ttl', line: 12 },
+    ]);
+  });
+
+  it('json format omits `sourceRecords` when no records are present (regression guard, byte-identical)', () => {
+    const left = [triple('c', 'q', 'd')];
+    const right = [triple('e', 'r', 'f')];
+    const diff = diffCanonicalStatements(left, right);
+
+    const baseline = formatRdfDiff(diff, 'json');
+    const withEmpty = formatRdfDiff(diff, 'json', {
+      cwd: '/cwd',
+      sourceRecords: { left: new Map(), right: new Map() },
+    });
+    expect(withEmpty).toBe(baseline);
+
+    const parsed = JSON.parse(baseline);
+    expect(parsed.added[0].sourceRecords).toBeUndefined();
+    expect(parsed.removed[0].sourceRecords).toBeUndefined();
+  });
+
+  it('json format with a record carrying only `file` (no `line`) preserves that shape per entry', () => {
+    const right = [triple('e', 'r', 'f')];
+    const diff = diffCanonicalStatements([], right);
+
+    const out = formatRdfDiff(diff, 'json', {
+      cwd: '/cwd',
+      sourceRecords: {
+        left: new Map(),
+        right: new Map([
+          [triple('e', 'r', 'f'), [{ file: 'file:///cwd/c.jsonld' }]],
+        ]),
+      },
+    });
+
+    const parsed = JSON.parse(out);
+    expect(parsed.added[0].sourceRecords).toEqual([
+      { file: 'file:///cwd/c.jsonld' },
+    ]);
+  });
+
   it('json format emits a graph component for statements outside the default graph', () => {
     const removed = quad('a', 'p', 'b', 'g1');
     const added = triple('a', 'p', 'b');
