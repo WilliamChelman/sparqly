@@ -1,28 +1,16 @@
 import { basename } from 'node:path';
 import type { RdfDiffResult, SourceRecord } from './diff';
 import { displaySourcePath } from './source-path-display';
+import type { SnippetReadResult } from './source-snippet-reader';
 
 /**
- * One pre-fetched **Source-file snippet**, keyed in
- * {@link HtmlDiffSnippets} by `${file}:${line ?? ''}`. Empty in the MVP slice
- * — the next slice will populate it from the snippet reader.
+ * Pre-fetched snippets keyed by `${file}:${line}`. The composer is a pure
+ * function over (diff, perSideRecords, snippetsByRecord, options); the CLI
+ * populates the map by calling the **Source-file snippet** reader for each
+ * record with a `line`. Records whose key is absent or whose value is an
+ * `unavailable` result render a degraded note instead of a `<pre>` block.
  */
-export interface HtmlDiffSnippet {
-  /** 1-based line number of the first line in `lines`. */
-  startLine: number;
-  /** 1-based line number of the focal (highlighted) source line. */
-  focalLine: number;
-  /** Source-file lines, in order, exactly as read from disk. */
-  lines: string[];
-}
-
-/**
- * Pre-fetched snippets keyed by `${file}:${line ?? ''}`. Empty Map in the MVP
- * slice; the composer is a pure function over (diff, perSideRecords,
- * snippetsByRecord, options) so the next slice can populate this from the
- * snippet reader without changing the composer's signature.
- */
-export type HtmlDiffSnippets = ReadonlyMap<string, HtmlDiffSnippet>;
+export type HtmlDiffSnippets = ReadonlyMap<string, SnippetReadResult>;
 
 export interface HtmlDiffComposerOptions {
   /** Working directory for path display. */
@@ -52,15 +40,27 @@ export interface HtmlDiffPerSideRecords {
 export function composeHtmlDiff(
   diff: RdfDiffResult,
   perSideRecords: HtmlDiffPerSideRecords,
-  _snippetsByRecord: HtmlDiffSnippets,
+  snippetsByRecord: HtmlDiffSnippets,
   options: HtmlDiffComposerOptions,
 ): string {
   const { cwd } = options;
   const removed = diff.removed.map((s) =>
-    renderHunk('removed', s, perSideRecords.left.get(s) ?? [], cwd),
+    renderHunk(
+      'removed',
+      s,
+      perSideRecords.left.get(s) ?? [],
+      cwd,
+      snippetsByRecord,
+    ),
   );
   const added = diff.added.map((s) =>
-    renderHunk('added', s, perSideRecords.right.get(s) ?? [], cwd),
+    renderHunk(
+      'added',
+      s,
+      perSideRecords.right.get(s) ?? [],
+      cwd,
+      snippetsByRecord,
+    ),
   );
 
   return (
@@ -96,13 +96,14 @@ function renderHunk(
   statement: string,
   records: readonly SourceRecord[],
   cwd: string,
+  snippets: HtmlDiffSnippets,
 ): string {
   const marker = side === 'removed' ? '-' : '+';
   const records_html =
     records.length === 0
       ? ''
       : '<ul class="records">\n' +
-        records.map((r) => renderRecord(r, cwd)).join('') +
+        records.map((r) => renderRecord(r, cwd, snippets)).join('') +
         '</ul>\n';
   return (
     `<article class="hunk ${side}">\n` +
@@ -112,17 +113,66 @@ function renderHunk(
   );
 }
 
-function renderRecord(record: SourceRecord, cwd: string): string {
+function renderRecord(
+  record: SourceRecord,
+  cwd: string,
+  snippets: HtmlDiffSnippets,
+): string {
   const { absolutePath, displayPath } = displaySourcePath(record.file, cwd);
   const base = basename(absolutePath);
   const anchorId =
     record.line === undefined ? base : `${base}-L${record.line}`;
   const displayText =
     record.line === undefined ? displayPath : `${displayPath}:${record.line}`;
+  const link =
+    `<a href="${escapeAttr(record.file)}">${escapeHtml(displayText)}</a>`;
+
+  const body =
+    record.line === undefined
+      ? `<span class="note">(line not available)</span>`
+      : renderSnippetBody(record.file, record.line, snippets);
+
   return (
     `<li class="record" id="${escapeAttr(anchorId)}">` +
-    `<a href="${escapeAttr(record.file)}">${escapeHtml(displayText)}</a>` +
+    link +
+    body +
     `</li>\n`
+  );
+}
+
+function renderSnippetBody(
+  file: string,
+  line: number,
+  snippets: HtmlDiffSnippets,
+): string {
+  const entry = snippets.get(`${file}:${line}`);
+  if (entry === undefined || entry.kind === 'unavailable') {
+    return `<span class="note">(source file unavailable)</span>`;
+  }
+  return renderSnippet(entry.startLine, entry.focalLine, entry.lines);
+}
+
+function renderSnippet(
+  startLine: number,
+  focalLine: number,
+  lines: readonly string[],
+): string {
+  const rows = lines.map((src, i) => {
+    const lineNo = startLine + i;
+    const isFocal = lineNo === focalLine;
+    const cls = isFocal ? 'line focal' : 'line';
+    const style = isFocal ? ' style="background:#fff7c2"' : '';
+    return (
+      `<span class="${cls}"${style}>` +
+      `<span class="gutter">${lineNo}</span>` +
+      ` ${escapeHtml(src)}` +
+      `</span>`
+    );
+  });
+  return (
+    `<pre class="snippet" data-focal="${focalLine}"><code>` +
+    rows.join('\n') +
+    `</code></pre>`
   );
 }
 
@@ -153,4 +203,9 @@ h1{font-size:1.25rem;margin:0 0 .25rem}
 .record a{color:#06c;text-decoration:none}
 .record a:hover{text-decoration:underline}
 .empty{color:#888;font-style:italic;margin:0}
+.note{color:#888;font-style:italic;margin-left:.5rem}
+.snippet{margin:.25rem 0 .5rem;padding:.5rem;background:#fff;border:1px solid #e5e5e5;border-radius:3px;overflow-x:auto;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.8125rem;line-height:1.4}
+.snippet .line{display:block}
+.snippet .gutter{display:inline-block;width:3ch;text-align:right;color:#888;user-select:none;margin-right:.75rem;border-right:1px solid #eee;padding-right:.5rem}
+.snippet .focal{font-weight:600}
 `;
