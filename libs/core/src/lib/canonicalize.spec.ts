@@ -304,6 +304,36 @@ describe('canonicalizeRdf', () => {
     expect(annotatedCanon.canonicalText).toBe(plainCanon.canonicalText);
   });
 
+  it('canonicalizeStore exposes the input → canonical b-node label mapping', async () => {
+    const file = join(dir, 'data.ttl');
+    await writeFile(
+      file,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:s ex:p _:foo .
+        _:foo ex:q "v" .
+      ` + '\n',
+    );
+    const spec = parseSourceSpec({ glob: file });
+    const resolved = await resolveSource(spec);
+    if (resolved.mode !== 'materialized') throw new Error('expected materialized');
+
+    const result = await canonicalizeStore(resolved.store);
+
+    // Find the input b-node label that the loader assigned to `_:foo`.
+    const blankSubject = resolved.store
+      .getQuads(null, null, null, null)
+      .map((q) => q.subject)
+      .find((t) => t.termType === 'BlankNode');
+    if (!blankSubject) throw new Error('expected a blank node subject');
+    const inputLabel = blankSubject.value;
+
+    expect(result.canonicalIdMap.get(inputLabel)).toMatch(/^c14n\d+$/);
+    expect(result.canonicalText).toContain(
+      `_:${result.canonicalIdMap.get(inputLabel)}`,
+    );
+  });
+
   it('a glob passed via the array sources form merges into the same canonical text as the equivalent single file', async () => {
     const single = join(dir, 'domain.ttl');
     await writeFile(
