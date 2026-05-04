@@ -1,3 +1,19 @@
+## [0.12.0](https://github.com/WilliamChelman/sparqly/compare/v0.11.0...v0.12.0) (2026-05-04)
+
+### Features
+
+* **cli:** single-target hash + diff with resolveSource ([#107](https://github.com/WilliamChelman/sparqly/issues/107)) ([95418d1](https://github.com/WilliamChelman/sparqly/commit/95418d1418fd74a357af89b8886b8b07c20761d1))
+* **core:** add selectTarget precedence resolver ([#104](https://github.com/WilliamChelman/sparqly/issues/104)) ([551159f](https://github.com/WilliamChelman/sparqly/commit/551159f2ff0b4ec93b12d69ac9b8884bcaf1396a))
+* **core:** annotate transform emits RDF-star source records ([#114](https://github.com/WilliamChelman/sparqly/issues/114)) ([dec9a78](https://github.com/WilliamChelman/sparqly/commit/dec9a78251ce889ab26bd7c6ae8c8cf61b0a23ff))
+* **core:** annotation-stripping canonicalization ([#115](https://github.com/WilliamChelman/sparqly/issues/115)) ([942d24b](https://github.com/WilliamChelman/sparqly/commit/942d24bdd1313c0a7fe126f309f7836f3754422f))
+* **core:** diff exposes per-side source-record map ([#116](https://github.com/WilliamChelman/sparqly/issues/116)) ([51ed993](https://github.com/WilliamChelman/sparqly/commit/51ed993d49b4e28cc1f48baad4e73c28c14912ce))
+* **core:** graphName transform replaces graphMode/graph ([#113](https://github.com/WilliamChelman/sparqly/issues/113)) ([dde4b4b](https://github.com/WilliamChelman/sparqly/commit/dde4b4be5feb0b4df4117fb3ee0215d60ec254e9))
+* **core:** line-tracking RDF parser front-end ([#112](https://github.com/WilliamChelman/sparqly/issues/112)) ([a14cd93](https://github.com/WilliamChelman/sparqly/commit/a14cd93809ee634052fb7644e477bee156b47ff7))
+* **core:** source-spec parser supports `default: true` ([#103](https://github.com/WilliamChelman/sparqly/issues/103)) ([32366ff](https://github.com/WilliamChelman/sparqly/commit/32366ff13fb0c29dfde83f842634bbe252b0dd4d)), closes [#101](https://github.com/WilliamChelman/sparqly/issues/101)
+* **core:** transform-spec parser and pipeline executor ([#111](https://github.com/WilliamChelman/sparqly/issues/111)) ([6d205f3](https://github.com/WilliamChelman/sparqly/commit/6d205f3be666b3c6f99b8f8d1d357d67045036b8))
+* **query:** single-target model with resolveSource ([#105](https://github.com/WilliamChelman/sparqly/issues/105)) ([c127e6d](https://github.com/WilliamChelman/sparqly/commit/c127e6d21f7289a28b2102dae984617789b6c4bb)), closes [#106](https://github.com/WilliamChelman/sparqly/issues/106)
+* **server:** single-target serve + watcher chain helper ([#106](https://github.com/WilliamChelman/sparqly/issues/106)) ([02cb72e](https://github.com/WilliamChelman/sparqly/commit/02cb72e0250f97605e881f2a977280acbae37b9d))
+
 ## [0.11.0](https://github.com/WilliamChelman/sparqly/compare/v0.10.0...v0.11.0) (2026-05-03)
 
 ### ⚠ BREAKING CHANGES
