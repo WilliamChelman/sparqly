@@ -257,6 +257,78 @@ describe('composeHtmlDiff', () => {
     expect(out).not.toContain('<pre class="snippet"');
   });
 
+  it('preserves record order across the cap: 10th appears before <details>, 11th appears inside', () => {
+    const added = triple('e', 'r', 'f');
+    const records = Array.from({ length: 12 }, (_, i) => ({
+      file: 'file:///cwd/a.ttl',
+      line: i + 1,
+    }));
+    const out = composeHtmlDiff(
+      { added: [added], removed: [] },
+      { left: new Map(), right: new Map([[added, records]]) },
+      emptySnippets,
+      { cwd: '/cwd' },
+    );
+
+    const detailsIdx = out.indexOf('<details');
+    const closeDetailsIdx = out.indexOf('</details>');
+    expect(detailsIdx).toBeGreaterThan(0);
+
+    // First 10 (lines 1..10) appear before <details>.
+    for (let i = 1; i <= 10; i++) {
+      const idx = out.indexOf(`a.ttl:${i}`);
+      expect(idx).toBeGreaterThan(0);
+      expect(idx).toBeLessThan(detailsIdx);
+    }
+    // Overflow (lines 11, 12) appear inside <details>.
+    for (const i of [11, 12]) {
+      const idx = out.indexOf(`a.ttl:${i}`);
+      expect(idx).toBeGreaterThan(detailsIdx);
+      expect(idx).toBeLessThan(closeDetailsIdx);
+    }
+  });
+
+  it('boundary: exactly 10 records render unchanged — no <details> wrapper', () => {
+    const added = triple('e', 'r', 'f');
+    const records = Array.from({ length: 10 }, (_, i) => ({
+      file: 'file:///cwd/a.ttl',
+      line: i + 1,
+    }));
+    const out = composeHtmlDiff(
+      { added: [added], removed: [] },
+      { left: new Map(), right: new Map([[added, records]]) },
+      emptySnippets,
+      { cwd: '/cwd' },
+    );
+
+    expect(out).not.toContain('<details');
+    // All 10 records present.
+    for (let i = 1; i <= 10; i++) {
+      expect(out).toContain(`a.ttl:${i}`);
+    }
+  });
+
+  it('caps inline records at 10 per hunk: with 11 records, exactly one <details> wraps the overflow (no <details> would appear at 10)', () => {
+    const added = triple('e', 'r', 'f');
+    const records = Array.from({ length: 11 }, (_, i) => ({
+      file: 'file:///cwd/a.ttl',
+      line: i + 1,
+    }));
+    const out = composeHtmlDiff(
+      { added: [added], removed: [] },
+      { left: new Map(), right: new Map([[added, records]]) },
+      emptySnippets,
+      { cwd: '/cwd' },
+    );
+
+    // Exactly one <details> opener for the overflow.
+    expect(out.match(/<details\b/g) ?? []).toHaveLength(1);
+    expect(out.match(/<\/details>/g) ?? []).toHaveLength(1);
+
+    // No JavaScript introduced.
+    expect(out).not.toContain('<script');
+  });
+
   it('renders multiple records per hunk in input order', () => {
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(

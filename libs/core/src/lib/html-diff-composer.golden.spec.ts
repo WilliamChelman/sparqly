@@ -228,6 +228,68 @@ describe('composeHtmlDiff — golden fixtures', () => {
     expect(out).toBe(golden);
   });
 
+  it('snippet cap exceeded: 10 inline + remainder in a single <details>: byte-identical to fixture', async () => {
+    const added = triple('e', 'r', 'f');
+    const records = Array.from({ length: 13 }, (_, i) => ({
+      file: 'file:///cwd/foo.ttl',
+      line: i + 1,
+    }));
+    const snippets = new Map(
+      records.map((r) => [
+        `${r.file}:${r.line}`,
+        {
+          kind: 'snippet' as const,
+          startLine: r.line,
+          focalLine: r.line,
+          lines: [`line ${r.line}`],
+        },
+      ]),
+    );
+    const out = composeHtmlDiff(
+      { added: [added], removed: [] },
+      { left: new Map(), right: new Map([[added, records]]) },
+      snippets,
+      { cwd: '/cwd', context: 0 },
+    );
+
+    const golden = await readOrWrite(
+      join(FIXTURES, 'snippet-cap-exceeded.html'),
+      out,
+    );
+    expect(out).toBe(golden);
+  });
+
+  it('exactly-10 boundary: no <details> wrapper: byte-identical to fixture', async () => {
+    const added = triple('e', 'r', 'f');
+    const records = Array.from({ length: 10 }, (_, i) => ({
+      file: 'file:///cwd/foo.ttl',
+      line: i + 1,
+    }));
+    const snippets = new Map(
+      records.map((r) => [
+        `${r.file}:${r.line}`,
+        {
+          kind: 'snippet' as const,
+          startLine: r.line,
+          focalLine: r.line,
+          lines: [`line ${r.line}`],
+        },
+      ]),
+    );
+    const out = composeHtmlDiff(
+      { added: [added], removed: [] },
+      { left: new Map(), right: new Map([[added, records]]) },
+      snippets,
+      { cwd: '/cwd', context: 0 },
+    );
+
+    const golden = await readOrWrite(
+      join(FIXTURES, 'snippet-cap-exactly-10.html'),
+      out,
+    );
+    expect(out).toBe(golden);
+  });
+
   it('snippet near bottom boundary (truncated bottom window): byte-identical to fixture', async () => {
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
