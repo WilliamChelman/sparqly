@@ -4,6 +4,7 @@ import { Logger } from '@nestjs/common';
 import { type Store } from 'n3';
 import { z } from 'zod';
 import {
+  composeHtmlDiff,
   diffStores,
   extractAnnotationPredicates,
   formatHumanSourceComment,
@@ -34,8 +35,10 @@ import {
 } from '../runner/fields-shared';
 import type { CommandSpec } from '../runner/spec';
 
-const DIFF_FORMATS = ['human', 'json', 'rdf-patch', 'turtle'] as const;
+const DIFF_FORMATS = ['html', 'human', 'json', 'rdf-patch', 'turtle'] as const;
 type DiffFormat = (typeof DIFF_FORMATS)[number];
+
+const MAX_CONTEXT = 100;
 
 interface DiffConfig {
   sources?: SourceSpecInput[];
@@ -46,6 +49,7 @@ interface DiffConfig {
   prefixes?: Record<string, string>;
   base?: string;
   out?: string;
+  context?: number;
   query?: string;
   queryFile?: string;
   leftQuery?: string;
@@ -188,6 +192,24 @@ const formatField: FieldDescriptor = {
   ],
 };
 
+const contextField: FieldDescriptor = {
+  key: 'context',
+  schema: z.preprocess((v) => {
+    if (typeof v === 'string' && v.trim() !== '') {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+    return v;
+  }, z.number().int().min(0).max(MAX_CONTEXT)),
+  env: ['SPARQLY_DIFF_CONTEXT'],
+  flags: [
+    {
+      spec: '-C, --context <n>',
+      description: `Number of source-file context lines around each focal line in the \`html\` format (default 3, max ${MAX_CONTEXT}). Loud-errors when used with any non-html format.`,
+    },
+  ],
+};
+
 export function resolveDiffSide(
   config: DiffConfig,
   side: 'left' | 'right',
@@ -217,6 +239,7 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     rightQueryField,
     rightQueryFileField,
     formatField,
+    contextField,
     prefixesField,
     baseField,
     outFieldFor('diff'),
@@ -229,6 +252,14 @@ export const diffSpec: CommandSpec<DiffConfig> = {
   refine: (schema) =>
     (schema as z.ZodObject).superRefine(
       (val: Record<string, unknown>, ctx) => {
+        if (val.context !== undefined && val.format !== 'html') {
+          ctx.addIssue({
+            code: 'custom',
+            message:
+              '`--context` is only valid with `--format=html`; remove `--context` or pass `--format=html`',
+            path: ['context'],
+          });
+        }
         const hasSymQuery = typeof val.query === 'string';
         const hasSymQueryFile = typeof val.queryFile === 'string';
         if (hasSymQuery && hasSymQueryFile) {
@@ -332,18 +363,30 @@ export const diffSpec: CommandSpec<DiffConfig> = {
 
     const cwd = process.cwd();
     const body =
-      format === 'turtle'
-        ? formatRdfDiff(diff, 'turtle', {
-            cwd,
-            prefixes: resolvedPrefixes,
-            sourceRecords: diff.sourceRecords,
-          })
-        : format === 'human'
-          ? renderHumanShortened(diff, resolvedPrefixes, diff.sourceRecords, cwd)
-          : formatRdfDiff(diff, format, {
+      format === 'html'
+        ? composeHtmlDiff(
+            diff,
+            diff.sourceRecords,
+            new Map(),
+            { cwd, context: config.context ?? 3 },
+          )
+        : format === 'turtle'
+          ? formatRdfDiff(diff, 'turtle', {
               cwd,
+              prefixes: resolvedPrefixes,
               sourceRecords: diff.sourceRecords,
-            });
+            })
+          : format === 'human'
+            ? renderHumanShortened(
+                diff,
+                resolvedPrefixes,
+                diff.sourceRecords,
+                cwd,
+              )
+            : formatRdfDiff(diff, format, {
+                cwd,
+                sourceRecords: diff.sourceRecords,
+              });
     const { added, removed } = diff;
 
     if (config.out !== undefined) {
@@ -357,6 +400,15 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     }
 
     if (!quiet) {
+      if (
+        format === 'html' &&
+        diff.sourceRecords.left.size === 0 &&
+        diff.sourceRecords.right.size === 0
+      ) {
+        process.stderr.write(
+          'note: no source records present; HTML output will contain no line numbers (declare `annotate` on a glob source to populate them)\n',
+        );
+      }
       if (leftResolved.annotated !== rightResolved.annotated) {
         const annotatedSide = leftResolved.annotated ? 'left' : 'right';
         const otherSide = leftResolved.annotated ? 'right' : 'left';
