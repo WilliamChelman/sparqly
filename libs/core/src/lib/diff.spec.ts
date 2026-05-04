@@ -457,6 +457,160 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
     }
   });
 
+  it('turtle format emits one statement per line — no `;` grouping when subjects repeat', () => {
+    const left: string[] = [];
+    const right = [
+      triple('a', 'p', 'b1'),
+      triple('a', 'p', 'b2'),
+      triple('a', 'q', 'c'),
+    ];
+    const diff = diffCanonicalStatements(left, right);
+
+    const out = formatRdfDiff(diff, 'turtle', {
+      prefixes: { ex: 'http://example.org/' },
+    });
+
+    expect(out).not.toContain(';');
+    expect(out).not.toContain(',');
+    const lines = out.split('\n').filter((l) => l.trim().length > 0);
+    const statementLines = lines.filter(
+      (l) => !l.startsWith('#') && !l.startsWith('@prefix'),
+    );
+    expect(statementLines).toEqual([
+      'ex:a ex:p ex:b1 .',
+      'ex:a ex:p ex:b2 .',
+      'ex:a ex:q ex:c .',
+    ]);
+  });
+
+  it('turtle format emits prefix declarations once at the top of each `# --- removed/added ---` block (not per statement)', () => {
+    const left = [triple('c', 'q', 'd')];
+    const right = [triple('e', 'r', 'f1'), triple('e', 'r', 'f2')];
+    const diff = diffCanonicalStatements(left, right);
+
+    const out = formatRdfDiff(diff, 'turtle', {
+      prefixes: { ex: 'http://example.org/' },
+    });
+
+    const removedHeaderIdx = out.indexOf('# --- removed ---');
+    const addedHeaderIdx = out.indexOf('# --- added ---');
+    expect(removedHeaderIdx).toBeGreaterThanOrEqual(0);
+    expect(addedHeaderIdx).toBeGreaterThan(removedHeaderIdx);
+
+    const removedBlock = out.slice(removedHeaderIdx, addedHeaderIdx);
+    const addedBlock = out.slice(addedHeaderIdx);
+
+    // Each block has exactly one @prefix line (not one per statement).
+    expect(removedBlock.match(/^@prefix /gm)?.length).toBe(1);
+    expect(addedBlock.match(/^@prefix /gm)?.length).toBe(1);
+
+    // The @prefix line precedes any statement line within its block.
+    const firstPrefixIdx = addedBlock.indexOf('@prefix ex:');
+    const firstStmtIdx = addedBlock.indexOf('ex:e');
+    expect(firstPrefixIdx).toBeGreaterThan(0);
+    expect(firstStmtIdx).toBeGreaterThan(firstPrefixIdx);
+  });
+
+  it('turtle format with sourceRecords emits a `# from <relative-path>:<line>` comment on the line directly above each statement, drawing left records on removed and right records on added', () => {
+    const left = [triple('c', 'q', 'd')];
+    const right = [triple('e', 'r', 'f')];
+    const diff = diffCanonicalStatements(left, right);
+
+    const out = formatRdfDiff(diff, 'turtle', {
+      cwd: '/cwd',
+      prefixes: { ex: 'http://example.org/' },
+      sourceRecords: {
+        left: new Map([
+          [triple('c', 'q', 'd'), [{ file: 'file:///cwd/a.ttl', line: 7 }]],
+        ]),
+        right: new Map([
+          [triple('e', 'r', 'f'), [{ file: 'file:///cwd/b.ttl', line: 3 }]],
+        ]),
+      },
+    });
+
+    const lines = out.split('\n');
+    const removedStmtIdx = lines.findIndex((l) => l === 'ex:c ex:q ex:d .');
+    expect(removedStmtIdx).toBeGreaterThan(0);
+    expect(lines[removedStmtIdx - 1]).toBe('# from a.ttl:7');
+
+    const addedStmtIdx = lines.findIndex((l) => l === 'ex:e ex:r ex:f .');
+    expect(addedStmtIdx).toBeGreaterThan(0);
+    expect(lines[addedStmtIdx - 1]).toBe('# from b.ttl:3');
+  });
+
+  it('turtle format with no sourceRecords still applies the flat-statement layout but emits no `# from` comments (regression guard)', () => {
+    const left = [triple('c', 'q', 'd')];
+    const right = [triple('e', 'r', 'f')];
+    const diff = diffCanonicalStatements(left, right);
+
+    const baseline = formatRdfDiff(diff, 'turtle', {
+      prefixes: { ex: 'http://example.org/' },
+    });
+    const withEmpty = formatRdfDiff(diff, 'turtle', {
+      cwd: '/cwd',
+      prefixes: { ex: 'http://example.org/' },
+      sourceRecords: { left: new Map(), right: new Map() },
+    });
+    expect(withEmpty).toBe(baseline);
+
+    expect(baseline).not.toMatch(/^#\s*from\b/m);
+    // Statements still on their own lines (flat layout preserved).
+    expect(baseline).toContain('\nex:c ex:q ex:d .\n');
+    expect(baseline).toContain('\nex:e ex:r ex:f .\n');
+  });
+
+  it('turtle format with multiple records on one statement emits one `# from <path>:<line>` per record on consecutive lines directly above the statement (structurally honest, no compression)', () => {
+    const right = [triple('e', 'r', 'f')];
+    const diff = diffCanonicalStatements([], right);
+
+    const out = formatRdfDiff(diff, 'turtle', {
+      cwd: '/cwd',
+      prefixes: { ex: 'http://example.org/' },
+      sourceRecords: {
+        left: new Map(),
+        right: new Map([
+          [
+            triple('e', 'r', 'f'),
+            [
+              { file: 'file:///cwd/a.ttl', line: 5 },
+              { file: 'file:///cwd/a.ttl', line: 12 },
+              { file: 'file:///cwd/b.ttl', line: 3 },
+            ],
+          ],
+        ]),
+      },
+    });
+
+    const lines = out.split('\n');
+    const stmtIdx = lines.findIndex((l) => l === 'ex:e ex:r ex:f .');
+    expect(stmtIdx).toBeGreaterThanOrEqual(3);
+    expect(lines[stmtIdx - 3]).toBe('# from a.ttl:5');
+    expect(lines[stmtIdx - 2]).toBe('# from a.ttl:12');
+    expect(lines[stmtIdx - 1]).toBe('# from b.ttl:3');
+  });
+
+  it('turtle format with a record carrying only `file` (no `line`) emits `# from <path>` without trailing colon-line', () => {
+    const right = [triple('e', 'r', 'f')];
+    const diff = diffCanonicalStatements([], right);
+
+    const out = formatRdfDiff(diff, 'turtle', {
+      cwd: '/cwd',
+      prefixes: { ex: 'http://example.org/' },
+      sourceRecords: {
+        left: new Map(),
+        right: new Map([
+          [triple('e', 'r', 'f'), [{ file: 'file:///cwd/c.jsonld' }]],
+        ]),
+      },
+    });
+
+    const lines = out.split('\n');
+    const stmtIdx = lines.findIndex((l) => l === 'ex:e ex:r ex:f .');
+    expect(stmtIdx).toBeGreaterThan(0);
+    expect(lines[stmtIdx - 1]).toBe('# from c.jsonld');
+  });
+
   it('output is stable: same inputs produce byte-identical output across invocations, and added/removed are sorted', () => {
     const left = [
       triple('c', 'p', 'c2'),

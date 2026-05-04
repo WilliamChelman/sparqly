@@ -1,12 +1,14 @@
 import { Parser, type Quad, type Store, type Term } from 'n3';
 import { canonicalizeStore } from './canonicalize';
 import { formatHumanSourceComment } from './format-human-source-comment';
+import { shortenNQuadLine } from './formatter';
+import { displaySourcePath } from './source-path-display';
 import {
   DEFAULT_ANNOTATION_PREDICATE_IRIS,
   type AnnotationPredicateIris,
 } from './source-record-builder';
 
-export type RdfDiffFormat = 'human' | 'json' | 'rdf-patch';
+export type RdfDiffFormat = 'human' | 'json' | 'rdf-patch' | 'turtle';
 
 export interface RdfDiffResult {
   /** Canonical N-Quads strings present on the right but not the left, sorted lexicographically. */
@@ -238,6 +240,12 @@ export interface FormatRdfDiffOptions {
    * `sourceRecords` is supplied.
    */
   cwd?: string;
+  /**
+   * Prefixes used by the `turtle` format to CURIE-shorten each flat statement
+   * and to emit `@prefix` declarations at the top of every
+   * `# --- removed/added ---` block. Ignored by other formats.
+   */
+  prefixes?: Record<string, string>;
 }
 
 export function formatRdfDiff(
@@ -258,6 +266,7 @@ export function formatRdfDiff(
     };
     return `${JSON.stringify(json)}\n`;
   }
+  if (format === 'turtle') return renderTurtleDiffBlocks(diff, options);
   const removedMarker = format === 'rdf-patch' ? 'D' : '-';
   const addedMarker = format === 'rdf-patch' ? 'A' : '+';
   const parts: string[] = [];
@@ -279,6 +288,71 @@ export function formatRdfDiff(
     parts.push(`${addedMarker} ${s}${tail}\n`);
   }
   return parts.join('');
+}
+
+function renderTurtleDiffBlocks(
+  diff: RdfDiffResult,
+  options: FormatRdfDiffOptions,
+): string {
+  const prefixes = options.prefixes ?? {};
+  const cwd = options.cwd;
+  const leftRecords = options.sourceRecords?.left;
+  const rightRecords = options.sourceRecords?.right;
+  return (
+    renderTurtleDiffBlock('removed', diff.removed, prefixes, leftRecords, cwd) +
+    renderTurtleDiffBlock('added', diff.added, prefixes, rightRecords, cwd)
+  );
+}
+
+function renderTurtleDiffBlock(
+  label: 'removed' | 'added',
+  statements: readonly string[],
+  prefixes: Record<string, string>,
+  records: Map<string, SourceRecord[]> | undefined,
+  cwd: string | undefined,
+): string {
+  const header = `# --- ${label} ---\n`;
+  if (statements.length === 0) return header;
+
+  const usedPrefixes = pickPrefixesUsedInStatements(statements, prefixes);
+  let body = '';
+  const prefixEntries = Object.entries(usedPrefixes).sort(([a], [b]) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  );
+  for (const [name, iri] of prefixEntries) {
+    body += `@prefix ${name}: <${iri}> .\n`;
+  }
+  if (prefixEntries.length > 0) body += '\n';
+
+  for (const s of statements) {
+    if (records !== undefined && cwd !== undefined) {
+      const recs = records.get(s) ?? [];
+      for (const rec of recs) {
+        const { displayPath } = displaySourcePath(rec.file, cwd);
+        const tail = rec.line !== undefined ? `:${rec.line}` : '';
+        body += `# from ${displayPath}${tail}\n`;
+      }
+    }
+    body += `${shortenNQuadLine(s, { prefixes })}\n`;
+  }
+  return header + body;
+}
+
+function pickPrefixesUsedInStatements(
+  statements: readonly string[],
+  prefixes: Record<string, string>,
+): Record<string, string> {
+  const entries = Object.entries(prefixes);
+  if (entries.length === 0) return {};
+  const out: Record<string, string> = {};
+  for (const s of statements) {
+    for (const [name, iri] of entries) {
+      if (out[name] !== undefined) continue;
+      if (s.includes(`<${iri}`)) out[name] = iri;
+    }
+    if (Object.keys(out).length === entries.length) break;
+  }
+  return out;
 }
 
 function attachRecords(

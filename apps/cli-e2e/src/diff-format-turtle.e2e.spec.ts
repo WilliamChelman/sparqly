@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import dedent from 'dedent';
@@ -272,6 +272,93 @@ describe('sparqly diff --format=turtle', () => {
     expect(lines).toEqual([
       'A <http://example.org/c> <http://example.org/q> <http://example.org/d> .',
     ]);
+  });
+
+  it('emits one statement per line with `# from <relative-path>:<line>` directly above each, when both sides declare `annotate`', async () => {
+    // The annotate transform records absolute file:// IRIs derived from
+    // realpath; the diff renderer renders them relative to the CLI cwd.
+    // Resolve the tmp dir's symlinks here so the relative path is stable.
+    const resolvedDir = await realpath(dir);
+    const left = join(resolvedDir, 'left.ttl');
+    const right = join(resolvedDir, 'right.ttl');
+    await writeFile(
+      left,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b .
+        ex:c ex:q ex:d .
+      ` + '\n',
+    );
+    await writeFile(
+      right,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b .
+        ex:e ex:r ex:f .
+      ` + '\n',
+    );
+    const configPath = join(resolvedDir, 'sparqly.diff.yaml');
+    await writeFile(
+      configPath,
+      `left:\n` +
+        `  glob: "${left}"\n` +
+        `  transforms:\n` +
+        `    - annotate: {}\n` +
+        `right:\n` +
+        `  glob: "${right}"\n` +
+        `  transforms:\n` +
+        `    - annotate: {}\n`,
+    );
+
+    const result = await runCli(
+      ['diff', '--quiet', '--format=turtle', '--config', configPath],
+      { cwd: resolvedDir },
+    );
+
+    expect(result.exitCode).toBe(1);
+    const lines = result.stdout.split('\n');
+    const removedStmtIdx = lines.findIndex((l) => l === 'ex:c ex:q ex:d .');
+    expect(removedStmtIdx).toBeGreaterThan(0);
+    expect(lines[removedStmtIdx - 1]).toBe('# from left.ttl:3');
+
+    const addedStmtIdx = lines.findIndex((l) => l === 'ex:e ex:r ex:f .');
+    expect(addedStmtIdx).toBeGreaterThan(0);
+    expect(lines[addedStmtIdx - 1]).toBe('# from right.ttl:3');
+  });
+
+  it('emits flat statements (no `;` grouping) without any `# from` comments when neither side declares `annotate`', async () => {
+    const left = join(dir, 'left.ttl');
+    const right = join(dir, 'right.ttl');
+    await writeFile(
+      left,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b1 ;
+              ex:p ex:b2 .
+      ` + '\n',
+    );
+    await writeFile(
+      right,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b1 ;
+              ex:p ex:b2 ;
+              ex:q ex:c .
+      ` + '\n',
+    );
+
+    const result = await runCli(
+      ['diff', '--quiet', '--format=turtle', left, right],
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).not.toMatch(/^#\s*from\b/m);
+    // Added statement is on its own line.
+    expect(result.stdout).toMatch(/\nex:a ex:q ex:c \.\n/);
+    // No `;` grouping in the added block (each statement stands alone).
+    const addedHeaderIdx = result.stdout.indexOf('# --- added ---');
+    const addedBlock = result.stdout.slice(addedHeaderIdx);
+    expect(addedBlock).not.toContain(';');
   });
 
   it('emits both block headers even when one side is empty', async () => {
