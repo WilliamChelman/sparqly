@@ -197,6 +197,68 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
     expect(withEmpty).toBe(baseline);
   });
 
+  it('rdf-patch format with sourceRecords appends trailing # path:line comments per D/A line, drawing left records on D and right records on A', () => {
+    const left = [triple('c', 'q', 'd')];
+    const right = [triple('e', 'r', 'f')];
+    const diff = diffCanonicalStatements(left, right);
+
+    const out = formatRdfDiff(diff, 'rdf-patch', {
+      cwd: '/cwd',
+      sourceRecords: {
+        left: new Map([
+          [triple('c', 'q', 'd'), [{ file: 'file:///cwd/a.ttl', line: 7 }]],
+        ]),
+        right: new Map([
+          [triple('e', 'r', 'f'), [{ file: 'file:///cwd/b.ttl', line: 3 }]],
+        ]),
+      },
+    });
+
+    expect(out).toBe(
+      `D ${triple('c', 'q', 'd')} # a.ttl:7\n` +
+        `A ${triple('e', 'r', 'f')} # b.ttl:3\n`,
+    );
+  });
+
+  it('rdf-patch format with no sourceRecords (or empty maps) is byte-identical to today (regression guard)', () => {
+    const left = [triple('c', 'q', 'd')];
+    const right = [triple('e', 'r', 'f')];
+    const diff = diffCanonicalStatements(left, right);
+
+    const baseline = formatRdfDiff(diff, 'rdf-patch');
+    const withEmpty = formatRdfDiff(diff, 'rdf-patch', {
+      cwd: '/cwd',
+      sourceRecords: { left: new Map(), right: new Map() },
+    });
+    expect(withEmpty).toBe(baseline);
+  });
+
+  it('rdf-patch format compresses multiple records per file and joins multiple files with `;` (shared with human)', () => {
+    const right = [triple('e', 'r', 'f')];
+    const diff = diffCanonicalStatements([], right);
+
+    const out = formatRdfDiff(diff, 'rdf-patch', {
+      cwd: '/cwd',
+      sourceRecords: {
+        left: new Map(),
+        right: new Map([
+          [
+            triple('e', 'r', 'f'),
+            [
+              { file: 'file:///cwd/a.ttl', line: 12 },
+              { file: 'file:///cwd/a.ttl', line: 5 },
+              { file: 'file:///cwd/b.ttl', line: 3 },
+            ],
+          ],
+        ]),
+      },
+    });
+
+    expect(out).toBe(
+      `A ${triple('e', 'r', 'f')} # a.ttl:5,12; b.ttl:3\n`,
+    );
+  });
+
   it('rdf-patch format emits all D markers before any A marker', () => {
     const left = [triple('a', 'p', 'b'), triple('c', 'q', 'd')];
     const right = [triple('a', 'p', 'b'), triple('e', 'r', 'f')];

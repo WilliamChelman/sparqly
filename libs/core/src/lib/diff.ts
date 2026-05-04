@@ -258,12 +258,8 @@ export function formatRdfDiff(
     };
     return `${JSON.stringify(json)}\n`;
   }
-  if (format === 'rdf-patch') {
-    const parts: string[] = [];
-    for (const s of diff.removed) parts.push(`D ${s}\n`);
-    for (const s of diff.added) parts.push(`A ${s}\n`);
-    return parts.join('');
-  }
+  const removedMarker = format === 'rdf-patch' ? 'D' : '-';
+  const addedMarker = format === 'rdf-patch' ? 'A' : '+';
   const parts: string[] = [];
   const cwd = options.cwd;
   const leftRecords = options.sourceRecords?.left;
@@ -273,14 +269,14 @@ export function formatRdfDiff(
       cwd !== undefined
         ? formatHumanSourceComment(leftRecords?.get(s) ?? [], cwd)
         : '';
-    parts.push(`- ${s}${tail}\n`);
+    parts.push(`${removedMarker} ${s}${tail}\n`);
   }
   for (const s of diff.added) {
     const tail =
       cwd !== undefined
         ? formatHumanSourceComment(rightRecords?.get(s) ?? [], cwd)
         : '';
-    parts.push(`+ ${s}${tail}\n`);
+    parts.push(`${addedMarker} ${s}${tail}\n`);
   }
   return parts.join('');
 }

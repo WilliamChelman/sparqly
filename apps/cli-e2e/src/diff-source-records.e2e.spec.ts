@@ -184,6 +184,89 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     }
   });
 
+  it('appends a `# <relative-path>:<line>` trailing comment per D/A line on `--format=rdf-patch` when both sides declare `annotate`', async () => {
+    const leftPath = join(scratch, 'left.ttl');
+    const rightPath = join(scratch, 'right.ttl');
+    await writeFile(
+      leftPath,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b .
+        ex:c ex:q ex:d .
+      ` + '\n',
+    );
+    await writeFile(
+      rightPath,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b .
+        ex:e ex:r ex:f .
+      ` + '\n',
+    );
+    const configPath = join(scratch, 'sparqly.diff.yaml');
+    await writeFile(
+      configPath,
+      dedent`
+        left:
+          glob: "${leftPath}"
+          transforms:
+            - annotate: {}
+        right:
+          glob: "${rightPath}"
+          transforms:
+            - annotate: {}
+      ` + '\n',
+    );
+
+    const result = await runCli(
+      ['diff', '--quiet', '--format=rdf-patch', '--config', configPath],
+      { cwd: scratch },
+    );
+
+    expect(result.exitCode).toBe(1);
+    const lines = nonEmptyLines(result.stdout);
+    expect(lines).toEqual([
+      `D <http://example.org/c> <http://example.org/q> <http://example.org/d> . # ${relative(scratch, leftPath)}:3`,
+      `A <http://example.org/e> <http://example.org/r> <http://example.org/f> . # ${relative(scratch, rightPath)}:3`,
+    ]);
+  });
+
+  it('does not emit any trailing `#` comment on `--format=rdf-patch` when neither side declares `annotate` (regression guard)', async () => {
+    const leftPath = join(scratch, 'left.ttl');
+    const rightPath = join(scratch, 'right.ttl');
+    await writeFile(
+      leftPath,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b .
+        ex:c ex:q ex:d .
+      ` + '\n',
+    );
+    await writeFile(
+      rightPath,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b .
+        ex:e ex:r ex:f .
+      ` + '\n',
+    );
+
+    const result = await runCli(
+      ['diff', '--quiet', '--format=rdf-patch', leftPath, rightPath],
+      { cwd: scratch },
+    );
+
+    expect(result.exitCode).toBe(1);
+    const lines = nonEmptyLines(result.stdout);
+    expect(lines).toEqual([
+      'D <http://example.org/c> <http://example.org/q> <http://example.org/d> .',
+      'A <http://example.org/e> <http://example.org/r> <http://example.org/f> .',
+    ]);
+    for (const line of lines) {
+      expect(line).not.toMatch(/#/);
+    }
+  });
+
   it('writes a stderr summary line when exactly one side declares `annotate`, suppressed by --quiet', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
