@@ -99,6 +99,91 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     }
   });
 
+  it('appends a `sourceRecords` field per added/removed entry on `--format=json` when both sides declare `annotate`', async () => {
+    const leftPath = join(scratch, 'left.ttl');
+    const rightPath = join(scratch, 'right.ttl');
+    await writeFile(
+      leftPath,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b .
+        ex:c ex:q ex:d .
+      ` + '\n',
+    );
+    await writeFile(
+      rightPath,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b .
+        ex:e ex:r ex:f .
+      ` + '\n',
+    );
+    const configPath = join(scratch, 'sparqly.diff.yaml');
+    await writeFile(
+      configPath,
+      dedent`
+        left:
+          glob: "${leftPath}"
+          transforms:
+            - annotate: {}
+        right:
+          glob: "${rightPath}"
+          transforms:
+            - annotate: {}
+      ` + '\n',
+    );
+
+    const result = await runCli(
+      ['diff', '--quiet', '--format=json', '--config', configPath],
+      { cwd: scratch },
+    );
+
+    expect(result.exitCode).toBe(1);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.removed).toHaveLength(1);
+    expect(parsed.removed[0].sourceRecords).toEqual([
+      { file: `file://${leftPath}`, line: 3 },
+    ]);
+    expect(parsed.added).toHaveLength(1);
+    expect(parsed.added[0].sourceRecords).toEqual([
+      { file: `file://${rightPath}`, line: 3 },
+    ]);
+  });
+
+  it('omits `sourceRecords` from every json entry when neither side declares `annotate` (regression guard)', async () => {
+    const leftPath = join(scratch, 'left.ttl');
+    const rightPath = join(scratch, 'right.ttl');
+    await writeFile(
+      leftPath,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b .
+        ex:c ex:q ex:d .
+      ` + '\n',
+    );
+    await writeFile(
+      rightPath,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b .
+        ex:e ex:r ex:f .
+      ` + '\n',
+    );
+
+    const result = await runCli(
+      ['diff', '--quiet', '--format=json', leftPath, rightPath],
+      { cwd: scratch },
+    );
+
+    expect(result.exitCode).toBe(1);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.removed).toHaveLength(1);
+    expect(parsed.added).toHaveLength(1);
+    for (const entry of [...parsed.added, ...parsed.removed]) {
+      expect(entry.sourceRecords).toBeUndefined();
+    }
+  });
+
   it('writes a stderr summary line when exactly one side declares `annotate`, suppressed by --quiet', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');

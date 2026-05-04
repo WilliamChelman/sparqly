@@ -193,6 +193,14 @@ export interface RdfStatementJson {
   p: RdfTermJson;
   o: RdfTermJson;
   g?: RdfTermJson;
+  /**
+   * Per-entry `SourceRecord[]` populated from the canonical side (right-side
+   * records on `added`, left-side records on `removed`) when
+   * {@link FormatRdfDiffOptions.sourceRecords} is supplied to the `json`
+   * format. Omitted when no records are present, so existing JSON consumers
+   * remain byte-identical for unannotated sources.
+   */
+  sourceRecords?: SourceRecord[];
 }
 
 export interface RdfTermJson {
@@ -238,9 +246,15 @@ export function formatRdfDiff(
   options: FormatRdfDiffOptions = {},
 ): string {
   if (format === 'json') {
+    const leftRecordsJson = options.sourceRecords?.left;
+    const rightRecordsJson = options.sourceRecords?.right;
     const json = {
-      added: diff.added.map(parseStatement),
-      removed: diff.removed.map(parseStatement),
+      added: diff.added.map((s) =>
+        attachRecords(parseStatement(s), rightRecordsJson?.get(s)),
+      ),
+      removed: diff.removed.map((s) =>
+        attachRecords(parseStatement(s), leftRecordsJson?.get(s)),
+      ),
     };
     return `${JSON.stringify(json)}\n`;
   }
@@ -269,6 +283,14 @@ export function formatRdfDiff(
     parts.push(`+ ${s}${tail}\n`);
   }
   return parts.join('');
+}
+
+function attachRecords(
+  statement: RdfStatementJson,
+  records: SourceRecord[] | undefined,
+): RdfStatementJson {
+  if (records === undefined || records.length === 0) return statement;
+  return { ...statement, sourceRecords: records };
 }
 
 function parseStatement(line: string): RdfStatementJson {
