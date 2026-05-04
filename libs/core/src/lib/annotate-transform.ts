@@ -49,6 +49,23 @@ export function extractAnnotationPredicates(
   return { ...DEFAULT_ANNOTATION_PREDICATE_IRIS };
 }
 
+/**
+ * True when the parsed transforms list declares an `annotate` transform
+ * (with or without overrides). Used by `diff` to decide whether a side is
+ * "annotated" for the purpose of the mixed-sides stderr summary line —
+ * intent-based, not record-presence-based, so an empty annotated source
+ * still counts as annotated.
+ */
+export function hasAnnotateTransform(
+  transforms: ReadonlyArray<ParsedTransform> | undefined,
+): boolean {
+  if (!transforms) return false;
+  for (const t of transforms) {
+    if (t.key === KEY) return true;
+  }
+  return false;
+}
+
 function isPredicateIris(value: unknown): value is AnnotationPredicateIris {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;

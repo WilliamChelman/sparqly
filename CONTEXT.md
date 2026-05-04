@@ -64,8 +64,12 @@ A transform whose value is one of `preserve`, `fillDefault`, `forceAll`, `flatte
 A transform that emits a **Source record** as an RDF-star annotation on each asserted triple loaded from disk, recording where that triple was authored. Listing it on a glob source makes annotations always-on for that source's downstream consumers.
 
 **Source record**:
-A blank-node record reached via `sparqly:source` from an RDF-star quoted triple, with `sparqly:file` (the absolute `file://` IRI of the source file) and optionally `sparqly:line` (1-based line of the predicate-object pair, omitted when the parser cannot supply it). One record per (file, line) instance of a triple; a triple loaded from two files produces two records under the same quoted-triple subject. Each of the three predicate IRIs is independently configurable on the **Annotate transformation** (`source` / `file` / `line` keys), defaulting respectively to `urn:sparqly:source`, `urn:sparqly:file`, `urn:sparqly:line`.
+A blank-node record reached via `sparqly:source` from an RDF-star quoted triple, with `sparqly:file` (the absolute `file://` IRI of the source file) and optionally `sparqly:line` (1-based line of the predicate-object pair, omitted when the parser cannot supply it). One record per (file, line) instance of a triple; a triple loaded from two files produces two records under the same quoted-triple subject. Each of the three predicate IRIs is independently configurable on the **Annotate transformation** (`source` / `file` / `line` keys), defaulting respectively to `urn:sparqly:source`, `urn:sparqly:file`, `urn:sparqly:line`. The `diff` command surfaces source records in every output format — inline trailing comments in `human` and `rdf-patch`, statement-level comments above each flat statement in `turtle`, a `sourceRecords` field on each entry in `json`, and as a **Source-file snippet** in `html`.
 _Avoid_: "provenance triple" (implied semantics beyond what we record), "lineage record"
+
+**Source-file snippet**:
+A span of context lines centered on a **Source record**'s `line`, read from the absolute `file://` path at HTML diff render time. Rendered only by the `html` diff format; other formats carry only the (file, line) reference. Implies that `html` diff output is non-deterministic in source-file content — re-running `diff -f html` after editing a source file can produce a different document even when the canonicalized diff result is unchanged. Other formats remain content-deterministic.
+_Avoid_: "context window" (overloaded with LLM/parsing terminology), "hunk preview"
 
 ## Relationships
 
@@ -78,6 +82,7 @@ _Avoid_: "provenance triple" (implied semantics beyond what we record), "lineage
 - **`hash`** and **`diff`** also pick one **target source** and always **canonicalize** the resolved Store; they refuse a raw endpoint as target — endpoints must be wrapped in a view (declared or anonymous) so a scoping query exists.
 - A **Glob source** may declare a **Source transformation pipeline**; transforms run in array order at load time before the Store is exposed to resolution.
 - The **Annotate transformation** populates **Source records** on the glob's own asserted triples; annotations do not propagate through a downstream **View** unless that view's query explicitly references them, and they are stripped by **Canonicalization**.
+- `diff` extracts **Source records** per side after **Canonicalization** and surfaces them across every output format; the `html` format additionally renders a **Source-file snippet** per record, reading the source file from disk at render time.
 
 ## Example dialogue
 

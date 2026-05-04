@@ -1,23 +1,26 @@
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import { Logger } from '@nestjs/common';
-import { Parser } from 'n3';
+import { Parser, type Store } from 'n3';
 import { z } from 'zod';
 import {
-  canonicalizeStore,
-  diffCanonicalStatements,
+  diffStores,
   extractAnnotationPredicates,
+  formatHumanSourceComment,
   formatRdf,
   formatRdfDiff,
+  hasAnnotateTransform,
   parseSourceSpecs,
   resolveAnonymousView,
   resolveSource,
   selectTarget,
   shortenNQuadLine,
+  type AnnotationPredicateIris,
   type FormatSerialization,
   type GraphMode,
   type ParsedSource,
   type RdfDiffResult,
+  type SourceRecord,
   type SourceSpecInput,
 } from 'core';
 import { configureLogger } from '../logging';
@@ -308,33 +311,37 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     const rightTarget = resolveDiffSide(config, 'right');
 
     const start = Date.now();
-    const [leftResult, rightResult] = await Promise.all([
-      canonicalizeSide(leftTarget, config, graphMode, leftInlineQuery, 'left'),
-      canonicalizeSide(rightTarget, config, graphMode, rightInlineQuery, 'right'),
+    const [leftResolved, rightResolved] = await Promise.all([
+      resolveSide(leftTarget, config, graphMode, leftInlineQuery, 'left'),
+      resolveSide(rightTarget, config, graphMode, rightInlineQuery, 'right'),
     ]);
+    const diff = await diffStores(
+      { store: leftResolved.store, annotationPredicates: leftResolved.annotationPredicates },
+      { store: rightResolved.store, annotationPredicates: rightResolved.annotationPredicates },
+    );
     logger.log(
-      `Loaded ${leftResult.fileCount} left + ${rightResult.fileCount} right file(s), canonicalized in ${Date.now() - start}ms`,
+      `Loaded ${leftResolved.fileCount} left + ${rightResolved.fileCount} right file(s), canonicalized in ${Date.now() - start}ms`,
     );
 
-    const diff = diffCanonicalStatements(
-      leftResult.canonicalStatements,
-      rightResult.canonicalStatements,
-    );
     const sourcePrefixes: Record<string, Record<string, string>> = {
-      ...leftResult.prefixes,
-      ...rightResult.prefixes,
+      ...leftResolved.prefixes,
+      ...rightResolved.prefixes,
     };
     const resolvedPrefixes = resolveDiffPrefixes(
       config.prefixes ?? {},
       sourcePrefixes,
     );
 
+    const cwd = process.cwd();
     const body =
       format === 'turtle'
         ? renderTurtleBlocks(diff, resolvedPrefixes)
         : format === 'human'
-          ? renderHumanShortened(diff, resolvedPrefixes)
-          : formatRdfDiff(diff, format);
+          ? renderHumanShortened(diff, resolvedPrefixes, diff.sourceRecords, cwd)
+          : formatRdfDiff(diff, format, {
+              cwd,
+              sourceRecords: diff.sourceRecords,
+            });
     const { added, removed } = diff;
 
     if (config.out !== undefined) {
@@ -348,6 +355,13 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     }
 
     if (!quiet) {
+      if (leftResolved.annotated !== rightResolved.annotated) {
+        const annotatedSide = leftResolved.annotated ? 'left' : 'right';
+        const otherSide = leftResolved.annotated ? 'right' : 'left';
+        process.stderr.write(
+          `note: source records present on ${annotatedSide} only — ${otherSide} side hunks will not be annotated\n`,
+        );
+      }
       process.stderr.write(`# +${added.length} -${removed.length}\n`);
     }
 
@@ -373,12 +387,21 @@ function resolveDiffPrefixes(
 function renderHumanShortened(
   diff: RdfDiffResult,
   prefixes: Record<string, string>,
+  sourceRecords: {
+    left: Map<string, SourceRecord[]>;
+    right: Map<string, SourceRecord[]>;
+  },
+  cwd: string,
 ): string {
   const parts: string[] = [];
-  for (const s of diff.removed)
-    parts.push(`- ${shortenNQuadLine(s, { prefixes })}\n`);
-  for (const s of diff.added)
-    parts.push(`+ ${shortenNQuadLine(s, { prefixes })}\n`);
+  for (const s of diff.removed) {
+    const tail = formatHumanSourceComment(sourceRecords.left.get(s) ?? [], cwd);
+    parts.push(`- ${shortenNQuadLine(s, { prefixes })}${tail}\n`);
+  }
+  for (const s of diff.added) {
+    const tail = formatHumanSourceComment(sourceRecords.right.get(s) ?? [], cwd);
+    parts.push(`+ ${shortenNQuadLine(s, { prefixes })}${tail}\n`);
+  }
   return parts.join('');
 }
 
@@ -408,10 +431,12 @@ function formatBlock(
   return out.endsWith('\n') ? out : `${out}\n`;
 }
 
-interface SideCanonicalResult {
+interface SideResolved {
   fileCount: number;
-  canonicalStatements: string[];
+  store: Store;
   prefixes: Record<string, Record<string, string>>;
+  annotationPredicates: AnnotationPredicateIris;
+  annotated: boolean;
 }
 
 function targetLabel(target: ParsedSource): string {
@@ -432,21 +457,26 @@ function anonymousUpstream(
   );
 }
 
-async function canonicalizeSide(
+async function resolveSide(
   target: ParsedSource,
   config: DiffConfig,
   graphMode: GraphMode | undefined,
   inlineQuery: string | undefined,
   side: 'left' | 'right',
-): Promise<SideCanonicalResult> {
+): Promise<SideResolved> {
   if (inlineQuery !== undefined) {
     const upstream = anonymousUpstream(target, side);
     const store = await resolveAnonymousView({
       source: upstream,
       query: inlineQuery,
     });
-    const { canonicalStatements } = await canonicalizeStore(store);
-    return { fileCount: 0, canonicalStatements, prefixes: {} };
+    return {
+      fileCount: 0,
+      store,
+      prefixes: {},
+      annotationPredicates: extractAnnotationPredicates(undefined),
+      annotated: false,
+    };
   }
 
   if (target.kind === 'endpoint') {
@@ -462,15 +492,13 @@ async function canonicalizeSide(
       `SPARQL endpoint ${sources.endpoint.endpoint} cannot be diffed directly on the ${side} side (diff materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly diff\`)`,
     );
   }
-  const { canonicalStatements } = await canonicalizeStore(sources.store, {
-    annotationPredicates: extractAnnotationPredicates(
-      target.kind === 'glob' ? target.transforms : undefined,
-    ),
-  });
+  const transforms = target.kind === 'glob' ? target.transforms : undefined;
   return {
     fileCount: sources.files.length,
-    canonicalStatements,
+    store: sources.store,
     prefixes: sources.prefixes,
+    annotationPredicates: extractAnnotationPredicates(transforms),
+    annotated: hasAnnotateTransform(transforms),
   };
 }
 
