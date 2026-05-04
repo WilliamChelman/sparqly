@@ -1,9 +1,54 @@
+import { spawn } from 'node:child_process';
+import { unlinkSync } from 'node:fs';
 import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { runCli } from './helpers/run-cli';
+import { CLI_BUNDLE_PATH, runCli } from './helpers/run-cli';
+
+interface RunOptions {
+  cwd?: string;
+  env?: Record<string, string>;
+}
+
+/**
+ * Spawn the CLI and run a synchronous parent-side action the moment the
+ * matching stderr line arrives. The action mutates the filesystem; the CLI
+ * is expected to have inserted a deterministic pause between the trigger
+ * line and the next filesystem read (via SPARQLY_DEBUG_PAUSE_BEFORE_SNIPPETS_MS),
+ * so the action reliably lands before the read.
+ */
+function runCliWithStderrTrigger(
+  args: string[],
+  options: RunOptions,
+  trigger: { match: string; act: () => void },
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(process.execPath, [CLI_BUNDLE_PATH, ...args], {
+      cwd: options.cwd,
+      env: { ...process.env, NODE_NO_WARNINGS: '1', ...(options.env ?? {}) },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    let fired = false;
+    child.stdout.on('data', (c: Buffer) => {
+      stdout += c.toString('utf8');
+    });
+    child.stderr.on('data', (c: Buffer) => {
+      stderr += c.toString('utf8');
+      if (!fired && stderr.includes(trigger.match)) {
+        fired = true;
+        trigger.act();
+      }
+    });
+    child.on('error', rejectPromise);
+    child.on('close', (code) => {
+      resolvePromise({ stdout, stderr, exitCode: code ?? 0 });
+    });
+  });
+}
 
 describe('sparqly diff -f html', () => {
   let scratch: string;
@@ -184,6 +229,75 @@ describe('sparqly diff -f html', () => {
     // line 2 through line 7+.
     expect(result.stdout).toContain('<span class="gutter">7</span>');
     expect(result.stdout).toContain('<span class="gutter">2</span>');
+  });
+
+  it('renders `(source file unavailable)` and a non-empty HTML body when an annotated source file is removed between load and render', async () => {
+    // The CLI loads each side into memory before calling the snippet reader,
+    // so unlinking the source files between those phases drives the snippet
+    // reader to the `unavailable` branch (reason: missing) — exercising the
+    // composer's `(source file unavailable)` degraded-render path end-to-end.
+    // We synchronize via SPARQLY_DEBUG_PAUSE_BEFORE_SNIPPETS_MS, which makes
+    // the CLI emit a stable "sparqly-debug: pausing before snippets" stderr
+    // marker after load completes and pause for the configured window so
+    // the parent's unlink lands deterministically before snippet fetching.
+    const leftPath = join(scratch, 'left.ttl');
+    const rightPath = join(scratch, 'right.ttl');
+    await writeFile(
+      leftPath,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b .
+        ex:c ex:q ex:d .
+      ` + '\n',
+    );
+    await writeFile(
+      rightPath,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b .
+        ex:e ex:r ex:f .
+      ` + '\n',
+    );
+    const configPath = join(scratch, 'sparqly.diff.yaml');
+    await writeFile(
+      configPath,
+      dedent`
+        left:
+          glob: "${leftPath}"
+          transforms:
+            - annotate: {}
+        right:
+          glob: "${rightPath}"
+          transforms:
+            - annotate: {}
+      ` + '\n',
+    );
+
+    const result = await runCliWithStderrTrigger(
+      ['diff', '--quiet', '-f', 'html', '--config', configPath],
+      {
+        cwd: scratch,
+        env: { SPARQLY_DEBUG_PAUSE_BEFORE_SNIPPETS_MS: '500' },
+      },
+      {
+        match: 'sparqly-debug: pausing before snippets',
+        act: () => {
+          unlinkSync(leftPath);
+          unlinkSync(rightPath);
+        },
+      },
+    );
+
+    // Degraded render: still exits with the diff exit code.
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout.startsWith('<!doctype html>')).toBe(true);
+    expect(result.stdout.length).toBeGreaterThan(0);
+    expect(result.stdout).toContain('(source file unavailable)');
+    expect(result.stdout).not.toMatch(/<pre[^>]*class="snippet"/);
+    // Hunks still render their statements — degradation is per-snippet, not
+    // per-hunk.
+    expect(result.stdout).toContain('http://example.org/c');
+    expect(result.stdout).toContain('http://example.org/e');
   });
 
   it('rejects --context above 100', async () => {

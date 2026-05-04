@@ -367,6 +367,20 @@ export const diffSpec: CommandSpec<DiffConfig> = {
 
     const cwd = process.cwd();
     const context = config.context ?? 3;
+    // Test-only synchronization hook: emits a stable stderr marker and
+    // pauses for N ms so an e2e parent can mutate the filesystem between
+    // load and snippet fetching, making the load→snippet boundary
+    // deterministically observable from a black-box CLI test. The marker
+    // is emitted directly (not through the Nest logger) so it survives
+    // --quiet and the default log-level filter. See
+    // `apps/cli-e2e/.../diff-format-html`.
+    const pauseMs = Number(
+      process.env['SPARQLY_DEBUG_PAUSE_BEFORE_SNIPPETS_MS'] ?? '',
+    );
+    if (Number.isFinite(pauseMs) && pauseMs > 0) {
+      process.stderr.write('sparqly-debug: pausing before snippets\n');
+      await new Promise<void>((r) => setTimeout(r, pauseMs));
+    }
     const snippetsByRecord =
       format === 'html'
         ? await fetchSnippetsForDiff(diff.sourceRecords, context)

@@ -1,7 +1,6 @@
 - health / stats apis and pages
 - file streaming
 - mutating queries
-- remote sparql endpoints as source
 - incremental rebuild of store in watch mode
 - standalone compile binary (with bun)
 - terminal table in cli mode
@@ -20,8 +19,12 @@
   - remote changes (vendor specific?)
 - simplify prefix handling: no need to be cute about parsing prefixes bases, except maybe for format
 - rationalize ENV config, keep only what makes sense
-- meta-source split : differentiate between true remote source, and materialized one, with cache etc. Query to verify case (e.g. dct:modified on a dataset)
-- hash diff: add --query option
-  - make the query actually hit the store
 - derived cache: add option for process-only
 - transform options for glob and derived. Could be templated, and make use of "well known" transform, which could replace graphMode
+- shacl validation
+- reasoning as transform
+- shacl forms
+- merge source (direct materialize only)
+- serve
+  - trigger data dump (ui and/or ipc)
+  - download full query result
