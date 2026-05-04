@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Logger } from '@nestjs/common';
 import { type Store } from 'n3';
 import { z } from 'zod';
@@ -11,14 +12,17 @@ import {
   formatRdfDiff,
   hasAnnotateTransform,
   parseSourceSpecs,
+  readSourceSnippet,
   resolveAnonymousView,
   resolveSource,
   selectTarget,
   shortenNQuadLine,
   type AnnotationPredicateIris,
   type GraphMode,
+  type HtmlDiffSnippets,
   type ParsedSource,
   type RdfDiffResult,
+  type SnippetReadResult,
   type SourceRecord,
   type SourceSpecInput,
 } from 'core';
@@ -362,13 +366,18 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     );
 
     const cwd = process.cwd();
+    const context = config.context ?? 3;
+    const snippetsByRecord =
+      format === 'html'
+        ? await fetchSnippetsForDiff(diff.sourceRecords, context)
+        : new Map<string, SnippetReadResult>();
     const body =
       format === 'html'
         ? composeHtmlDiff(
             diff,
             diff.sourceRecords,
-            new Map(),
-            { cwd, context: config.context ?? 3 },
+            snippetsByRecord,
+            { cwd, context },
           )
         : format === 'turtle'
           ? formatRdfDiff(diff, 'turtle', {
@@ -424,6 +433,32 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     }
   },
 };
+
+async function fetchSnippetsForDiff(
+  sourceRecords: {
+    left: Map<string, SourceRecord[]>;
+    right: Map<string, SourceRecord[]>;
+  },
+  context: number,
+): Promise<HtmlDiffSnippets> {
+  const seen = new Map<string, { file: string; line: number }>();
+  for (const side of [sourceRecords.left, sourceRecords.right]) {
+    for (const records of side.values()) {
+      for (const r of records) {
+        if (r.line === undefined) continue;
+        const key = `${r.file}:${r.line}`;
+        if (!seen.has(key)) seen.set(key, { file: r.file, line: r.line });
+      }
+    }
+  }
+  const entries = await Promise.all(
+    [...seen.entries()].map(async ([key, { file, line }]) => {
+      const abs = fileURLToPath(file);
+      return [key, await readSourceSnippet(abs, line, context)] as const;
+    }),
+  );
+  return new Map<string, SnippetReadResult>(entries);
+}
 
 function resolveDiffPrefixes(
   configPrefixes: Record<string, string>,

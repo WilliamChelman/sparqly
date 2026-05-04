@@ -158,6 +158,105 @@ describe('composeHtmlDiff', () => {
     expect(a).toBe(b);
   });
 
+  it('renders a <pre> snippet with line-numbered gutter and focal-line highlight when a snippet is provided', () => {
+    const added = triple('e', 'r', 'f');
+    const snippets = new Map([
+      [
+        'file:///cwd/foo.ttl:5',
+        {
+          kind: 'snippet' as const,
+          startLine: 3,
+          focalLine: 5,
+          lines: ['L3', 'L4', 'L5', 'L6', 'L7'],
+        },
+      ],
+    ]);
+    const out = composeHtmlDiff(
+      { added: [added], removed: [] },
+      {
+        left: new Map(),
+        right: new Map([[added, [{ file: 'file:///cwd/foo.ttl', line: 5 }]]]),
+      },
+      snippets,
+      { cwd: '/cwd' },
+    );
+
+    // <pre> snippet block emitted for the record.
+    expect(out).toMatch(/<pre[^>]*class="snippet"/);
+    // Gutter contains every 1-based line number in the window.
+    for (const n of [3, 4, 5, 6, 7]) {
+      expect(out).toMatch(
+        new RegExp(`<span class="gutter">${n}</span>`),
+      );
+    }
+    // Source content escaped + present.
+    for (const src of ['L3', 'L4', 'L5', 'L6', 'L7']) {
+      expect(out).toContain(src);
+    }
+    // Focal line carries class `focal` and an inline background style.
+    expect(out).toMatch(
+      /<span class="line focal" style="background:[^"]+"><span class="gutter">5<\/span>/,
+    );
+    // Non-focal lines do not carry the focal class.
+    expect(out).toMatch(
+      /<span class="line"><span class="gutter">3<\/span>/,
+    );
+  });
+
+  it('renders `(source file unavailable)` when a record has a line but no snippet entry', () => {
+    const added = triple('e', 'r', 'f');
+    const out = composeHtmlDiff(
+      { added: [added], removed: [] },
+      {
+        left: new Map(),
+        right: new Map([[added, [{ file: 'file:///cwd/foo.ttl', line: 5 }]]]),
+      },
+      new Map(),
+      { cwd: '/cwd' },
+    );
+
+    expect(out).toContain('(source file unavailable)');
+    expect(out).not.toContain('<pre class="snippet"');
+  });
+
+  it('renders `(source file unavailable)` for an explicit unavailable snippet result', () => {
+    const added = triple('e', 'r', 'f');
+    const snippets = new Map([
+      [
+        'file:///cwd/foo.ttl:5',
+        { kind: 'unavailable' as const, reason: 'missing' as const },
+      ],
+    ]);
+    const out = composeHtmlDiff(
+      { added: [added], removed: [] },
+      {
+        left: new Map(),
+        right: new Map([[added, [{ file: 'file:///cwd/foo.ttl', line: 5 }]]]),
+      },
+      snippets,
+      { cwd: '/cwd' },
+    );
+
+    expect(out).toContain('(source file unavailable)');
+    expect(out).not.toContain('<pre class="snippet"');
+  });
+
+  it('renders `(line not available)` for a record with no line — and never reads snippets for it', () => {
+    const added = triple('e', 'r', 'f');
+    const out = composeHtmlDiff(
+      { added: [added], removed: [] },
+      {
+        left: new Map(),
+        right: new Map([[added, [{ file: 'file:///cwd/foo.jsonld' }]]]),
+      },
+      new Map(),
+      { cwd: '/cwd' },
+    );
+
+    expect(out).toContain('(line not available)');
+    expect(out).not.toContain('<pre class="snippet"');
+  });
+
   it('renders multiple records per hunk in input order', () => {
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(

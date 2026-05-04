@@ -14,6 +14,7 @@ export * from './lib/source-path-display';
 export * from './lib/compress-source-records';
 export * from './lib/format-human-source-comment';
 export * from './lib/html-diff-composer';
+export * from './lib/source-snippet-reader';
 export * from './lib/strip-annotations';
 export * from './lib/annotate-transform';
 export * from './lib/resolve-source-references';

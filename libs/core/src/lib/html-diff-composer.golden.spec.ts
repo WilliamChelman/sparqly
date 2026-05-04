@@ -84,4 +84,138 @@ describe('composeHtmlDiff — golden fixtures', () => {
     );
     expect(out).toBe(golden);
   });
+
+  it('snippet rendering with context=3: byte-identical to fixture', async () => {
+    const added = triple('e', 'r', 'f');
+    const out = composeHtmlDiff(
+      { added: [added], removed: [] },
+      {
+        left: new Map(),
+        right: new Map([[added, [{ file: 'file:///cwd/foo.ttl', line: 5 }]]]),
+      },
+      new Map([
+        [
+          'file:///cwd/foo.ttl:5',
+          {
+            kind: 'snippet' as const,
+            startLine: 2,
+            focalLine: 5,
+            lines: [
+              '@prefix ex: <http://example.org/> .',
+              '',
+              'ex:a ex:p ex:b .',
+              'ex:c ex:q ex:d .',
+              'ex:e ex:r ex:f .',
+              '',
+              'ex:g ex:s ex:h .',
+            ],
+          },
+        ],
+      ]),
+      { cwd: '/cwd', context: 3 },
+    );
+
+    const golden = await readOrWrite(
+      join(FIXTURES, 'snippet-context-3.html'),
+      out,
+    );
+    expect(out).toBe(golden);
+  });
+
+  it('snippet rendering with context=0 (focal line only): byte-identical to fixture', async () => {
+    const added = triple('e', 'r', 'f');
+    const out = composeHtmlDiff(
+      { added: [added], removed: [] },
+      {
+        left: new Map(),
+        right: new Map([[added, [{ file: 'file:///cwd/foo.ttl', line: 5 }]]]),
+      },
+      new Map([
+        [
+          'file:///cwd/foo.ttl:5',
+          {
+            kind: 'snippet' as const,
+            startLine: 5,
+            focalLine: 5,
+            lines: ['ex:e ex:r ex:f .'],
+          },
+        ],
+      ]),
+      { cwd: '/cwd', context: 0 },
+    );
+
+    const golden = await readOrWrite(
+      join(FIXTURES, 'snippet-context-0.html'),
+      out,
+    );
+    expect(out).toBe(golden);
+  });
+
+  it('snippet near top boundary (truncated top window): byte-identical to fixture', async () => {
+    const added = triple('e', 'r', 'f');
+    const out = composeHtmlDiff(
+      { added: [added], removed: [] },
+      {
+        left: new Map(),
+        right: new Map([[added, [{ file: 'file:///cwd/foo.ttl', line: 1 }]]]),
+      },
+      new Map([
+        [
+          'file:///cwd/foo.ttl:1',
+          {
+            kind: 'snippet' as const,
+            startLine: 1,
+            focalLine: 1,
+            lines: [
+              '@prefix ex: <http://example.org/> .',
+              '',
+              'ex:a ex:p ex:b .',
+              'ex:c ex:q ex:d .',
+            ],
+          },
+        ],
+      ]),
+      { cwd: '/cwd', context: 3 },
+    );
+
+    const golden = await readOrWrite(
+      join(FIXTURES, 'snippet-top-boundary.html'),
+      out,
+    );
+    expect(out).toBe(golden);
+  });
+
+  it('snippet near bottom boundary (truncated bottom window): byte-identical to fixture', async () => {
+    const added = triple('e', 'r', 'f');
+    const out = composeHtmlDiff(
+      { added: [added], removed: [] },
+      {
+        left: new Map(),
+        right: new Map([[added, [{ file: 'file:///cwd/foo.ttl', line: 5 }]]]),
+      },
+      new Map([
+        [
+          'file:///cwd/foo.ttl:5',
+          {
+            kind: 'snippet' as const,
+            startLine: 2,
+            focalLine: 5,
+            lines: [
+              '',
+              'ex:a ex:p ex:b .',
+              'ex:c ex:q ex:d .',
+              'ex:e ex:r ex:f .',
+            ],
+          },
+        ],
+      ]),
+      { cwd: '/cwd', context: 3 },
+    );
+
+    const golden = await readOrWrite(
+      join(FIXTURES, 'snippet-bottom-boundary.html'),
+      out,
+    );
+    expect(out).toBe(golden);
+  });
 });

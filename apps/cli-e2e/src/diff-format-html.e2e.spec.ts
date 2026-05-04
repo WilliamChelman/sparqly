@@ -126,6 +126,66 @@ describe('sparqly diff -f html', () => {
     expect(result.stderr).toMatch(/html/);
   });
 
+  it('renders a per-record source-file snippet with line-numbered gutter and focal highlight when `-C 5` is given against an annotated source', async () => {
+    const leftPath = join(scratch, 'left.ttl');
+    const rightPath = join(scratch, 'right.ttl');
+    // The right side puts the changed triple on line 6 so a 5-line context
+    // window straddles a clear interior position.
+    await writeFile(
+      leftPath,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b .
+      ` + '\n',
+    );
+    await writeFile(
+      rightPath,
+      dedent`
+        @prefix ex: <http://example.org/> .
+
+        ex:a ex:p ex:b .
+
+        # changed triple below
+
+        ex:e ex:r ex:f .
+      ` + '\n',
+    );
+    const configPath = join(scratch, 'sparqly.diff.yaml');
+    await writeFile(
+      configPath,
+      dedent`
+        left:
+          glob: "${leftPath}"
+          transforms:
+            - annotate: {}
+        right:
+          glob: "${rightPath}"
+          transforms:
+            - annotate: {}
+      ` + '\n',
+    );
+
+    const result = await runCli(
+      ['diff', '--quiet', '-f', 'html', '-C', '5', '--config', configPath],
+      { cwd: scratch },
+    );
+
+    expect(result.exitCode).toBe(1);
+    // <pre> snippet block emitted (the new I/O wiring).
+    expect(result.stdout).toMatch(/<pre[^>]*class="snippet"/);
+    // Focal highlight: class `focal` AND inline background style.
+    expect(result.stdout).toMatch(
+      /<span class="line focal" style="background:[^"]+">/,
+    );
+    // Line-numbered gutter present for several lines around the focal one.
+    expect(result.stdout).toMatch(/<span class="gutter">\d+<\/span>/);
+    // Specifically: the focal line for the right-side change is line 7
+    // (after the comment on line 6), and -C 5 widens the window to cover
+    // line 2 through line 7+.
+    expect(result.stdout).toContain('<span class="gutter">7</span>');
+    expect(result.stdout).toContain('<span class="gutter">2</span>');
+  });
+
   it('rejects --context above 100', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
