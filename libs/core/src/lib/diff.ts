@@ -1,5 +1,6 @@
 import { Parser, type Quad, type Store, type Term } from 'n3';
 import { canonicalizeStore } from './canonicalize';
+import { formatHumanSourceComment } from './format-human-source-comment';
 import {
   DEFAULT_ANNOTATION_PREDICATE_IRIS,
   type AnnotationPredicateIris,
@@ -212,9 +213,29 @@ export function diffCanonicalStatements(
   return { added, removed };
 }
 
+export interface FormatRdfDiffOptions {
+  /**
+   * Per-side `Map<canonicalNQuadsKey, SourceRecord[]>` returned by
+   * {@link diffStores}. When supplied for the `human` format, each `+` /
+   * `-` hunk is augmented with a trailing inline `# path:line` comment
+   * built from the side that authored the hunk (right for `+`, left for
+   * `-`). Other formats currently ignore this option.
+   */
+  sourceRecords?: {
+    left: Map<string, SourceRecord[]>;
+    right: Map<string, SourceRecord[]>;
+  };
+  /**
+   * Working directory for trailing-comment path display. Required when
+   * `sourceRecords` is supplied.
+   */
+  cwd?: string;
+}
+
 export function formatRdfDiff(
   diff: RdfDiffResult,
   format: RdfDiffFormat,
+  options: FormatRdfDiffOptions = {},
 ): string {
   if (format === 'json') {
     const json = {
@@ -230,8 +251,23 @@ export function formatRdfDiff(
     return parts.join('');
   }
   const parts: string[] = [];
-  for (const s of diff.removed) parts.push(`- ${s}\n`);
-  for (const s of diff.added) parts.push(`+ ${s}\n`);
+  const cwd = options.cwd;
+  const leftRecords = options.sourceRecords?.left;
+  const rightRecords = options.sourceRecords?.right;
+  for (const s of diff.removed) {
+    const tail =
+      cwd !== undefined
+        ? formatHumanSourceComment(leftRecords?.get(s) ?? [], cwd)
+        : '';
+    parts.push(`- ${s}${tail}\n`);
+  }
+  for (const s of diff.added) {
+    const tail =
+      cwd !== undefined
+        ? formatHumanSourceComment(rightRecords?.get(s) ?? [], cwd)
+        : '';
+    parts.push(`+ ${s}${tail}\n`);
+  }
   return parts.join('');
 }
 

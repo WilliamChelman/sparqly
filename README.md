@@ -4,7 +4,11 @@
 
 RDF CLI with SPARQL query and an embedded YASGUI playground.
 
-See [PRD #1](https://github.com/WilliamChelman/sparqly/issues/1) for the v1 scope.
+> **Alpha.** Sparqly is in active early development. Commands, flags, config
+> shapes, and output formats can change without notice between releases, and
+> there is no stability guarantee yet. Pin an exact version if you depend on
+> it, and expect to read the changelog before upgrading.
+
 Release notes live in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## Install

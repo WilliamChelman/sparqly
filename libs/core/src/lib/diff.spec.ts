@@ -89,6 +89,42 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
     expect(parsed.added[0].g).toBeUndefined();
   });
 
+  it('human format with sourceRecords appends trailing # path:line comments per hunk, drawing left records on -, right records on +', () => {
+    const left = [triple('c', 'q', 'd')];
+    const right = [triple('e', 'r', 'f')];
+    const diff = diffCanonicalStatements(left, right);
+
+    const out = formatRdfDiff(diff, 'human', {
+      cwd: '/cwd',
+      sourceRecords: {
+        left: new Map([
+          [triple('c', 'q', 'd'), [{ file: 'file:///cwd/a.ttl', line: 7 }]],
+        ]),
+        right: new Map([
+          [triple('e', 'r', 'f'), [{ file: 'file:///cwd/b.ttl', line: 3 }]],
+        ]),
+      },
+    });
+
+    expect(out).toBe(
+      `- ${triple('c', 'q', 'd')} # a.ttl:7\n` +
+        `+ ${triple('e', 'r', 'f')} # b.ttl:3\n`,
+    );
+  });
+
+  it('human format with no sourceRecords (or empty maps) is byte-identical to today (regression guard)', () => {
+    const left = [triple('c', 'q', 'd')];
+    const right = [triple('e', 'r', 'f')];
+    const diff = diffCanonicalStatements(left, right);
+
+    const baseline = formatRdfDiff(diff, 'human');
+    const withEmpty = formatRdfDiff(diff, 'human', {
+      cwd: '/cwd',
+      sourceRecords: { left: new Map(), right: new Map() },
+    });
+    expect(withEmpty).toBe(baseline);
+  });
+
   it('rdf-patch format emits all D markers before any A marker', () => {
     const left = [triple('a', 'p', 'b'), triple('c', 'q', 'd')];
     const right = [triple('a', 'p', 'b'), triple('e', 'r', 'f')];
