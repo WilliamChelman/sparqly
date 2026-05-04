@@ -1,3 +1,16 @@
+## [0.13.0](https://github.com/WilliamChelman/sparqly/compare/v0.12.0...v0.13.0) (2026-05-04)
+
+### Features
+
+* **diff:** html cap inline snippets at 10 per hunk with <details> overflow ([518b321](https://github.com/WilliamChelman/sparqly/commit/518b321f73a59138c5040bb553554db2a4486077)), closes [#125](https://github.com/WilliamChelman/sparqly/issues/125)
+* **diff:** html degraded paths for missing line and source file ([#124](https://github.com/WilliamChelman/sparqly/issues/124)) ([203ff27](https://github.com/WilliamChelman/sparqly/commit/203ff2775a7cb6aca11732b07eb5af1f8aea462b))
+* **diff:** html format MVP with --context plumbing ([#122](https://github.com/WilliamChelman/sparqly/issues/122)) ([319b84f](https://github.com/WilliamChelman/sparqly/commit/319b84fa65e920d40551aa2958d1e54dc081af3b)), closes [#6](https://github.com/WilliamChelman/sparqly/issues/6)
+* **diff:** html snippet rendering with streaming snippet reader ([#123](https://github.com/WilliamChelman/sparqly/issues/123)) ([fccb98c](https://github.com/WilliamChelman/sparqly/commit/fccb98cb79948961bfbb5edc16374a31553a9dc6))
+* **diff:** human format surfaces source records via diffStores ([#118](https://github.com/WilliamChelman/sparqly/issues/118)) ([fc38a54](https://github.com/WilliamChelman/sparqly/commit/fc38a54666b49b47a811ad0c279bf11a8027c6af)), closes [#117](https://github.com/WilliamChelman/sparqly/issues/117)
+* **diff:** json format surfaces sourceRecords per added/removed entry ([ae03c78](https://github.com/WilliamChelman/sparqly/commit/ae03c782dd76677ef2839fa5111f5a33d89819f8))
+* **diff:** rdf-patch format surfaces sourceRecords as trailing # comment ([60d8664](https://github.com/WilliamChelman/sparqly/commit/60d86645c50390c83b3286d254e99f72486e13ad)), closes [#120](https://github.com/WilliamChelman/sparqly/issues/120)
+* **diff:** turtle format flat one-statement-per-line with above-comment ([91a6eea](https://github.com/WilliamChelman/sparqly/commit/91a6eea9bdedd454924b5a66df52241bc5f74e9e))
+
 ## [0.12.0](https://github.com/WilliamChelman/sparqly/compare/v0.11.0...v0.12.0) (2026-05-04)
 
 ### Features
