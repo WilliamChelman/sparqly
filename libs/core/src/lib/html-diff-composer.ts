@@ -91,6 +91,8 @@ export function composeHtmlDiff(
   );
 }
 
+const INLINE_RECORD_CAP = 10;
+
 function renderHunk(
   side: 'removed' | 'added',
   statement: string,
@@ -99,16 +101,28 @@ function renderHunk(
   snippets: HtmlDiffSnippets,
 ): string {
   const marker = side === 'removed' ? '-' : '+';
-  const records_html =
-    records.length === 0
+  const inline = records.slice(0, INLINE_RECORD_CAP);
+  const overflow = records.slice(INLINE_RECORD_CAP);
+  const inline_html =
+    inline.length === 0
       ? ''
       : '<ul class="records">\n' +
-        records.map((r) => renderRecord(r, cwd, snippets)).join('') +
+        inline.map((r) => renderRecord(r, cwd, snippets)).join('') +
         '</ul>\n';
+  const overflow_html =
+    overflow.length === 0
+      ? ''
+      : '<details class="records-overflow">\n' +
+        `<summary>Show ${overflow.length} more</summary>\n` +
+        '<ul class="records">\n' +
+        overflow.map((r) => renderRecord(r, cwd, snippets)).join('') +
+        '</ul>\n' +
+        '</details>\n';
   return (
     `<article class="hunk ${side}">\n` +
     `<pre class="statement">${escapeHtml(`${marker} ${statement}`)}</pre>\n` +
-    records_html +
+    inline_html +
+    overflow_html +
     '</article>\n'
   );
 }
