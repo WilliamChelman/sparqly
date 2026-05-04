@@ -1,13 +1,12 @@
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import { Logger } from '@nestjs/common';
-import { Parser, type Store } from 'n3';
+import { type Store } from 'n3';
 import { z } from 'zod';
 import {
   diffStores,
   extractAnnotationPredicates,
   formatHumanSourceComment,
-  formatRdf,
   formatRdfDiff,
   hasAnnotateTransform,
   parseSourceSpecs,
@@ -16,7 +15,6 @@ import {
   selectTarget,
   shortenNQuadLine,
   type AnnotationPredicateIris,
-  type FormatSerialization,
   type GraphMode,
   type ParsedSource,
   type RdfDiffResult,
@@ -335,7 +333,11 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     const cwd = process.cwd();
     const body =
       format === 'turtle'
-        ? renderTurtleBlocks(diff, resolvedPrefixes)
+        ? formatRdfDiff(diff, 'turtle', {
+            cwd,
+            prefixes: resolvedPrefixes,
+            sourceRecords: diff.sourceRecords,
+          })
         : format === 'human'
           ? renderHumanShortened(diff, resolvedPrefixes, diff.sourceRecords, cwd)
           : formatRdfDiff(diff, format, {
@@ -403,32 +405,6 @@ function renderHumanShortened(
     parts.push(`+ ${shortenNQuadLine(s, { prefixes })}${tail}\n`);
   }
   return parts.join('');
-}
-
-function renderTurtleBlocks(
-  diff: RdfDiffResult,
-  prefixes: Record<string, string>,
-): string {
-  return (
-    `# --- removed ---\n${formatBlock(diff.removed, prefixes)}` +
-    `# --- added ---\n${formatBlock(diff.added, prefixes)}`
-  );
-}
-
-function formatBlock(
-  statements: ReadonlyArray<string>,
-  prefixes: Record<string, string>,
-): string {
-  if (statements.length === 0) return '';
-  const parser = new Parser({ format: 'application/n-quads' });
-  const quads = parser.parse(statements.join('\n'));
-  const serialization: FormatSerialization = quads.some(
-    (q) => q.graph.termType === 'NamedNode',
-  )
-    ? 'trig'
-    : 'turtle';
-  const out = formatRdf(quads, serialization, { prefixes });
-  return out.endsWith('\n') ? out : `${out}\n`;
 }
 
 interface SideResolved {
