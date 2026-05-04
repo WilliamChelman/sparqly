@@ -37,6 +37,13 @@ export interface CanonicalizeStoreResult {
   canonicalText: string;
   /** Canonical N-Quads statements, one element per quad, no trailing newline. */
   canonicalStatements: string[];
+  /**
+   * Mapping from each input blank-node label (as it appeared in the asserted
+   * portion of the input store) to the canonical label issued by RDFC-1.0
+   * (e.g. `c14n0`). Populated for every blank node referenced by an asserted
+   * quad; empty when the input contained no blank nodes.
+   */
+  canonicalIdMap: Map<string, string>;
 }
 
 export interface CanonicalizeResult extends CanonicalizeStoreResult {
@@ -53,14 +60,19 @@ export async function canonicalizeStore(
   const predicates =
     options.annotationPredicates ?? DEFAULT_ANNOTATION_PREDICATE_IRIS;
   const stripped = stripAnnotations(store, predicates);
+  const canonicalIdMap = new Map<string, string>();
   const canonicalText = await canonize(
     stripped.getQuads(null, null, null, null),
-    { algorithm: 'RDFC-1.0', format: 'application/n-quads' },
+    {
+      algorithm: 'RDFC-1.0',
+      format: 'application/n-quads',
+      canonicalIdMap,
+    },
   );
   const canonicalStatements = canonicalText
     .split('\n')
     .filter((line: string) => line.length > 0);
-  return { canonicalText, canonicalStatements };
+  return { canonicalText, canonicalStatements, canonicalIdMap };
 }
 
 export async function canonicalizeRdf(
@@ -79,15 +91,16 @@ export async function canonicalizeRdf(
   const transformed = applyTransformPipeline(loaded.store, transforms, {
     perFileRecords: loaded.perFileRecords,
   });
-  const { canonicalText, canonicalStatements } = await canonicalizeStore(
-    transformed,
-    { annotationPredicates: extractAnnotationPredicates(transforms) },
-  );
+  const { canonicalText, canonicalStatements, canonicalIdMap } =
+    await canonicalizeStore(transformed, {
+      annotationPredicates: extractAnnotationPredicates(transforms),
+    });
   return {
     files: loaded.files,
     store: transformed,
     prefixes: loaded.prefixes,
     canonicalText,
     canonicalStatements,
+    canonicalIdMap,
   };
 }
