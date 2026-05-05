@@ -428,7 +428,7 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     }
     const snippetsByRecord =
       format === 'html'
-        ? await fetchSnippetsForDiff(diff.sourceRecords, context)
+        ? await fetchSnippetsForDiff(diff, diff.sourceRecords, context)
         : new Map<string, SnippetReadResult>();
     const body =
       format === 'html'
@@ -493,23 +493,45 @@ export const diffSpec: CommandSpec<DiffConfig> = {
   },
 };
 
+/**
+ * Compute the unique set of (file, line) snippet reads needed to render
+ * the html diff. Scoped to records bucketed under a canonical statement
+ * present in `diff.added` (right side) or `diff.removed` (left side) —
+ * iterating the full per-side records map would (with auto-injected
+ * `annotateSource`) walk every triple in both files, exploding into
+ * tens of thousands of redundant `createReadStream` calls on large
+ * inputs. Exported so the scope contract is unit-testable.
+ */
+export function collectSnippetKeysForDiff(
+  diff: { added: readonly string[]; removed: readonly string[] },
+  sourceRecords: {
+    left: Map<string, SourceRecord[]>;
+    right: Map<string, SourceRecord[]>;
+  },
+): Map<string, { file: string; line: number }> {
+  const seen = new Map<string, { file: string; line: number }>();
+  const collect = (records: readonly SourceRecord[] | undefined): void => {
+    if (records === undefined) return;
+    for (const r of records) {
+      if (r.line === undefined) continue;
+      const key = `${r.file}:${r.line}`;
+      if (!seen.has(key)) seen.set(key, { file: r.file, line: r.line });
+    }
+  };
+  for (const s of diff.removed) collect(sourceRecords.left.get(s));
+  for (const s of diff.added) collect(sourceRecords.right.get(s));
+  return seen;
+}
+
 async function fetchSnippetsForDiff(
+  diff: RdfDiffResult,
   sourceRecords: {
     left: Map<string, SourceRecord[]>;
     right: Map<string, SourceRecord[]>;
   },
   context: number,
 ): Promise<HtmlDiffSnippets> {
-  const seen = new Map<string, { file: string; line: number }>();
-  for (const side of [sourceRecords.left, sourceRecords.right]) {
-    for (const records of side.values()) {
-      for (const r of records) {
-        if (r.line === undefined) continue;
-        const key = `${r.file}:${r.line}`;
-        if (!seen.has(key)) seen.set(key, { file: r.file, line: r.line });
-      }
-    }
-  }
+  const seen = collectSnippetKeysForDiff(diff, sourceRecords);
   const entries = await Promise.all(
     [...seen.entries()].map(async ([key, { file, line }]) => {
       const abs = fileURLToPath(file);
