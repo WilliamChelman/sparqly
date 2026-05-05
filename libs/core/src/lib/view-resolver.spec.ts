@@ -82,7 +82,7 @@ describe('resolveView — glob upstream', () => {
     );
 
     const registry = parseSourceSpecs([
-      { id: 'raw', glob: a, transforms: [{ annotate: {} }] },
+      { id: 'raw', glob: a, transforms: [{ annotateSource: {} }] },
       {
         id: 'kept',
         from: '@raw',
@@ -117,7 +117,7 @@ describe('resolveView — glob upstream', () => {
     );
 
     const registry = parseSourceSpecs([
-      { id: 'raw', glob: a, transforms: [{ annotate: {} }] },
+      { id: 'raw', glob: a, transforms: [{ annotateSource: {} }] },
       {
         id: 'sources',
         from: '@raw',

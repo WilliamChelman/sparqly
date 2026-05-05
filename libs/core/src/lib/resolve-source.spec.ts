@@ -119,7 +119,7 @@ describe('resolveSource — glob target', () => {
   });
 });
 
-describe('resolveSource — annotate transform on glob target', () => {
+describe('resolveSource — annotateSource transform on glob target', () => {
   let dir: string;
 
   beforeEach(async () => {
@@ -153,7 +153,7 @@ describe('resolveSource — annotate transform on glob target', () => {
     );
     const target = parseSourceSpec({
       glob: join(dir, '*.ttl'),
-      transforms: [{ annotate: {} }],
+      transforms: [{ annotateSource: {} }],
     });
     const result = await resolveSource(target);
     if (result.mode !== 'materialized') throw new Error('unreachable');
@@ -182,7 +182,7 @@ describe('resolveSource — annotate transform on glob target', () => {
     );
     const target = parseSourceSpec({
       glob: join(dir, '*.jsonld'),
-      transforms: [{ annotate: {} }],
+      transforms: [{ annotateSource: {} }],
     });
     const result = await resolveSource(target);
     if (result.mode !== 'materialized') throw new Error('unreachable');
@@ -193,7 +193,7 @@ describe('resolveSource — annotate transform on glob target', () => {
     expect(fileQuads(result.store, 'urn:sparqly:line')).toHaveLength(0);
   });
 
-  it('emits no source records when annotate is not listed', async () => {
+  it('emits no source records when annotateSource is not listed', async () => {
     const file = join(dir, 'a.ttl');
     await writeFile(
       file,
@@ -217,7 +217,7 @@ describe('resolveSource — annotate transform on glob target', () => {
 
     const target = parseSourceSpec({
       glob: join(dir, '*.ttl'),
-      transforms: [{ graphName: 'preserve' }, { annotate: {} }],
+      transforms: [{ graphName: 'preserve' }, { annotateSource: {} }],
     });
     const result = await resolveSource(target);
     if (result.mode !== 'materialized') throw new Error('unreachable');
@@ -246,7 +246,7 @@ describe('resolveSource — annotate transform on glob target', () => {
       glob: join(dir, '*.ttl'),
       transforms: [
         {
-          annotate: {
+          annotateSource: {
             source: 'http://my/source',
             file: 'http://my/file',
             line: 'http://my/line',

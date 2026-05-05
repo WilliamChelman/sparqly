@@ -567,27 +567,27 @@ describe('parseSourceSpec — graphName transform on glob sources', () => {
   });
 });
 
-describe('parseSourceSpec — annotate transform on glob sources', () => {
-  it('accepts annotate with no fields (defaults)', () => {
+describe('parseSourceSpec — annotateSource transform on glob sources', () => {
+  it('accepts annotateSource with no fields (defaults)', () => {
     const parsed = parseSourceSpec({
       glob: 'data/*.ttl',
-      transforms: [{ annotate: {} }],
+      transforms: [{ annotateSource: {} }],
     });
     expect(parsed.kind).toBe('glob');
     if (parsed.kind === 'glob') {
-      expect(parsed.transforms?.[0].key).toBe('annotate');
+      expect(parsed.transforms?.[0].key).toBe('annotateSource');
     }
   });
 
-  it('accepts annotate: null as defaults', () => {
+  it('accepts annotateSource: null as defaults', () => {
     const parsed = parseSourceSpec({
       glob: 'data/*.ttl',
       // @ts-expect-error — null collapses to defaults
-      transforms: [{ annotate: null }],
+      transforms: [{ annotateSource: null }],
     });
     expect(parsed.kind).toBe('glob');
     if (parsed.kind === 'glob') {
-      expect(parsed.transforms?.[0].key).toBe('annotate');
+      expect(parsed.transforms?.[0].key).toBe('annotateSource');
     }
   });
 
@@ -605,20 +605,30 @@ describe('parseSourceSpec — annotate transform on glob sources', () => {
       expect(() =>
         parseSourceSpec({
           glob: 'data/*.ttl',
-          transforms: [{ annotate: overrides }],
+          transforms: [{ annotateSource: overrides }],
         }),
       ).not.toThrow();
     }
   });
 
-  it('rejects unknown fields under annotate', () => {
+  it('rejects unknown fields under annotateSource', () => {
     expect(() =>
       parseSourceSpec({
         glob: 'data/*.ttl',
         // @ts-expect-error — unknown field
-        transforms: [{ annotate: { bogus: 'x' } }],
+        transforms: [{ annotateSource: { bogus: 'x' } }],
       }),
-    ).toThrow(/annotate.*unknown key.*bogus/);
+    ).toThrow(/annotateSource.*unknown key.*bogus/);
+  });
+
+  it('rejects the legacy `annotate` key with a registry error that names `annotateSource`', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        // @ts-expect-error — legacy key removed in ADR-0008
+        transforms: [{ annotate: {} }],
+      }),
+    ).toThrow(/unknown transform key "annotate".*annotateSource/);
   });
 });
 

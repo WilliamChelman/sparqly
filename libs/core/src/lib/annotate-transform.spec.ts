@@ -1,7 +1,7 @@
 import { DataFactory, Store } from 'n3';
 import { describe, expect, it } from 'vitest';
 import {
-  ANNOTATE_TRANSFORM,
+  ANNOTATE_SOURCE_TRANSFORM,
   parseAnnotateTransform,
 } from './annotate-transform';
 import { DEFAULT_ANNOTATION_PREDICATE_IRIS } from './source-record-builder';
@@ -34,38 +34,40 @@ describe('parseAnnotateTransform — schema rejections', () => {
   it('rejects unknown fields with a stable named error', () => {
     expect(() =>
       parseAnnotateTransform({ bogus: 'x' } as unknown),
-    ).toThrow(/annotate.*unknown key.*bogus.*source.*file.*line/);
+    ).toThrow(/annotateSource.*unknown key.*bogus.*source.*file.*line/);
   });
 
   it('rejects non-object non-null values', () => {
     expect(() => parseAnnotateTransform(42 as unknown)).toThrow(
-      /annotate.*omitted.*null.*object/,
+      /annotateSource.*omitted.*null.*object/,
     );
     expect(() => parseAnnotateTransform([] as unknown)).toThrow(
-      /annotate.*omitted.*null.*object/,
+      /annotateSource.*omitted.*null.*object/,
     );
     expect(() => parseAnnotateTransform('forceAll' as unknown)).toThrow(
-      /annotate.*omitted.*null.*object/,
+      /annotateSource.*omitted.*null.*object/,
     );
   });
 
   it('rejects empty-string IRI override on any of source/file/line', () => {
     expect(() =>
       parseAnnotateTransform({ source: '' } as unknown),
-    ).toThrow(/annotate.*`source`.*non-empty IRI/);
+    ).toThrow(/annotateSource.*`source`.*non-empty IRI/);
     expect(() =>
       parseAnnotateTransform({ file: '' } as unknown),
-    ).toThrow(/annotate.*`file`.*non-empty IRI/);
+    ).toThrow(/annotateSource.*`file`.*non-empty IRI/);
     expect(() =>
       parseAnnotateTransform({ line: '' } as unknown),
-    ).toThrow(/annotate.*`line`.*non-empty IRI/);
+    ).toThrow(/annotateSource.*`line`.*non-empty IRI/);
   });
 });
 
 describe('annotate transform behaviour — apply', () => {
   it('throws when invoked without per-file context', () => {
     const apply = parseAnnotateTransform({});
-    expect(() => apply(new Store())).toThrow(/annotate.*per-file context/);
+    expect(() => apply(new Store())).toThrow(
+      /annotateSource.*per-file context/,
+    );
   });
 
   it('preserves all asserted quads from the input store and adds source records', () => {
@@ -133,9 +135,9 @@ describe('annotate transform behaviour — apply', () => {
   });
 });
 
-describe('ANNOTATE_TRANSFORM registry definition', () => {
-  it('uses the key "annotate"', () => {
-    expect(ANNOTATE_TRANSFORM.key).toBe('annotate');
+describe('ANNOTATE_SOURCE_TRANSFORM registry definition', () => {
+  it('uses the key "annotateSource"', () => {
+    expect(ANNOTATE_SOURCE_TRANSFORM.key).toBe('annotateSource');
   });
 
   it('defaults to the documented urn:sparqly:* predicates', () => {
