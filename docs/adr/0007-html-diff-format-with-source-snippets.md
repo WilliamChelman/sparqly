@@ -1,5 +1,7 @@
 # HTML diff format with source-file snippets
 
+> **Status:** amended by [ADR-0008](0008-diff-implicit-annotate-source.md) — `diff` now auto-injects `annotateSource` on bare glob targets, so the HTML format renders snippets without an explicit transform declaration.
+
 ## Context
 
 ADR-0006 introduced **Source records** (file, line) on glob-source triples via the `annotate` transform, but `diff` discards them — the CLI calls `canonicalizeStore` per side directly and never plumbs `diffStores`'s per-side `sourceRecords` map into output. The line numbers users paid for at load time are invisible in the diff. The motivating use case is "jump from a diff hunk to the source," which needs both the (file, line) reference and, ideally, enough context to compare against an open IDE without loading every file by hand.

@@ -19,7 +19,7 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     await rm(scratch, { recursive: true, force: true });
   });
 
-  it('appends a `# <relative-path>:<line>` trailing comment per +/- hunk when both sides declare `annotate`', async () => {
+  it('appends a `# <relative-path>:<line>` trailing comment per +/- hunk when both sides declare `annotateSource`', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
     await writeFile(
@@ -45,11 +45,11 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
         left:
           glob: "${leftPath}"
           transforms:
-            - annotate: {}
+            - annotateSource: {}
         right:
           glob: "${rightPath}"
           transforms:
-            - annotate: {}
+            - annotateSource: {}
       ` + '\n',
     );
 
@@ -66,7 +66,7 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     ]);
   });
 
-  it('does not emit any trailing `#` comment when neither side declares `annotate` (regression guard)', async () => {
+  it('does not emit any trailing `#` comment when --skip-auto-source-annotation is passed against inline globs (regression guard)', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
     await writeFile(
@@ -87,7 +87,7 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     );
 
     const result = await runCli(
-      ['diff', '--quiet', leftPath, rightPath],
+      ['diff', '--quiet', '--skip-auto-source-annotation', leftPath, rightPath],
       { cwd: scratch },
     );
 
@@ -99,7 +99,7 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     }
   });
 
-  it('appends a `sourceRecords` field per added/removed entry on `--format=json` when both sides declare `annotate`', async () => {
+  it('appends a `sourceRecords` field per added/removed entry on `--format=json` when both sides declare `annotateSource`', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
     await writeFile(
@@ -125,11 +125,11 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
         left:
           glob: "${leftPath}"
           transforms:
-            - annotate: {}
+            - annotateSource: {}
         right:
           glob: "${rightPath}"
           transforms:
-            - annotate: {}
+            - annotateSource: {}
       ` + '\n',
     );
 
@@ -150,7 +150,7 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     ]);
   });
 
-  it('omits `sourceRecords` from every json entry when neither side declares `annotate` (regression guard)', async () => {
+  it('omits `sourceRecords` from every json entry when --skip-auto-source-annotation is passed against inline globs (regression guard)', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
     await writeFile(
@@ -171,7 +171,14 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     );
 
     const result = await runCli(
-      ['diff', '--quiet', '--format=json', leftPath, rightPath],
+      [
+        'diff',
+        '--quiet',
+        '--format=json',
+        '--skip-auto-source-annotation',
+        leftPath,
+        rightPath,
+      ],
       { cwd: scratch },
     );
 
@@ -184,7 +191,7 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     }
   });
 
-  it('appends a `# <relative-path>:<line>` trailing comment per D/A line on `--format=rdf-patch` when both sides declare `annotate`', async () => {
+  it('appends a `# <relative-path>:<line>` trailing comment per D/A line on `--format=rdf-patch` when both sides declare `annotateSource`', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
     await writeFile(
@@ -210,11 +217,11 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
         left:
           glob: "${leftPath}"
           transforms:
-            - annotate: {}
+            - annotateSource: {}
         right:
           glob: "${rightPath}"
           transforms:
-            - annotate: {}
+            - annotateSource: {}
       ` + '\n',
     );
 
@@ -231,7 +238,7 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     ]);
   });
 
-  it('does not emit any trailing `#` comment on `--format=rdf-patch` when neither side declares `annotate` (regression guard)', async () => {
+  it('does not emit any trailing `#` comment on `--format=rdf-patch` when --skip-auto-source-annotation is passed against inline globs (regression guard)', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
     await writeFile(
@@ -252,7 +259,14 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     );
 
     const result = await runCli(
-      ['diff', '--quiet', '--format=rdf-patch', leftPath, rightPath],
+      [
+        'diff',
+        '--quiet',
+        '--format=rdf-patch',
+        '--skip-auto-source-annotation',
+        leftPath,
+        rightPath,
+      ],
       { cwd: scratch },
     );
 
@@ -267,7 +281,7 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     }
   });
 
-  it('writes a stderr summary line when exactly one side declares `annotate`, suppressed by --quiet', async () => {
+  it('writes a stderr summary line when exactly one side declares `annotateSource` (with --skip-auto-source-annotation suppressing the implicit injection on the other side), suppressed by --quiet', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
     await writeFile(
@@ -293,23 +307,31 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
         left:
           glob: "${leftPath}"
           transforms:
-            - annotate: {}
+            - annotateSource: {}
         right: "${rightPath}"
       ` + '\n',
     );
 
-    const noisy = await runCli(['diff', '--config', configPath], {
-      cwd: scratch,
-    });
+    const noisy = await runCli(
+      ['diff', '--skip-auto-source-annotation', '--config', configPath],
+      { cwd: scratch },
+    );
 
     expect(noisy.exitCode).toBe(1);
     expect(noisy.stderr).toContain('source records present on left only');
     expect(noisy.stderr).toContain('right side hunks will not be annotated');
     expect(noisy.stderr).toContain('# +1 -1\n');
 
-    const quiet = await runCli(['diff', '--quiet', '--config', configPath], {
-      cwd: scratch,
-    });
+    const quiet = await runCli(
+      [
+        'diff',
+        '--quiet',
+        '--skip-auto-source-annotation',
+        '--config',
+        configPath,
+      ],
+      { cwd: scratch },
+    );
 
     expect(quiet.exitCode).toBe(1);
     expect(quiet.stderr).toBe('');

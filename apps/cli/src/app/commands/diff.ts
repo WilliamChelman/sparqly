@@ -5,6 +5,7 @@ import { Logger } from '@nestjs/common';
 import { type Store } from 'n3';
 import { z } from 'zod';
 import {
+  ANNOTATE_SOURCE_TRANSFORM,
   composeHtmlDiff,
   diffStores,
   extractAnnotationPredicates,
@@ -21,6 +22,7 @@ import {
   type GraphMode,
   type HtmlDiffSnippets,
   type ParsedSource,
+  type ParsedTransform,
   type RdfDiffResult,
   type SnippetReadResult,
   type SourceRecord,
@@ -60,6 +62,7 @@ interface DiffConfig {
   leftQueryFile?: string;
   rightQuery?: string;
   rightQueryFile?: string;
+  skipAutoSourceAnnotation?: boolean;
   verbose?: boolean;
   quiet?: boolean;
 }
@@ -191,7 +194,24 @@ const formatField: FieldDescriptor = {
   flags: [
     {
       spec: '-f, --format <format>',
-      description: `Output format: ${DIFF_FORMATS.map((f) => `'${f}'`).join(', ')}.`,
+      description: `Output format: ${DIFF_FORMATS.map((f) => `'${f}'`).join(', ')}. Format \`html\` benefits from source records, which \`diff\` auto-attaches to glob targets unless \`--skip-auto-source-annotation\` is passed.`,
+    },
+  ],
+};
+
+const skipAutoSourceAnnotationField: FieldDescriptor = {
+  key: 'skipAutoSourceAnnotation',
+  schema: z.preprocess(
+    (v) => (typeof v === 'string' ? v === 'true' : v),
+    z.boolean(),
+  ),
+  default: false,
+  env: ['SPARQLY_DIFF_SKIP_AUTO_SOURCE_ANNOTATION'],
+  flags: [
+    {
+      spec: '--skip-auto-source-annotation',
+      description:
+        "Suppress `diff`'s implicit `annotateSource` injection on glob targets. Has no effect on view/endpoint targets (which can't carry source records anyway). An explicit `annotateSource` declared in config still runs.",
     },
   ],
 };
@@ -214,6 +234,30 @@ const contextField: FieldDescriptor = {
   ],
 };
 
+/**
+ * Implement the ADR-0008 carve-out: `diff` prepends `annotateSource` to a
+ * glob target's transform pipeline so HTML/turtle/json output gets line
+ * numbers without ceremony. Skipped if the user passed
+ * `--skip-auto-source-annotation`, if the target isn't a glob (views and
+ * endpoints can't carry source records anyway), or if an explicit
+ * `annotateSource` is already declared (explicit predicates win).
+ */
+export function withAutoSourceAnnotation(
+  target: ParsedSource,
+  opts: { skipAuto: boolean },
+): ParsedSource {
+  if (opts.skipAuto) return target;
+  if (target.kind !== 'glob') return target;
+  const declared = target.transforms ?? [];
+  if (declared.some((t) => t.key === 'annotateSource')) return target;
+  const parsed = ANNOTATE_SOURCE_TRANSFORM.parse({});
+  const implicit: ParsedTransform =
+    typeof parsed === 'function'
+      ? { key: 'annotateSource', apply: parsed }
+      : { key: 'annotateSource', apply: parsed.apply, config: parsed.config };
+  return { ...target, transforms: [implicit, ...declared] };
+}
+
 export function resolveDiffSide(
   config: DiffConfig,
   side: 'left' | 'right',
@@ -230,7 +274,7 @@ export function resolveDiffSide(
 export const diffSpec: CommandSpec<DiffConfig> = {
   name: 'diff',
   description:
-    'Compute a semantic diff between two target sources via RDFC-1.0 canonicalization. Each side accepts an `@id` ref into the config registry or an inline glob/URL. Materializes the *result* on both sides; for endpoint-backed views the query passes through to the endpoint. A SPARQL endpoint target is rejected as a raw input on either side (wrap it in a `view` source kind to scope it, or pass `--query`/`--query-file`/`--left-query`/`--right-query`). Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL diff is only as deterministic as the endpoint. Note: RDFC-1.0 does not normalize literal lexical forms.',
+    'Compute a semantic diff between two target sources via RDFC-1.0 canonicalization. Each side accepts an `@id` ref into the config registry or an inline glob/URL. Materializes the *result* on both sides; for endpoint-backed views the query passes through to the endpoint. Glob targets are auto-annotated with source records by default, so HTML and other formats surface line numbers without ceremony — opt out via `--skip-auto-source-annotation`. A SPARQL endpoint target is rejected as a raw input on either side (wrap it in a `view` source kind to scope it, or pass `--query`/`--query-file`/`--left-query`/`--right-query`). Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL diff is only as deterministic as the endpoint. Note: RDFC-1.0 does not normalize literal lexical forms.',
   fields: [
     leftField,
     rightField,
@@ -244,6 +288,7 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     rightQueryFileField,
     formatField,
     contextField,
+    skipAutoSourceAnnotationField,
     prefixesField,
     baseField,
     outFieldFor('diff'),
@@ -429,7 +474,7 @@ export const diffSpec: CommandSpec<DiffConfig> = {
         diff.sourceRecords.right.size === 0
       ) {
         process.stderr.write(
-          'note: no source records present; HTML output will contain no line numbers (declare `annotate` on a glob source to populate them)\n',
+          'note: no source records present; HTML output will contain no line numbers (auto source annotation only applies to glob targets — wrap views/endpoints in a glob, or remove --skip-auto-source-annotation)\n',
         );
       }
       if (leftResolved.annotated !== rightResolved.annotated) {
@@ -535,12 +580,15 @@ function anonymousUpstream(
 }
 
 async function resolveSide(
-  target: ParsedSource,
+  rawTarget: ParsedSource,
   config: DiffConfig,
   graphMode: GraphMode | undefined,
   inlineQuery: string | undefined,
   side: 'left' | 'right',
 ): Promise<SideResolved> {
+  const target = withAutoSourceAnnotation(rawTarget, {
+    skipAuto: config.skipAutoSourceAnnotation === true,
+  });
   if (inlineQuery !== undefined) {
     const upstream = anonymousUpstream(target, side);
     const store = await resolveAnonymousView({

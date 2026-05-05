@@ -63,7 +63,7 @@ describe('sparqly diff -f html', () => {
     await rm(scratch, { recursive: true, force: true });
   });
 
-  it('produces a self-contained HTML document with per-record file links when both sides declare `annotate` (happy path)', async () => {
+  it('produces a self-contained HTML document with per-record file links when both sides declare `annotateSource` (happy path)', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
     await writeFile(
@@ -89,11 +89,11 @@ describe('sparqly diff -f html', () => {
         left:
           glob: "${leftPath}"
           transforms:
-            - annotate: {}
+            - annotateSource: {}
         right:
           glob: "${rightPath}"
           transforms:
-            - annotate: {}
+            - annotateSource: {}
       ` + '\n',
     );
 
@@ -119,7 +119,7 @@ describe('sparqly diff -f html', () => {
     expect(result.stdout).toContain('id="right.ttl-L3"');
   });
 
-  it('emits a stderr warning when neither side declares `annotate`, suppressed by --quiet, and still exits with the diff code', async () => {
+  it('emits a stderr warning when --skip-auto-source-annotation suppresses both sides, suppressed by --quiet, and still exits with the diff code', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
     await writeFile(
@@ -138,7 +138,7 @@ describe('sparqly diff -f html', () => {
     );
 
     const noisy = await runCli(
-      ['diff', '-f', 'html', leftPath, rightPath],
+      ['diff', '-f', 'html', '--skip-auto-source-annotation', leftPath, rightPath],
       { cwd: scratch },
     );
 
@@ -147,7 +147,15 @@ describe('sparqly diff -f html', () => {
     expect(noisy.stdout.startsWith('<!doctype html>')).toBe(true);
 
     const quiet = await runCli(
-      ['diff', '--quiet', '-f', 'html', leftPath, rightPath],
+      [
+        'diff',
+        '--quiet',
+        '-f',
+        'html',
+        '--skip-auto-source-annotation',
+        leftPath,
+        rightPath,
+      ],
       { cwd: scratch },
     );
 
@@ -202,11 +210,11 @@ describe('sparqly diff -f html', () => {
         left:
           glob: "${leftPath}"
           transforms:
-            - annotate: {}
+            - annotateSource: {}
         right:
           glob: "${rightPath}"
           transforms:
-            - annotate: {}
+            - annotateSource: {}
       ` + '\n',
     );
 
@@ -265,11 +273,11 @@ describe('sparqly diff -f html', () => {
         left:
           glob: "${leftPath}"
           transforms:
-            - annotate: {}
+            - annotateSource: {}
         right:
           glob: "${rightPath}"
           transforms:
-            - annotate: {}
+            - annotateSource: {}
       ` + '\n',
     );
 
