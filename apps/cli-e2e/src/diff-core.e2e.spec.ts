@@ -37,7 +37,13 @@ describe('sparqly diff — core properties', () => {
     const left = diffFixture('domain.ttl');
     const right = diffFixture('added.ttl');
 
-    const result = await runCli(['diff', '--quiet', left, right]);
+    const result = await runCli([
+      'diff',
+      '--quiet',
+      '--skip-auto-source-annotation',
+      left,
+      right,
+    ]);
 
     expect(result.exitCode).toBe(1);
     const lines = nonEmptyLines(result.stdout);
@@ -49,7 +55,13 @@ describe('sparqly diff — core properties', () => {
     const left = diffFixture('domain.ttl');
     const right = diffFixture('removed.ttl');
 
-    const result = await runCli(['diff', '--quiet', left, right]);
+    const result = await runCli([
+      'diff',
+      '--quiet',
+      '--skip-auto-source-annotation',
+      left,
+      right,
+    ]);
 
     expect(result.exitCode).toBe(1);
     const lines = nonEmptyLines(result.stdout);
@@ -84,6 +96,7 @@ describe('sparqly diff — core properties', () => {
       'diff',
       '--quiet',
       '--graph-mode=flatten',
+      '--skip-auto-source-annotation',
       diffFixture('quad/g1.trig'),
       diffFixture('quad/g2.trig'),
     ]);

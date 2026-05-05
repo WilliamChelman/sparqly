@@ -1,5 +1,7 @@
 # Glob source transforms and RDF-star source annotations
 
+> **Status:** amended by [ADR-0008](0008-diff-implicit-annotate-source.md) — the transform key was renamed `annotate` → `annotateSource`, and `diff` now auto-injects `annotateSource` on bare glob targets by default.
+
 ## Context
 
 Diff over glob sources surfaces "added/removed" canonical N-Quads but no pointer back to the file (and eventually line) the triple was authored in, so users can't jump from a diff hunk to the source. We also want the same source-tracking metadata to be queryable via `sparqly query` / `sparqly serve` so humans and AI agents can SPARQL over "which file said this".

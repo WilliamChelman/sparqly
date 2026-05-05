@@ -28,3 +28,11 @@
 - serve
   - trigger data dump (ui and/or ipc)
   - download full query result
+- diff
+  - prefixes
+  - rdf:list compression
+- add transform to views (or add a new type 'pipe'?) to be explicit about materialization?
+- 'did you mean...' on config errors (typos and such)
+- config rationale: source on one part, cmd specific on the other + extend?
+- re-evaluate exit codes
+- more comprehensive e2e tests with era files

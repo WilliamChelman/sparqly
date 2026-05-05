@@ -85,7 +85,13 @@ describe('sparqly diff --format=turtle', () => {
       ` + '\n',
     );
 
-    const result = await runCli(['diff', '--quiet', left, right]);
+    const result = await runCli([
+      'diff',
+      '--quiet',
+      '--skip-auto-source-annotation',
+      left,
+      right,
+    ]);
 
     expect(result.exitCode).toBe(1);
     const lines = result.stdout.split('\n').filter((l) => l.length > 0);
@@ -169,6 +175,7 @@ describe('sparqly diff --format=turtle', () => {
       [
         'diff',
         '--quiet',
+        '--skip-auto-source-annotation',
         '--config',
         join(dir, 'sparqly.diff.yaml'),
         left,
@@ -258,6 +265,7 @@ describe('sparqly diff --format=turtle', () => {
       [
         'diff',
         '--quiet',
+        '--skip-auto-source-annotation',
         '--format=rdf-patch',
         '--config',
         join(dir, 'sparqly.diff.yaml'),
@@ -274,8 +282,8 @@ describe('sparqly diff --format=turtle', () => {
     ]);
   });
 
-  it('emits one statement per line with `# from <relative-path>:<line>` directly above each, when both sides declare `annotate`', async () => {
-    // The annotate transform records absolute file:// IRIs derived from
+  it('emits one statement per line with `# from <relative-path>:<line>` directly above each, when both sides declare `annotateSource`', async () => {
+    // The annotateSource transform records absolute file:// IRIs derived from
     // realpath; the diff renderer renders them relative to the CLI cwd.
     // Resolve the tmp dir's symlinks here so the relative path is stable.
     const resolvedDir = await realpath(dir);
@@ -303,11 +311,11 @@ describe('sparqly diff --format=turtle', () => {
       `left:\n` +
         `  glob: "${left}"\n` +
         `  transforms:\n` +
-        `    - annotate: {}\n` +
+        `    - annotateSource: {}\n` +
         `right:\n` +
         `  glob: "${right}"\n` +
         `  transforms:\n` +
-        `    - annotate: {}\n`,
+        `    - annotateSource: {}\n`,
     );
 
     const result = await runCli(
@@ -326,7 +334,7 @@ describe('sparqly diff --format=turtle', () => {
     expect(lines[addedStmtIdx - 1]).toBe('# from right.ttl:3');
   });
 
-  it('emits flat statements (no `;` grouping) without any `# from` comments when neither side declares `annotate`', async () => {
+  it('emits flat statements (no `;` grouping) without any `# from` comments when --skip-auto-source-annotation is passed against inline globs', async () => {
     const left = join(dir, 'left.ttl');
     const right = join(dir, 'right.ttl');
     await writeFile(
@@ -348,7 +356,14 @@ describe('sparqly diff --format=turtle', () => {
     );
 
     const result = await runCli(
-      ['diff', '--quiet', '--format=turtle', left, right],
+      [
+        'diff',
+        '--quiet',
+        '--format=turtle',
+        '--skip-auto-source-annotation',
+        left,
+        right,
+      ],
     );
 
     expect(result.exitCode).toBe(1);

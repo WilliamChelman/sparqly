@@ -60,8 +60,12 @@ _Avoid_: "post-processors", "loader plugins"
 **Graph-name transformation** (`graphName`):
 A transform whose value is one of `preserve`, `fillDefault`, `forceAll`, `flatten` — the canonical home of the rules formerly expressed by the now-removed `graphMode` field on a glob source.
 
-**Annotate transformation** (`annotate`):
-A transform that emits a **Source record** as an RDF-star annotation on each asserted triple loaded from disk, recording where that triple was authored. Listing it on a glob source makes annotations always-on for that source's downstream consumers.
+**Annotate-source transformation** (`annotateSource`):
+A transform that emits a **Source record** as an RDF-star annotation on each asserted triple loaded from disk, recording where that triple was authored. Listing it on a glob source makes annotations always-on for that source's downstream consumers. Renamed from `annotate` (pre-1.0 break).
+
+**Auto source annotation**:
+The `diff` command's implicit injection of an `annotateSource` step at the head of every glob target's transform pipeline at load time. Applies to both inline globs (`--left=path.ttl`) and declared globs in the registry. Suppressed by `--skip-auto-source-annotation`. An explicit `annotateSource` declaration in config wins over the implicit injection (no double-apply); the explicit declaration's predicates are preserved. Scoped to `diff` only — `query`, `serve`, `format`, and `hash` keep `annotateSource` as opt-in only, because surfacing source records is a `diff`-output concern (see ADR-0007) and other commands either can't use them (`hash` strips), would inflate result stores (`query`/`serve`), or would corrupt round-trip semantics (`format`).
+_Avoid_: "annotate-by-default" (ambiguous about scope), "implicit annotate" (doesn't say what's implicit)
 
 **Source record**:
 A blank-node record reached via `sparqly:source` from an RDF-star quoted triple, with `sparqly:file` (the absolute `file://` IRI of the source file) and optionally `sparqly:line` (1-based line of the predicate-object pair, omitted when the parser cannot supply it). One record per (file, line) instance of a triple; a triple loaded from two files produces two records under the same quoted-triple subject. Each of the three predicate IRIs is independently configurable on the **Annotate transformation** (`source` / `file` / `line` keys), defaulting respectively to `urn:sparqly:source`, `urn:sparqly:file`, `urn:sparqly:line`. The `diff` command surfaces source records in every output format — inline trailing comments in `human` and `rdf-patch`, statement-level comments above each flat statement in `turtle`, a `sourceRecords` field on each entry in `json`, and as a **Source-file snippet** in `html`.
@@ -81,7 +85,8 @@ _Avoid_: "context window" (overloaded with LLM/parsing terminology), "hunk previ
 - The **`serve` command** picks one **target source** from the **source registry** and exposes it as a SPARQL endpoint, using the same resolution rules as `query`.
 - **`hash`** and **`diff`** also pick one **target source** and always **canonicalize** the resolved Store; they refuse a raw endpoint as target — endpoints must be wrapped in a view (declared or anonymous) so a scoping query exists.
 - A **Glob source** may declare a **Source transformation pipeline**; transforms run in array order at load time before the Store is exposed to resolution.
-- The **Annotate transformation** populates **Source records** on the glob's own asserted triples; annotations do not propagate through a downstream **View** unless that view's query explicitly references them, and they are stripped by **Canonicalization**.
+- The **Annotate-source transformation** populates **Source records** on the glob's own asserted triples; annotations do not propagate through a downstream **View** unless that view's query explicitly references them, and they are stripped by **Canonicalization**.
+- `diff` injects **Auto source annotation** by default for any glob target it loads (inline or declared), unless `--skip-auto-source-annotation` is passed; an explicit `annotateSource` declaration in config takes precedence, preserving custom predicate IRIs.
 - `diff` extracts **Source records** per side after **Canonicalization** and surfaces them across every output format; the `html` format additionally renders a **Source-file snippet** per record, reading the source file from disk at render time.
 
 ## Example dialogue
@@ -96,3 +101,4 @@ _Avoid_: "context window" (overloaded with LLM/parsing terminology), "hunk previ
 - **"Materialize"** had been used in command help text to mean both "load upstream into a Store" and "produce the final result"; resolved — **materialized** refers only to the upstream-loading resolution path. A view's output is "produced" or "computed", never "materialized".
 - **"Cache the upstream"** confused users who expected the cache to grow with endpoint size; resolved — the **result cache** stores the view's *output*, bounded by the view query.
 - **"Pushdown"** appeared informally as a synonym for what the codebase calls **pass-through**; resolved — the canonical term is **pass-through**, matching `QuerySources.mode` in `loadQuerySources`.
+- **"`annotate` transform"** (legacy name from ADR-0006) was renamed to **`annotateSource`** to disambiguate from a hypothetical future "annotate by inference" or "annotate by SHACL"; resolved — only `annotateSource` parses (pre-1.0 hard rename).
