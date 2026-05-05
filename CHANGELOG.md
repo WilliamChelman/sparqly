@@ -1,3 +1,20 @@
+## [0.14.0](https://github.com/WilliamChelman/sparqly/compare/v0.13.0...v0.14.0) (2026-05-05)
+
+### ⚠ BREAKING CHANGES
+
+* **core:** source-spec transform key `annotate` is now
+`annotateSource`. Migrate config: `transforms: [{ annotate: {} }]` →
+`transforms: [{ annotateSource: {} }]`.
+
+### Features
+
+* **core:** rename `annotate` transform key to `annotateSource` ([6e07db3](https://github.com/WilliamChelman/sparqly/commit/6e07db3954ac34aab9c4f55d186567fddb49bef1))
+* **diff:** auto-inject `annotateSource` on glob targets (ADR-0008) ([9469bbc](https://github.com/WilliamChelman/sparqly/commit/9469bbc08b23ef293b646d49462432c771f956b7))
+
+### Bug Fixes
+
+* **diff:** scope html snippet fetching to changed hunks ([326771c](https://github.com/WilliamChelman/sparqly/commit/326771c9bb40f0c828d88e5060d58aa0e21b8a3f))
+
 ## [0.13.0](https://github.com/WilliamChelman/sparqly/compare/v0.12.0...v0.13.0) (2026-05-04)
 
 ### Features
