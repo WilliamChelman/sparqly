@@ -12,7 +12,7 @@ import type {
   TransformDefinition,
 } from './transform-spec';
 
-const KEY = 'annotate';
+const KEY = 'annotateSource';
 const KNOWN_KEYS = new Set(['source', 'file', 'line']);
 
 export function parseAnnotateTransform(raw: unknown): TransformApply {
@@ -28,16 +28,17 @@ function parseAnnotateForRegistry(raw: unknown): ParsedTransformResult {
   };
 }
 
-export const ANNOTATE_TRANSFORM: TransformDefinition = {
+export const ANNOTATE_SOURCE_TRANSFORM: TransformDefinition = {
   key: KEY,
   parse: parseAnnotateForRegistry,
 };
 
 /**
  * Pull the configured annotation predicate IRIs out of a parsed transforms
- * list — returns the override when the source declared `annotate` (with or
- * without overrides), or the defaults otherwise. Used by the canonicalize /
- * hash / diff layer to thread the right predicates into the stripper.
+ * list — returns the override when the source declared `annotateSource`
+ * (with or without overrides), or the defaults otherwise. Used by the
+ * canonicalize / hash / diff layer to thread the right predicates into the
+ * stripper. The matched key is `annotateSource`.
  */
 export function extractAnnotationPredicates(
   transforms: ReadonlyArray<ParsedTransform> | undefined,
@@ -50,11 +51,11 @@ export function extractAnnotationPredicates(
 }
 
 /**
- * True when the parsed transforms list declares an `annotate` transform
- * (with or without overrides). Used by `diff` to decide whether a side is
- * "annotated" for the purpose of the mixed-sides stderr summary line —
- * intent-based, not record-presence-based, so an empty annotated source
- * still counts as annotated.
+ * True when the parsed transforms list declares an `annotateSource`
+ * transform (with or without overrides). Used by `diff` to decide whether a
+ * side is "annotated" for the purpose of the mixed-sides stderr summary
+ * line — intent-based, not record-presence-based, so an empty annotated
+ * source still counts as annotated. The matched key is `annotateSource`.
  */
 export function hasAnnotateTransform(
   transforms: ReadonlyArray<ParsedTransform> | undefined,

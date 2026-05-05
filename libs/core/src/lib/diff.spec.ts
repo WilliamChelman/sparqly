@@ -298,11 +298,11 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
 
       const left = await resolveAnnotated({
         glob: leftFile,
-        transforms: [{ annotate: {} }],
+        transforms: [{ annotateSource: {} }],
       });
       const right = await resolveAnnotated({
         glob: rightFile,
-        transforms: [{ annotate: {} }],
+        transforms: [{ annotateSource: {} }],
       });
 
       const result = await diffStores(left, right);
@@ -350,7 +350,7 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
       // different triple) so the shared triple shows up under `removed`.
       const left = await resolveAnnotated({
         glob: join(dir, '*.ttl'),
-        transforms: [{ annotate: {} }],
+        transforms: [{ annotateSource: {} }],
       });
       const otherFile = join(dir, 'other.nt');
       await writeFile(
@@ -359,7 +359,7 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
       );
       const right = await resolveAnnotated({
         glob: otherFile,
-        transforms: [{ annotate: {} }],
+        transforms: [{ annotateSource: {} }],
       });
 
       const result = await diffStores(left, right);
@@ -403,11 +403,11 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
 
       const left = await resolveAnnotated({
         glob: leftFile,
-        transforms: [{ annotate: {} }],
+        transforms: [{ annotateSource: {} }],
       });
       const right = await resolveAnnotated({
         glob: rightFile,
-        transforms: [{ annotate: {} }],
+        transforms: [{ annotateSource: {} }],
       });
 
       const result = await diffStores(left, right);
@@ -427,7 +427,7 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
     }
   });
 
-  it('diffStores returns empty source-record maps when neither side declared annotate', async () => {
+  it('diffStores returns empty source-record maps when neither side declared annotateSource', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sparqly-diff-noannot-'));
     try {
       const leftFile = join(dir, 'left.ttl');

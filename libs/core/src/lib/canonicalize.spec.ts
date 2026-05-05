@@ -170,7 +170,7 @@ describe('canonicalizeRdf', () => {
     expect(fromTrig.canonicalText).toBe(fromTtl.canonicalText);
   });
 
-  it('annotated glob source produces the same canonical text as the same source without `annotate`', async () => {
+  it('annotated glob source produces the same canonical text as the same source without `annotateSource`', async () => {
     const file = join(dir, 'data.ttl');
     await writeFile(
       file,
@@ -184,7 +184,7 @@ describe('canonicalizeRdf', () => {
     const plainSpec = parseSourceSpec({ glob: file });
     const annotatedSpec = parseSourceSpec({
       glob: file,
-      transforms: [{ annotate: {} }],
+      transforms: [{ annotateSource: {} }],
     });
 
     const plain = await resolveSource(plainSpec);
@@ -200,7 +200,7 @@ describe('canonicalizeRdf', () => {
     expect(annotatedCanon.canonicalText).toBe(plainCanon.canonicalText);
   });
 
-  it('hash is identical with and without `annotate` listed (uses sha256 over canonical text)', async () => {
+  it('hash is identical with and without `annotateSource` listed (uses sha256 over canonical text)', async () => {
     const file = join(dir, 'data.ttl');
     await writeFile(
       file,
@@ -211,11 +211,11 @@ describe('canonicalizeRdf', () => {
       ` + '\n',
     );
     const plain = await hashOf(file);
-    const annotated = await hashOf(file, [{ annotate: {} }]);
+    const annotated = await hashOf(file, [{ annotateSource: {} }]);
     expect(annotated).toBe(plain);
   });
 
-  it('hash is identical across whitespace, ordering, and line-wrapping reformats of the underlying Turtle (annotate listed)', async () => {
+  it('hash is identical across whitespace, ordering, and line-wrapping reformats of the underlying Turtle (annotateSource listed)', async () => {
     const baseline = join(dir, 'baseline.ttl');
     await writeFile(
       baseline,
@@ -243,8 +243,8 @@ describe('canonicalizeRdf', () => {
       ` + '\n',
     );
 
-    const baselineHash = await hashOf(baseline, [{ annotate: {} }]);
-    const reformattedHash = await hashOf(reformatted, [{ annotate: {} }]);
+    const baselineHash = await hashOf(baseline, [{ annotateSource: {} }]);
+    const reformattedHash = await hashOf(reformatted, [{ annotateSource: {} }]);
     expect(reformattedHash).toBe(baselineHash);
   });
 
@@ -260,7 +260,7 @@ describe('canonicalizeRdf', () => {
     const baseline = await hashOf(file);
     const customAnnotated = await hashOf(file, [
       {
-        annotate: {
+        annotateSource: {
           source: 'http://example.org/src',
           file: 'http://example.org/file',
           line: 'http://example.org/line',
@@ -270,7 +270,7 @@ describe('canonicalizeRdf', () => {
     expect(customAnnotated).toBe(baseline);
   });
 
-  it('honours custom annotate predicate IRIs threaded from the source-spec', async () => {
+  it('honours custom annotateSource predicate IRIs threaded from the source-spec', async () => {
     const file = join(dir, 'data.ttl');
     await writeFile(
       file,
@@ -287,7 +287,7 @@ describe('canonicalizeRdf', () => {
     };
     const annotatedSpec = parseSourceSpec({
       glob: file,
-      transforms: [{ annotate: customPredicates }],
+      transforms: [{ annotateSource: customPredicates }],
     });
 
     const plain = await resolveSource(plainSpec);
