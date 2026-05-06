@@ -1,3 +1,19 @@
+## [0.16.0](https://github.com/WilliamChelman/sparqly/compare/v0.15.0...v0.16.0) (2026-05-06)
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** drop ~29 dead env-var mirrors per ADR-0010 (#137)
+* **cli:** remove --graph-mode flag and SPARQLY_GRAPH_MODE env (#135)
+* **config:** whole-project schema with command-scoped blocks (ADR-0010, #134)
+
+### Features
+
+* **cli:** drop ~29 dead env-var mirrors per ADR-0010 ([#137](https://github.com/WilliamChelman/sparqly/issues/137)) ([d6c62d5](https://github.com/WilliamChelman/sparqly/commit/d6c62d534c67ae862b2d48b127916c28fd3c6d7b))
+* **cli:** remove --graph-mode flag and SPARQLY_GRAPH_MODE env ([#135](https://github.com/WilliamChelman/sparqly/issues/135)) ([30a9d53](https://github.com/WilliamChelman/sparqly/commit/30a9d53ab04ff2489dd188bb63630f1e4a3ce6c0))
+* **config:** auto-discover sparqly.config via walk-up from CWD ([#136](https://github.com/WilliamChelman/sparqly/issues/136)) ([d0c60a8](https://github.com/WilliamChelman/sparqly/commit/d0c60a898cf542e8a4386f44ae3c88581ee48050))
+* **config:** eager path normalization for config-file paths ([#138](https://github.com/WilliamChelman/sparqly/issues/138)) ([de6d486](https://github.com/WilliamChelman/sparqly/commit/de6d486fc7a692957204aaffccced02e01498bf4))
+* **config:** whole-project schema with command-scoped blocks (ADR-0010, [#134](https://github.com/WilliamChelman/sparqly/issues/134)) ([80ae884](https://github.com/WilliamChelman/sparqly/commit/80ae8846ae19e0f814ae72b733914728f5fd95ef))
+
 ## [0.15.0](https://github.com/WilliamChelman/sparqly/compare/v0.14.0...v0.15.0) (2026-05-06)
 
 ### Features
