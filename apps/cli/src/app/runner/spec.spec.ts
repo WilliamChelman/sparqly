@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { GRAPH_MODES } from 'core';
 import { blockSchemaFromFields, defaultsFromFields } from './field';
 import type { FieldDescriptor } from './field';
 import type { CommandSpec } from './spec';
@@ -17,24 +16,24 @@ const sourcesField: FieldDescriptor = {
   ],
 };
 
-const graphModeField: FieldDescriptor = {
-  key: 'graphMode',
-  schema: z.enum(GRAPH_MODES),
-  default: 'preserve',
+const modeField: FieldDescriptor = {
+  key: 'mode',
+  schema: z.enum(['a', 'b', 'c']),
+  default: 'a',
   flags: [
     {
-      spec: '--graph-mode <mode>',
-      description: 'named-graph mode',
+      spec: '--mode <mode>',
+      description: 'closed-set mode flag (test fixture)',
     },
   ],
 };
 
 describe('CommandSpec', () => {
   it('composes fields into a usable block schema and defaults', () => {
-    const spec: CommandSpec<{ sources?: string | string[]; graphMode?: string }> = {
+    const spec: CommandSpec<{ sources?: string | string[]; mode?: string }> = {
       name: 'test',
       description: 'test command',
-      fields: [sourcesField, graphModeField],
+      fields: [sourcesField, modeField],
       handler: async () => undefined,
       exitCode: () => 1,
     };
@@ -43,10 +42,10 @@ describe('CommandSpec', () => {
     const ok = schema.safeParse({ sources: 'a/*.ttl' });
     expect(ok.success).toBe(true);
 
-    const bad = schema.safeParse({ graphMode: 'bogus' });
+    const bad = schema.safeParse({ mode: 'bogus' });
     expect(bad.success).toBe(false);
 
-    expect(defaultsFromFields(spec.fields)).toEqual({ graphMode: 'preserve' });
+    expect(defaultsFromFields(spec.fields)).toEqual({ mode: 'a' });
   });
 
 });

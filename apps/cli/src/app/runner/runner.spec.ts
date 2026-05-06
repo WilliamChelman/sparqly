@@ -1,7 +1,6 @@
 import { Command } from 'commander';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { GRAPH_MODES } from 'core';
 import type { FieldDescriptor } from './field';
 import { registerSpec } from './runner';
 import type { CommandSpec } from './spec';
@@ -22,11 +21,11 @@ const sourcesField: FieldDescriptor = {
   ],
 };
 
-const graphModeField: FieldDescriptor = {
-  key: 'graphMode',
-  schema: z.enum(GRAPH_MODES),
-  default: 'preserve',
-  flags: [{ spec: '--graph-mode <mode>', description: 'gm' }],
+const modeField: FieldDescriptor = {
+  key: 'mode',
+  schema: z.enum(['a', 'b', 'c']),
+  default: 'a',
+  flags: [{ spec: '--mode <mode>', description: 'closed-set mode (test fixture)' }],
 };
 
 const jsonField: FieldDescriptor = {
@@ -42,7 +41,7 @@ describe('registerSpec', () => {
     const spec: CommandSpec<Record<string, unknown>> = {
       name: 'demo',
       description: 'demo',
-      fields: [sourcesField, graphModeField, jsonField],
+      fields: [sourcesField, modeField, jsonField],
       positionals: [{ field: 'sources', name: 'glob' }],
       handler: (config) => {
         received = config;
@@ -53,13 +52,13 @@ describe('registerSpec', () => {
     const program = makeProgram();
     registerSpec(program, spec, { env: {}, cwd: process.cwd() });
     await program.parseAsync(
-      ['demo', 'a/*.ttl', '--graph-mode', 'forceAll', '--json'],
+      ['demo', 'a/*.ttl', '--mode', 'b', '--json'],
       { from: 'user' },
     );
 
     expect(received).toEqual({
       sources: 'a/*.ttl',
-      graphMode: 'forceAll',
+      mode: 'b',
       json: true,
     });
   });
@@ -230,7 +229,7 @@ describe('registerSpec', () => {
     const spec: CommandSpec = {
       name: 'demo',
       description: 'demo',
-      fields: [sourcesField, graphModeField, jsonField],
+      fields: [sourcesField, modeField, jsonField],
       positionals: [{ field: 'sources', name: 'glob' }],
       handler: (config) => {
         received = config as Record<string, unknown>;

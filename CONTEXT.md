@@ -65,7 +65,7 @@ An ordered list of declared transforms attached to a **Glob source** under `tran
 _Avoid_: "post-processors", "loader plugins"
 
 **Graph-name transformation** (`graphName`):
-A transform whose value is one of `preserve`, `fillDefault`, `forceAll`, `flatten` — the canonical home of the rules formerly expressed by the now-removed `graphMode` field on a glob source.
+A transform whose value is one of `preserve`, `fillDefault`, `forceAll`, `flatten` — the canonical home of the rules formerly expressed by the now-removed `graphMode` field on a glob source. The transform is the only home for graph-name semantics: there is no top-level `--graph-mode` flag or `SPARQLY_GRAPH_MODE` env override.
 
 **Annotate-source transformation** (`annotateSource`):
 A transform that emits a **Source record** as an RDF-star annotation on each asserted triple loaded from disk, recording where that triple was authored. Listing it on a glob source makes annotations always-on for that source's downstream consumers. Renamed from `annotate` (pre-1.0 break).

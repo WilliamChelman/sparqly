@@ -10,7 +10,6 @@ import {
   resolveAnonymousView,
   resolveSource,
   selectTarget,
-  type GraphMode,
   type ParsedSource,
   type SourceSpecInput,
 } from 'core';
@@ -19,7 +18,6 @@ import { writeOutputToFile } from '../output';
 import type { FieldDescriptor } from '../runner/field';
 import {
   coercedBooleanSchema,
-  graphModeFieldFor,
   outFieldFor,
   sourceField,
   verbosityFieldsFor,
@@ -29,7 +27,6 @@ import type { CommandSpec } from '../runner/spec';
 interface HashConfig {
   sources?: SourceSpecInput[];
   source?: SourceSpecInput;
-  graphMode?: GraphMode;
   json?: boolean;
   compareWith?: string;
   query?: string;
@@ -167,7 +164,6 @@ export const hashSpec: CommandSpec<HashConfig> = {
   fields: [
     sourceField,
     sourcesRegistryField,
-    graphModeFieldFor('hash'),
     jsonField,
     compareWithField,
     queryField,
@@ -236,7 +232,6 @@ export const hashSpec: CommandSpec<HashConfig> = {
     }
 
     const logger = new Logger('sparqly');
-    const graphMode = config.graphMode as GraphMode | undefined;
     const inlineQuery = await loadInlineScopeQuery(config);
     const compareInlineQuery = await loadCompareInlineScopeQuery(config);
 
@@ -250,14 +245,12 @@ export const hashSpec: CommandSpec<HashConfig> = {
         primary = await hashTarget(
           primaryTarget,
           config,
-          graphMode,
           inlineQuery,
           logger,
         );
         secondary = await hashTarget(
           secondaryTarget,
           config,
-          graphMode,
           compareInlineQuery,
           logger,
         );
@@ -276,7 +269,7 @@ export const hashSpec: CommandSpec<HashConfig> = {
     }
 
     const target = resolveHashTarget(config);
-    const result = await hashTarget(target, config, graphMode, inlineQuery, logger);
+    const result = await hashTarget(target, config, inlineQuery, logger);
 
     const body = config.json
       ? `${JSON.stringify(result)}\n`
@@ -306,7 +299,6 @@ function targetLabel(target: ParsedSource): string {
 async function hashTarget(
   target: ParsedSource,
   config: HashConfig,
-  graphMode: GraphMode | undefined,
   inlineQuery: string | undefined,
   logger: Logger,
 ): Promise<{ source: string; hash: string }> {
@@ -334,7 +326,7 @@ async function hashTarget(
   }
 
   const registry = parseSourceSpecs(config.sources ?? []);
-  const sources = await resolveSource(target, { graphMode, registry });
+  const sources = await resolveSource(target, { registry });
   if (sources.mode === 'pass-through') {
     throw new Error(
       `SPARQL endpoint ${sources.endpoint.endpoint} cannot be hashed directly (hash materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,

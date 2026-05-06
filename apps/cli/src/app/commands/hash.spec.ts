@@ -25,10 +25,12 @@ describe('hashSpec — single-target shape', () => {
     );
   });
 
-  it('rejects unknown --graph-mode', () => {
-    const schema = blockSchemaFromFields(hashSpec.fields);
-    const r = schema.safeParse({ graphMode: 'bogus' });
-    expect(r.success).toBe(false);
+  it('does not expose a top-level graphMode field (graph-name semantics live on transforms)', () => {
+    expect(hashSpec.fields.find((f) => f.key === 'graphMode')).toBeUndefined();
+    const flagSpecs = hashSpec.fields.flatMap((f) => f.flags ?? []).map(
+      (f) => f.spec,
+    );
+    for (const s of flagSpecs) expect(s).not.toMatch(/--graph-mode/);
   });
 
   it('coerces "true"/"1"/"false"/"0" strings to booleans for json/verbose/quiet', () => {
@@ -42,13 +44,14 @@ describe('hashSpec — single-target shape', () => {
     );
   });
 
-  it('declares default graphMode="preserve" and json=false', () => {
-    expect(defaultsFromFields(hashSpec.fields)).toMatchObject({
-      graphMode: 'preserve',
+  it('declares defaults for json/verbose/quiet and no graphMode default', () => {
+    const defaults = defaultsFromFields(hashSpec.fields);
+    expect(defaults).toMatchObject({
       json: false,
       verbose: false,
       quiet: false,
     });
+    expect('graphMode' in defaults).toBe(false);
   });
 
   it('exitCode returns 1 for HashMismatchSignal, 2 in compare mode, 1 otherwise', () => {

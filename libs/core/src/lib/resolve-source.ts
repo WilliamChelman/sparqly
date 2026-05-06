@@ -24,8 +24,9 @@ export interface ResolveSourceOptions {
   /**
    * Default `graphName` mode applied when a glob target has no `transforms`
    * declared. Synthesizes `[{ graphName: <mode> }]` for the target. Sources
-   * that already declare `transforms` are passed through unchanged. Used by
-   * the CLI/server `--graph-mode` flag.
+   * that already declare `transforms` are passed through unchanged. Reserved
+   * for programmatic callers — the CLI no longer exposes a top-level flag for
+   * this; graph-name semantics belong on a glob source's `transforms` (#135).
    */
   graphMode?: GraphMode;
   /**

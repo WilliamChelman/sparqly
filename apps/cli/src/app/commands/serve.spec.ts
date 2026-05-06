@@ -20,16 +20,17 @@ describe('serveSpec — single-target shape', () => {
     expect(serveSpec.fields.find((f) => f.key === 'sources')?.flags ?? []).toEqual([]);
   });
 
-  it('declares defaults for port=3000, watch=false, watchDebounce=250, mutable=false, graphMode=preserve', () => {
-    expect(defaultsFromFields(serveSpec.fields)).toMatchObject({
+  it('declares defaults for port=3000, watch=false, watchDebounce=250, mutable=false and no graphMode default', () => {
+    const defaults = defaultsFromFields(serveSpec.fields);
+    expect(defaults).toMatchObject({
       port: 3000,
       watch: false,
       watchDebounce: 250,
       mutable: false,
-      graphMode: 'preserve',
       verbose: false,
       quiet: false,
     });
+    expect('graphMode' in defaults).toBe(false);
   });
 
   it('coerces "4000" string into port number', () => {
@@ -38,9 +39,12 @@ describe('serveSpec — single-target shape', () => {
     expect(r.port).toBe(4000);
   });
 
-  it('rejects unknown --graph-mode', () => {
-    const schema = blockSchemaFromFields(serveSpec.fields);
-    expect(schema.safeParse({ graphMode: 'bogus' }).success).toBe(false);
+  it('does not expose a top-level graphMode field (graph-name semantics live on transforms)', () => {
+    expect(serveSpec.fields.find((f) => f.key === 'graphMode')).toBeUndefined();
+    const flagSpecs = serveSpec.fields.flatMap((f) => f.flags ?? []).map(
+      (f) => f.spec,
+    );
+    for (const s of flagSpecs) expect(s).not.toMatch(/--graph-mode/);
   });
 
   it('exposes both --mutable and --immutable writing to the mutable field', () => {

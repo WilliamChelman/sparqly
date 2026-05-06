@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { GRAPH_MODES } from 'core';
 import type { FieldDescriptor } from './field';
 
 const coercedBoolean = z.preprocess((v) => {
@@ -110,23 +109,6 @@ export const sourcesField: FieldDescriptor = {
     },
   ],
 };
-
-export function graphModeFieldFor(commandName: string): FieldDescriptor {
-  const upper = commandName.toUpperCase();
-  return {
-    key: 'graphMode',
-    schema: z.enum(GRAPH_MODES),
-    default: 'preserve',
-    env: ['SPARQLY_GRAPH_MODE', `SPARQLY_${upper}_GRAPH_MODE`],
-    flags: [
-      {
-        spec: '--graph-mode <mode>',
-        description:
-          "Named-graph mode: 'preserve', 'fillDefault', 'forceAll', or 'flatten' (see `query --help`)",
-      },
-    ],
-  };
-}
 
 export function verbosityFieldsFor(
   commandName: string,

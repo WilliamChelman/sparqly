@@ -47,7 +47,7 @@ describe('sparqly query — multi-format loading', () => {
     }
   });
 
-  it('--graph-mode forceAll puts every file in its own file:// graph (US 12)', async () => {
+  it('rejects --graph-mode as an unknown option (#135 — graph-name semantics live on transforms)', async () => {
     const result = await runCli([
       'query',
       FORMATS_GLOB,
@@ -57,15 +57,8 @@ describe('sparqly query — multi-format loading', () => {
       'SELECT DISTINCT ?g WHERE { GRAPH ?g { ?s ?p ?o } }',
     ]);
 
-    expect(result.exitCode).toBe(0);
-    const json = JSON.parse(result.stdout);
-    const graphs = json.results.bindings.map(
-      (b: { g: { value: string } }) => b.g.value,
-    );
-    expect(graphs).toHaveLength(6);
-    for (const g of graphs) {
-      expect(g).toMatch(/^file:\/\//);
-    }
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/unknown option.*--graph-mode/i);
   });
 
   describe('parse error reporting', () => {

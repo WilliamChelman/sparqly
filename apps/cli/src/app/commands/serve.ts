@@ -3,7 +3,6 @@ import { z } from 'zod';
 import {
   parseSourceSpecs,
   selectTarget,
-  type GraphMode,
   type ParsedSource,
   type SourceSpecInput,
 } from 'core';
@@ -13,7 +12,6 @@ import type { FieldDescriptor } from '../runner/field';
 import {
   coercedBooleanSchema,
   coercedIntSchema,
-  graphModeFieldFor,
   mutableFieldsFor,
   sourceField,
   verbosityFieldsFor,
@@ -26,7 +24,6 @@ interface ServeConfig {
   sources?: SourceSpecInput[];
   source?: SourceSpecInput;
   port?: number;
-  graphMode?: GraphMode;
   mutable?: boolean;
   watch?: boolean;
   watchDebounce?: number;
@@ -114,7 +111,6 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     sourceField,
     sourcesRegistryField,
     portField,
-    graphModeFieldFor('serve'),
     ...mutableFieldsFor('serve'),
     watchField,
     watchDebounceField,
@@ -130,7 +126,6 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       quiet: config.quiet === true,
     });
 
-    const graphMode = config.graphMode;
     const port = config.port ?? 3000;
     const mutable = config.mutable === true;
 
@@ -154,7 +149,6 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       target,
       port,
       mutable,
-      graphMode,
       webRootDir: WEB_BUNDLE_DIR,
       watch: config.watch === true,
       watchDebounceMs: config.watchDebounce,

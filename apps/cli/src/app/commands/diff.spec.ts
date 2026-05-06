@@ -92,18 +92,22 @@ describe('diffSpec', () => {
     expect(r.success).toBe(false);
   });
 
-  it('declares default graphMode=preserve and no static default for format (resolved at handler time via --out inference)', () => {
-    expect(defaultsFromFields(diffSpec.fields)).toMatchObject({
-      graphMode: 'preserve',
+  it('declares verbose/quiet defaults and no static default for format (resolved at handler time via --out inference)', () => {
+    const defaults = defaultsFromFields(diffSpec.fields);
+    expect(defaults).toMatchObject({
       verbose: false,
       quiet: false,
     });
-    expect(defaultsFromFields(diffSpec.fields).format).toBeUndefined();
+    expect(defaults.format).toBeUndefined();
+    expect('graphMode' in defaults).toBe(false);
   });
 
-  it('rejects unknown --graph-mode', () => {
-    const schema = blockSchemaFromFields(diffSpec.fields);
-    expect(schema.safeParse({ graphMode: 'bogus' }).success).toBe(false);
+  it('does not expose a top-level graphMode field (graph-name semantics live on transforms)', () => {
+    expect(diffSpec.fields.find((f) => f.key === 'graphMode')).toBeUndefined();
+    const flagSpecs = diffSpec.fields.flatMap((f) => f.flags ?? []).map(
+      (f) => f.spec,
+    );
+    for (const s of flagSpecs) expect(s).not.toMatch(/--graph-mode/);
   });
 
   it('exitCode returns 2 by default for unknown errors', () => {

@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
 
 const CLEARED_ENV = {
-  SPARQLY_GRAPH_MODE: undefined,
   SPARQLY_MUTABLE: undefined,
   SPARQLY_VERBOSE: undefined,
   SPARQLY_QUIET: undefined,

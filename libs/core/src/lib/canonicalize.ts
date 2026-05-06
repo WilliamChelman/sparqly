@@ -15,9 +15,10 @@ export interface CanonicalizeOptions {
   sources: string | string[];
   /**
    * Optional default `graphName` mode. Synthesized into a `graphName`
-   * transform applied to the loaded store before canonicalization. Only
-   * provided by the CLI's `--graph-mode` flag; sources expressed via the
-   * source-spec should declare their own `transforms` pipeline.
+   * transform applied to the loaded store before canonicalization. Sources
+   * expressed via the source-spec should declare their own `transforms`
+   * pipeline (see ADR-0006); this option is reserved for programmatic
+   * callers that want a per-call default.
    */
   graphMode?: GraphMode;
 }

@@ -92,22 +92,7 @@ describe('sparqly diff — core properties', () => {
     expect(result.stderr).toBe('');
   });
 
-  it('--graph-mode=flatten flattens quads so two .trig files with different graph names match', async () => {
-    const result = await runCli([
-      'diff',
-      '--quiet',
-      '--graph-mode=flatten',
-      '--skip-auto-source-annotation',
-      diffFixture('quad/g1.trig'),
-      diffFixture('quad/g2.trig'),
-    ]);
-
-    expect(result.exitCode).toBe(0);
-    expect(diffBodyLines(result.stdout)).toEqual([]);
-    expect(result.stdout).toMatch(/^# left=\d+ right=\d+ \+0 -0\n$/);
-  });
-
-  it('without --graph-mode=flatten, two .trig files with different graph names diff as one removal + one addition', async () => {
+  it('two .trig files with different graph names diff as one removal + one addition (no command-level graph-mode override)', async () => {
     const result = await runCli([
       'diff',
       '--quiet',
@@ -229,17 +214,17 @@ describe('sparqly diff — core properties', () => {
       expect(result.stderr).toMatch(/at most two/);
     });
 
-    it('exits 2 on an unknown --graph-mode value', async () => {
+    it('rejects --graph-mode as an unknown option (#135 — graph-name semantics live on transforms)', async () => {
       const result = await runCli([
         'diff',
         '--quiet',
-        '--graph-mode=bogus',
+        '--graph-mode=flatten',
         diffFixture('domain.ttl'),
         diffFixture('domain.ttl'),
       ]);
 
-      expect(result.exitCode).toBe(2);
-      expect(result.stderr).toMatch(/unknown.*--graph-mode/i);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toMatch(/unknown option.*--graph-mode/i);
     });
   });
 

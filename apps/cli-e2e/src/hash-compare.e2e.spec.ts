@@ -94,36 +94,19 @@ describe('sparqly hash --compare-with', () => {
     expect(result.stderr).toMatch(/registry is empty|no target source/i);
   });
 
-  it('applies --graph-mode=flatten to both sides so a .trig with named graphs matches the equivalent triples-only .ttl', async () => {
-    const trig = hashFixture('quad/data.trig');
-    const ttl = hashFixture('quad/data-flat.ttl');
-
-    const result = await runCli([
-      'hash',
-      '--quiet',
-      '--graph-mode=flatten',
-      trig,
-      '--compare-with',
-      ttl,
-    ]);
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toMatch(/^match: [0-9a-f]{64}\n$/);
-  });
-
-  it('exits 2 on an unknown --graph-mode value', async () => {
+  it('rejects --graph-mode as an unknown option (#135 — graph-name semantics live on transforms)', async () => {
     const single = hashFixture('domain.ttl');
 
     const result = await runCli([
       'hash',
       '--quiet',
-      '--graph-mode=bogus',
+      '--graph-mode=flatten',
       single,
       '--compare-with',
       single,
     ]);
 
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toMatch(/unknown.*--graph-mode/i);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/unknown option.*--graph-mode/i);
   });
 });

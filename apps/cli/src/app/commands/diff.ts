@@ -24,7 +24,6 @@ import {
   shortenNQuadLine,
   tabularDiff,
   type AnnotationPredicateIris,
-  type GraphMode,
   type HtmlDiffSnippets,
   type ParsedSource,
   type ParsedTransform,
@@ -39,7 +38,6 @@ import { writeOutputToFile } from '../output';
 import type { FieldDescriptor } from '../runner/field';
 import {
   baseField,
-  graphModeFieldFor,
   outFieldFor,
   prefixesField,
   singleSourceSchema,
@@ -56,7 +54,6 @@ interface DiffConfig {
   sources?: SourceSpecInput[];
   left?: SourceSpecInput;
   right?: SourceSpecInput;
-  graphMode?: GraphMode;
   format?: DiffFormat;
   prefixes?: Record<string, string>;
   base?: string;
@@ -284,7 +281,6 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     leftField,
     rightField,
     sourcesRegistryField,
-    graphModeFieldFor('diff'),
     queryField,
     queryFileField,
     leftQueryField,
@@ -377,7 +373,6 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     });
 
     const logger = new Logger('sparqly');
-    const graphMode = config.graphMode;
     const format = (config.format ??
       inferDiffFormatFromOut(config.out) ??
       'human') as DiffFormat;
@@ -421,8 +416,8 @@ export const diffSpec: CommandSpec<DiffConfig> = {
 
     const start = Date.now();
     const [leftResolved, rightResolved] = await Promise.all([
-      resolveSide(leftTarget, config, graphMode, leftInlineQuery, 'left'),
-      resolveSide(rightTarget, config, graphMode, rightInlineQuery, 'right'),
+      resolveSide(leftTarget, config, leftInlineQuery, 'left'),
+      resolveSide(rightTarget, config, rightInlineQuery, 'right'),
     ]);
     const diff = await diffStores(
       { store: leftResolved.store, annotationPredicates: leftResolved.annotationPredicates },
@@ -639,7 +634,6 @@ function anonymousUpstream(
 async function resolveSide(
   rawTarget: ParsedSource,
   config: DiffConfig,
-  graphMode: GraphMode | undefined,
   inlineQuery: string | undefined,
   side: 'left' | 'right',
 ): Promise<SideResolved> {
@@ -668,7 +662,7 @@ async function resolveSide(
   }
 
   const registry = parseSourceSpecs(config.sources ?? []);
-  const sources = await resolveSource(target, { graphMode, registry });
+  const sources = await resolveSource(target, { registry });
   if (sources.mode === 'pass-through') {
     throw new Error(
       `SPARQL endpoint ${sources.endpoint.endpoint} cannot be diffed directly on the ${side} side (diff materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly diff\`)`,

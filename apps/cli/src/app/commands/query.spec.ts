@@ -20,13 +20,14 @@ describe('querySpec — single-target shape', () => {
     expect(querySpec.fields.find((f) => f.key === 'sources')?.flags ?? []).toEqual([]);
   });
 
-  it('declares default graphMode=preserve and mutable=false', () => {
-    expect(defaultsFromFields(querySpec.fields)).toMatchObject({
-      graphMode: 'preserve',
+  it('declares default mutable=false and no graphMode default', () => {
+    const defaults = defaultsFromFields(querySpec.fields);
+    expect(defaults).toMatchObject({
       mutable: false,
       verbose: false,
       quiet: false,
     });
+    expect('graphMode' in defaults).toBe(false);
   });
 
   it('rejects unknown --format with the SUPPORTED_FORMATS enum (json, turtle)', () => {
@@ -36,9 +37,12 @@ describe('querySpec — single-target shape', () => {
     expect(schema.safeParse({ format: 'turtle' }).success).toBe(true);
   });
 
-  it('rejects unknown --graph-mode', () => {
-    const schema = blockSchemaFromFields(querySpec.fields);
-    expect(schema.safeParse({ graphMode: 'bogus' }).success).toBe(false);
+  it('does not expose a top-level graphMode field (graph-name semantics live on transforms)', () => {
+    expect(querySpec.fields.find((f) => f.key === 'graphMode')).toBeUndefined();
+    const flagSpecs = querySpec.fields.flatMap((f) => f.flags ?? []).map(
+      (f) => f.spec,
+    );
+    for (const s of flagSpecs) expect(s).not.toMatch(/--graph-mode/);
   });
 
   it('exposes both --mutable and --immutable flags writing to the mutable field', () => {

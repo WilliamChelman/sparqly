@@ -10,7 +10,6 @@ import {
   resolveSource,
   selectTarget,
   SUPPORTED_FORMATS,
-  type GraphMode,
   type ParsedSource,
   type SourceSpecInput,
   type SparqlFormat,
@@ -20,7 +19,6 @@ import { writeOutputToFile } from '../output';
 import type { FieldDescriptor } from '../runner/field';
 import {
   baseField,
-  graphModeFieldFor,
   mutableFieldsFor,
   outFieldFor,
   prefixesField,
@@ -35,7 +33,6 @@ interface QueryConfig {
   query?: string;
   queryFile?: string;
   format?: SparqlFormat;
-  graphMode?: GraphMode;
   mutable?: boolean;
   prefixes?: Record<string, string>;
   base?: string;
@@ -106,7 +103,6 @@ export const querySpec: CommandSpec<QueryConfig> = {
     queryField,
     queryFileField,
     formatField,
-    graphModeFieldFor('query'),
     ...mutableFieldsFor('query'),
     prefixesField,
     baseField,
@@ -152,7 +148,6 @@ export const querySpec: CommandSpec<QueryConfig> = {
     }
 
     const logger = new Logger('sparqly');
-    const graphMode = config.graphMode;
     const format = config.format;
     const mutable = config.mutable === true;
 
@@ -160,7 +155,7 @@ export const querySpec: CommandSpec<QueryConfig> = {
     const registry = parseSourceSpecs(config.sources ?? []);
 
     const loadStart = Date.now();
-    const sources = await resolveSource(target, { graphMode, registry });
+    const sources = await resolveSource(target, { registry });
     let engine: QueryEngine;
     if (sources.mode === 'pass-through') {
       logger.log(

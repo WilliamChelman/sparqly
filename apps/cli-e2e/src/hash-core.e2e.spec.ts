@@ -57,22 +57,6 @@ describe('sparqly hash — core properties', () => {
     for (const h of rest) expect(h).toBe(first);
   });
 
-  it('--graph-mode=flatten: a .trig with named graphs hashes the same as the equivalent triples-only .ttl, but differs without the flag', async () => {
-    const trig = hashFixture('quad/data.trig');
-    const ttl = hashFixture('quad/data-flat.ttl');
-
-    const [withNone, withoutNone, ttlPlain] = await Promise.all([
-      runCli(['hash', '--quiet', '--graph-mode=flatten', trig]),
-      runCli(['hash', '--quiet', trig]),
-      runCli(['hash', '--quiet', ttl]),
-    ]);
-
-    expect(withNone.exitCode).toBe(0);
-    expect(withoutNone.exitCode).toBe(0);
-    expect(ttlPlain.exitCode).toBe(0);
-    expect(leadingHash(withNone.stdout)).toBe(leadingHash(ttlPlain.stdout));
-    expect(leadingHash(withoutNone.stdout)).not.toBe(leadingHash(ttlPlain.stdout));
-  });
 });
 
 describe('sparqly hash — argv and flag validation', () => {
@@ -98,16 +82,16 @@ describe('sparqly hash — argv and flag validation', () => {
     expect(result.stderr).toMatch(/no files/i);
   });
 
-  it('exits non-zero on an unknown --graph-mode value', async () => {
+  it('rejects --graph-mode as an unknown option (#135 — graph-name semantics live on transforms)', async () => {
     const result = await runCli([
       'hash',
       '--quiet',
-      '--graph-mode=bogus',
+      '--graph-mode=flatten',
       join(scratch, '*.ttl'),
     ]);
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/unknown.*--graph-mode/i);
+    expect(result.stderr).toMatch(/unknown option.*--graph-mode/i);
   });
 
   it('exits non-zero when no target source is provided', async () => {
