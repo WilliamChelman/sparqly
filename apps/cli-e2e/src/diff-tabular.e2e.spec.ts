@@ -2,6 +2,10 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  startFakeSparqlEndpoint,
+  type FakeSparqlEndpoint,
+} from './helpers/fake-sparql';
 import { runCli } from './helpers/run-cli';
 
 const TTL_HEADER = '@prefix ex: <http://example.org/> .';
@@ -247,6 +251,70 @@ describe('sparqly diff — tabular mode (arbitrary SELECT)', () => {
 
     expect(result.stderr).toMatch(/left-side.*LIMIT\/OFFSET/);
     expect(result.stderr).toMatch(/right-side.*LIMIT\/OFFSET/);
+  });
+
+  describe('endpoint target via pass-through', () => {
+    let endpoint: FakeSparqlEndpoint | undefined;
+
+    afterEach(async () => {
+      if (endpoint) await endpoint.close();
+      endpoint = undefined;
+    });
+
+    it('dispatches the SELECT to a SPARQL endpoint target and surfaces the bindings drift, without locally materializing the endpoint', async () => {
+      const captured: string[] = [];
+      endpoint = await startFakeSparqlEndpoint(({ query }) => {
+        captured.push(query);
+        return {
+          body: JSON.stringify({
+            head: { vars: ['id', 'status'] },
+            results: {
+              bindings: [
+                {
+                  id: { type: 'literal', value: '1' },
+                  status: { type: 'literal', value: 'open' },
+                },
+                {
+                  id: { type: 'literal', value: '2' },
+                  status: { type: 'literal', value: 'closed' },
+                },
+              ],
+            },
+          }),
+        };
+      });
+
+      // Left side is a glob with one row matching the right side; right side
+      // is the endpoint, which returns two rows. The added row should be the
+      // one only the endpoint emitted.
+      await writeFile(
+        leftPath,
+        [TTL_HEADER, 'ex:p1 ex:id "1" ; ex:status "open" .'].join('\n'),
+      );
+
+      const result = await runCli([
+        'diff',
+        '--quiet',
+        '--query',
+        'PREFIX ex: <http://example.org/> SELECT ?id ?status WHERE { ?p ex:id ?id ; ex:status ?status }',
+        leftPath,
+        endpoint.url,
+      ]);
+
+      expect(result.exitCode, result.stderr).toBe(1);
+      expect(result.stdout).toBe('+ {?id="2", ?status="closed"}\n');
+
+      // Endpoint must have been contacted — i.e., pass-through, not skipped
+      // or locally materialized.
+      expect(captured.length).toBeGreaterThan(0);
+      // The query that hit the endpoint is the user's projection, not a
+      // SELECT-spo materialization probe.
+      expect(captured.some((q) => q.includes('?id') && q.includes('?status')))
+        .toBe(true);
+      expect(
+        captured.every((q) => !/SELECT\s+\?s\s+\?p\s+\?o/i.test(q)),
+      ).toBe(true);
+    });
   });
 
   it('accepts --skip-auto-source-annotation in tabular mode (no-op)', async () => {

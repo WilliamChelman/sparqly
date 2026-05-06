@@ -3,6 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolveAnonymousSelectBindings } from './resolve-anonymous-select-bindings';
+import {
+  startFakeSparqlEndpoint,
+  type FakeSparqlEndpoint,
+} from './test/fake-sparql-endpoint';
 
 describe('resolveAnonymousSelectBindings', () => {
   let dataDir: string;
@@ -126,6 +130,103 @@ describe('resolveAnonymousSelectBindings', () => {
     ]);
   });
 
+  describe('endpoint upstream (pass-through)', () => {
+    let endpoint: FakeSparqlEndpoint | undefined;
+
+    afterEach(async () => {
+      if (endpoint) await endpoint.close();
+      endpoint = undefined;
+    });
+
+    it('dispatches the SELECT to the endpoint and returns the endpoint-produced bindings (no local materialization)', async () => {
+      const captured: string[] = [];
+      endpoint = await startFakeSparqlEndpoint(({ query }) => {
+        captured.push(query);
+        return {
+          body: JSON.stringify({
+            head: { vars: ['id', 'status'] },
+            results: {
+              bindings: [
+                {
+                  id: { type: 'literal', value: '1' },
+                  status: { type: 'literal', value: 'open' },
+                },
+                {
+                  id: { type: 'literal', value: '2' },
+                  status: { type: 'literal', value: 'closed' },
+                },
+              ],
+            },
+          }),
+        };
+      });
+
+      const QUERY =
+        'PREFIX ex: <http://example.org/> SELECT ?id ?status WHERE { ?p ex:id ?id ; ex:status ?status }';
+
+      const result = await resolveAnonymousSelectBindings({
+        source: endpoint.url,
+        query: QUERY,
+      });
+
+      expect(captured.length).toBeGreaterThan(0);
+      // The endpoint received the user's projection (?id ?status), not a
+      // SELECT-spo materialization probe.
+      expect(captured.some((q) => q.includes('?id') && q.includes('?status')))
+        .toBe(true);
+      expect(captured.every((q) => !/SELECT\s+\?s\s+\?p\s+\?o/i.test(q))).toBe(
+        true,
+      );
+
+      expect(result.variables).toEqual(['id', 'status']);
+      const ids = result.rows
+        .map((r) => `${r['id']?.value}|${r['status']?.value}`)
+        .sort();
+      expect(ids).toEqual(['1|open', '2|closed']);
+    });
+
+    it('forwards endpoint auth headers (bearer) on the pass-through request', async () => {
+      let observedAuth: string | undefined;
+      endpoint = await startFakeSparqlEndpoint(({ headers }) => {
+        const v = headers['authorization'];
+        observedAuth = Array.isArray(v) ? v[0] : v;
+        return {
+          body: JSON.stringify({
+            head: { vars: ['id'] },
+            results: { bindings: [] },
+          }),
+        };
+      });
+
+      await resolveAnonymousSelectBindings({
+        source: {
+          id: 'live',
+          endpoint: endpoint.url,
+          auth: { type: 'bearer', token: 'tk-1' },
+        },
+        query: 'SELECT ?id WHERE { ?p ?q ?id }',
+      });
+
+      expect(observedAuth).toBe('Bearer tk-1');
+    });
+
+    it('wraps endpoint errors with the `endpoint <url>: <message>` prefix', async () => {
+      endpoint = await startFakeSparqlEndpoint(() => ({
+        status: 500,
+        contentType: 'text/plain',
+        body: 'boom',
+      }));
+      const url = endpoint.url;
+
+      await expect(
+        resolveAnonymousSelectBindings({
+          source: url,
+          query: 'SELECT ?id WHERE { ?p ?q ?id }',
+        }),
+      ).rejects.toThrow(new RegExp(`^endpoint ${escapeRegExp(url)}:`));
+    });
+  });
+
   it('rejects ASK/DESCRIBE/UPDATE under the tabular-anon validator', async () => {
     const a = join(dataDir, 'a.ttl');
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
@@ -136,6 +237,10 @@ describe('resolveAnonymousSelectBindings', () => {
       }),
     ).rejects.toThrow(/ASK/);
   });
+
+  function escapeRegExp(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
 
   it('errors when both query and queryFile are supplied', async () => {
     const a = join(dataDir, 'a.ttl');

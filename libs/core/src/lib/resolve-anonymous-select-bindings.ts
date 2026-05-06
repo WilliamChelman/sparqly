@@ -2,11 +2,16 @@ import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import type { Term } from 'n3';
+import {
+  buildEndpointContext,
+  describeEndpointError,
+} from './endpoint-http';
 import { resolveSource } from './resolve-source';
 import { detectSelectShape } from './select-shape-detector';
 import {
   parseSourceSpec,
   parseSourceSpecs,
+  type ParsedEndpointSource,
   type ParsedSource,
   type SourceSpecInput,
 } from './source-spec';
@@ -46,8 +51,11 @@ export interface AnonymousSelectBindingsResult {
  * (glob, empty, or view), run the user's arbitrary SELECT against it, and
  * return the bindings rows.
  *
- * Endpoint upstreams are out of scope for this slice — they require Comunica
- * federation pass-through for performance, which a follow-up issue covers.
+ * Endpoint upstreams dispatch via Comunica federation pass-through — the
+ * SELECT runs on the endpoint over the SPARQL protocol and bindings stream
+ * back. Materialization is rejected for endpoint upstreams in the tabular
+ * path (it would be wrong both for performance and because the SELECT may
+ * not project triples).
  */
 export async function resolveAnonymousSelectBindings(
   input: AnonymousSelectBindingsInput,
@@ -81,10 +89,11 @@ export async function resolveAnonymousSelectBindings(
       'anonymous select-bindings: `@id` reference upstreams are not supported here',
     );
   }
+
+  const engine = input.engine ?? new ComunicaQueryEngine();
+
   if (upstream.kind === 'endpoint') {
-    throw new Error(
-      'anonymous select-bindings: endpoint upstreams are out of scope for this slice (follow-up: pass-through tabular diff)',
-    );
+    return runPassThrough(engine, upstream, query, shape.variables);
   }
 
   const siblingRegistry = parseSourceSpecs(
@@ -94,12 +103,39 @@ export async function resolveAnonymousSelectBindings(
   const sources = await resolveSource(upstream, { registry: fullRegistry });
   if (sources.mode !== 'materialized') {
     throw new Error(
-      'anonymous select-bindings: expected materialized resolution',
+      'anonymous select-bindings: endpoint upstream cannot be materialized in tabular diff (use pass-through)',
     );
   }
 
-  const engine = input.engine ?? new ComunicaQueryEngine();
   const result = await engine.query(query, { sources: [sources.store] });
+  return collectBindings(result, shape.variables);
+}
+
+async function runPassThrough(
+  engine: ComunicaQueryEngine,
+  endpoint: ParsedEndpointSource,
+  query: string,
+  variables: string[],
+): Promise<AnonymousSelectBindingsResult> {
+  try {
+    const result = await engine.query(
+      query,
+      buildEndpointContext(endpoint) as Parameters<
+        ComunicaQueryEngine['query']
+      >[1],
+    );
+    return await collectBindings(result, variables);
+  } catch (err) {
+    throw new Error(
+      `endpoint ${endpoint.endpoint}: ${describeEndpointError(err)}`,
+    );
+  }
+}
+
+async function collectBindings(
+  result: Awaited<ReturnType<ComunicaQueryEngine['query']>>,
+  variables: string[],
+): Promise<AnonymousSelectBindingsResult> {
   if (result.resultType !== 'bindings') {
     throw new Error(
       `anonymous select-bindings: expected SELECT (bindings), got ${result.resultType}`,
@@ -111,10 +147,10 @@ export async function resolveAnonymousSelectBindings(
     get(name: string): Term | undefined;
   }>) {
     const row: TabularRow = {};
-    for (const v of shape.variables) {
+    for (const v of variables) {
       row[v] = b.get(v);
     }
     rows.push(row);
   }
-  return { variables: shape.variables, rows };
+  return { variables, rows };
 }
