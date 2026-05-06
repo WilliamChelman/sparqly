@@ -7,23 +7,28 @@ import { z } from 'zod';
 import {
   ANNOTATE_SOURCE_TRANSFORM,
   composeHtmlDiff,
+  detectSelectShape,
   diffStores,
   extractAnnotationPredicates,
   formatHumanSourceComment,
   formatRdfDiff,
+  formatTabularDiff,
   hasAnnotateTransform,
   parseSourceSpecs,
   readSourceSnippet,
+  resolveAnonymousSelectBindings,
   resolveAnonymousView,
   resolveSource,
   selectTarget,
   shortenNQuadLine,
+  tabularDiff,
   type AnnotationPredicateIris,
   type GraphMode,
   type HtmlDiffSnippets,
   type ParsedSource,
   type ParsedTransform,
   type RdfDiffResult,
+  type SelectShapeReport,
   type SnippetReadResult,
   type SourceRecord,
   type SourceSpecInput,
@@ -388,6 +393,25 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     const leftTarget = resolveDiffSide(config, 'left');
     const rightTarget = resolveDiffSide(config, 'right');
 
+    const tabularDispatch = detectTabularDispatch(
+      leftInlineQuery,
+      rightInlineQuery,
+    );
+    if (tabularDispatch) {
+      await runTabularDiff({
+        config,
+        format,
+        quiet,
+        leftTarget,
+        rightTarget,
+        leftInlineQuery: leftInlineQuery as string,
+        rightInlineQuery: rightInlineQuery as string,
+        leftShape: tabularDispatch.left,
+        rightShape: tabularDispatch.right,
+      });
+      return;
+    }
+
     const start = Date.now();
     const [leftResolved, rightResolved] = await Promise.all([
       resolveSide(leftTarget, config, graphMode, leftInlineQuery, 'left'),
@@ -673,4 +697,124 @@ async function loadSideInlineScopeQuery(
   return symmetric;
 }
 
-export { DiffPresentSignal, DIFF_FORMATS };
+/**
+ * Returns the per-side `SelectShapeReport`s when both inline queries project
+ * arbitrary tuples — the trigger for tabular dispatch. Returns `undefined`
+ * when either side is missing, either side is triples-shaped, or either
+ * side fails to parse (the existing graph-diff path will surface a clearer
+ * error in those cases).
+ */
+function detectTabularDispatch(
+  leftInlineQuery: string | undefined,
+  rightInlineQuery: string | undefined,
+): { left: SelectShapeReport; right: SelectShapeReport } | undefined {
+  if (leftInlineQuery === undefined || rightInlineQuery === undefined) {
+    return undefined;
+  }
+  let left: SelectShapeReport;
+  let right: SelectShapeReport;
+  try {
+    left = detectSelectShape(leftInlineQuery);
+    right = detectSelectShape(rightInlineQuery);
+  } catch {
+    return undefined;
+  }
+  if (left.shape !== 'tuples' || right.shape !== 'tuples') return undefined;
+  return { left, right };
+}
+
+interface RunTabularDiffArgs {
+  config: DiffConfig;
+  format: DiffFormat;
+  quiet: boolean;
+  leftTarget: ParsedSource;
+  rightTarget: ParsedSource;
+  leftInlineQuery: string;
+  rightInlineQuery: string;
+  leftShape: SelectShapeReport;
+  rightShape: SelectShapeReport;
+}
+
+async function runTabularDiff(args: RunTabularDiffArgs): Promise<void> {
+  const {
+    config,
+    format,
+    quiet,
+    leftTarget,
+    rightTarget,
+    leftInlineQuery,
+    rightInlineQuery,
+    leftShape,
+    rightShape,
+  } = args;
+
+  if (format !== 'human' && format !== 'json') {
+    throw new Error(
+      `--format=${format} is not supported in tabular diff mode (use --format=human or --format=json; html, rdf-patch, and turtle land in follow-up slices)`,
+    );
+  }
+
+  const leftSet = new Set(leftShape.variables);
+  const rightSet = new Set(rightShape.variables);
+  const setsMatch =
+    leftSet.size === rightSet.size &&
+    [...leftSet].every((v) => rightSet.has(v));
+  if (!setsMatch) {
+    const fmt = (s: ReadonlySet<string>): string =>
+      `{${[...s].sort().map((v) => `?${v}`).join(', ')}}`;
+    throw new Error(
+      `tabular diff requires matching projected variable-name sets: left=${fmt(
+        leftSet,
+      )}, right=${fmt(rightSet)}`,
+    );
+  }
+
+  if (leftShape.warnLimitOffsetWithoutOrderBy) {
+    process.stderr.write(
+      'note: left-side query uses LIMIT/OFFSET without ORDER BY — results may be non-deterministic\n',
+    );
+  }
+  if (rightShape.warnLimitOffsetWithoutOrderBy) {
+    process.stderr.write(
+      'note: right-side query uses LIMIT/OFFSET without ORDER BY — results may be non-deterministic\n',
+    );
+  }
+
+  const leftUpstream = anonymousUpstream(leftTarget, 'left');
+  const rightUpstream = anonymousUpstream(rightTarget, 'right');
+  const sourcesRegistry: SourceSpecInput[] = config.sources ?? [];
+
+  const [left, right] = await Promise.all([
+    resolveAnonymousSelectBindings({
+      source: leftUpstream,
+      query: leftInlineQuery,
+      registry: sourcesRegistry,
+    }),
+    resolveAnonymousSelectBindings({
+      source: rightUpstream,
+      query: rightInlineQuery,
+      registry: sourcesRegistry,
+    }),
+  ]);
+
+  const tab = tabularDiff(left.rows, right.rows, [...rightShape.variables]);
+  const body = formatTabularDiff(tab, format, {
+    variables: rightShape.variables,
+  });
+
+  if (config.out !== undefined) {
+    await writeOutputToFile({ out: config.out, cwd: process.cwd(), body });
+  } else {
+    process.stdout.write(body);
+  }
+
+  if (!quiet) {
+    process.stderr.write(`# +${tab.added.length} -${tab.removed.length}\n`);
+  }
+
+  if (tab.added.length !== 0 || tab.removed.length !== 0) {
+    throw new DiffPresentSignal();
+  }
+}
+
+export { DiffPresentSignal, DIFF_FORMATS, detectTabularDispatch };

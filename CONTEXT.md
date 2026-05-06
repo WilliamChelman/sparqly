@@ -20,7 +20,7 @@ A `kind: 'empty'` source declared with `{ id, empty: true }` that produces an em
 A `kind: 'view'` source declared with `id`, `from: '@ref'` (exactly one upstream ref), and a SPARQL `query` (or `queryFile`) that scopes that upstream. Only `CONSTRUCT` and `SELECT-{?s,?p,?o[,?g]}` are accepted as the view query. Multi-source composition is intentionally not provided at the source-spec level — use `SERVICE` clauses inside the view query, optionally hosted on an **empty source**.
 
 **Anonymous view**:
-A view synthesized at command time from `--query`/`--query-file` on `hash` or `diff`. Same resolution semantics as a declared view; never cached. Built by `resolveAnonymousView`.
+A view synthesized at command time from `--query`/`--query-file` (or per-side `--left-query`/`--right-query` on `diff`) on `hash` or `diff`. Same resolution semantics as a declared view; never cached. Built by `resolveAnonymousView`. In `diff`, an anonymous view's query may additionally project an arbitrary SELECT tuple (not restricted to `{?s,?p,?o[,?g]}`), which selects **tabular diff** over **graph diff**; declared views and `hash` retain the triple-only restriction.
 
 **Upstream**:
 The single source a view references via `from:`. May be a glob, endpoint, empty, or another view (in which case resolution recurses).
@@ -51,7 +51,14 @@ _Avoid_: "upstream cache", "endpoint cache"
 An `ASK` query attached to `cache.strategy: 'freshness'`. Run on cache lookup to decide whether the cached result is still valid. For single-endpoint upstreams the ASK is itself pass-through.
 
 **Canonicalization**:
-RDFC-1.0 normalization producing a stable N-Quads serialization, used by `hash` and `diff`. Operates on the **asserted triples** of whatever Store the resolution produced (materialized upstream or pass-through result); **Source records** and any other RDF-star annotation triples are stripped before canonical output, so `hash` is independent of source-tracking metadata.
+RDFC-1.0 normalization producing a stable N-Quads serialization, used by `hash` and `diff` in **graph-diff** mode. Operates on the **asserted triples** of whatever Store the resolution produced (materialized upstream or pass-through result); **Source records** and any other RDF-star annotation triples are stripped before canonical output, so `hash` is independent of source-tracking metadata.
+
+**Graph diff**:
+The default `diff` mode, taken when both sides' queries produce triples (`CONSTRUCT` or `SELECT-{?s,?p,?o[,?g]}`). Canonicalizes each side via RDFC-1.0, set-differences the canonical N-Quads, and surfaces **Source records** when glob targets carry an **Annotate-source transformation** (implicitly, via **Auto source annotation**, or explicitly).
+
+**Tabular diff**:
+The `diff` mode taken when both sides' queries are arbitrary SELECTs projecting the same set of variable names (matched by name, not position). Bag-differences the result rows under lexical term equality with unbound variables treated as a distinct sentinel value; per distinct row the diff carries a `count` of net occurrences. Mode is auto-detected from the queries; mixed-shape queries (one CONSTRUCT/spo, one arbitrary SELECT) are rejected. **Source records** do not apply, and `rdf-patch` and `turtle` output formats are rejected. Blank nodes in the projection are rejected (no stable identity for bag keys).
+_Avoid_: "bindings diff", "result-set diff", "row diff" (informal; the canonical term is **tabular diff**)
 
 **Source transformation pipeline**:
 An ordered list of declared transforms attached to a **Glob source** under `transforms:`, applied eagerly to its loaded Store before it is handed to any consumer. Each list item is an object with exactly one transform key (presence-of-key discriminator, matching the `cache:` and `empty: true` patterns elsewhere in the source-spec); the registry is closed (only sparqly-known transforms). Order is array order; each transform documents its own ordering constraints if any.
@@ -64,7 +71,7 @@ A transform whose value is one of `preserve`, `fillDefault`, `forceAll`, `flatte
 A transform that emits a **Source record** as an RDF-star annotation on each asserted triple loaded from disk, recording where that triple was authored. Listing it on a glob source makes annotations always-on for that source's downstream consumers. Renamed from `annotate` (pre-1.0 break).
 
 **Auto source annotation**:
-The `diff` command's implicit injection of an `annotateSource` step at the head of every glob target's transform pipeline at load time. Applies to both inline globs (`--left=path.ttl`) and declared globs in the registry. Suppressed by `--skip-auto-source-annotation`. An explicit `annotateSource` declaration in config wins over the implicit injection (no double-apply); the explicit declaration's predicates are preserved. Scoped to `diff` only — `query`, `serve`, `format`, and `hash` keep `annotateSource` as opt-in only, because surfacing source records is a `diff`-output concern (see ADR-0007) and other commands either can't use them (`hash` strips), would inflate result stores (`query`/`serve`), or would corrupt round-trip semantics (`format`).
+The `diff` command's implicit injection of an `annotateSource` step at the head of every glob target's transform pipeline at load time, applied only in **graph-diff** mode. Applies to both inline globs (`--left=path.ttl`) and declared globs in the registry. Suppressed by `--skip-auto-source-annotation`. An explicit `annotateSource` declaration in config wins over the implicit injection (no double-apply); the explicit declaration's predicates are preserved. Scoped to `diff`'s graph mode — `query`, `serve`, `format`, `hash`, and **tabular diff** keep `annotateSource` as opt-in or out-of-scope, because surfacing source records is a graph-diff output concern (see ADR-0007) and other modes either can't use them (`hash` strips, tabular has no clean per-row provenance), would inflate result stores (`query`/`serve`), or would corrupt round-trip semantics (`format`).
 _Avoid_: "annotate-by-default" (ambiguous about scope), "implicit annotate" (doesn't say what's implicit)
 
 **Source record**:
@@ -83,11 +90,12 @@ _Avoid_: "context window" (overloaded with LLM/parsing terminology), "hunk previ
 - A **View** with `cache:` declared writes to the **Result cache** after resolution; `cache.strategy: 'freshness'` triggers a **Freshness probe** on lookup. On an **empty source** view the probe must contain `SERVICE` clauses to be meaningful, since the local Store is empty.
 - The **`query` command** picks one **target source** from the **source registry** and resolves it: **pass-through** when the target is an endpoint, **materialized** otherwise (glob, empty, view).
 - The **`serve` command** picks one **target source** from the **source registry** and exposes it as a SPARQL endpoint, using the same resolution rules as `query`.
-- **`hash`** and **`diff`** also pick one **target source** and always **canonicalize** the resolved Store; they refuse a raw endpoint as target — endpoints must be wrapped in a view (declared or anonymous) so a scoping query exists.
+- **`hash`** picks one **target source** and always **canonicalizes** the resolved Store; it refuses raw endpoints (must be wrapped in a view) and refuses arbitrary-SELECT views — `hash` requires triples.
+- **`diff`** picks one **target source** per side and dispatches by query shape: **graph diff** when both sides produce triples; **tabular diff** when both sides project arbitrary SELECT tuples with matching variable names. Mixed-shape pairs are rejected. Both modes refuse a raw endpoint as target — endpoints must be wrapped in a view (declared or anonymous) so a scoping query exists.
 - A **Glob source** may declare a **Source transformation pipeline**; transforms run in array order at load time before the Store is exposed to resolution.
 - The **Annotate-source transformation** populates **Source records** on the glob's own asserted triples; annotations do not propagate through a downstream **View** unless that view's query explicitly references them, and they are stripped by **Canonicalization**.
 - `diff` injects **Auto source annotation** by default for any glob target it loads (inline or declared), unless `--skip-auto-source-annotation` is passed; an explicit `annotateSource` declaration in config takes precedence, preserving custom predicate IRIs.
-- `diff` extracts **Source records** per side after **Canonicalization** and surfaces them across every output format; the `html` format additionally renders a **Source-file snippet** per record, reading the source file from disk at render time.
+- `diff` (in **graph-diff** mode) extracts **Source records** per side after **Canonicalization** and surfaces them across every graph output format; the `html` format additionally renders a **Source-file snippet** per record, reading the source file from disk at render time. **Tabular diff** carries no source records.
 
 ## Example dialogue
 

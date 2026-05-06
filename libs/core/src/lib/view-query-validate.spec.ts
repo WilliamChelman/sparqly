@@ -90,3 +90,60 @@ describe('validateViewQuery — rejected query types', () => {
     ).toThrow(/UPDATE.*not.*allowed/i);
   });
 });
+
+describe("validateViewQuery — mode 'tabular-anon'", () => {
+  it('accepts an arbitrary single-var SELECT', () => {
+    expect(() =>
+      validateViewQuery('SELECT ?id WHERE { ?p <urn:id> ?id }', {
+        mode: 'tabular-anon',
+      }),
+    ).not.toThrow();
+  });
+
+  it('accepts an arbitrary multi-var SELECT', () => {
+    expect(() =>
+      validateViewQuery(
+        'SELECT ?id ?status WHERE { ?p <urn:id> ?id ; <urn:status> ?status }',
+        { mode: 'tabular-anon' },
+      ),
+    ).not.toThrow();
+  });
+
+  it("still accepts the strict triples projections (mode is a relaxation, not a swap)", () => {
+    expect(() =>
+      validateViewQuery('SELECT ?s ?p ?o WHERE { ?s ?p ?o }', {
+        mode: 'tabular-anon',
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validateViewQuery('CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }', {
+        mode: 'tabular-anon',
+      }),
+    ).not.toThrow();
+  });
+
+  it('still rejects UPDATE/ASK/DESCRIBE under tabular-anon (the relaxation only widens projection)', () => {
+    expect(() =>
+      validateViewQuery('ASK { ?s ?p ?o }', { mode: 'tabular-anon' }),
+    ).toThrow(/ASK.*not.*allowed/i);
+    expect(() =>
+      validateViewQuery('DESCRIBE <http://example.org/a>', {
+        mode: 'tabular-anon',
+      }),
+    ).toThrow(/DESCRIBE.*not.*allowed/i);
+    expect(() =>
+      validateViewQuery(
+        'INSERT DATA { <http://example.org/a> <http://example.org/p> <http://example.org/b> }',
+        { mode: 'tabular-anon' },
+      ),
+    ).toThrow(/UPDATE.*not.*allowed/i);
+  });
+
+  it('still rejects SELECT * under tabular-anon (no stable variable list)', () => {
+    expect(() =>
+      validateViewQuery('SELECT * WHERE { ?s ?p ?o }', {
+        mode: 'tabular-anon',
+      }),
+    ).toThrow();
+  });
+});

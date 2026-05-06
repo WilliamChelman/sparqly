@@ -36,3 +36,4 @@
 - config rationale: source on one part, cmd specific on the other + extend?
 - re-evaluate exit codes
 - more comprehensive e2e tests with era files
+- diff on arbitrary select queries

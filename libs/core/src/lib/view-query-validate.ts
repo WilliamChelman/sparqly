@@ -1,6 +1,25 @@
 import { Parser as SparqlParser } from 'sparqljs';
 
-export function validateViewQuery(query: string): void {
+export type ViewQueryMode = 'strict' | 'tabular-anon';
+
+export interface ValidateViewQueryOptions {
+  /**
+   * `'strict'` (default) — the historical contract: SELECT must project
+   * exactly `{?s,?p,?o[,?g]}`; CONSTRUCT is accepted as-is.
+   *
+   * `'tabular-anon'` — used by `diff`'s anonymous views to enable **tabular
+   * diff**. SELECT projections are accepted unrestricted; UPDATE/ASK/DESCRIBE
+   * are still rejected, and `SELECT *` is still rejected (no stable
+   * projected-variable list).
+   */
+  mode?: ViewQueryMode;
+}
+
+export function validateViewQuery(
+  query: string,
+  options: ValidateViewQueryOptions = {},
+): void {
+  const mode = options.mode ?? 'strict';
   const parsed = new SparqlParser().parse(query);
   if (parsed.type === 'update') {
     throw new Error(
@@ -19,22 +38,28 @@ export function validateViewQuery(query: string): void {
       );
     }
     if (parsed.queryType === 'SELECT') {
-      assertSelectProjection(parsed.variables);
+      assertSelectProjection(parsed.variables, mode);
     }
   }
 }
 
-function assertSelectProjection(variables: ReadonlyArray<unknown>): void {
+function assertSelectProjection(
+  variables: ReadonlyArray<unknown>,
+  mode: ViewQueryMode,
+): void {
   const names: string[] = [];
   for (const v of variables) {
     const term = v as { termType?: string; value?: string };
     if (term?.termType !== 'Variable' || typeof term.value !== 'string') {
       throw new Error(
-        'SELECT view query must project exactly {?s, ?p, ?o} or {?s, ?p, ?o, ?g} (no SELECT *, no expressions).',
+        mode === 'tabular-anon'
+          ? 'SELECT must project named variables (no `SELECT *`, no projection expressions).'
+          : 'SELECT view query must project exactly {?s, ?p, ?o} or {?s, ?p, ?o, ?g} (no SELECT *, no expressions).',
       );
     }
     names.push(term.value);
   }
+  if (mode === 'tabular-anon') return;
   const sorted = [...names].sort().join(',');
   if (sorted !== 'o,p,s' && sorted !== 'g,o,p,s') {
     throw new Error(

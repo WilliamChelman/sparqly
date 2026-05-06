@@ -1,0 +1,224 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { runCli } from './helpers/run-cli';
+
+const TTL_HEADER = '@prefix ex: <http://example.org/> .';
+
+describe('sparqly diff — tabular mode (arbitrary SELECT)', () => {
+  let scratch: string;
+  let leftPath: string;
+  let rightPath: string;
+
+  beforeEach(async () => {
+    scratch = await mkdtemp(join(tmpdir(), 'sparqly-diff-tabular-'));
+    leftPath = join(scratch, 'left.ttl');
+    rightPath = join(scratch, 'right.ttl');
+  });
+
+  afterEach(async () => {
+    await rm(scratch, { recursive: true, force: true });
+  });
+
+  it('exits 0 with empty stdout when both sides project equal bindings', async () => {
+    await writeFile(
+      leftPath,
+      [
+        TTL_HEADER,
+        'ex:p1 ex:id "1" ; ex:status "open" .',
+        'ex:p2 ex:id "2" ; ex:status "closed" .',
+      ].join('\n'),
+    );
+    await writeFile(
+      rightPath,
+      [
+        TTL_HEADER,
+        'ex:p1 ex:id "1" ; ex:status "open" .',
+        'ex:p2 ex:id "2" ; ex:status "closed" .',
+      ].join('\n'),
+    );
+
+    const result = await runCli([
+      'diff',
+      '--quiet',
+      '--query',
+      'PREFIX ex: <http://example.org/> SELECT ?id ?status WHERE { ?p ex:id ?id ; ex:status ?status }',
+      leftPath,
+      rightPath,
+    ]);
+
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout).toBe('');
+  });
+
+  it('exits 1, surfaces an added row, and reports `# +1 -0` on stderr when right has an extra row (multi-var human format)', async () => {
+    await writeFile(
+      leftPath,
+      [TTL_HEADER, 'ex:p1 ex:id "1" ; ex:status "open" .'].join('\n'),
+    );
+    await writeFile(
+      rightPath,
+      [
+        TTL_HEADER,
+        'ex:p1 ex:id "1" ; ex:status "open" .',
+        'ex:p2 ex:id "2" ; ex:status "closed" .',
+      ].join('\n'),
+    );
+
+    const result = await runCli([
+      'diff',
+      '--query',
+      'PREFIX ex: <http://example.org/> SELECT ?id ?status WHERE { ?p ex:id ?id ; ex:status ?status }',
+      leftPath,
+      rightPath,
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('+ {?id="2", ?status="closed"}\n');
+    expect(result.stderr).toBe('# +1 -0\n');
+  });
+
+  it('surfaces net count drift as (×N) in human format (3× left + 5× right → +2)', async () => {
+    await writeFile(
+      leftPath,
+      [
+        TTL_HEADER,
+        'ex:p1 ex:status "open" .',
+        'ex:p2 ex:status "open" .',
+        'ex:p3 ex:status "open" .',
+      ].join('\n'),
+    );
+    await writeFile(
+      rightPath,
+      [
+        TTL_HEADER,
+        'ex:p1 ex:status "open" .',
+        'ex:p2 ex:status "open" .',
+        'ex:p3 ex:status "open" .',
+        'ex:p4 ex:status "open" .',
+        'ex:p5 ex:status "open" .',
+      ].join('\n'),
+    );
+
+    const result = await runCli([
+      'diff',
+      '--quiet',
+      '--query',
+      'PREFIX ex: <http://example.org/> SELECT ?status WHERE { ?p ex:status ?status }',
+      leftPath,
+      rightPath,
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('+ {?status="open"} (×2)\n');
+  });
+
+  it('emits a JSON envelope with added/removed/vars when -f json is requested', async () => {
+    await writeFile(
+      leftPath,
+      [TTL_HEADER, 'ex:p1 ex:id "gone" .'].join('\n'),
+    );
+    await writeFile(
+      rightPath,
+      [TTL_HEADER, 'ex:p1 ex:id "new" .'].join('\n'),
+    );
+
+    const result = await runCli([
+      'diff',
+      '--quiet',
+      '-f',
+      'json',
+      '--query',
+      'PREFIX ex: <http://example.org/> SELECT ?id WHERE { ?p ex:id ?id }',
+      leftPath,
+      rightPath,
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.vars).toEqual(['id']);
+    expect(parsed.removed).toHaveLength(1);
+    expect(parsed.removed[0].row.id.value).toBe('gone');
+    expect(parsed.added).toHaveLength(1);
+    expect(parsed.added[0].row.id.value).toBe('new');
+  });
+
+  it('rejects mismatched projected variable-name sets with a clear error', async () => {
+    await writeFile(
+      leftPath,
+      [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'),
+    );
+    await writeFile(
+      rightPath,
+      [TTL_HEADER, 'ex:p1 ex:status "open" .'].join('\n'),
+    );
+
+    const result = await runCli([
+      'diff',
+      '--quiet',
+      '--left-query',
+      'PREFIX ex: <http://example.org/> SELECT ?id WHERE { ?p ex:id ?id }',
+      '--right-query',
+      'PREFIX ex: <http://example.org/> SELECT ?status WHERE { ?p ex:status ?status }',
+      leftPath,
+      rightPath,
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toMatch(/variable-name set/);
+  });
+
+  it('rejects -f rdf-patch in tabular mode (RDF-shaped formats have no meaning for tuple results)', async () => {
+    await writeFile(leftPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
+    await writeFile(rightPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
+
+    const result = await runCli([
+      'diff',
+      '--quiet',
+      '-f',
+      'rdf-patch',
+      '--query',
+      'PREFIX ex: <http://example.org/> SELECT ?id WHERE { ?p ex:id ?id }',
+      leftPath,
+      rightPath,
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toMatch(/tabular/);
+  });
+
+  it('emits a stderr warning per side when LIMIT/OFFSET is used without ORDER BY', async () => {
+    await writeFile(leftPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
+    await writeFile(rightPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
+
+    const result = await runCli([
+      'diff',
+      '--quiet',
+      '--query',
+      'PREFIX ex: <http://example.org/> SELECT ?id WHERE { ?p ex:id ?id } LIMIT 10',
+      leftPath,
+      rightPath,
+    ]);
+
+    expect(result.stderr).toMatch(/left-side.*LIMIT\/OFFSET/);
+    expect(result.stderr).toMatch(/right-side.*LIMIT\/OFFSET/);
+  });
+
+  it('accepts --skip-auto-source-annotation in tabular mode (no-op)', async () => {
+    await writeFile(leftPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
+    await writeFile(rightPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
+
+    const result = await runCli([
+      'diff',
+      '--quiet',
+      '--skip-auto-source-annotation',
+      '--query',
+      'PREFIX ex: <http://example.org/> SELECT ?id WHERE { ?p ex:id ?id }',
+      leftPath,
+      rightPath,
+    ]);
+
+    expect(result.exitCode).toBe(0);
+  });
+});
