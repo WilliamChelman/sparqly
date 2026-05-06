@@ -219,7 +219,7 @@ describe('makeFileLoader — whole-project schema', () => {
         base: 'http://example.org/',
         objectAnchoredPredicates: ['rdfs:label'],
       },
-      cache: { dir: '.sparqly-cache' },
+      cache: { dir: join(dir, '.sparqly-cache') },
     });
     expect(result.filepath).toBe(path);
   });

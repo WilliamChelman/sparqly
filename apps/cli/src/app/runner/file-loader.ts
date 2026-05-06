@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises';
-import { extname, isAbsolute, resolve } from 'node:path';
+import { dirname, extname, isAbsolute, resolve } from 'node:path';
 import { load as loadYaml, YAMLException } from 'js-yaml';
 import { substituteSourceEnv } from 'core';
+import { normalizeConfigPaths } from './normalize-config-paths';
 import { validateProjectConfig } from './project-config-schema';
 import type { FileLayers } from './runner';
 
@@ -26,7 +27,8 @@ export function makeFileLoader() {
       parsed as Record<string, unknown>,
       absolute,
     );
-    const result = validateProjectConfig(withEnv);
+    const withPaths = normalizeConfigPaths(withEnv, dirname(absolute));
+    const result = validateProjectConfig(withPaths);
     if (result.ok === false) {
       const lines = result.issues.map((iss) => `  - ${iss.path}: ${iss.message}`);
       throw new ConfigError(`invalid config at ${absolute}:\n${lines.join('\n')}`);
