@@ -10,7 +10,7 @@ const emptySnippets = new Map();
 describe('composeHtmlDiff', () => {
   it('emits a single self-contained HTML5 document with inline style and no JS or external resources', () => {
     const out = composeHtmlDiff(
-      { added: [], removed: [] },
+      { added: [], removed: [], totals: { left: 0, right: 0 } },
       { left: new Map(), right: new Map() },
       emptySnippets,
       { cwd: '/cwd' },
@@ -30,7 +30,7 @@ describe('composeHtmlDiff', () => {
     const removed = triple('c', 'q', 'd');
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
-      { added: [added], removed: [removed] },
+      { added: [added], removed: [removed], totals: { left: 1, right: 1 } },
       { left: new Map(), right: new Map() },
       emptySnippets,
       { cwd: '/cwd' },
@@ -50,7 +50,7 @@ describe('composeHtmlDiff', () => {
     const removed = triple('c', 'q', 'd');
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
-      { added: [added], removed: [removed] },
+      { added: [added], removed: [removed], totals: { left: 1, right: 1 } },
       {
         left: new Map([
           [removed, [{ file: 'file:///cwd/a.ttl', line: 7 }]],
@@ -74,7 +74,7 @@ describe('composeHtmlDiff', () => {
   it('emits anchor IDs of the form `<basename>-L<line>` on each per-record block', () => {
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       {
         left: new Map(),
         right: new Map([[added, [{ file: 'file:///cwd/foo.ttl', line: 5 }]]]),
@@ -89,7 +89,7 @@ describe('composeHtmlDiff', () => {
   it('emits anchor ID `<basename>` (no -L suffix) when the record has no line number', () => {
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       {
         left: new Map(),
         right: new Map([[added, [{ file: 'file:///cwd/foo.jsonld' }]]]),
@@ -110,7 +110,7 @@ describe('composeHtmlDiff', () => {
     // otherwise break the document if not escaped.
     const literal = `<http://example.org/s> <http://example.org/p> "a<b&c\\"d" .`;
     const out = composeHtmlDiff(
-      { added: [literal], removed: [] },
+      { added: [literal], removed: [], totals: { left: 0, right: 1 } },
       { left: new Map(), right: new Map() },
       emptySnippets,
       { cwd: '/cwd' },
@@ -128,7 +128,7 @@ describe('composeHtmlDiff', () => {
   it('renders a hunk for an added statement with no records (records map empty for that key)', () => {
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       { left: new Map(), right: new Map() },
       emptySnippets,
       { cwd: '/cwd' },
@@ -144,7 +144,7 @@ describe('composeHtmlDiff', () => {
     const removed = triple('c', 'q', 'd');
     const added = triple('e', 'r', 'f');
     const args = [
-      { added: [added], removed: [removed] },
+      { added: [added], removed: [removed], totals: { left: 1, right: 1 } },
       {
         left: new Map([[removed, [{ file: 'file:///cwd/a.ttl', line: 7 }]]]),
         right: new Map([[added, [{ file: 'file:///cwd/b.ttl', line: 3 }]]]),
@@ -172,7 +172,7 @@ describe('composeHtmlDiff', () => {
       ],
     ]);
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       {
         left: new Map(),
         right: new Map([[added, [{ file: 'file:///cwd/foo.ttl', line: 5 }]]]),
@@ -206,7 +206,7 @@ describe('composeHtmlDiff', () => {
   it('renders `(source file unavailable)` when a record has a line but no snippet entry', () => {
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       {
         left: new Map(),
         right: new Map([[added, [{ file: 'file:///cwd/foo.ttl', line: 5 }]]]),
@@ -228,7 +228,7 @@ describe('composeHtmlDiff', () => {
       ],
     ]);
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       {
         left: new Map(),
         right: new Map([[added, [{ file: 'file:///cwd/foo.ttl', line: 5 }]]]),
@@ -244,7 +244,7 @@ describe('composeHtmlDiff', () => {
   it('renders `(line not available)` for a record with no line — and never reads snippets for it', () => {
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       {
         left: new Map(),
         right: new Map([[added, [{ file: 'file:///cwd/foo.jsonld' }]]]),
@@ -264,7 +264,7 @@ describe('composeHtmlDiff', () => {
       line: i + 1,
     }));
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       { left: new Map(), right: new Map([[added, records]]) },
       emptySnippets,
       { cwd: '/cwd' },
@@ -295,7 +295,7 @@ describe('composeHtmlDiff', () => {
       line: i + 1,
     }));
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       { left: new Map(), right: new Map([[added, records]]) },
       emptySnippets,
       { cwd: '/cwd' },
@@ -315,7 +315,7 @@ describe('composeHtmlDiff', () => {
       line: i + 1,
     }));
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       { left: new Map(), right: new Map([[added, records]]) },
       emptySnippets,
       { cwd: '/cwd' },
@@ -332,7 +332,7 @@ describe('composeHtmlDiff', () => {
   it('renders multiple records per hunk in input order', () => {
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       {
         left: new Map(),
         right: new Map([

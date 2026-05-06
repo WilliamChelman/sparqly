@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
+import { diffBodyLines } from './helpers/hash';
 
 describe('sparqly diff --format=turtle', () => {
   let dir: string;
@@ -94,7 +95,7 @@ describe('sparqly diff --format=turtle', () => {
     ]);
 
     expect(result.exitCode).toBe(1);
-    const lines = result.stdout.split('\n').filter((l) => l.length > 0);
+    const lines = diffBodyLines(result.stdout);
     expect(lines).toEqual(['- ex:c ex:q ex:d .', '+ ex:e ex:r ex:f .']);
   });
 
@@ -185,7 +186,7 @@ describe('sparqly diff --format=turtle', () => {
     );
 
     expect(result.exitCode).toBe(1);
-    const lines = result.stdout.split('\n').filter((l) => l.length > 0);
+    const lines = diffBodyLines(result.stdout);
     expect(lines).toEqual(['+ ex:c ex:q ex:d .']);
   });
 
@@ -276,7 +277,7 @@ describe('sparqly diff --format=turtle', () => {
     );
 
     expect(result.exitCode).toBe(1);
-    const lines = result.stdout.split('\n').filter((l) => l.length > 0);
+    const lines = diffBodyLines(result.stdout);
     expect(lines).toEqual([
       'A <http://example.org/c> <http://example.org/q> <http://example.org/d> .',
     ]);

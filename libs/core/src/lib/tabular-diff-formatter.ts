@@ -1,4 +1,5 @@
 import type { Term } from 'n3';
+import { formatDiffSummaryLine } from './diff';
 import type { TabularDiffEntry, TabularDiffResult } from './tabular-diff';
 import { UNBOUND_SENTINEL, type TabularRow } from './tabular-row-key';
 
@@ -39,6 +40,7 @@ export function formatTabularDiff(
       added: diff.added.map((e) => entryToJson(e, options.variables)),
       removed: diff.removed.map((e) => entryToJson(e, options.variables)),
       vars: [...options.variables],
+      totals: { left: diff.totals.left, right: diff.totals.right },
     };
     return `${JSON.stringify(json)}\n`;
   }
@@ -46,7 +48,12 @@ export function formatTabularDiff(
     return renderHtml(diff, options.variables);
   }
   // human
-  const parts: string[] = [];
+  const summary = formatDiffSummaryLine(
+    diff.totals,
+    diff.added.length,
+    diff.removed.length,
+  );
+  const parts: string[] = [`# ${summary}\n`];
   for (const e of diff.removed) parts.push(`- ${humanLine(e)}\n`);
   for (const e of diff.added) parts.push(`+ ${humanLine(e)}\n`);
   return parts.join('');
@@ -69,7 +76,7 @@ function renderHtml(
     '<body>\n' +
     '<header>\n' +
     '<h1>sparqly diff</h1>\n' +
-    `<p class="summary">+${diff.added.length} −${diff.removed.length}</p>\n` +
+    `<p class="summary">left=${diff.totals.left} right=${diff.totals.right} +${diff.added.length} −${diff.removed.length}</p>\n` +
     '</header>\n' +
     renderHtmlBlock('removed', 'Removed', diff.removed, variables) +
     renderHtmlBlock('added', 'Added', diff.added, variables) +

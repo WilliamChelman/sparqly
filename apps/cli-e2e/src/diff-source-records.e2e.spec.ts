@@ -4,7 +4,7 @@ import { join, relative } from 'node:path';
 import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
-import { nonEmptyLines } from './helpers/hash';
+import { diffBodyLines } from './helpers/hash';
 
 describe('sparqly diff -f human — source-record trailing comments', () => {
   let scratch: string;
@@ -59,7 +59,7 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     );
 
     expect(result.exitCode).toBe(1);
-    const lines = nonEmptyLines(result.stdout);
+    const lines = diffBodyLines(result.stdout);
     expect(lines).toEqual([
       `- ex:c ex:q ex:d . # ${relative(scratch, leftPath)}:3`,
       `+ ex:e ex:r ex:f . # ${relative(scratch, rightPath)}:3`,
@@ -92,7 +92,7 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     );
 
     expect(result.exitCode).toBe(1);
-    const lines = nonEmptyLines(result.stdout);
+    const lines = diffBodyLines(result.stdout);
     expect(lines).toEqual(['- ex:c ex:q ex:d .', '+ ex:e ex:r ex:f .']);
     for (const line of lines) {
       expect(line).not.toMatch(/#/);
@@ -231,7 +231,7 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     );
 
     expect(result.exitCode).toBe(1);
-    const lines = nonEmptyLines(result.stdout);
+    const lines = diffBodyLines(result.stdout);
     expect(lines).toEqual([
       `D <http://example.org/c> <http://example.org/q> <http://example.org/d> . # ${relative(scratch, leftPath)}:3`,
       `A <http://example.org/e> <http://example.org/r> <http://example.org/f> . # ${relative(scratch, rightPath)}:3`,
@@ -271,7 +271,7 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     );
 
     expect(result.exitCode).toBe(1);
-    const lines = nonEmptyLines(result.stdout);
+    const lines = diffBodyLines(result.stdout);
     expect(lines).toEqual([
       'D <http://example.org/c> <http://example.org/q> <http://example.org/d> .',
       'A <http://example.org/e> <http://example.org/r> <http://example.org/f> .',
@@ -320,7 +320,7 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     expect(noisy.exitCode).toBe(1);
     expect(noisy.stderr).toContain('source records present on left only');
     expect(noisy.stderr).toContain('right side hunks will not be annotated');
-    expect(noisy.stderr).toContain('# +1 -1\n');
+    expect(noisy.stderr).toContain('# left=2 right=2 +1 -1\n');
 
     const quiet = await runCli(
       [

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
-import { diffFixture, nonEmptyLines } from './helpers/hash';
+import { diffBodyLines, diffFixture } from './helpers/hash';
 
 describe('sparqly diff — core properties', () => {
   let scratch: string;
@@ -17,7 +17,7 @@ describe('sparqly diff — core properties', () => {
     await rm(scratch, { recursive: true, force: true });
   });
 
-  it('exits 0 with empty stdout when a single file matches its split-then-merged equivalent', async () => {
+  it('exits 0 with no body diff when a single file matches its split-then-merged equivalent', async () => {
     const single = diffFixture('domain.ttl');
     const partsGlob = diffFixture('parts/*.ttl');
 
@@ -29,7 +29,8 @@ describe('sparqly diff — core properties', () => {
     ]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe('');
+    expect(diffBodyLines(result.stdout)).toEqual([]);
+    expect(result.stdout).toMatch(/^# left=\d+ right=\d+ \+0 -0\n$/);
     expect(result.stderr).toBe('');
   });
 
@@ -46,7 +47,7 @@ describe('sparqly diff — core properties', () => {
     ]);
 
     expect(result.exitCode).toBe(1);
-    const lines = nonEmptyLines(result.stdout);
+    const lines = diffBodyLines(result.stdout);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toBe('+ ex:g ex:s ex:h .');
   });
@@ -64,7 +65,7 @@ describe('sparqly diff — core properties', () => {
     ]);
 
     expect(result.exitCode).toBe(1);
-    const lines = nonEmptyLines(result.stdout);
+    const lines = diffBodyLines(result.stdout);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toBe('- ex:c ex:q ex:d .');
   });
@@ -77,7 +78,7 @@ describe('sparqly diff — core properties', () => {
     ]);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toBe('# +1 -0\n');
+    expect(result.stderr).toBe('# left=3 right=4 +1 -0\n');
   });
 
   it('--quiet suppresses the summary line', async () => {
@@ -102,7 +103,8 @@ describe('sparqly diff — core properties', () => {
     ]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe('');
+    expect(diffBodyLines(result.stdout)).toEqual([]);
+    expect(result.stdout).toMatch(/^# left=\d+ right=\d+ \+0 -0\n$/);
   });
 
   it('without --graph-mode=flatten, two .trig files with different graph names diff as one removal + one addition', async () => {
@@ -114,7 +116,7 @@ describe('sparqly diff — core properties', () => {
     ]);
 
     expect(result.exitCode).toBe(1);
-    const lines = nonEmptyLines(result.stdout);
+    const lines = diffBodyLines(result.stdout);
     expect(lines).toHaveLength(2);
     expect(lines[0]).toMatch(/^- /);
     expect(lines[0]).toContain('ex:g1');
@@ -150,7 +152,11 @@ describe('sparqly diff — core properties', () => {
       ]);
 
       expect(result.exitCode).toBe(0);
-      expect(JSON.parse(result.stdout)).toEqual({ added: [], removed: [] });
+      expect(JSON.parse(result.stdout)).toEqual({
+        added: [],
+        removed: [],
+        totals: { left: 3, right: 3 },
+      });
     });
 
     it('--format rdf-patch emits standard RDF Patch with D-then-A markers', async () => {
@@ -163,7 +169,7 @@ describe('sparqly diff — core properties', () => {
       ]);
 
       expect(result.exitCode).toBe(1);
-      const lines = nonEmptyLines(result.stdout);
+      const lines = diffBodyLines(result.stdout);
       expect(lines).toHaveLength(1);
       expect(lines[0]).toMatch(/^D <http:\/\/example\.org\/c> /);
     });
@@ -256,7 +262,8 @@ describe('sparqly diff — core properties', () => {
       ]);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toBe('');
+      expect(diffBodyLines(result.stdout)).toEqual([]);
+      expect(result.stdout).toMatch(/^# left=\d+ right=\d+ \+0 -0\n$/);
     });
 
     it('SPARQLY_DIFF_FORMAT env triggers JSON output', async () => {

@@ -69,15 +69,26 @@ export function detectSelectShape(query: string): SelectShapeReport {
 function projectedVariables(variables: ReadonlyArray<unknown>): string[] {
   const out: string[] = [];
   for (const v of variables) {
-    const term = v as { termType?: string; value?: string };
-    if (term?.termType !== 'Variable' || typeof term.value !== 'string') {
-      // SELECT * or projection expressions cannot be triples-shape, and we
-      // need *some* name for tabular mode; throw rather than guess.
-      throw new Error(
-        'SELECT must project named variables (no `SELECT *`, no projection expressions).',
-      );
+    const term = v as {
+      termType?: string;
+      value?: string;
+      variable?: { termType?: string; value?: string };
+    };
+    if (term?.termType === 'Variable' && typeof term.value === 'string') {
+      out.push(term.value);
+      continue;
     }
-    out.push(term.value);
+    // Aliased projections like `(str(?x) AS ?y)` arrive as
+    // `{ expression, variable: <Variable> }`; the alias names the column.
+    const alias = term?.variable;
+    if (alias?.termType === 'Variable' && typeof alias.value === 'string') {
+      out.push(alias.value);
+      continue;
+    }
+    // `SELECT *` is the only remaining shape — no stable projection list.
+    throw new Error(
+      'SELECT must project named variables or aliased expressions (no `SELECT *`).',
+    );
   }
   return out;
 }

@@ -10,6 +10,7 @@ import {
   detectSelectShape,
   diffStores,
   extractAnnotationPredicates,
+  formatDiffSummaryLine,
   formatHumanSourceComment,
   formatRdfDiff,
   formatTabularDiff,
@@ -194,12 +195,11 @@ const rightQueryFileField: FieldDescriptor = {
 const formatField: FieldDescriptor = {
   key: 'format',
   schema: z.enum(DIFF_FORMATS),
-  default: 'human',
   env: ['SPARQLY_DIFF_FORMAT'],
   flags: [
     {
       spec: '-f, --format <format>',
-      description: `Output format: ${DIFF_FORMATS.map((f) => `'${f}'`).join(', ')}. Format \`html\` benefits from source records, which \`diff\` auto-attaches to glob targets unless \`--skip-auto-source-annotation\` is passed.`,
+      description: `Output format: ${DIFF_FORMATS.map((f) => `'${f}'`).join(', ')}. When omitted, inferred from --out's extension (.html/.htm → html, .json → json, .ttl → turtle), falling back to 'human'. Format \`html\` benefits from source records, which \`diff\` auto-attaches to glob targets unless \`--skip-auto-source-annotation\` is passed.`,
     },
   ],
 };
@@ -306,7 +306,11 @@ export const diffSpec: CommandSpec<DiffConfig> = {
   refine: (schema) =>
     (schema as z.ZodObject).superRefine(
       (val: Record<string, unknown>, ctx) => {
-        if (val.context !== undefined && val.format !== 'html') {
+        const effectiveFormat =
+          (val.format as DiffFormat | undefined) ??
+          inferDiffFormatFromOut(val.out as string | undefined) ??
+          'human';
+        if (val.context !== undefined && effectiveFormat !== 'html') {
           ctx.addIssue({
             code: 'custom',
             message:
@@ -373,7 +377,9 @@ export const diffSpec: CommandSpec<DiffConfig> = {
 
     const logger = new Logger('sparqly');
     const graphMode = config.graphMode;
-    const format = (config.format ?? 'human') as DiffFormat;
+    const format = (config.format ??
+      inferDiffFormatFromOut(config.out) ??
+      'human') as DiffFormat;
     const quiet = config.quiet === true;
 
     const symmetricInlineQuery = await loadSymmetricInlineScopeQuery(config);
@@ -508,7 +514,9 @@ export const diffSpec: CommandSpec<DiffConfig> = {
           `note: source records present on ${annotatedSide} only — ${otherSide} side hunks will not be annotated\n`,
         );
       }
-      process.stderr.write(`# +${added.length} -${removed.length}\n`);
+      process.stderr.write(
+        `# ${formatDiffSummaryLine(diff.totals, added.length, removed.length)}\n`,
+      );
     }
 
     if (added.length !== 0 || removed.length !== 0) {
@@ -587,7 +595,9 @@ function renderHumanShortened(
   },
   cwd: string,
 ): string {
-  const parts: string[] = [];
+  const parts: string[] = [
+    `# ${formatDiffSummaryLine(diff.totals, diff.added.length, diff.removed.length)}\n`,
+  ];
   for (const s of diff.removed) {
     const tail = formatHumanSourceComment(sourceRecords.left.get(s) ?? [], cwd);
     parts.push(`- ${shortenNQuadLine(s, { prefixes })}${tail}\n`);
@@ -819,12 +829,25 @@ async function runTabularDiff(args: RunTabularDiffArgs): Promise<void> {
   }
 
   if (!quiet) {
-    process.stderr.write(`# +${tab.added.length} -${tab.removed.length}\n`);
+    process.stderr.write(
+      `# ${formatDiffSummaryLine(tab.totals, tab.added.length, tab.removed.length)}\n`,
+    );
   }
 
   if (tab.added.length !== 0 || tab.removed.length !== 0) {
     throw new DiffPresentSignal();
   }
+}
+
+export function inferDiffFormatFromOut(
+  out: string | undefined,
+): DiffFormat | undefined {
+  if (out === undefined) return undefined;
+  const lower = out.toLowerCase();
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'html';
+  if (lower.endsWith('.json')) return 'json';
+  if (lower.endsWith('.ttl')) return 'turtle';
+  return undefined;
 }
 
 export { DiffPresentSignal, DIFF_FORMATS, detectTabularDispatch };

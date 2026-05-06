@@ -14,6 +14,11 @@ export interface TabularDiffEntry {
 export interface TabularDiffResult {
   added: TabularDiffEntry[];
   removed: TabularDiffEntry[];
+  /**
+   * Per-side total occurrences — the raw row count returned by each side's
+   * SELECT (sum of bag multiplicities), not the number of distinct rows.
+   */
+  totals: { left: number; right: number };
 }
 
 /**
@@ -58,7 +63,11 @@ export function tabularDiff(
       removed.push({ row, count: -net });
     }
   }
-  return { added, removed };
+  return {
+    added,
+    removed,
+    totals: { left: leftRows.length, right: rightRows.length },
+  };
 }
 
 interface CountedRow {

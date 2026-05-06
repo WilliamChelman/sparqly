@@ -32,6 +32,14 @@ describe('detectSelectShape — shape classification', () => {
     expect(r.shape).toBe('tuples');
     expect(r.variables).toEqual(['id', 'status']);
   });
+
+  it('classifies SELECT with aliased projection expressions as tuples and surfaces alias names', () => {
+    const r = detectSelectShape(
+      'SELECT (str(?x) AS ?y) ?z WHERE { ?x <urn:p> ?z }',
+    );
+    expect(r.shape).toBe('tuples');
+    expect(r.variables).toEqual(['y', 'z']);
+  });
 });
 
 describe('detectSelectShape — rejected query types', () => {

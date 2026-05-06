@@ -4,6 +4,7 @@ import {
   collectSnippetKeysForDiff,
   detectTabularDispatch,
   diffSpec,
+  inferDiffFormatFromOut,
   resolveDiffSide,
   withAutoSourceAnnotation,
 } from './diff';
@@ -69,13 +70,35 @@ describe('diffSpec', () => {
     );
   });
 
-  it('declares default format=human and graphMode=preserve', () => {
-    expect(defaultsFromFields(diffSpec.fields)).toMatchObject({
+  it('accepts --context when --format is omitted but --out infers html (e.g. .html)', () => {
+    const schema = blockSchemaFromFields(diffSpec.fields);
+    const refined = diffSpec.refine
+      ? diffSpec.refine(schema as never)
+      : schema;
+    const r = refined.safeParse({ context: 5, out: 'fedlex-diff.html' });
+    expect(r.success).toBe(true);
+  });
+
+  it('still rejects --context when --format is explicitly non-html (explicit wins over --out inference)', () => {
+    const schema = blockSchemaFromFields(diffSpec.fields);
+    const refined = diffSpec.refine
+      ? diffSpec.refine(schema as never)
+      : schema;
+    const r = refined.safeParse({
+      context: 5,
       format: 'human',
+      out: 'fedlex-diff.html',
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('declares default graphMode=preserve and no static default for format (resolved at handler time via --out inference)', () => {
+    expect(defaultsFromFields(diffSpec.fields)).toMatchObject({
       graphMode: 'preserve',
       verbose: false,
       quiet: false,
     });
+    expect(defaultsFromFields(diffSpec.fields).format).toBeUndefined();
   });
 
   it('rejects unknown --graph-mode', () => {
@@ -85,6 +108,38 @@ describe('diffSpec', () => {
 
   it('exitCode returns 2 by default for unknown errors', () => {
     expect(diffSpec.exitCode(new Error('boom'))).toBe(2);
+  });
+});
+
+describe('inferDiffFormatFromOut — derive --format from --out extension', () => {
+  it('returns html for a .html out path', () => {
+    expect(inferDiffFormatFromOut('foo.html')).toBe('html');
+  });
+
+  it('returns html for a .htm out path', () => {
+    expect(inferDiffFormatFromOut('foo.htm')).toBe('html');
+  });
+
+  it('returns json for a .json out path', () => {
+    expect(inferDiffFormatFromOut('foo.json')).toBe('json');
+  });
+
+  it('returns turtle for a .ttl out path', () => {
+    expect(inferDiffFormatFromOut('foo.ttl')).toBe('turtle');
+  });
+
+  it('returns undefined for an unrecognized extension', () => {
+    expect(inferDiffFormatFromOut('foo.txt')).toBeUndefined();
+    expect(inferDiffFormatFromOut('foo')).toBeUndefined();
+  });
+
+  it('returns undefined when out is undefined', () => {
+    expect(inferDiffFormatFromOut(undefined)).toBeUndefined();
+  });
+
+  it('matches case-insensitively (.HTML, .Json)', () => {
+    expect(inferDiffFormatFromOut('foo.HTML')).toBe('html');
+    expect(inferDiffFormatFromOut('foo.Json')).toBe('json');
   });
 });
 

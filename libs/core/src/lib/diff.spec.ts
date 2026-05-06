@@ -45,13 +45,19 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
     const out = formatRdfDiff(diffCanonicalStatements(left, right), 'human');
 
     expect(out).toBe(
-      `- ${triple('c', 'q', 'd')}\n` + `+ ${triple('e', 'r', 'f')}\n`,
+      `# left=2 right=2 +1 -1\n` +
+        `- ${triple('c', 'q', 'd')}\n` +
+        `+ ${triple('e', 'r', 'f')}\n`,
     );
   });
 
   it('json format emits {added,removed} with termType, value, and language tag for literals', () => {
     const added = `${t('c')} ${t('q')} "hi"@en .`;
-    const diff: RdfDiffResult = { added: [added], removed: [] };
+    const diff: RdfDiffResult = {
+      added: [added],
+      removed: [],
+      totals: { left: 0, right: 1 },
+    };
 
     const parsed = JSON.parse(formatRdfDiff(diff, 'json'));
 
@@ -148,7 +154,11 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
   it('json format emits a graph component for statements outside the default graph', () => {
     const removed = quad('a', 'p', 'b', 'g1');
     const added = triple('a', 'p', 'b');
-    const diff: RdfDiffResult = { added: [added], removed: [removed] };
+    const diff: RdfDiffResult = {
+      added: [added],
+      removed: [removed],
+      totals: { left: 1, right: 1 },
+    };
 
     const parsed = JSON.parse(formatRdfDiff(diff, 'json'));
 
@@ -179,7 +189,8 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
     });
 
     expect(out).toBe(
-      `- ${triple('c', 'q', 'd')} # a.ttl:7\n` +
+      `# left=1 right=1 +1 -1\n` +
+        `- ${triple('c', 'q', 'd')} # a.ttl:7\n` +
         `+ ${triple('e', 'r', 'f')} # b.ttl:3\n`,
     );
   });
@@ -215,7 +226,8 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
     });
 
     expect(out).toBe(
-      `D ${triple('c', 'q', 'd')} # a.ttl:7\n` +
+      `# left=1 right=1 +1 -1\n` +
+        `D ${triple('c', 'q', 'd')} # a.ttl:7\n` +
         `A ${triple('e', 'r', 'f')} # b.ttl:3\n`,
     );
   });
@@ -255,7 +267,8 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
     });
 
     expect(out).toBe(
-      `A ${triple('e', 'r', 'f')} # a.ttl:5,12; b.ttl:3\n`,
+      `# left=0 right=1 +1 -0\n` +
+        `A ${triple('e', 'r', 'f')} # a.ttl:5,12; b.ttl:3\n`,
     );
   });
 
@@ -268,7 +281,9 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
       'rdf-patch',
     );
 
-    const lines = out.split('\n').filter((l) => l.length > 0);
+    const lines = out
+      .split('\n')
+      .filter((l) => l.length > 0 && !l.startsWith('#'));
     expect(lines).toHaveLength(2);
     expect(lines[0]).toMatch(/^D /);
     expect(lines[1]).toMatch(/^A /);

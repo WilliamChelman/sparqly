@@ -76,7 +76,7 @@ export function composeHtmlDiff(
     '<body>\n' +
     '<header>\n' +
     `<h1>sparqly diff</h1>\n` +
-    `<p class="summary">+${diff.added.length} −${diff.removed.length}</p>\n` +
+    `<p class="summary">left=${diff.totals.left} right=${diff.totals.right} +${diff.added.length} −${diff.removed.length}</p>\n` +
     '</header>\n' +
     '<section class="block removed">\n' +
     '<h2>Removed</h2>\n' +

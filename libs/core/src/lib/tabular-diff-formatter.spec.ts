@@ -21,54 +21,66 @@ describe('formatTabularDiff — human format', () => {
         { row: { name: literal('alice'), age: literal('30') }, count: 1 },
       ],
       removed: [],
+      totals: { left: 0, right: 1 },
     };
     const out = formatTabularDiff(diff, 'human', { variables: ['name', 'age'] });
-    expect(out).toBe('+ {?age="30", ?name="alice"}\n');
+    expect(out).toBe(
+      '# left=0 right=1 +1 -0\n+ {?age="30", ?name="alice"}\n',
+    );
   });
 
   it('renders a removed row prefixed with `- `', () => {
     const diff: TabularDiffResult = {
       added: [],
       removed: [{ row: { id: literal('gone') }, count: 1 }],
+      totals: { left: 1, right: 0 },
     };
     const out = formatTabularDiff(diff, 'human', { variables: ['id'] });
-    expect(out).toBe('- {?id="gone"}\n');
+    expect(out).toBe('# left=1 right=0 +0 -1\n- {?id="gone"}\n');
   });
 
   it('appends a trailing (×N) when count > 1', () => {
     const diff: TabularDiffResult = {
       added: [{ row: { id: literal('a') }, count: 3 }],
       removed: [],
+      totals: { left: 0, right: 1 },
     };
     const out = formatTabularDiff(diff, 'human', { variables: ['id'] });
-    expect(out).toBe('+ {?id="a"} (×3)\n');
+    expect(out).toBe('# left=0 right=1 +1 -0\n+ {?id="a"} (×3)\n');
   });
 
   it('emits removed lines before added lines, mirroring graph-diff human ordering', () => {
     const diff: TabularDiffResult = {
       added: [{ row: { id: literal('new') }, count: 1 }],
       removed: [{ row: { id: literal('gone') }, count: 1 }],
+      totals: { left: 1, right: 1 },
     };
     const out = formatTabularDiff(diff, 'human', { variables: ['id'] });
-    expect(out).toBe('- {?id="gone"}\n+ {?id="new"}\n');
+    expect(out).toBe(
+      '# left=1 right=1 +1 -1\n- {?id="gone"}\n+ {?id="new"}\n',
+    );
   });
 
   it('renders unbound bindings as `UNBOUND` (no quotes)', () => {
     const diff: TabularDiffResult = {
       added: [{ row: { x: undefined }, count: 1 }],
       removed: [],
+      totals: { left: 0, right: 1 },
     };
     const out = formatTabularDiff(diff, 'human', { variables: ['x'] });
-    expect(out).toBe('+ {?x=UNBOUND}\n');
+    expect(out).toBe('# left=0 right=1 +1 -0\n+ {?x=UNBOUND}\n');
   });
 
   it('renders a named-node binding with angle brackets', () => {
     const diff: TabularDiffResult = {
       added: [{ row: { p: namedNode('http://example.org/a') }, count: 1 }],
       removed: [],
+      totals: { left: 0, right: 1 },
     };
     const out = formatTabularDiff(diff, 'human', { variables: ['p'] });
-    expect(out).toBe('+ {?p=<http://example.org/a>}\n');
+    expect(out).toBe(
+      '# left=0 right=1 +1 -0\n+ {?p=<http://example.org/a>}\n',
+    );
   });
 });
 
@@ -79,6 +91,7 @@ describe('formatTabularDiff — json format', () => {
         { row: { name: literal('alice'), age: literal('30') }, count: 1 },
       ],
       removed: [],
+      totals: { left: 0, right: 1 },
     };
     const out = formatTabularDiff(diff, 'json', {
       variables: ['name', 'age'],
@@ -103,6 +116,7 @@ describe('formatTabularDiff — json format', () => {
     const diff: TabularDiffResult = {
       added: [{ row: { id: literal('a') }, count: 4 }],
       removed: [],
+      totals: { left: 0, right: 1 },
     };
     const parsed = JSON.parse(
       formatTabularDiff(diff, 'json', { variables: ['id'] }),
@@ -125,6 +139,7 @@ describe('formatTabularDiff — json format', () => {
         },
       ],
       removed: [],
+      totals: { left: 0, right: 1 },
     };
     const parsed = JSON.parse(
       formatTabularDiff(diff, 'json', { variables: ['greeting', 'age'] }),
@@ -149,6 +164,7 @@ describe('formatTabularDiff — html format', () => {
         { row: { name: literal('alice'), age: literal('30') }, count: 1 },
       ],
       removed: [{ row: { name: literal('bob'), age: literal('40') }, count: 1 }],
+      totals: { left: 1, right: 1 },
     };
     const out = formatTabularDiff(diff, 'html', {
       variables: ['name', 'age'],
@@ -180,6 +196,7 @@ describe('formatTabularDiff — html format', () => {
     const diff: TabularDiffResult = {
       added: [{ row: { id: literal('a') }, count: 1 }],
       removed: [],
+      totals: { left: 0, right: 1 },
     };
     const out = formatTabularDiff(diff, 'html', { variables: ['id'] });
     const added = extractTable(out, 'added');
@@ -190,6 +207,7 @@ describe('formatTabularDiff — html format', () => {
     const diff: TabularDiffResult = {
       added: [{ row: { id: literal('a') }, count: 2 }],
       removed: [],
+      totals: { left: 0, right: 1 },
     };
     const out = formatTabularDiff(diff, 'html', { variables: ['id'] });
     const added = extractTable(out, 'added');
@@ -200,6 +218,7 @@ describe('formatTabularDiff — html format', () => {
     const diff: TabularDiffResult = {
       added: [{ row: { id: literal('a') }, count: 1 }],
       removed: [],
+      totals: { left: 0, right: 1 },
     };
     const out = formatTabularDiff(diff, 'html', { variables: ['id'] });
     const removed = extractTable(out, 'removed');
@@ -219,6 +238,7 @@ describe('formatTabularDiff — html format', () => {
         },
       ],
       removed: [],
+      totals: { left: 0, right: 1 },
     };
     const out = formatTabularDiff(diff, 'html', { variables: ['x'] });
     const added = extractTable(out, 'added');
@@ -239,6 +259,7 @@ describe('formatTabularDiff — html format', () => {
         },
       ],
       removed: [],
+      totals: { left: 0, right: 1 },
     };
     const out = formatTabularDiff(diff, 'html', {
       // intentionally non-alphabetical to expose accidental sorting

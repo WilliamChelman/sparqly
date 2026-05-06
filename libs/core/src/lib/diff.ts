@@ -15,6 +15,18 @@ export interface RdfDiffResult {
   added: string[];
   /** Canonical N-Quads strings present on the left but not the right, sorted lexicographically. */
   removed: string[];
+  /**
+   * Per-side count of post-strip asserted quads — i.e. the size of each
+   * side's canonical N-Quads set, with RDF-star annotations excluded. By
+   * construction `left - common = removed.length` and
+   * `right - common = added.length`.
+   */
+  totals: DiffTotals;
+}
+
+export interface DiffTotals {
+  left: number;
+  right: number;
 }
 
 /**
@@ -220,7 +232,11 @@ export function diffCanonicalStatements(
   const rightSet = new Set(right);
   const removed = left.filter((s) => !rightSet.has(s)).sort();
   const added = right.filter((s) => !leftSet.has(s)).sort();
-  return { added, removed };
+  return {
+    added,
+    removed,
+    totals: { left: leftSet.size, right: rightSet.size },
+  };
 }
 
 export interface FormatRdfDiffOptions {
@@ -263,13 +279,16 @@ export function formatRdfDiff(
       removed: diff.removed.map((s) =>
         attachRecords(parseStatement(s), leftRecordsJson?.get(s)),
       ),
+      totals: { left: diff.totals.left, right: diff.totals.right },
     };
     return `${JSON.stringify(json)}\n`;
   }
-  if (format === 'turtle') return renderTurtleDiffBlocks(diff, options);
+  if (format === 'turtle') {
+    return formatDiffSummaryComment(diff) + renderTurtleDiffBlocks(diff, options);
+  }
   const removedMarker = format === 'rdf-patch' ? 'D' : '-';
   const addedMarker = format === 'rdf-patch' ? 'A' : '+';
-  const parts: string[] = [];
+  const parts: string[] = [formatDiffSummaryComment(diff)];
   const cwd = options.cwd;
   const leftRecords = options.sourceRecords?.left;
   const rightRecords = options.sourceRecords?.right;
@@ -288,6 +307,22 @@ export function formatRdfDiff(
     parts.push(`${addedMarker} ${s}${tail}\n`);
   }
   return parts.join('');
+}
+
+/**
+ * Canonical one-line `# left=L right=R +x -y` summary, shared between the
+ * stderr summary, every text-format body, and the html `<p class="summary">`.
+ */
+export function formatDiffSummaryLine(
+  totals: DiffTotals,
+  added: number,
+  removed: number,
+): string {
+  return `left=${totals.left} right=${totals.right} +${added} -${removed}`;
+}
+
+function formatDiffSummaryComment(diff: RdfDiffResult): string {
+  return `# ${formatDiffSummaryLine(diff.totals, diff.added.length, diff.removed.length)}\n`;
 }
 
 function renderTurtleDiffBlocks(

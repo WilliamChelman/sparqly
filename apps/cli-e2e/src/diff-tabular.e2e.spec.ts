@@ -53,7 +53,7 @@ describe('sparqly diff — tabular mode (arbitrary SELECT)', () => {
     ]);
 
     expect(result.exitCode, result.stderr).toBe(0);
-    expect(result.stdout).toBe('');
+    expect(result.stdout).toBe('# left=2 right=2 +0 -0\n');
   });
 
   it('exits 1, surfaces an added row, and reports `# +1 -0` on stderr when right has an extra row (multi-var human format)', async () => {
@@ -79,8 +79,10 @@ describe('sparqly diff — tabular mode (arbitrary SELECT)', () => {
     ]);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stdout).toBe('+ {?id="2", ?status="closed"}\n');
-    expect(result.stderr).toBe('# +1 -0\n');
+    expect(result.stdout).toBe(
+      '# left=1 right=2 +1 -0\n+ {?id="2", ?status="closed"}\n',
+    );
+    expect(result.stderr).toBe('# left=1 right=2 +1 -0\n');
   });
 
   it('surfaces net count drift as (×N) in human format (3× left + 5× right → +2)', async () => {
@@ -115,7 +117,9 @@ describe('sparqly diff — tabular mode (arbitrary SELECT)', () => {
     ]);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stdout).toBe('+ {?status="open"} (×2)\n');
+    expect(result.stdout).toBe(
+      '# left=3 right=5 +1 -0\n+ {?status="open"} (×2)\n',
+    );
   });
 
   it('emits a JSON envelope with added/removed/vars when -f json is requested', async () => {
@@ -395,7 +399,9 @@ describe('sparqly diff — tabular mode (arbitrary SELECT)', () => {
       ]);
 
       expect(result.exitCode, result.stderr).toBe(1);
-      expect(result.stdout).toBe('+ {?id="2", ?status="closed"}\n');
+      expect(result.stdout).toBe(
+        '# left=1 right=2 +1 -0\n+ {?id="2", ?status="closed"}\n',
+      );
 
       // Endpoint must have been contacted — i.e., pass-through, not skipped
       // or locally materialized.

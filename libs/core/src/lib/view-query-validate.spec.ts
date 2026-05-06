@@ -146,4 +146,21 @@ describe("validateViewQuery — mode 'tabular-anon'", () => {
       }),
     ).toThrow();
   });
+
+  it('accepts aliased projection expressions under tabular-anon', () => {
+    expect(() =>
+      validateViewQuery(
+        'SELECT (str(?x) AS ?y) ?z WHERE { ?x <urn:p> ?z }',
+        { mode: 'tabular-anon' },
+      ),
+    ).not.toThrow();
+  });
+
+  it('still rejects aliased projection expressions under strict mode', () => {
+    expect(() =>
+      validateViewQuery(
+        'SELECT (str(?x) AS ?y) ?z WHERE { ?x <urn:p> ?z }',
+      ),
+    ).toThrow(/SELECT.*project.*\?s.*\?p.*\?o/i);
+  });
 });

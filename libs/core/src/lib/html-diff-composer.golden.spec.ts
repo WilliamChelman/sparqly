@@ -26,7 +26,7 @@ describe('composeHtmlDiff — golden fixtures', () => {
     const removed = triple('c', 'q', 'd');
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
-      { added: [added], removed: [removed] },
+      { added: [added], removed: [removed], totals: { left: 1, right: 1 } },
       {
         left: new Map([
           [removed, [{ file: 'file:///cwd/a.ttl', line: 7 }]],
@@ -50,7 +50,7 @@ describe('composeHtmlDiff — golden fixtures', () => {
     const removed = triple('c', 'q', 'd');
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
-      { added: [added], removed: [removed] },
+      { added: [added], removed: [removed], totals: { left: 1, right: 1 } },
       { left: new Map(), right: new Map() },
       emptySnippets,
       { cwd: '/cwd' },
@@ -67,7 +67,7 @@ describe('composeHtmlDiff — golden fixtures', () => {
     const removed = triple('c', 'q', 'd');
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
-      { added: [added], removed: [removed] },
+      { added: [added], removed: [removed], totals: { left: 1, right: 1 } },
       {
         left: new Map([
           [removed, [{ file: 'file:///cwd/a.ttl', line: 7 }]],
@@ -88,7 +88,7 @@ describe('composeHtmlDiff — golden fixtures', () => {
   it('snippet rendering with context=3: byte-identical to fixture', async () => {
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       {
         left: new Map(),
         right: new Map([[added, [{ file: 'file:///cwd/foo.ttl', line: 5 }]]]),
@@ -125,7 +125,7 @@ describe('composeHtmlDiff — golden fixtures', () => {
   it('snippet rendering with context=0 (focal line only): byte-identical to fixture', async () => {
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       {
         left: new Map(),
         right: new Map([[added, [{ file: 'file:///cwd/foo.ttl', line: 5 }]]]),
@@ -154,7 +154,7 @@ describe('composeHtmlDiff — golden fixtures', () => {
   it('snippet near top boundary (truncated top window): byte-identical to fixture', async () => {
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       {
         left: new Map(),
         right: new Map([[added, [{ file: 'file:///cwd/foo.ttl', line: 1 }]]]),
@@ -188,7 +188,7 @@ describe('composeHtmlDiff — golden fixtures', () => {
   it('record with no line (file-only, e.g. JSON-LD/RDF-XML): byte-identical to fixture', async () => {
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       {
         left: new Map(),
         right: new Map([[added, [{ file: 'file:///cwd/foo.jsonld' }]]]),
@@ -207,7 +207,7 @@ describe('composeHtmlDiff — golden fixtures', () => {
   it('source file unavailable at render time (snippet result is `unavailable`): byte-identical to fixture', async () => {
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       {
         left: new Map(),
         right: new Map([[added, [{ file: 'file:///cwd/foo.ttl', line: 5 }]]]),
@@ -246,7 +246,7 @@ describe('composeHtmlDiff — golden fixtures', () => {
       ]),
     );
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       { left: new Map(), right: new Map([[added, records]]) },
       snippets,
       { cwd: '/cwd', context: 0 },
@@ -277,7 +277,7 @@ describe('composeHtmlDiff — golden fixtures', () => {
       ]),
     );
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       { left: new Map(), right: new Map([[added, records]]) },
       snippets,
       { cwd: '/cwd', context: 0 },
@@ -293,7 +293,7 @@ describe('composeHtmlDiff — golden fixtures', () => {
   it('snippet near bottom boundary (truncated bottom window): byte-identical to fixture', async () => {
     const added = triple('e', 'r', 'f');
     const out = composeHtmlDiff(
-      { added: [added], removed: [] },
+      { added: [added], removed: [], totals: { left: 0, right: 1 } },
       {
         left: new Map(),
         right: new Map([[added, [{ file: 'file:///cwd/foo.ttl', line: 5 }]]]),

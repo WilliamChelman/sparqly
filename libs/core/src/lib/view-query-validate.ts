@@ -49,15 +49,33 @@ function assertSelectProjection(
 ): void {
   const names: string[] = [];
   for (const v of variables) {
-    const term = v as { termType?: string; value?: string };
-    if (term?.termType !== 'Variable' || typeof term.value !== 'string') {
-      throw new Error(
-        mode === 'tabular-anon'
-          ? 'SELECT must project named variables (no `SELECT *`, no projection expressions).'
-          : 'SELECT view query must project exactly {?s, ?p, ?o} or {?s, ?p, ?o, ?g} (no SELECT *, no expressions).',
-      );
+    const term = v as {
+      termType?: string;
+      value?: string;
+      variable?: { termType?: string; value?: string };
+    };
+    if (term?.termType === 'Variable' && typeof term.value === 'string') {
+      names.push(term.value);
+      continue;
     }
-    names.push(term.value);
+    // Aliased projections like `(str(?x) AS ?y)` parse as
+    // `{ expression, variable: <Variable> }`. Tabular-anon accepts them
+    // (the alias names the column); strict mode rejects them — they can't
+    // satisfy the {?s,?p,?o[,?g]} projection contract.
+    const alias = term?.variable;
+    if (
+      mode === 'tabular-anon' &&
+      alias?.termType === 'Variable' &&
+      typeof alias.value === 'string'
+    ) {
+      names.push(alias.value);
+      continue;
+    }
+    throw new Error(
+      mode === 'tabular-anon'
+        ? 'SELECT must project named variables or aliased expressions (no `SELECT *`).'
+        : 'SELECT view query must project exactly {?s, ?p, ?o} or {?s, ?p, ?o, ?g} (no SELECT *, no expressions).',
+    );
   }
   if (mode === 'tabular-anon') return;
   const sorted = [...names].sort().join(',');

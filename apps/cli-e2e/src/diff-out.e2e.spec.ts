@@ -101,7 +101,7 @@ describe('sparqly diff --out', () => {
     ]);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toBe('# +1 -0\n');
+    expect(result.stderr).toBe('# left=3 right=4 +1 -0\n');
   });
 
   it('--quiet still suppresses the summary when --out is set', async () => {

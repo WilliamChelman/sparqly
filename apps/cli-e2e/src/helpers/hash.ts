@@ -27,6 +27,16 @@ export function nonEmptyLines(text: string): string[] {
   return text.split('\n').filter((l) => l.length > 0);
 }
 
+/**
+ * Body lines with the leading `# left=L right=R +x -y` summary stripped —
+ * used by diff e2e tests so they don't have to thread the summary through
+ * every length assertion. Other `#` comments (turtle's `# --- removed ---`,
+ * `# from path:line`) are preserved.
+ */
+export function diffBodyLines(text: string): string[] {
+  return nonEmptyLines(text).filter((l) => !/^# left=\d+ right=\d+ /.test(l));
+}
+
 export function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
