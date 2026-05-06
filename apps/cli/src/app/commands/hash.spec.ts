@@ -12,6 +12,22 @@ describe('hashSpec — single-target shape', () => {
     expect(hashSpec.positionals).toEqual([{ field: 'source', name: 'glob' }]);
   });
 
+  it('exposes no env mirrors on per-invocation fields per ADR-0010', () => {
+    const perInvocation = [
+      'compareWith',
+      'query',
+      'queryFile',
+      'compareWithQuery',
+      'compareWithQueryFile',
+      'json',
+    ];
+    for (const key of perInvocation) {
+      const field = hashSpec.fields.find((f) => f.key === key);
+      expect(field, `field ${key}`).toBeDefined();
+      expect(field?.env, `env on ${key}`).toBeUndefined();
+    }
+  });
+
   it('exposes a `--source` flag (singular) and no `--sources`', () => {
     const sourceFlags =
       hashSpec.fields.find((f) => f.key === 'source')?.flags ?? [];

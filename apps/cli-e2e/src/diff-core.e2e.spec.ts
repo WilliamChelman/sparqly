@@ -252,21 +252,6 @@ describe('sparqly diff — core properties', () => {
       );
     });
 
-    it('SPARQLY_DIFF_FORMAT env triggers JSON output', async () => {
-      const result = await runCli(
-        [
-          'diff',
-          '--quiet',
-          diffFixture('domain.ttl'),
-          diffFixture('added.ttl'),
-        ],
-        { env: { SPARQLY_DIFF_FORMAT: 'json' } },
-      );
-
-      expect(result.exitCode).toBe(1);
-      const parsed = JSON.parse(result.stdout);
-      expect(parsed.added).toHaveLength(1);
-    });
 
   });
 });

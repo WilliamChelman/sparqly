@@ -96,9 +96,7 @@ describe('sparqly hash — argv and flag validation', () => {
 
   it('exits non-zero when no target source is provided', async () => {
     const result = await runCli(['hash', '--quiet'], {
-      env: {
-        SPARQLY_HASH_COMPARE_WITH: undefined,
-      },
+      env: {},
       cwd: scratch,
     });
 

@@ -63,7 +63,6 @@ const sourcesRegistryField: FieldDescriptor = {
 const compareWithField: FieldDescriptor = {
   key: 'compareWith',
   schema: z.string(),
-  env: ['SPARQLY_HASH_COMPARE_WITH'],
   flags: [
     {
       spec: '--compare-with <source>',
@@ -76,7 +75,6 @@ const compareWithField: FieldDescriptor = {
 const queryField: FieldDescriptor = {
   key: 'query',
   schema: z.string().min(1),
-  env: ['SPARQLY_HASH_QUERY'],
   flags: [
     {
       spec: '--query <sparql>',
@@ -89,7 +87,6 @@ const queryField: FieldDescriptor = {
 const queryFileField: FieldDescriptor = {
   key: 'queryFile',
   schema: z.string().min(1),
-  env: ['SPARQLY_HASH_QUERY_FILE'],
   flags: [
     {
       spec: '--query-file <path>',
@@ -102,7 +99,6 @@ const queryFileField: FieldDescriptor = {
 const compareWithQueryField: FieldDescriptor = {
   key: 'compareWithQuery',
   schema: z.string().min(1),
-  env: ['SPARQLY_HASH_COMPARE_WITH_QUERY'],
   flags: [
     {
       spec: '--compare-with-query <sparql>',
@@ -115,7 +111,6 @@ const compareWithQueryField: FieldDescriptor = {
 const compareWithQueryFileField: FieldDescriptor = {
   key: 'compareWithQueryFile',
   schema: z.string().min(1),
-  env: ['SPARQLY_HASH_COMPARE_WITH_QUERY_FILE'],
   flags: [
     {
       spec: '--compare-with-query-file <path>',
@@ -129,7 +124,6 @@ const jsonField: FieldDescriptor = {
   key: 'json',
   schema: coercedBooleanSchema,
   default: false,
-  env: ['SPARQLY_HASH_JSON'],
   flags: [
     {
       spec: '--json',

@@ -47,7 +47,6 @@ class FormatCheckMismatchSignal extends Error {
 const writeField: FieldDescriptor = {
   key: 'write',
   schema: coercedBooleanSchema,
-  env: ['SPARQLY_FORMAT_WRITE'],
   flags: [
     {
       spec: '--write',
@@ -60,7 +59,6 @@ const writeField: FieldDescriptor = {
 const checkField: FieldDescriptor = {
   key: 'check',
   schema: coercedBooleanSchema,
-  env: ['SPARQLY_FORMAT_CHECK'],
   flags: [
     {
       spec: '--check',
@@ -78,7 +76,6 @@ const objectAnchoredPredicatesField: FieldDescriptor = {
 const formatOutField: FieldDescriptor = {
   key: 'out',
   schema: z.string(),
-  env: ['SPARQLY_OUT', 'SPARQLY_FORMAT_OUT'],
   flags: [
     {
       spec: '-o, --out <path>',

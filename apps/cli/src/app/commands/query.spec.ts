@@ -9,6 +9,15 @@ describe('querySpec — single-target shape', () => {
     ]);
   });
 
+  it('exposes no env mirrors on per-invocation fields per ADR-0010', () => {
+    const perInvocation = ['query', 'queryFile', 'format', 'out', 'mutable'];
+    for (const key of perInvocation) {
+      const field = querySpec.fields.find((f) => f.key === key);
+      expect(field, `field ${key}`).toBeDefined();
+      expect(field?.env, `env on ${key}`).toBeUndefined();
+    }
+  });
+
   it('exposes a `--source` flag (singular) and no `--sources`', () => {
     const sourceFlags =
       querySpec.fields.find((f) => f.key === 'source')?.flags ?? [];

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { sourceField } from './fields-shared';
+import {
+  mutableFieldsFor,
+  outFieldFor,
+  sourceField,
+  verbosityFieldsFor,
+} from './fields-shared';
 
 const schema = z.object({ source: sourceField.schema });
 
@@ -83,5 +88,27 @@ describe('sourceField — legacy graph/graphMode fields are removed', () => {
       source: { endpoint: 'https://example.com/sparql' },
     });
     expect(result.success).toBe(true);
+  });
+});
+
+function envOf(field: { env?: string | ReadonlyArray<string> }): string[] {
+  if (field.env === undefined) return [];
+  return typeof field.env === 'string' ? [field.env] : [...field.env];
+}
+
+describe('shared field factories — env mirrors trimmed per ADR-0010', () => {
+  it('verbosityFieldsFor exposes only the cross-cutting SPARQLY_VERBOSE/QUIET keepers (no per-command mirrors)', () => {
+    const [verbose, quiet] = verbosityFieldsFor('demo');
+    expect(envOf(verbose)).toEqual(['SPARQLY_VERBOSE']);
+    expect(envOf(quiet)).toEqual(['SPARQLY_QUIET']);
+  });
+
+  it('outFieldFor exposes no env (output paths are per-invocation)', () => {
+    expect(envOf(outFieldFor('demo'))).toEqual([]);
+  });
+
+  it('mutableFieldsFor exposes no env (per-invocation toggle)', () => {
+    const [mutable] = mutableFieldsFor('demo');
+    expect(envOf(mutable)).toEqual([]);
   });
 });

@@ -10,6 +10,15 @@ describe('formatSpec', () => {
     ]);
   });
 
+  it('exposes no env mirrors on per-invocation fields per ADR-0010', () => {
+    const perInvocation = ['write', 'check', 'out'];
+    for (const key of perInvocation) {
+      const field = formatSpec.fields.find((f) => f.key === key);
+      expect(field, `field ${key}`).toBeDefined();
+      expect(field?.env, `env on ${key}`).toBeUndefined();
+    }
+  });
+
   it('rejects --write combined with --check via spec.refine', () => {
     const baseSchema = blockSchemaFromFields(formatSpec.fields);
     if (!formatSpec.refine) throw new Error('expected refine');

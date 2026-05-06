@@ -6,11 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
 import { hashFixture, hashLineRe, nonEmptyLines } from './helpers/hash';
 
-const CLEARED_ENV = {
-  SPARQLY_HASH_JSON: undefined,
-  SPARQLY_HASH_COMPARE_WITH: undefined,
-  SPARQLY_HASH_GRAPH_MODE: undefined,
-} as const;
+const CLEARED_ENV = {} as const;
 
 describe('sparqly hash — config file + env precedence', () => {
   let scratch: string;
@@ -82,18 +78,6 @@ describe('sparqly hash — config file + env precedence', () => {
     expect(result.stderr).toMatch(/json at root not allowed.*per-invocation/);
   });
 
-  it('SPARQLY_HASH_COMPARE_WITH env triggers compare mode', async () => {
-    const single = hashFixture('domain.ttl');
-    const partsGlob = hashFixture('parts/*.ttl');
-
-    const result = await runCli(['hash', '--quiet', single], {
-      env: { ...CLEARED_ENV, SPARQLY_HASH_COMPARE_WITH: partsGlob },
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toMatch(/^match: [0-9a-f]{64}\n$/);
-  });
-
   it('rejects `compareWith` at config root with a friendly per-invocation message', async () => {
     const single = hashFixture('domain.ttl');
     const partsGlob = hashFixture('parts/*.ttl');
@@ -115,22 +99,6 @@ describe('sparqly hash — config file + env precedence', () => {
     expect(result.stderr).toMatch(
       /compareWith at root not allowed.*per-invocation/,
     );
-  });
-
-  it('SPARQLY_HASH_JSON=true is equivalent to --json (single object)', async () => {
-    const single = hashFixture('domain.ttl');
-
-    const result = await runCli(['hash', '--quiet', single], {
-      env: { ...CLEARED_ENV, SPARQLY_HASH_JSON: 'true' },
-    });
-
-    expect(result.exitCode).toBe(0);
-    const parsed = JSON.parse(result.stdout) as {
-      source: string;
-      hash: string;
-    };
-    expect(parsed.source).toBe(single);
-    expect(parsed.hash).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('an ambiguous multi-entry registry without `default: true` errors with available `@ids`', async () => {

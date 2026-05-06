@@ -43,7 +43,7 @@ const portField: FieldDescriptor = {
   key: 'port',
   schema: coercedIntSchema,
   default: 3000,
-  env: ['SPARQLY_PORT', 'SPARQLY_SERVE_PORT'],
+  env: ['SPARQLY_PORT'],
   flags: [
     {
       spec: '-p, --port <port>',
@@ -56,7 +56,6 @@ const watchField: FieldDescriptor = {
   key: 'watch',
   schema: coercedBooleanSchema,
   default: false,
-  env: ['SPARQLY_WATCH', 'SPARQLY_SERVE_WATCH'],
   flags: [
     {
       spec: '--watch',
@@ -70,7 +69,6 @@ const watchDebounceField: FieldDescriptor = {
   key: 'watchDebounce',
   schema: coercedIntSchema,
   default: 250,
-  env: ['SPARQLY_WATCH_DEBOUNCE', 'SPARQLY_SERVE_WATCH_DEBOUNCE'],
   flags: [
     {
       spec: '--watch-debounce <ms>',
@@ -83,7 +81,6 @@ const watchPollField: FieldDescriptor = {
   key: 'watchPoll',
   schema: coercedIntSchema,
   default: 1000,
-  env: ['SPARQLY_WATCH_POLL', 'SPARQLY_SERVE_WATCH_POLL'],
   flags: [
     {
       spec: '--watch-poll <ms>',

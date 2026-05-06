@@ -9,7 +9,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const MINIMAL_TTL = resolve(HERE, '../fixtures/minimal.ttl');
 
 const CLEARED_ENV = {
-  SPARQLY_MUTABLE: undefined,
   SPARQLY_VERBOSE: undefined,
   SPARQLY_QUIET: undefined,
 } as const;

@@ -58,6 +58,19 @@ describe('serveSpec — single-target shape', () => {
   it('exitCode returns 1 by default', () => {
     expect(serveSpec.exitCode(new Error('boom'))).toBe(1);
   });
+
+  it('env mirrors per ADR-0010: SPARQLY_PORT only on port; no env on watch/watchDebounce/watchPoll/mutable', () => {
+    const envOf = (key: string): readonly string[] => {
+      const f = serveSpec.fields.find((x) => x.key === key);
+      if (!f?.env) return [];
+      return typeof f.env === 'string' ? [f.env] : f.env;
+    };
+    expect(envOf('port')).toEqual(['SPARQLY_PORT']);
+    expect(envOf('watch')).toEqual([]);
+    expect(envOf('watchDebounce')).toEqual([]);
+    expect(envOf('watchPoll')).toEqual([]);
+    expect(envOf('mutable')).toEqual([]);
+  });
 });
 
 describe('serveSpec — array `--source` rejection', () => {

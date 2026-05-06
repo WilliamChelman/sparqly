@@ -51,7 +51,6 @@ const sourcesRegistryField: FieldDescriptor = {
 const queryField: FieldDescriptor = {
   key: 'query',
   schema: z.string(),
-  env: ['SPARQLY_QUERY_QUERY'],
   flags: [
     {
       spec: '-q, --query <sparql>',
@@ -63,7 +62,6 @@ const queryField: FieldDescriptor = {
 const queryFileField: FieldDescriptor = {
   key: 'queryFile',
   schema: z.string(),
-  env: ['SPARQLY_QUERY_QUERY_FILE'],
   flags: [
     {
       spec: '--query-file <path>',
@@ -75,7 +73,6 @@ const queryFileField: FieldDescriptor = {
 const formatField: FieldDescriptor = {
   key: 'format',
   schema: z.enum(SUPPORTED_FORMATS),
-  env: ['SPARQLY_QUERY_FORMAT'],
   flags: [
     {
       spec: '-f, --format <format>',

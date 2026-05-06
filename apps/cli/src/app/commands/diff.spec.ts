@@ -24,6 +24,28 @@ describe('diffSpec', () => {
     ]);
   });
 
+  it('exposes no env mirrors on per-invocation fields per ADR-0010', () => {
+    const perInvocation = [
+      'left',
+      'right',
+      'query',
+      'queryFile',
+      'leftQuery',
+      'leftQueryFile',
+      'rightQuery',
+      'rightQueryFile',
+      'format',
+      'skipAutoSourceAnnotation',
+      'context',
+      'out',
+    ];
+    for (const key of perInvocation) {
+      const field = diffSpec.fields.find((f) => f.key === key);
+      expect(field, `field ${key}`).toBeDefined();
+      expect(field?.env, `env on ${key}`).toBeUndefined();
+    }
+  });
+
   it('rejects unknown --format with the expected enum', () => {
     const schema = blockSchemaFromFields(diffSpec.fields);
     const r = schema.safeParse({ format: 'csv' });

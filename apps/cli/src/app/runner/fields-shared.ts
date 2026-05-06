@@ -111,15 +111,14 @@ export const sourcesField: FieldDescriptor = {
 };
 
 export function verbosityFieldsFor(
-  commandName: string,
+  _commandName: string,
 ): ReadonlyArray<FieldDescriptor> {
-  const upper = commandName.toUpperCase();
   return [
     {
       key: 'verbose',
       schema: coercedBoolean,
       default: false,
-      env: ['SPARQLY_VERBOSE', `SPARQLY_${upper}_VERBOSE`],
+      env: ['SPARQLY_VERBOSE'],
       flags: [
         {
           spec: '-v, --verbose',
@@ -131,7 +130,7 @@ export function verbosityFieldsFor(
       key: 'quiet',
       schema: coercedBoolean,
       default: false,
-      env: ['SPARQLY_QUIET', `SPARQLY_${upper}_QUIET`],
+      env: ['SPARQLY_QUIET'],
       flags: [
         {
           spec: '--quiet',
@@ -142,12 +141,10 @@ export function verbosityFieldsFor(
   ];
 }
 
-export function outFieldFor(commandName: string): FieldDescriptor {
-  const upper = commandName.toUpperCase();
+export function outFieldFor(_commandName: string): FieldDescriptor {
   return {
     key: 'out',
     schema: z.string(),
-    env: ['SPARQLY_OUT', `SPARQLY_${upper}_OUT`],
     flags: [
       {
         spec: '-o, --out <path>',
@@ -171,15 +168,13 @@ const coercedInt = z.preprocess((v) => {
 export const coercedIntSchema = coercedInt;
 
 export function mutableFieldsFor(
-  commandName: string,
+  _commandName: string,
 ): ReadonlyArray<FieldDescriptor> {
-  const upper = commandName.toUpperCase();
   return [
     {
       key: 'mutable',
       schema: coercedBoolean,
       default: false,
-      env: ['SPARQLY_MUTABLE', `SPARQLY_${upper}_MUTABLE`],
       flags: [
         {
           spec: '--mutable',

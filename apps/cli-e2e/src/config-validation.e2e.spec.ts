@@ -6,11 +6,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
 
 const CLEARED_ENV = {
-  SPARQLY_MUTABLE: undefined,
   SPARQLY_VERBOSE: undefined,
   SPARQLY_QUIET: undefined,
-  SPARQLY_SERVE_PORT: undefined,
-  SPARQLY_SERVE_WATCH: undefined,
+  SPARQLY_PORT: undefined,
 } as const;
 
 describe('config file — validation policy', () => {

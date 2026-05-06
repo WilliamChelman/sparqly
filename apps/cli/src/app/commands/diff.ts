@@ -88,7 +88,6 @@ const sourcesRegistryField: FieldDescriptor = {
 const leftField: FieldDescriptor = {
   key: 'left',
   schema: singleSourceSchema,
-  env: ['SPARQLY_DIFF_LEFT'],
   flags: [
     {
       spec: '--left <source>',
@@ -101,7 +100,6 @@ const leftField: FieldDescriptor = {
 const rightField: FieldDescriptor = {
   key: 'right',
   schema: singleSourceSchema,
-  env: ['SPARQLY_DIFF_RIGHT'],
   flags: [
     {
       spec: '--right <source>',
@@ -114,7 +112,6 @@ const rightField: FieldDescriptor = {
 const queryField: FieldDescriptor = {
   key: 'query',
   schema: z.string().min(1),
-  env: ['SPARQLY_DIFF_QUERY'],
   flags: [
     {
       spec: '--query <sparql>',
@@ -127,7 +124,6 @@ const queryField: FieldDescriptor = {
 const queryFileField: FieldDescriptor = {
   key: 'queryFile',
   schema: z.string().min(1),
-  env: ['SPARQLY_DIFF_QUERY_FILE'],
   flags: [
     {
       spec: '--query-file <path>',
@@ -140,7 +136,6 @@ const queryFileField: FieldDescriptor = {
 const leftQueryField: FieldDescriptor = {
   key: 'leftQuery',
   schema: z.string().min(1),
-  env: ['SPARQLY_DIFF_LEFT_QUERY'],
   flags: [
     {
       spec: '--left-query <sparql>',
@@ -153,7 +148,6 @@ const leftQueryField: FieldDescriptor = {
 const leftQueryFileField: FieldDescriptor = {
   key: 'leftQueryFile',
   schema: z.string().min(1),
-  env: ['SPARQLY_DIFF_LEFT_QUERY_FILE'],
   flags: [
     {
       spec: '--left-query-file <path>',
@@ -166,7 +160,6 @@ const leftQueryFileField: FieldDescriptor = {
 const rightQueryField: FieldDescriptor = {
   key: 'rightQuery',
   schema: z.string().min(1),
-  env: ['SPARQLY_DIFF_RIGHT_QUERY'],
   flags: [
     {
       spec: '--right-query <sparql>',
@@ -179,7 +172,6 @@ const rightQueryField: FieldDescriptor = {
 const rightQueryFileField: FieldDescriptor = {
   key: 'rightQueryFile',
   schema: z.string().min(1),
-  env: ['SPARQLY_DIFF_RIGHT_QUERY_FILE'],
   flags: [
     {
       spec: '--right-query-file <path>',
@@ -192,7 +184,6 @@ const rightQueryFileField: FieldDescriptor = {
 const formatField: FieldDescriptor = {
   key: 'format',
   schema: z.enum(DIFF_FORMATS),
-  env: ['SPARQLY_DIFF_FORMAT'],
   flags: [
     {
       spec: '-f, --format <format>',
@@ -208,7 +199,6 @@ const skipAutoSourceAnnotationField: FieldDescriptor = {
     z.boolean(),
   ),
   default: false,
-  env: ['SPARQLY_DIFF_SKIP_AUTO_SOURCE_ANNOTATION'],
   flags: [
     {
       spec: '--skip-auto-source-annotation',
@@ -227,7 +217,6 @@ const contextField: FieldDescriptor = {
     }
     return v;
   }, z.number().int().min(0).max(MAX_CONTEXT)),
-  env: ['SPARQLY_DIFF_CONTEXT'],
   flags: [
     {
       spec: '-C, --context <n>',
