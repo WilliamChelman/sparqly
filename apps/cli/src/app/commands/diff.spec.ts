@@ -2,10 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { blockSchemaFromFields, defaultsFromFields } from '../runner/field';
 import {
   collectSnippetKeysForDiff,
+  detectTabularDispatch,
   diffSpec,
   resolveDiffSide,
   withAutoSourceAnnotation,
 } from './diff';
+
+const TRIPLES_CONSTRUCT =
+  'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:p ?o } WHERE { ?s ex:p ?o }';
+const TRIPLES_SELECT_SPO =
+  'PREFIX ex: <http://example.org/> SELECT ?s ?p ?o WHERE { ?s ?p ?o }';
+const TUPLES_SELECT =
+  'PREFIX ex: <http://example.org/> SELECT ?id WHERE { ?p ex:id ?id }';
 
 describe('diffSpec', () => {
   it('declares two positionals bound to left and right', () => {
@@ -77,6 +85,51 @@ describe('diffSpec', () => {
 
   it('exitCode returns 2 by default for unknown errors', () => {
     expect(diffSpec.exitCode(new Error('boom'))).toBe(2);
+  });
+});
+
+describe('detectTabularDispatch — shape-driven mode dispatch', () => {
+  it('returns undefined when only one side has an inline query (graph fallback)', () => {
+    expect(detectTabularDispatch(TUPLES_SELECT, undefined)).toBeUndefined();
+    expect(detectTabularDispatch(undefined, TUPLES_SELECT)).toBeUndefined();
+  });
+
+  it('returns undefined when both sides are triples-shape (graph diff path owns it)', () => {
+    expect(
+      detectTabularDispatch(TRIPLES_CONSTRUCT, TRIPLES_SELECT_SPO),
+    ).toBeUndefined();
+  });
+
+  it('returns the per-side shapes when both sides are tuples-shape', () => {
+    const out = detectTabularDispatch(TUPLES_SELECT, TUPLES_SELECT);
+    expect(out).toBeDefined();
+    expect(out?.left.shape).toBe('tuples');
+    expect(out?.right.shape).toBe('tuples');
+  });
+
+  it('throws on mixed shape: triples-shape left + tuples-shape right', () => {
+    expect(() =>
+      detectTabularDispatch(TRIPLES_CONSTRUCT, TUPLES_SELECT),
+    ).toThrow(/mixed.*shape|shape mismatch/i);
+  });
+
+  it('throws on mixed shape: tuples-shape left + triples-shape right', () => {
+    expect(() =>
+      detectTabularDispatch(TUPLES_SELECT, TRIPLES_SELECT_SPO),
+    ).toThrow(/mixed.*shape|shape mismatch/i);
+  });
+
+  it('mixed-shape error names which side is which (actionable diagnosis)', () => {
+    try {
+      detectTabularDispatch(TRIPLES_CONSTRUCT, TUPLES_SELECT);
+      throw new Error('expected throw');
+    } catch (e) {
+      const msg = (e as Error).message;
+      expect(msg).toMatch(/left/);
+      expect(msg).toMatch(/right/);
+      // points the user at a fix
+      expect(msg).toMatch(/CONSTRUCT|SELECT/);
+    }
   });
 });
 
@@ -254,6 +307,14 @@ describe('diffSpec — --skip-auto-source-annotation flag', () => {
     expect(flags.length).toBeGreaterThan(0);
     expect(flags[0].spec).toBe('--skip-auto-source-annotation');
     expect(flags[0].description).toMatch(/glob/);
+  });
+
+  it("notes the flag is a no-op in tabular diff mode (so users don't expect source records on tuple results)", () => {
+    const flags =
+      diffSpec.fields.find((f) => f.key === 'skipAutoSourceAnnotation')?.flags ??
+      [];
+    expect(flags[0].description).toMatch(/tabular|no-op/i);
+    expect(flags[0].description).toMatch(/tabular/i);
   });
 
   it('defaults to false', () => {

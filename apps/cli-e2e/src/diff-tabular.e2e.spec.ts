@@ -148,6 +148,46 @@ describe('sparqly diff — tabular mode (arbitrary SELECT)', () => {
     expect(parsed.added[0].row.id.value).toBe('new');
   });
 
+  it('rejects pairing a triples-shape CONSTRUCT with a tuples-shape SELECT (mixed shape)', async () => {
+    await writeFile(leftPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
+    await writeFile(rightPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
+
+    const result = await runCli([
+      'diff',
+      '--quiet',
+      '--left-query',
+      'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:id ?id } WHERE { ?s ex:id ?id }',
+      '--right-query',
+      'PREFIX ex: <http://example.org/> SELECT ?id WHERE { ?p ex:id ?id }',
+      leftPath,
+      rightPath,
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toMatch(/mixed-shape|shape mismatch/i);
+    expect(result.stderr).toMatch(/left/);
+    expect(result.stderr).toMatch(/right/);
+  });
+
+  it('rejects pairing a tuples-shape SELECT with a triples-shape SELECT-spo (mixed shape)', async () => {
+    await writeFile(leftPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
+    await writeFile(rightPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
+
+    const result = await runCli([
+      'diff',
+      '--quiet',
+      '--left-query',
+      'PREFIX ex: <http://example.org/> SELECT ?id WHERE { ?p ex:id ?id }',
+      '--right-query',
+      'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
+      leftPath,
+      rightPath,
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toMatch(/mixed-shape|shape mismatch/i);
+  });
+
   it('rejects mismatched projected variable-name sets with a clear error', async () => {
     await writeFile(
       leftPath,
@@ -217,6 +257,38 @@ describe('sparqly diff — tabular mode (arbitrary SELECT)', () => {
     );
   });
 
+  it('rejects a tabular row whose projection is bound to a blank node (no silent garbage)', async () => {
+    await writeFile(
+      leftPath,
+      [
+        TTL_HEADER,
+        'ex:p1 ex:item _:b1 .',
+        '_:b1 ex:val "x" .',
+      ].join('\n'),
+    );
+    await writeFile(
+      rightPath,
+      [
+        TTL_HEADER,
+        'ex:p1 ex:item _:b2 .',
+        '_:b2 ex:val "x" .',
+      ].join('\n'),
+    );
+
+    const result = await runCli([
+      'diff',
+      '--quiet',
+      '--query',
+      'PREFIX ex: <http://example.org/> SELECT ?item WHERE { ?p ex:item ?item }',
+      leftPath,
+      rightPath,
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toMatch(/blank node/i);
+    expect(result.stderr).toMatch(/\?item/);
+  });
+
   it('rejects -f rdf-patch in tabular mode (RDF-shaped formats have no meaning for tuple results)', async () => {
     await writeFile(leftPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
     await writeFile(rightPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
@@ -233,7 +305,28 @@ describe('sparqly diff — tabular mode (arbitrary SELECT)', () => {
     ]);
 
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toMatch(/tabular/);
+    expect(result.stderr).toMatch(/rdf-patch/);
+    expect(result.stderr).toMatch(/tuple/i);
+  });
+
+  it('rejects -f turtle in tabular mode (RDF-shaped formats have no meaning for tuple results)', async () => {
+    await writeFile(leftPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
+    await writeFile(rightPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
+
+    const result = await runCli([
+      'diff',
+      '--quiet',
+      '-f',
+      'turtle',
+      '--query',
+      'PREFIX ex: <http://example.org/> SELECT ?id WHERE { ?p ex:id ?id }',
+      leftPath,
+      rightPath,
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toMatch(/turtle/);
+    expect(result.stderr).toMatch(/tuple/i);
   });
 
   it('emits a stderr warning per side when LIMIT/OFFSET is used without ORDER BY', async () => {

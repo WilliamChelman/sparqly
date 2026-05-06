@@ -83,8 +83,18 @@ describe('tabularRowKey', () => {
     expect(keyByOne).toBe(keyByOther);
   });
 
-  it('serializes a blank node', () => {
-    const key = tabularRowKey({ x: blankNode('b0') }, ['x']);
-    expect(key).toBe('?x=_:b0');
+  it('rejects a row with a blank-node-valued column with an actionable error', () => {
+    expect(() =>
+      tabularRowKey({ x: blankNode('b0') }, ['x']),
+    ).toThrow(/blank node/i);
+  });
+
+  it('blank-node rejection names the offending variable', () => {
+    expect(() =>
+      tabularRowKey({ name: literal('alice'), x: blankNode('b0') }, [
+        'name',
+        'x',
+      ]),
+    ).toThrow(/\?x/);
   });
 });

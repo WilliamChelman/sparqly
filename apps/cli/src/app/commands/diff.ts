@@ -216,7 +216,7 @@ const skipAutoSourceAnnotationField: FieldDescriptor = {
     {
       spec: '--skip-auto-source-annotation',
       description:
-        "Suppress `diff`'s implicit `annotateSource` injection on glob targets. Has no effect on view/endpoint targets (which can't carry source records anyway). An explicit `annotateSource` declared in config still runs.",
+        "Suppress `diff`'s implicit `annotateSource` injection on glob targets. Has no effect on view/endpoint targets (which can't carry source records anyway). An explicit `annotateSource` declared in config still runs. Also a no-op in tabular diff mode — bindings rows have no per-row provenance, so no annotation is injected on either side.",
     },
   ],
 };
@@ -700,9 +700,12 @@ async function loadSideInlineScopeQuery(
 /**
  * Returns the per-side `SelectShapeReport`s when both inline queries project
  * arbitrary tuples — the trigger for tabular dispatch. Returns `undefined`
- * when either side is missing, either side is triples-shaped, or either
- * side fails to parse (the existing graph-diff path will surface a clearer
- * error in those cases).
+ * when either inline query is missing, when both sides are triples-shape
+ * (graph-diff path owns it), or when either side fails to parse (the
+ * existing graph-diff path will surface a clearer error in those cases).
+ *
+ * Throws when one side is triples-shape and the other is tuples-shape —
+ * neither dispatch path can sensibly compare tuples against triples.
  */
 function detectTabularDispatch(
   leftInlineQuery: string | undefined,
@@ -719,7 +722,14 @@ function detectTabularDispatch(
   } catch {
     return undefined;
   }
-  if (left.shape !== 'tuples' || right.shape !== 'tuples') return undefined;
+  if (left.shape === 'triples' && right.shape === 'triples') return undefined;
+  if (left.shape !== right.shape) {
+    const tuplesSide = left.shape === 'tuples' ? 'left' : 'right';
+    const triplesSide = tuplesSide === 'left' ? 'right' : 'left';
+    throw new Error(
+      `mixed-shape diff: ${triplesSide}-side query is triples-shape (CONSTRUCT or SELECT-{?s,?p,?o[,?g]}) while ${tuplesSide}-side query is tuples-shape (arbitrary SELECT). Either project triples on both sides (graph diff) or arbitrary tuples on both sides (tabular diff) — pick one shape and align both queries.`,
+    );
+  }
   return { left, right };
 }
 
@@ -750,7 +760,7 @@ async function runTabularDiff(args: RunTabularDiffArgs): Promise<void> {
 
   if (format !== 'human' && format !== 'json' && format !== 'html') {
     throw new Error(
-      `--format=${format} is not supported in tabular diff mode (use --format=human, --format=json, or --format=html)`,
+      `--format=${format} does not apply to tuple results: ${format} is RDF-shaped and tabular diff returns SELECT bindings, not triples. Use --format=human, --format=json, or --format=html, or align both --left-query/--right-query as CONSTRUCT or SELECT-{?s,?p,?o[,?g]} to run a graph diff that ${format} can render.`,
     );
   }
 

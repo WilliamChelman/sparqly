@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { tabularDiff, type TabularDiffEntry } from './tabular-diff';
 import type { TabularRow } from './tabular-row-key';
 
-const { namedNode, literal } = DataFactory;
+const { namedNode, literal, blankNode } = DataFactory;
 
 const row = (obj: Record<string, string>): TabularRow => {
   const out: TabularRow = {};
@@ -122,6 +122,17 @@ describe('tabularDiff — multi-variable + ordering', () => {
     const r = tabularDiff(left, right, ['x']);
     expect(r.added).toHaveLength(1);
     expect(r.removed).toHaveLength(1);
+  });
+
+  it('rejects rows with a blank-node-valued projection column (bubbles up from tabularRowKey)', () => {
+    const left: TabularRow[] = [{ x: blankNode('b0') }];
+    const right: TabularRow[] = [];
+    expect(() => tabularDiff(left, right, ['x'])).toThrow(/blank node/i);
+  });
+
+  it('blank-node rejection bubbles whether the offending row is on left or right', () => {
+    const right: TabularRow[] = [{ id: blankNode('b1') }];
+    expect(() => tabularDiff([], right, ['id'])).toThrow(/blank node/i);
   });
 
   it('handles named-node values (not just literals)', () => {
