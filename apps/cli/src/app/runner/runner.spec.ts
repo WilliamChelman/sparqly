@@ -355,6 +355,123 @@ describe('registerSpec', () => {
       await program.parseAsync(['demo', 'a/*.ttl'], { from: 'user' });
       expect(called).toBe(false);
     });
+
+    it('uses ctx.discoverConfig when no explicit config is supplied', async () => {
+      let received: string | undefined;
+      const spec = makeSpec(() => undefined);
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/proj/sub',
+        discoverConfig: (cwd) => {
+          expect(cwd).toBe('/proj/sub');
+          return '/proj/sparqly.config.yaml';
+        },
+        loadFile: async (configPath) => {
+          received = configPath;
+          return { data: {}, filepath: configPath };
+        },
+      });
+      await program.parseAsync(['demo'], { from: 'user' });
+      expect(received).toBe('/proj/sparqly.config.yaml');
+    });
+
+    it('--no-config opts out of auto-discovery', async () => {
+      let discoverCalled = false;
+      let loadCalled = false;
+      const spec = makeSpec(() => undefined);
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/proj/sub',
+        discoverConfig: () => {
+          discoverCalled = true;
+          return '/proj/sparqly.config.yaml';
+        },
+        loadFile: async () => {
+          loadCalled = true;
+          return { data: {}, filepath: null };
+        },
+      });
+      await program.parseAsync(['demo', '--no-config'], { from: 'user' });
+      expect(discoverCalled).toBe(false);
+      expect(loadCalled).toBe(false);
+    });
+
+    it('treats empty SPARQLY_CONFIG="" as --no-config', async () => {
+      let discoverCalled = false;
+      let loadCalled = false;
+      const spec = makeSpec(() => undefined);
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: { SPARQLY_CONFIG: '' },
+        cwd: '/proj/sub',
+        discoverConfig: () => {
+          discoverCalled = true;
+          return '/proj/sparqly.config.yaml';
+        },
+        loadFile: async () => {
+          loadCalled = true;
+          return { data: {}, filepath: null };
+        },
+      });
+      await program.parseAsync(['demo'], { from: 'user' });
+      expect(discoverCalled).toBe(false);
+      expect(loadCalled).toBe(false);
+    });
+
+    it('--config beats auto-discovery', async () => {
+      let received: string | undefined;
+      const spec = makeSpec(() => undefined);
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/proj/sub',
+        discoverConfig: () => '/proj/sparqly.config.yaml',
+        loadFile: async (configPath) => {
+          received = configPath;
+          return { data: {}, filepath: null };
+        },
+      });
+      await program.parseAsync(['demo', '--config', '/explicit.yaml'], {
+        from: 'user',
+      });
+      expect(received).toBe('/explicit.yaml');
+    });
+
+    it('SPARQLY_CONFIG (non-empty) beats auto-discovery', async () => {
+      let received: string | undefined;
+      const spec = makeSpec(() => undefined);
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: { SPARQLY_CONFIG: '/from-env.yaml' },
+        cwd: '/proj/sub',
+        discoverConfig: () => '/proj/sparqly.config.yaml',
+        loadFile: async (configPath) => {
+          received = configPath;
+          return { data: {}, filepath: null };
+        },
+      });
+      await program.parseAsync(['demo'], { from: 'user' });
+      expect(received).toBe('/from-env.yaml');
+    });
+
+    it('skips loadFile when discoverConfig returns null', async () => {
+      let loadCalled = false;
+      const spec = makeSpec(() => undefined);
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/proj/sub',
+        discoverConfig: () => null,
+        loadFile: async () => {
+          loadCalled = true;
+          return { data: {}, filepath: null };
+        },
+      });
+      await program.parseAsync(['demo', 'a/*.ttl'], { from: 'user' });
+      expect(loadCalled).toBe(false);
+    });
   });
 
   describe('@id reference resolution', () => {

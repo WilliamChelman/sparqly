@@ -22,6 +22,7 @@ export interface RunnerContext {
   readonly stdout?: WritableLike;
   readonly stderr?: WritableLike;
   readonly loadFile?: (configPath: string, cwd: string) => Promise<FileLayers>;
+  readonly discoverConfig?: (cwd: string) => string | null;
 }
 
 export function registerSpec<T extends Record<string, unknown>>(
@@ -53,6 +54,10 @@ export function registerSpec<T extends Record<string, unknown>>(
 
   applyFieldFlags(sub, spec.fields);
   sub.option('--config <path>', 'Path to a sparqly.config.{yaml,yml,json} file.');
+  sub.option(
+    '--no-config',
+    'Skip auto-discovery of sparqly.config.{yaml,yml,json} from the current directory upward.',
+  );
 
   sub.action(async (...args: unknown[]) => {
     let rawConfig: Record<string, unknown> = {};
@@ -85,11 +90,22 @@ export function registerSpec<T extends Record<string, unknown>>(
         cli[p.field] = v;
       });
 
-      const explicitConfigPath =
-        (optsBag.config as string | undefined) ?? ctx.env['SPARQLY_CONFIG'];
+      const rawConfigOpt = optsBag.config;
+      const flagConfigPath =
+        typeof rawConfigOpt === 'string' ? rawConfigOpt : undefined;
+      const envConfigPath = ctx.env['SPARQLY_CONFIG'];
+      const noConfig = rawConfigOpt === false || envConfigPath === '';
+      let configPath: string | undefined;
+      if (flagConfigPath !== undefined) {
+        configPath = flagConfigPath;
+      } else if (envConfigPath !== undefined && envConfigPath !== '') {
+        configPath = envConfigPath;
+      } else if (!noConfig && ctx.discoverConfig) {
+        configPath = ctx.discoverConfig(ctx.cwd) ?? undefined;
+      }
       const fileLayers: FileLayers =
-        ctx.loadFile && explicitConfigPath !== undefined
-          ? await ctx.loadFile(explicitConfigPath, ctx.cwd)
+        ctx.loadFile && configPath !== undefined
+          ? await ctx.loadFile(configPath, ctx.cwd)
           : { data: {}, filepath: null };
 
       const env = readEnv(spec.fields, ctx.env);
