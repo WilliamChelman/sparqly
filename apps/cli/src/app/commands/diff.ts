@@ -748,9 +748,9 @@ async function runTabularDiff(args: RunTabularDiffArgs): Promise<void> {
     rightShape,
   } = args;
 
-  if (format !== 'human' && format !== 'json') {
+  if (format !== 'human' && format !== 'json' && format !== 'html') {
     throw new Error(
-      `--format=${format} is not supported in tabular diff mode (use --format=human or --format=json; html, rdf-patch, and turtle land in follow-up slices)`,
+      `--format=${format} is not supported in tabular diff mode (use --format=human, --format=json, or --format=html)`,
     );
   }
 

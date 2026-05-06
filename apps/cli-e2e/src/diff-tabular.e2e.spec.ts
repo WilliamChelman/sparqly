@@ -169,6 +169,50 @@ describe('sparqly diff — tabular mode (arbitrary SELECT)', () => {
     expect(result.stderr).toMatch(/variable-name set/);
   });
 
+  it('renders -f html as a self-contained doc with two tables and a count column (tabular fixture)', async () => {
+    await writeFile(
+      leftPath,
+      [TTL_HEADER, 'ex:p1 ex:id "1" ; ex:status "open" .'].join('\n'),
+    );
+    await writeFile(
+      rightPath,
+      [
+        TTL_HEADER,
+        'ex:p1 ex:id "1" ; ex:status "open" .',
+        'ex:p2 ex:id "2" ; ex:status "closed" .',
+      ].join('\n'),
+    );
+
+    const result = await runCli([
+      'diff',
+      '--quiet',
+      '-f',
+      'html',
+      '--query',
+      'PREFIX ex: <http://example.org/> SELECT ?id ?status WHERE { ?p ex:id ?id ; ex:status ?status }',
+      leftPath,
+      rightPath,
+    ]);
+
+    expect(result.exitCode, result.stderr).toBe(1);
+    expect(result.stdout.startsWith('<!doctype html>')).toBe(true);
+    expect(result.stdout).toContain('<style>');
+    expect(result.stdout).not.toMatch(/<script\b/);
+    expect(result.stdout).not.toMatch(/<link\b/);
+    expect(result.stdout).toContain('<h1>sparqly diff</h1>');
+    // exactly one added row, no removed
+    expect(result.stdout).toContain('+1 −0');
+    expect(result.stdout).toContain('<th>?id</th>');
+    expect(result.stdout).toContain('<th>?status</th>');
+    expect(result.stdout).toContain('<th>count</th>');
+    expect(result.stdout).toContain('<td>&quot;2&quot;</td>');
+    expect(result.stdout).toContain('<td>&quot;closed&quot;</td>');
+    // removed block is empty
+    expect(result.stdout).toMatch(
+      /<section class="block removed">[\s\S]*?<p class="empty">\(none\)<\/p>[\s\S]*?<\/section>/,
+    );
+  });
+
   it('rejects -f rdf-patch in tabular mode (RDF-shaped formats have no meaning for tuple results)', async () => {
     await writeFile(leftPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
     await writeFile(rightPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
