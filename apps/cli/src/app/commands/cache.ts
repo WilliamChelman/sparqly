@@ -83,6 +83,7 @@ export const cacheListSpec: CommandSpec<CacheCommandConfig> = {
   description:
     'List cached view entries under the configured cacheDir (id, strategy, size, age, freshness).',
   fields: [cacheDirField, ...verbosityFieldsFor('cache')],
+  configScope: { sources: false, block: 'cache' },
   exitCode: () => 1,
   handler: async (config) => {
     configureLogger({
@@ -104,6 +105,7 @@ export const cacheClearSpec: CommandSpec<CacheCommandConfig> = {
     'Remove cached view entries under the configured cacheDir. Pass an id to remove a single entry; this is the only way to bust an `everlasting` view.',
   fields: [cacheDirField, idField, ...verbosityFieldsFor('cache')],
   positionals: [{ field: 'id', name: 'id' }],
+  configScope: { sources: false, block: 'cache' },
   exitCode: (err) => (err instanceof UnknownCacheIdError ? 1 : 1),
   handler: async (config) => {
     configureLogger({

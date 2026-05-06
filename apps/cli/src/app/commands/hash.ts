@@ -178,6 +178,7 @@ export const hashSpec: CommandSpec<HashConfig> = {
     ...verbosityFieldsFor('hash'),
   ],
   positionals: [{ field: 'source', name: 'glob' }],
+  configScope: { sources: true },
   refine: (schema) =>
     (schema as z.ZodObject).superRefine(
       (val: Record<string, unknown>, ctx) => {

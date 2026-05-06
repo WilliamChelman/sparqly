@@ -1,10 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { extname, isAbsolute, resolve } from 'node:path';
 import { load as loadYaml, YAMLException } from 'js-yaml';
-import { z } from 'zod';
 import { substituteSourceEnv } from 'core';
-import type { CommandSpec } from './spec';
-import { blockSchemaFromFields } from './field';
+import { validateProjectConfig } from './project-config-schema';
 import type { FileLayers } from './runner';
 
 export class ConfigError extends Error {
@@ -14,7 +12,7 @@ export class ConfigError extends Error {
   }
 }
 
-export function makeFileLoader(spec: CommandSpec) {
+export function makeFileLoader() {
   return async (configPath: string, cwd: string): Promise<FileLayers> => {
     const absolute = isAbsolute(configPath) ? configPath : resolve(cwd, configPath);
     const raw = await readFileText(absolute);
@@ -28,10 +26,10 @@ export function makeFileLoader(spec: CommandSpec) {
       parsed as Record<string, unknown>,
       absolute,
     );
-    const schema = strictBlockSchema(spec);
-    const result = schema.safeParse(withEnv);
-    if (!result.success) {
-      throw new ConfigError(formatZodError(result.error, absolute));
+    const result = validateProjectConfig(withEnv);
+    if (result.ok === false) {
+      const lines = result.issues.map((iss) => `  - ${iss.path}: ${iss.message}`);
+      throw new ConfigError(`invalid config at ${absolute}:\n${lines.join('\n')}`);
     }
     return { data: pickDefined(result.data as Record<string, unknown>), filepath: absolute };
   };
@@ -87,13 +85,6 @@ function applySourceEnvSubstitution(
   return { ...parsed, sources: substituted };
 }
 
-function strictBlockSchema(spec: CommandSpec): z.ZodTypeAny {
-  const base = blockSchemaFromFields(spec.fields);
-  const refined = spec.refine ? spec.refine(base) : base;
-  if (refined instanceof z.ZodObject) return refined.strict();
-  return refined;
-}
-
 function pickDefined(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
@@ -106,12 +97,4 @@ function describeType(value: unknown): string {
   if (value === null) return 'null';
   if (Array.isArray(value)) return 'array';
   return typeof value;
-}
-
-function formatZodError(error: z.ZodError, filepath: string): string {
-  const lines = error.issues.map((issue) => {
-    const path = issue.path.length > 0 ? issue.path.join('.') : '<root>';
-    return `  - ${path}: ${issue.message}`;
-  });
-  return `invalid config at ${filepath}:\n${lines.join('\n')}`;
 }

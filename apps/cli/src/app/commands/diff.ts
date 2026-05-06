@@ -303,6 +303,7 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     { field: 'left', name: 'left' },
     { field: 'right', name: 'right' },
   ],
+  configScope: { sources: true },
   refine: (schema) =>
     (schema as z.ZodObject).superRefine(
       (val: Record<string, unknown>, ctx) => {

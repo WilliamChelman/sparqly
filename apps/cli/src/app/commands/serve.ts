@@ -122,6 +122,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     ...verbosityFieldsFor('serve'),
   ],
   positionals: [{ field: 'source', name: 'glob' }],
+  configScope: { sources: true, block: 'serve' },
   exitCode: () => 1,
   handler: async (config) => {
     configureLogger({

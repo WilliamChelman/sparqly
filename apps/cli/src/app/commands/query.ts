@@ -114,6 +114,7 @@ export const querySpec: CommandSpec<QueryConfig> = {
     ...verbosityFieldsFor('query'),
   ],
   positionals: [{ field: 'source', name: 'glob' }],
+  configScope: { sources: true },
   exitCode: () => 1,
   handler: async (config) => {
     configureLogger({

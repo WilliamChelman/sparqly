@@ -55,47 +55,6 @@ describe('sparqly query --format=turtle (formatter integration)', () => {
     );
   });
 
-  it('prefers the query string PREFIX when it conflicts with config', async () => {
-    const configPath = join(dir, 'sparqly.query.yaml');
-    await writeFile(
-      configPath,
-      dedent`
-        prefixes:
-          ex: "http://config.example/"
-      ` + '\n',
-    );
-    const data = join(dir, 'data.ttl');
-    await writeFile(
-      data,
-      dedent`
-        @prefix ex: <http://example.org/> .
-        ex:alice ex:name "Alice" .
-      ` + '\n',
-    );
-
-    const result = await runCli(
-      [
-        'query',
-        data,
-        '--format=turtle',
-        '--config',
-        configPath,
-        '-q',
-        dedent`
-          PREFIX ex: <http://example.org/>
-          CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }
-        `,
-      ],
-      { cwd: dir },
-    );
-
-    expect(result.exitCode).toBe(0);
-    // Query's `ex:` mapping wins; config's `http://config.example/` is dropped.
-    expect(result.stdout).toContain('@prefix ex: <http://example.org/>');
-    expect(result.stdout).not.toContain('<http://config.example/>');
-    expect(result.stdout).toContain('ex:alice ex:name "Alice"');
-  });
-
   it('honours PREFIX declarations from the SPARQL query string', async () => {
     const data = join(dir, 'data.ttl');
     await writeFile(
@@ -123,40 +82,4 @@ describe('sparqly query --format=turtle (formatter integration)', () => {
     expect(result.stdout).not.toContain('<http://example.org/alice>');
   });
 
-  it('runs Turtle output through the formatter using config prefixes', async () => {
-    const configPath = join(dir, 'sparqly.query.yaml');
-    await writeFile(
-      configPath,
-      dedent`
-        prefixes:
-          ex: "http://example.org/"
-      ` + '\n',
-    );
-    const data = join(dir, 'data.ttl');
-    await writeFile(
-      data,
-      dedent`
-        @prefix ex: <http://example.org/> .
-        ex:alice ex:name "Alice" .
-      ` + '\n',
-    );
-
-    const result = await runCli(
-      [
-        'query',
-        data,
-        '--format=turtle',
-        '--config',
-        configPath,
-        '-q',
-        'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      ],
-      { cwd: dir },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('@prefix ex: <http://example.org/>');
-    expect(result.stdout).toContain('ex:alice ex:name "Alice"');
-    expect(result.stdout).not.toContain('<http://example.org/alice>');
-  });
 });

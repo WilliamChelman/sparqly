@@ -244,7 +244,7 @@ describe('sparqly diff — core properties', () => {
   });
 
   describe('config integration', () => {
-    it('reads left and right from --config', async () => {
+    it('rejects `left:`/`right:` at config root with a friendly per-invocation message', async () => {
       const configPath = join(scratch, 'sparqly.diff.yaml');
       await writeFile(
         configPath,
@@ -261,9 +261,10 @@ describe('sparqly diff — core properties', () => {
         configPath,
       ]);
 
-      expect(result.exitCode).toBe(0);
-      expect(diffBodyLines(result.stdout)).toEqual([]);
-      expect(result.stdout).toMatch(/^# left=\d+ right=\d+ \+0 -0\n$/);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toMatch(
+        /(left|right) at root not allowed.*per-invocation/,
+      );
     });
 
     it('SPARQLY_DIFF_FORMAT env triggers JSON output', async () => {

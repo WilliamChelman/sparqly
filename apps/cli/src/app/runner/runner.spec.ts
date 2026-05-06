@@ -540,4 +540,214 @@ describe('registerSpec', () => {
       ]);
     });
   });
+
+  describe('per-command config projection', () => {
+    const portField: FieldDescriptor = {
+      key: 'port',
+      schema: z.coerce.number().int(),
+      env: 'SPARQLY_PORT',
+      flags: [{ spec: '--port <n>', description: 'p' }],
+    };
+    const cacheDirField: FieldDescriptor = {
+      key: 'cacheDir',
+      schema: z.string(),
+      env: 'SPARQLY_CACHE_DIR',
+      flags: [{ spec: '--cache-dir <p>', description: 'cd' }],
+    };
+    const baseFmtField: FieldDescriptor = {
+      key: 'base',
+      schema: z.string(),
+    };
+
+    it('serve sees `sources` and the `serve` block flattened to fields', async () => {
+      let received: Record<string, unknown> | undefined;
+      const spec: CommandSpec<Record<string, unknown>> = {
+        name: 'serve',
+        description: 's',
+        fields: [sourcesField, portField],
+        configScope: { sources: true, block: 'serve' },
+        handler: (c) => {
+          received = c as Record<string, unknown>;
+        },
+        exitCode: () => 1,
+      };
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        loadFile: async () => ({
+          data: {
+            sources: ['data/*.ttl'],
+            serve: { port: 4000 },
+          },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(['serve', '--config', '/cfg.yaml'], {
+        from: 'user',
+      });
+      expect(received).toMatchObject({
+        sources: ['data/*.ttl'],
+        port: 4000,
+      });
+    });
+
+    it('query sees `sources` only — no command-scoped block (and ignores serve/format/cache blocks in the file)', async () => {
+      let received: Record<string, unknown> | undefined;
+      const spec: CommandSpec<Record<string, unknown>> = {
+        name: 'query',
+        description: 'q',
+        fields: [sourcesField, baseFmtField],
+        configScope: { sources: true },
+        handler: (c) => {
+          received = c as Record<string, unknown>;
+        },
+        exitCode: () => 1,
+      };
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        loadFile: async () => ({
+          data: {
+            sources: ['data/*.ttl'],
+            serve: { port: 4000 },
+            format: { base: 'http://example.org/' },
+          },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(['query', '--config', '/cfg.yaml'], {
+        from: 'user',
+      });
+      expect(received).toEqual({ sources: ['data/*.ttl'] });
+    });
+
+    it('format sees the `format` block (deep-merged prefixes survive)', async () => {
+      let received: Record<string, unknown> | undefined;
+      const prefixesField: FieldDescriptor = {
+        key: 'prefixes',
+        schema: z.record(z.string(), z.string()),
+        merge: 'deep',
+      };
+      const spec: CommandSpec<Record<string, unknown>> = {
+        name: 'format',
+        description: 'f',
+        fields: [sourcesField, prefixesField, baseFmtField],
+        configScope: { sources: true, block: 'format' },
+        handler: (c) => {
+          received = c as Record<string, unknown>;
+        },
+        exitCode: () => 1,
+      };
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        loadFile: async () => ({
+          data: {
+            sources: ['data/*.ttl'],
+            format: {
+              prefixes: { ex: 'http://example.org/' },
+              base: 'http://example.org/',
+            },
+          },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(
+        ['format', '--config', '/cfg.yaml'],
+        { from: 'user' },
+      );
+      expect(received).toEqual({
+        sources: ['data/*.ttl'],
+        prefixes: { ex: 'http://example.org/' },
+        base: 'http://example.org/',
+      });
+    });
+
+    it('cache list sees `cache` only — no `sources` — and `cache.dir` projects to field `cacheDir`', async () => {
+      let received: Record<string, unknown> | undefined;
+      const spec: CommandSpec<Record<string, unknown>> = {
+        name: 'cache list',
+        description: 'cl',
+        fields: [cacheDirField],
+        configScope: { sources: false, block: 'cache' },
+        handler: (c) => {
+          received = c as Record<string, unknown>;
+        },
+        exitCode: () => 1,
+      };
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        loadFile: async () => ({
+          data: {
+            sources: ['data/*.ttl'],
+            cache: { dir: '/abs/.sparqly-cache' },
+          },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(['cache', 'list', '--config', '/cfg.yaml'], {
+        from: 'user',
+      });
+      expect(received).toEqual({ cacheDir: '/abs/.sparqly-cache' });
+    });
+
+    it('SPARQLY_PORT env overrides serve.port from the file', async () => {
+      let received: Record<string, unknown> | undefined;
+      const spec: CommandSpec<Record<string, unknown>> = {
+        name: 'serve',
+        description: 's',
+        fields: [sourcesField, portField],
+        configScope: { sources: true, block: 'serve' },
+        handler: (c) => {
+          received = c as Record<string, unknown>;
+        },
+        exitCode: () => 1,
+      };
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: { SPARQLY_PORT: '9000' },
+        cwd: '/cwd',
+        loadFile: async () => ({
+          data: { sources: ['x'], serve: { port: 4000 } },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(['serve', '--config', '/cfg.yaml'], {
+        from: 'user',
+      });
+      expect(received?.port).toBe(9000);
+    });
+
+    it('SPARQLY_CACHE_DIR env overrides cache.dir from the file', async () => {
+      let received: Record<string, unknown> | undefined;
+      const spec: CommandSpec<Record<string, unknown>> = {
+        name: 'cache list',
+        description: 'cl',
+        fields: [cacheDirField],
+        configScope: { sources: false, block: 'cache' },
+        handler: (c) => {
+          received = c as Record<string, unknown>;
+        },
+        exitCode: () => 1,
+      };
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: { SPARQLY_CACHE_DIR: '/from/env' },
+        cwd: '/cwd',
+        loadFile: async () => ({
+          data: { cache: { dir: '/from/file' } },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(['cache', 'list', '--config', '/cfg.yaml'], {
+        from: 'user',
+      });
+      expect(received?.cacheDir).toBe('/from/env');
+    });
+  });
 });

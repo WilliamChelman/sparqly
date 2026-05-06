@@ -86,19 +86,31 @@ describe('sparqly diff -f html', () => {
     await writeFile(
       configPath,
       dedent`
-        left:
-          glob: "${leftPath}"
-          transforms:
-            - annotateSource: {}
-        right:
-          glob: "${rightPath}"
-          transforms:
-            - annotateSource: {}
+        sources:
+          - id: left
+            glob: "${leftPath}"
+            transforms:
+              - annotateSource: {}
+          - id: right
+            glob: "${rightPath}"
+            transforms:
+              - annotateSource: {}
       ` + '\n',
     );
 
     const result = await runCli(
-      ['diff', '--quiet', '-f', 'html', '--config', configPath],
+      [
+        'diff',
+        '--quiet',
+        '-f',
+        'html',
+        '--config',
+        configPath,
+        '--left',
+        '@left',
+        '--right',
+        '@right',
+      ],
       { cwd: scratch },
     );
 
@@ -207,19 +219,33 @@ describe('sparqly diff -f html', () => {
     await writeFile(
       configPath,
       dedent`
-        left:
-          glob: "${leftPath}"
-          transforms:
-            - annotateSource: {}
-        right:
-          glob: "${rightPath}"
-          transforms:
-            - annotateSource: {}
+        sources:
+          - id: left
+            glob: "${leftPath}"
+            transforms:
+              - annotateSource: {}
+          - id: right
+            glob: "${rightPath}"
+            transforms:
+              - annotateSource: {}
       ` + '\n',
     );
 
     const result = await runCli(
-      ['diff', '--quiet', '-f', 'html', '-C', '5', '--config', configPath],
+      [
+        'diff',
+        '--quiet',
+        '-f',
+        'html',
+        '-C',
+        '5',
+        '--config',
+        configPath,
+        '--left',
+        '@left',
+        '--right',
+        '@right',
+      ],
       { cwd: scratch },
     );
 
@@ -270,19 +296,31 @@ describe('sparqly diff -f html', () => {
     await writeFile(
       configPath,
       dedent`
-        left:
-          glob: "${leftPath}"
-          transforms:
-            - annotateSource: {}
-        right:
-          glob: "${rightPath}"
-          transforms:
-            - annotateSource: {}
+        sources:
+          - id: left
+            glob: "${leftPath}"
+            transforms:
+              - annotateSource: {}
+          - id: right
+            glob: "${rightPath}"
+            transforms:
+              - annotateSource: {}
       ` + '\n',
     );
 
     const result = await runCliWithStderrTrigger(
-      ['diff', '--quiet', '-f', 'html', '--config', configPath],
+      [
+        'diff',
+        '--quiet',
+        '-f',
+        'html',
+        '--config',
+        configPath,
+        '--left',
+        '@left',
+        '--right',
+        '@right',
+      ],
       {
         cwd: scratch,
         env: { SPARQLY_DEBUG_PAUSE_BEFORE_SNIPPETS_MS: '500' },

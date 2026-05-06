@@ -106,7 +106,7 @@ describe('sparqly query --out', () => {
     );
   });
 
-  it('honors `out:` from sparqly.config.yaml', async () => {
+  it('rejects `out:` at config root with a friendly per-invocation message', async () => {
     const configPath = join(scratch, 'sparqly.config.yaml');
     const target = join(scratch, 'from-config.json');
     await writeFile(configPath, `out: ${JSON.stringify(target)}\n`);
@@ -116,9 +116,10 @@ describe('sparqly query --out', () => {
       { cwd: scratch },
     );
 
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe('');
-    expect(await readFile(target, 'utf8')).toMatch(/"bindings"/);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(
+      /out at root not allowed.*per-invocation/,
+    );
   });
 
 });

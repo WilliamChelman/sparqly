@@ -42,19 +42,29 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     await writeFile(
       configPath,
       dedent`
-        left:
-          glob: "${leftPath}"
-          transforms:
-            - annotateSource: {}
-        right:
-          glob: "${rightPath}"
-          transforms:
-            - annotateSource: {}
+        sources:
+          - id: left
+            glob: "${leftPath}"
+            transforms:
+              - annotateSource: {}
+          - id: right
+            glob: "${rightPath}"
+            transforms:
+              - annotateSource: {}
       ` + '\n',
     );
 
     const result = await runCli(
-      ['diff', '--quiet', '--config', configPath],
+      [
+        'diff',
+        '--quiet',
+        '--config',
+        configPath,
+        '--left',
+        '@left',
+        '--right',
+        '@right',
+      ],
       { cwd: scratch },
     );
 
@@ -122,19 +132,30 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     await writeFile(
       configPath,
       dedent`
-        left:
-          glob: "${leftPath}"
-          transforms:
-            - annotateSource: {}
-        right:
-          glob: "${rightPath}"
-          transforms:
-            - annotateSource: {}
+        sources:
+          - id: left
+            glob: "${leftPath}"
+            transforms:
+              - annotateSource: {}
+          - id: right
+            glob: "${rightPath}"
+            transforms:
+              - annotateSource: {}
       ` + '\n',
     );
 
     const result = await runCli(
-      ['diff', '--quiet', '--format=json', '--config', configPath],
+      [
+        'diff',
+        '--quiet',
+        '--format=json',
+        '--config',
+        configPath,
+        '--left',
+        '@left',
+        '--right',
+        '@right',
+      ],
       { cwd: scratch },
     );
 
@@ -214,19 +235,30 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     await writeFile(
       configPath,
       dedent`
-        left:
-          glob: "${leftPath}"
-          transforms:
-            - annotateSource: {}
-        right:
-          glob: "${rightPath}"
-          transforms:
-            - annotateSource: {}
+        sources:
+          - id: left
+            glob: "${leftPath}"
+            transforms:
+              - annotateSource: {}
+          - id: right
+            glob: "${rightPath}"
+            transforms:
+              - annotateSource: {}
       ` + '\n',
     );
 
     const result = await runCli(
-      ['diff', '--quiet', '--format=rdf-patch', '--config', configPath],
+      [
+        'diff',
+        '--quiet',
+        '--format=rdf-patch',
+        '--config',
+        configPath,
+        '--left',
+        '@left',
+        '--right',
+        '@right',
+      ],
       { cwd: scratch },
     );
 
@@ -304,16 +336,27 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     await writeFile(
       configPath,
       dedent`
-        left:
-          glob: "${leftPath}"
-          transforms:
-            - annotateSource: {}
-        right: "${rightPath}"
+        sources:
+          - id: left
+            glob: "${leftPath}"
+            transforms:
+              - annotateSource: {}
+          - id: right
+            glob: "${rightPath}"
       ` + '\n',
     );
 
     const noisy = await runCli(
-      ['diff', '--skip-auto-source-annotation', '--config', configPath],
+      [
+        'diff',
+        '--skip-auto-source-annotation',
+        '--config',
+        configPath,
+        '--left',
+        '@left',
+        '--right',
+        '@right',
+      ],
       { cwd: scratch },
     );
 
@@ -329,6 +372,10 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
         '--skip-auto-source-annotation',
         '--config',
         configPath,
+        '--left',
+        '@left',
+        '--right',
+        '@right',
       ],
       { cwd: scratch },
     );

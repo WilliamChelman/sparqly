@@ -22,8 +22,9 @@ describe('sparqly format — config prefixes', () => {
     await writeFile(
       configPath,
       dedent`
-        prefixes:
-          ex: "http://override.example/"
+        format:
+          prefixes:
+            ex: "http://override.example/"
       ` + '\n',
     );
     await writeFile(
@@ -54,8 +55,9 @@ describe('sparqly format — config prefixes', () => {
     await writeFile(
       configPath,
       dedent`
-        prefixes:
-          ex: "http://example.org/"
+        format:
+          prefixes:
+            ex: "http://example.org/"
       ` + '\n',
     );
     await writeFile(
@@ -87,7 +89,7 @@ describe('sparqly format — config base', () => {
 
   it('emits @base from config and shortens matching IRIs to relative form', async () => {
     const configPath = join(dir, 'sparqly.format.yaml');
-    await writeFile(configPath, 'base: "http://example.org/"\n');
+    await writeFile(configPath, 'format:\n  base: "http://example.org/"\n');
     await writeFile(
       join(dir, 'data.ttl'),
       '<http://example.org/a> <http://example.org/p> <http://example.org/b> .\n',
@@ -129,7 +131,7 @@ describe('sparqly format — config base', () => {
 
   it('config base wins over the input file @base', async () => {
     const configPath = join(dir, 'sparqly.format.yaml');
-    await writeFile(configPath, 'base: "http://config.example/"\n');
+    await writeFile(configPath, 'format:\n  base: "http://config.example/"\n');
     await writeFile(
       join(dir, 'data.ttl'),
       dedent`
@@ -157,9 +159,10 @@ describe('sparqly format — config base', () => {
     await writeFile(
       configPath,
       dedent`
-        base: "http://example.org/"
-        prefixes:
-          rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+        format:
+          base: "http://example.org/"
+          prefixes:
+            rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
       ` + '\n',
     );
     await writeFile(
@@ -209,8 +212,9 @@ describe('sparqly format — --prefix CLI flag', () => {
     await writeFile(
       configPath,
       dedent`
-        prefixes:
-          ex: "http://config.example/"
+        format:
+          prefixes:
+            ex: "http://config.example/"
       ` + '\n',
     );
     await writeFile(

@@ -11,7 +11,7 @@ async function bootstrap() {
     registerSpec(program, spec, {
       env: process.env,
       cwd: process.cwd(),
-      loadFile: makeFileLoader(spec),
+      loadFile: makeFileLoader(),
     });
   }
   await program.parseAsync(process.argv);

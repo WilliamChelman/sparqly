@@ -62,7 +62,7 @@ describe('sparqly hash — config file + env precedence', () => {
     expect(lines[0]).toMatch(hashLineRe(fromCli));
   });
 
-  it('json: true in the config file is equivalent to --json (single object)', async () => {
+  it('rejects `json: true` at config root with a friendly per-invocation message', async () => {
     const single = hashFixture('domain.ttl');
     const configPath = join(scratch, 'sparqly.hash.yaml');
     await writeFile(
@@ -78,13 +78,8 @@ describe('sparqly hash — config file + env precedence', () => {
       env: CLEARED_ENV,
     });
 
-    expect(result.exitCode).toBe(0);
-    const parsed = JSON.parse(result.stdout) as {
-      source: string;
-      hash: string;
-    };
-    expect(parsed.source).toBe(single);
-    expect(parsed.hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/json at root not allowed.*per-invocation/);
   });
 
   it('SPARQLY_HASH_COMPARE_WITH env triggers compare mode', async () => {
@@ -99,7 +94,7 @@ describe('sparqly hash — config file + env precedence', () => {
     expect(result.stdout).toMatch(/^match: [0-9a-f]{64}\n$/);
   });
 
-  it('compareWith in the config file triggers compare mode', async () => {
+  it('rejects `compareWith` at config root with a friendly per-invocation message', async () => {
     const single = hashFixture('domain.ttl');
     const partsGlob = hashFixture('parts/*.ttl');
     const configPath = join(scratch, 'sparqly.hash.yaml');
@@ -116,8 +111,10 @@ describe('sparqly hash — config file + env precedence', () => {
       env: CLEARED_ENV,
     });
 
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toMatch(/^match: [0-9a-f]{64}\n$/);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(
+      /compareWith at root not allowed.*per-invocation/,
+    );
   });
 
   it('SPARQLY_HASH_JSON=true is equivalent to --json (single object)', async () => {

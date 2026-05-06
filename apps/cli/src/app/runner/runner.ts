@@ -93,9 +93,10 @@ export function registerSpec<T extends Record<string, unknown>>(
           : { data: {}, filepath: null };
 
       const env = readEnv(spec.fields, ctx.env);
+      const fileSlice = projectFileLayer(fileLayers.data, spec);
 
       const merged = mergeLayers(spec.fields, {
-        file: fileLayers.data,
+        file: fileSlice,
         env,
         cli,
       });
@@ -130,6 +131,29 @@ export function registerSpec<T extends Record<string, unknown>>(
   });
 
   return sub;
+}
+
+function projectFileLayer(
+  data: Record<string, unknown>,
+  spec: CommandSpec,
+): Record<string, unknown> {
+  const scope = spec.configScope ?? { sources: true };
+  const out: Record<string, unknown> = {};
+  if (scope.sources !== false && data.sources !== undefined) {
+    out.sources = data.sources;
+  }
+  if (scope.block !== undefined) {
+    const raw = data[scope.block];
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      const block = raw as Record<string, unknown>;
+      for (const [k, v] of Object.entries(block)) {
+        if (v === undefined) continue;
+        const fieldKey = scope.block === 'cache' && k === 'dir' ? 'cacheDir' : k;
+        out[fieldKey] = v;
+      }
+    }
+  }
+  return out;
 }
 
 function resolveSourcesIfPresent(

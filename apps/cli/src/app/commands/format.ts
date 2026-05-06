@@ -104,6 +104,7 @@ export const formatSpec: CommandSpec<FormatConfig> = {
     ...verbosityFieldsFor('format'),
   ],
   positionals: [{ field: 'sources', name: 'glob' }],
+  configScope: { sources: true, block: 'format' },
   refine: (schema) =>
     (schema as z.ZodObject).superRefine(
       (val: Record<string, unknown>, ctx) => {
