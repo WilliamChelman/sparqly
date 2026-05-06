@@ -18,9 +18,8 @@
   - file update
   - remote changes (vendor specific?)
 - simplify prefix handling: no need to be cute about parsing prefixes bases, except maybe for format
-- rationalize ENV config, keep only what makes sense
 - derived cache: add option for process-only
-- transform options for glob and derived. Could be templated, and make use of "well known" transform, which could replace graphMode
+- templated transform options for glob and derived (allow user-defined transforms beyond the closed `graphName` / `annotateSource` registry)
 - shacl validation
 - reasoning as transform
 - shacl forms
@@ -36,4 +35,6 @@
 - config rationale: source on one part, cmd specific on the other + extend?
 - re-evaluate exit codes
 - more comprehensive e2e tests with era files
-- diff on arbitrary select queries
+- diff using templting library instead of "manual" html
+- https://diffs.com/
+- service queries using source ids
