@@ -78,9 +78,8 @@ sparqly diff domain.ttl parts/**/*.ttl --out patch.diff
 Behavior:
 
 - **Path resolution.** `<path>` is resolved against the current working
-  directory regardless of where it was set (CLI flag, `SPARQLY_OUT` /
-  `SPARQLY_<COMMAND>_OUT`, or `out:` in a `sparqly.<command>.yaml` config
-  file).
+  directory. `out` is per-invocation — pass it on the CLI; it is not
+  config-eligible and has no env var.
 - **Parent directories.** Created automatically (`mkdir -p` semantics).
 - **Existing file.** Silently overwritten — no `--force` flag.
 - **Atomic write.** Content is written to a sibling `<path>.tmp.<random>`
@@ -100,102 +99,107 @@ Per-command notes:
 - **`diff`.** The trailing `# +N -M` summary still goes to stderr (suppress
   it with `--quiet`); only the diff body is redirected.
 
-`out` also resolves through the standard config layer — it can be set as a
-top-level `out:` key in the per-command config file (e.g. `sparqly.query.yaml`),
-or via the `SPARQLY_OUT` / `SPARQLY_<COMMAND>_OUT` environment variables, with
-the same precedence as every other option.
+## Configuration
 
-## Configuration file
+Project-stable settings live in a single `sparqly.config.{yaml,yml,json}` at
+the project root. The file declares the **source registry** plus settings
+that are stable across many invocations — per-invocation values (output
+paths, ad-hoc queries, format selection, comparison targets) belong on the
+CLI, not in the file.
 
-Each command reads its own per-command config file so you don't have to repeat
-`--sources`, `--graph-mode`, `--port`, etc. on every invocation. There is
-**no auto-discovery**: a config file is loaded only when you point at one
-explicitly via `--config <path>` or the `SPARQLY_CONFIG` environment variable.
-`--config` wins when both are set; a missing, unreadable, or unparseable path
-is a hard error.
+### File layout
 
-The conventional filename is `sparqly.<command>.{yaml,yml,json}` (e.g.
-`sparqly.query.yaml`, `sparqly.diff.json`), but the runner does not enforce
-the name — `--config ./my-conf.yaml` works.
-
-### Schema
-
-Each file is **flat**: top-level keys map directly to that command's options.
-There is no `extends:`, no shared block, and no per-command sub-blocks. Unknown
-keys are a hard validation error. Every option exposed as a CLI flag for the
-command is expressible in the file.
+One whole-project schema validates the entire file regardless of which
+command loaded it. Top-level `sources:` plus command-scoped blocks
+(`serve:`, `format:`, `cache:`); unknown top-level keys are rejected.
 
 ```yaml
-# sparqly.query.yaml
-sources: 'data/**/*.ttl'
-graphMode: preserve # preserve | fillDefault | forceAll | flatten
-mutable: false
-query: |
-  SELECT ?s ?p ?o
-  WHERE { ?s ?p ?o }
-  LIMIT 10
-# queryFile: ./queries/default.rq  # mutually exclusive with `query`
-format: json # json | turtle
+# sparqly.config.yaml
+sources:
+  - id: domain
+    glob: 'data/**/*.ttl'
+    default: true
+  - id: fedlex
+    endpoint: https://fedlex.data.admin.ch/sparqlendpoint
+    auth: { type: bearer, token: ${FEDLEX_TOKEN} }
+
+serve:
+  port: 3000
+  watch: true
+  mutable: false
+
+format:
+  prefixes:
+    ex: http://example.org/
+  base: http://example.org/
+
+cache:
+  dir: .sparqly-cache
 ```
 
-```yaml
-# sparqly.serve.yaml
-sources: 'data/**/*.ttl'
-port: 3000
-watch: true
-watchDebounce: 250
-mutable: true
-```
+Each command reads only the sections it cares about: `query` / `hash` /
+`diff` read `sources`; `serve` reads `sources` + `serve`; `format` reads
+`sources` + `format`; `cache list` / `cache clear` read `cache`. `query`
+has no command-scoped block — every flag it has is per-invocation. The full
+schema lives in
+[ADR-0010](docs/adr/0010-project-config-scope-layout-and-discovery.md).
 
-```yaml
-# sparqly.hash.yaml
-sources: # may be a string or an array of source specs
-  - 'domain.ttl'
-  - 'parts/**/*.ttl'
-graphMode: flatten # flatten quads to triples for hashing
-json: false
-# compareWith: "parts/**/*.ttl"   # requires exactly one primary source
-```
+### Discovery
 
-```yaml
-# sparqly.diff.yaml
-left: 'domain.ttl' # string or array of source specs
-right: # one side may be a glob, the other a single file
-  - 'parts/**/*.ttl'
-format: human # human | json | rdf-patch
-graphMode: preserve # preserve | fillDefault | forceAll | flatten
-```
+Sparqly walks up from CWD looking for `sparqly.config.{yaml,yml,json}`,
+stopping at the git root (or filesystem root if there's no repo). The first
+match wins; two matches in the same directory (e.g. both
+`sparqly.config.yaml` and `sparqly.config.json`) are an error.
 
-`graphMode: flatten` strips graph names from quad-bearing formats
-(`.trig`, `.nq`) and places every statement in the default graph. It works
-across `query`, `serve`, `hash`, and `diff` — useful when you want to coerce
-quad sources to triples regardless of command.
+Resolution precedence (highest to lowest): `--config <path>` →
+`SPARQLY_CONFIG` env → auto-discovered → none. Pass `--no-config` (or
+`SPARQLY_CONFIG=`) to opt out entirely — useful for one-shot invocations
+and tests that must ignore the project's defaults.
 
-JSON is supported with the same flat shape (e.g. `sparqly.query.json`); the
-extension dispatches the parser.
+### Path resolution
 
-### Precedence
+Paths inside the config file (`sources[].glob`, `sources[].queryFile`,
+`cache.dir`) resolve relative to the **config file's directory**. Paths
+from CLI flags or env vars resolve relative to **CWD**. The split keeps
+auto-discovery from silently breaking when you invoke from a subdirectory:
+`glob: data/*.ttl` declared in `~/proj/sparqly.config.yaml` always means
+`~/proj/data/*.ttl`, regardless of where you run `sparqly` from.
 
-Values are merged from lowest to highest priority — later sources override
-earlier ones:
+### Environment variables
 
-| Priority    | Source                                |
-| ----------- | ------------------------------------- |
-| 1 (lowest)  | Built-in defaults                     |
-| 2           | Config file (`--config` / `SPARQLY_CONFIG`) |
-| 3           | Environment variables                 |
-| 4 (highest) | CLI flags (and positional arguments)  |
+Sparqly exposes a small env surface — only knobs that vary by environment
+(CI vs dev, deploy port, secret credentials), not flag mirrors:
 
-Environment variables follow a predictable contract:
+| Variable                                  | Purpose                                                              |
+| ----------------------------------------- | -------------------------------------------------------------------- |
+| `SPARQLY_CONFIG`                          | Config-file path. Empty value opts out (same as `--no-config`).      |
+| `SPARQLY_CACHE_DIR`                       | Override `cache.dir` (CI-vs-dev cache location).                     |
+| `SPARQLY_PORT`                            | Override `serve.port` (Twelve-Factor / k8s convention).              |
+| `SPARQLY_VERBOSE` / `SPARQLY_QUIET`       | Logging toggles.                                                     |
+| `${VAR}` inside `sources:`                | String substitution for per-environment endpoints / credentials.     |
+| `SPARQLY_DEBUG_PAUSE_BEFORE_SNIPPETS_MS`  | Dev backdoor for `diff` HTML rendering.                              |
 
-- Shared keys: `SPARQLY_<UPPER_SNAKE_KEY>` (e.g., `SPARQLY_GRAPH_MODE`,
-  `SPARQLY_MUTABLE`). Note: `sources` is intentionally _not_ env-bound — pass
-  it on the CLI or via a config file.
-- Command-specific keys: `SPARQLY_<COMMAND>_<UPPER_SNAKE_KEY>` (e.g.,
-  `SPARQLY_SERVE_PORT`, `SPARQLY_QUERY_FORMAT`, `SPARQLY_SERVE_WATCH_DEBOUNCE`,
-  `SPARQLY_HASH_JSON`, `SPARQLY_HASH_COMPARE_WITH`).
+Per-command flag-mirrors (`SPARQLY_DIFF_FORMAT`, `SPARQLY_HASH_JSON`,
+`SPARQLY_<CMD>_VERBOSE`, `SPARQLY_OUT`, `SPARQLY_GRAPH_MODE`, ...) were
+removed in the pre-1.0 cleanup — pass these on the CLI instead.
 
-String env values are coerced to numbers / booleans according to the schema.
+### Migration from older configs
+
+The schema is strict and surfaces clear destination pointers in its error
+messages:
+
+- Per-invocation keys at root (`out`, `query`, `format`, `compareWith`,
+  `left`, `right`, `write`, `check`, `context`, `skipAutoSourceAnnotation`,
+  `json`) are rejected with a "pass `--<flag>` on the command line instead"
+  pointer.
+- Block-misplaced keys (`port`, `watch`, `watchDebounce`, `watchPoll`,
+  `mutable`, `prefixes`, `base`, `objectAnchoredPredicates`, `cacheDir`)
+  are rejected with a "move to `serve.port` / `format.prefixes` /
+  `cache.dir` / ..." pointer.
+
+This is a pre-1.0 hard break with no compat shims, matching the precedent
+set by the `annotate` → `annotateSource` rename — the schema's error
+messages name the destination block, so migration is a one-shot edit.
 
 ## `sparqly hash`
 
@@ -228,12 +232,15 @@ N-Quads, TriG, JSON-LD, and RDF/XML.
 ```sh
 sparqly hash [glob]
             [-s, --sources <glob>]...
-            [--graph-mode <preserve|fillDefault|forceAll|flatten>]
             [--json]
             [--compare-with <source>]
-            [--config <path>]
+            [--config <path>] [--no-config]
             [-v, --verbose] [--quiet]
 ```
+
+Graph-name semantics on a quad-bearing source are configured per-source via
+the `graphName` transform in the source registry (see ADR-0006); there is
+no top-level `--graph-mode` flag.
 
 ### Primary workflow: split → merge round-trip
 
@@ -282,37 +289,13 @@ sparqly hash --sources domain.ttl --sources "vocab/**/*.ttl" --json
 | `--compare-with` | 1    | Hashes differ. Stdout: `<hash>  <source-spec>` for each side.      |
 | `--compare-with` | 2    | Load, parse, or canonicalization failure on either side.           |
 
-### Config block
+### Config
 
-`sparqly hash` reads the shared config keys (`sources`, `graphMode`,
-`verbose`, `quiet`) plus the hash-specific keys below from a top-level `hash:`
-block:
-
-```yaml
-hash:
-  sources: # string | string[] — array → multiple hashes
-    - 'domain.ttl'
-    - 'parts/**/*.ttl'
-  graphMode: flatten # preserve | fillDefault | forceAll | flatten
-  json: false # JSON array output instead of <hash>  <source>
-  compareWith: 'parts/**/*.ttl' # if set, requires exactly one primary source
-```
-
-### Environment variables
-
-```
-SPARQLY_GRAPH_MODE        # shared — accepts preserve | fillDefault | forceAll | flatten
-SPARQLY_VERBOSE               # shared
-SPARQLY_QUIET                 # shared
-SPARQLY_HASH_JSON             # hash-specific
-SPARQLY_HASH_COMPARE_WITH     # hash-specific
-```
-
-### Precedence
-
-The same precedence chain applies as for `query` and `serve`: built-in
-defaults → config file shared keys → config file `hash:` block → environment
-variables → CLI flags.
+`sparqly hash` resolves its target from the [`sources:` registry](#configuration);
+it has no command-scoped block — `--json` and `--compare-with` are
+per-invocation flags, passed on the CLI. See the
+[Configuration section](#configuration) for project-level settings, env
+vars, and discovery.
 
 ## `sparqly diff`
 
@@ -348,9 +331,8 @@ detection, no fuzzy matching, no SHACL-aware equivalence.
 ```sh
 sparqly diff [left] [right]
             [--left <source>] [--right <source>]
-            [--graph-mode <preserve|fillDefault|forceAll|flatten>]
             [-f, --format <human|json|rdf-patch>]
-            [--config <path>]
+            [--config <path>] [--no-config]
             [-v, --verbose] [--quiet]
 ```
 
@@ -379,46 +361,24 @@ output.
 | 1    | Sources differ. The diff is on stdout.                                          |
 | 2    | Load, parse, or canonicalization error on either side. Error message on stderr. |
 
-### Graph mode
+### Graph names
 
-`diff` honors the shared `graphMode` option just like `query`, `serve`, and
-`hash`. The default (`preserve`) keeps graph names as part of statement
-identity for quad sources, so `<s,p,o,g1>` and `<s,p,o,g2>` are reported as
-one removal + one addition. With `--graph-mode=flatten`, graph names are
-stripped before diffing — useful when comparing a quad source against a
-triples source.
+Graph-name semantics on a quad-bearing source (preserve / fillDefault /
+forceAll / flatten) are configured per-source via the `graphName` transform
+on the source's `transforms:` pipeline (see
+[ADR-0006](docs/adr/0006-glob-source-transforms-and-rdf-star-annotations.md)).
+The default `preserve` keeps graph names as part of statement identity, so
+`<s,p,o,g1>` and `<s,p,o,g2>` are reported as one removal + one addition;
+declare `transforms: [{ graphName: flatten }]` on a glob source to coerce it
+to the default graph before diffing.
 
-### Config block
+### Config
 
-`sparqly diff` reads the shared config keys (`graphMode`, `verbose`,
-`quiet`) plus the diff-specific keys below from a top-level `diff:` block:
-
-```yaml
-diff:
-  left: # string | string[]
-    - 'domain.ttl'
-  right: 'parts/**/*.ttl'
-  format: human # human | json | rdf-patch
-  graphMode: preserve # preserve | fillDefault | forceAll | flatten
-```
-
-### Environment variables
-
-```
-SPARQLY_GRAPH_MODE        # shared
-SPARQLY_VERBOSE               # shared
-SPARQLY_QUIET                 # shared
-SPARQLY_DIFF_LEFT             # diff-specific
-SPARQLY_DIFF_RIGHT            # diff-specific
-SPARQLY_DIFF_FORMAT           # diff-specific — accepts human | json | rdf-patch
-SPARQLY_DIFF_GRAPH_MODE   # diff-specific
-```
-
-### Precedence
-
-The same precedence chain applies as for the other commands: built-in defaults
-→ config file shared keys → config file `diff:` block → environment variables
-→ CLI flags (and the positional `[left] [right]` arguments).
+`sparqly diff` resolves each side from the [`sources:` registry](#configuration);
+it has no command-scoped block — `--left`, `--right`, and `--format` are
+per-invocation flags, passed on the CLI. See the
+[Configuration section](#configuration) for project-level settings, env
+vars, and discovery.
 
 ## Workspace layout
 
