@@ -1,3 +1,13 @@
+## [0.15.0](https://github.com/WilliamChelman/sparqly/compare/v0.14.0...v0.15.0) (2026-05-06)
+
+### Features
+
+* **diff:** surface per-side totals and infer --format from --out ([5e8e3d1](https://github.com/WilliamChelman/sparqly/commit/5e8e3d1e0f123bbdff9876df031d6f4e56eb666a))
+* **diff:** tabular diff endpoint pass-through ([#131](https://github.com/WilliamChelman/sparqly/issues/131)) ([ba914ed](https://github.com/WilliamChelman/sparqly/commit/ba914ed523bb9eb239fa66718585dc395e953be3))
+* **diff:** tabular diff for arbitrary SELECT queries (ADR-0009, [#129](https://github.com/WilliamChelman/sparqly/issues/129)) ([023e5f9](https://github.com/WilliamChelman/sparqly/commit/023e5f9765748957e8f2d78efc87f56d7b9541b6))
+* **diff:** tabular diff html format ([#130](https://github.com/WilliamChelman/sparqly/issues/130)) ([925dd4e](https://github.com/WilliamChelman/sparqly/commit/925dd4eb3d84476041d01066ace8aea3a69f14c9))
+* **diff:** tabular diff rejection paths ([#132](https://github.com/WilliamChelman/sparqly/issues/132)) ([2cbad66](https://github.com/WilliamChelman/sparqly/commit/2cbad66477fc7ccb38f4034344de651111a5f10f))
+
 ## [0.14.0](https://github.com/WilliamChelman/sparqly/compare/v0.13.0...v0.14.0) (2026-05-05)
 
 ### ⚠ BREAKING CHANGES
