@@ -1,36 +1,51 @@
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseSourceSpecs, type ParsedSource } from 'core';
+import { parseSourceSpecs } from 'core';
 import { buildWatcherChain } from './watcher-chain';
 
-function parse(...inputs: Parameters<typeof parseSourceSpecs>[0]): ParsedSource[] {
-  return parseSourceSpecs(inputs);
-}
-
 describe('buildWatcherChain', () => {
-  it('inline glob target: collects the target glob; no views, registry slice = [target]', () => {
-    const target = parse('data/*.ttl')[0];
+  it('mixed glob + endpoint registry: glob source has a watch plan; endpoint source goes to passThrough', () => {
+    const registry = parseSourceSpecs([
+      { id: 'files', glob: 'data/*.ttl' },
+      { id: 'remote', endpoint: 'https://example.com/sparql' },
+    ]);
 
-    const chain = buildWatcherChain([], target);
+    const chain = buildWatcherChain(registry);
 
-    expect(chain.globs).toEqual(['data/*.ttl']);
-    expect(chain.views).toEqual([]);
-    expect(chain.cachedViews).toEqual([]);
-    expect(chain.registry).toEqual([target]);
+    expect(chain.sources.map((s) => s.id)).toEqual(['files']);
+    expect(chain.sources[0]?.globs).toEqual(['data/*.ttl']);
+    expect(chain.passThrough.map((s) => (s as { id?: string }).id)).toEqual([
+      'remote',
+    ]);
+    expect(chain.globBases).toEqual([resolve('data')]);
   });
 
-  it('endpoint target: no globs, no views, registry slice = [target]', () => {
-    const target = parse('https://example.com/sparql')[0];
+  it('inline glob (single-source mode): plan with id=undefined, no passThrough', () => {
+    const registry = parseSourceSpecs(['data/*.ttl']);
 
-    const chain = buildWatcherChain([], target);
+    const chain = buildWatcherChain(registry);
 
-    expect(chain.globs).toEqual([]);
-    expect(chain.views).toEqual([]);
-    expect(chain.cachedViews).toEqual([]);
-    expect(chain.registry).toEqual([target]);
+    expect(chain.sources).toHaveLength(1);
+    expect(chain.sources[0]?.id).toBeUndefined();
+    expect(chain.sources[0]?.globs).toEqual(['data/*.ttl']);
+    expect(chain.sources[0]?.views).toEqual([]);
+    expect(chain.sources[0]?.cachedViews).toEqual([]);
+    expect(chain.passThrough).toEqual([]);
   });
 
-  it('view target with glob upstream and cache.ttl: globs=[upstream glob], views=[target], cachedViews=[target], registry=[target, upstream]', () => {
-    const registry = parse(
+  it('inline endpoint (single-source mode): no plans, source goes to passThrough', () => {
+    const registry = parseSourceSpecs(['https://example.com/sparql']);
+
+    const chain = buildWatcherChain(registry);
+
+    expect(chain.sources).toEqual([]);
+    expect(chain.passThrough).toHaveLength(1);
+    expect(chain.passThrough[0].kind).toBe('endpoint');
+    expect(chain.globBases).toEqual([]);
+  });
+
+  it('view target with glob upstream and cache.ttl: plan walks the chain; both the glob source and the view get plans', () => {
+    const registry = parseSourceSpecs([
       { id: 'files', glob: 'data/*.ttl' },
       {
         id: 'scoped',
@@ -38,19 +53,29 @@ describe('buildWatcherChain', () => {
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '5m' },
       },
-    );
-    const target = registry.find((s) => s.id === 'scoped') as ParsedSource;
+    ]);
 
-    const chain = buildWatcherChain(registry, target);
+    const chain = buildWatcherChain(registry);
 
-    expect(chain.globs).toEqual(['data/*.ttl']);
-    expect(chain.views.map((v) => v.id)).toEqual(['scoped']);
-    expect(chain.cachedViews.map((v) => v.id)).toEqual(['scoped']);
-    expect(chain.registry).toHaveLength(2);
+    expect(chain.sources.map((s) => s.id)).toEqual(['files', 'scoped']);
+
+    const scoped = chain.sources.find((s) => s.id === 'scoped');
+    expect(scoped?.globs).toEqual(['data/*.ttl']);
+    expect(scoped?.views.map((v) => v.id)).toEqual(['scoped']);
+    expect(scoped?.cachedViews.map((v) => v.id)).toEqual(['scoped']);
+    expect(scoped?.chain).toHaveLength(2);
+
+    const files = chain.sources.find((s) => s.id === 'files');
+    expect(files?.globs).toEqual(['data/*.ttl']);
+    expect(files?.views).toEqual([]);
+    expect(files?.cachedViews).toEqual([]);
+
+    // Single chokidar base — both plans share `data/`.
+    expect(chain.globBases).toEqual([resolve('data')]);
   });
 
-  it('view target with freshness cache on an empty upstream: no globs, target view in views, registry=[target, upstream]', () => {
-    const registry = parse(
+  it('view with freshness cache on an empty upstream: plan has no globs but has the cached view; the empty source is passThrough', () => {
+    const registry = parseSourceSpecs([
       { id: 'fed', empty: true },
       {
         id: 'live',
@@ -59,19 +84,26 @@ describe('buildWatcherChain', () => {
           'CONSTRUCT { ?s ?p ?o } WHERE { SERVICE <https://e/sparql> { ?s ?p ?o } }',
         cache: { freshness: 'ASK { ?s ?p ?o }' },
       },
-    );
-    const target = registry.find((s) => s.id === 'live') as ParsedSource;
+    ]);
 
-    const chain = buildWatcherChain(registry, target);
+    const chain = buildWatcherChain(registry);
 
-    expect(chain.globs).toEqual([]);
-    expect(chain.views.map((v) => v.id)).toEqual(['live']);
-    expect(chain.cachedViews.map((v) => v.id)).toEqual(['live']);
-    expect(chain.registry.map((s) => s.id)).toEqual(['live', 'fed']);
+    expect(chain.sources.map((s) => s.id)).toEqual(['live']);
+    const live = chain.sources[0];
+    expect(live.globs).toEqual([]);
+    expect(live.cachedViews.map((v) => v.id)).toEqual(['live']);
+    expect(live.chain.map((s) => (s as { id?: string }).id)).toEqual([
+      'live',
+      'fed',
+    ]);
+
+    expect(chain.passThrough.map((s) => (s as { id?: string }).id)).toEqual([
+      'fed',
+    ]);
   });
 
-  it('walks deeply nested from: chains (view -> view -> glob) and excludes untargeted entries', () => {
-    const registry = parse(
+  it('walks deeply nested from: chains (view -> view -> glob); each registry source gets its own plan', () => {
+    const registry = parseSourceSpecs([
       { id: 'unrelated', glob: 'other/*.ttl' },
       { id: 'leaf', glob: 'data/*.ttl' },
       {
@@ -91,21 +123,42 @@ describe('buildWatcherChain', () => {
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { ttl: '1m' },
       },
+    ]);
+
+    const chain = buildWatcherChain(registry);
+
+    expect(chain.sources.map((s) => s.id).sort()).toEqual([
+      'leaf',
+      'mid',
+      'top',
+      'unrelated',
+      'unrelatedView',
+    ]);
+
+    const top = chain.sources.find((s) => s.id === 'top');
+    expect(top?.globs).toEqual(['data/*.ttl']);
+    expect(top?.views.map((v) => v.id)).toEqual(['top', 'mid']);
+    expect(top?.cachedViews.map((v) => v.id)).toEqual(['top']);
+    expect(top?.chain.map((s) => (s as { id?: string }).id)).toEqual([
+      'top',
+      'mid',
+      'leaf',
+    ]);
+
+    const mid = chain.sources.find((s) => s.id === 'mid');
+    // `mid` has no cache, so its chain has no cachedViews — but it still has a
+    // glob upstream, which is what makes it watchable.
+    expect(mid?.globs).toEqual(['data/*.ttl']);
+    expect(mid?.cachedViews).toEqual([]);
+
+    // Two distinct glob bases — `data/` and `other/` — drive one chokidar.
+    expect([...chain.globBases].sort()).toEqual(
+      [resolve('data'), resolve('other')].sort(),
     );
-    const target = registry.find((s) => s.id === 'top') as ParsedSource;
-
-    const chain = buildWatcherChain(registry, target);
-
-    expect(chain.globs).toEqual(['data/*.ttl']);
-    // All in-chain views (intermediate `mid` is included).
-    expect(chain.views.map((v) => v.id)).toEqual(['top', 'mid']);
-    // Only `top` has a ttl cache.
-    expect(chain.cachedViews.map((v) => v.id)).toEqual(['top']);
-    expect(chain.registry.map((s) => s.id)).toEqual(['top', 'mid', 'leaf']);
   });
 
-  it('does not include `everlasting` cache views in cachedViews (no timer/probe needed)', () => {
-    const registry = parse(
+  it('does not include `everlasting` cache views in cachedViews (no timer/probe needed); the underlying glob source still drives watching', () => {
+    const registry = parseSourceSpecs([
       { id: 'files', glob: 'data/*.ttl' },
       {
         id: 'cached',
@@ -113,13 +166,58 @@ describe('buildWatcherChain', () => {
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
         cache: { everlasting: true },
       },
+    ]);
+
+    const chain = buildWatcherChain(registry);
+
+    const cached = chain.sources.find((s) => s.id === 'cached');
+    expect(cached?.views.map((v) => v.id)).toEqual(['cached']);
+    expect(cached?.cachedViews).toEqual([]);
+    expect(cached?.globs).toEqual(['data/*.ttl']);
+  });
+
+  it('overlapping glob bases across sources dedupe in globBases (one chokidar root)', () => {
+    const registry = parseSourceSpecs([
+      { id: 'a', glob: 'data/a/*.ttl' },
+      { id: 'b', glob: 'data/b/*.ttl' },
+      { id: 'c', glob: 'data/a/*.ttl' }, // identical base+pattern as `a`
+    ]);
+
+    const chain = buildWatcherChain(registry);
+
+    expect(chain.sources.map((s) => s.id)).toEqual(['a', 'b', 'c']);
+    expect([...chain.globBases].sort()).toEqual(
+      [resolve('data/a'), resolve('data/b')].sort(),
     );
-    const target = registry.find((s) => s.id === 'cached') as ParsedSource;
+  });
 
-    const chain = buildWatcherChain(registry, target);
+  it('view with no cache directly over an endpoint is pass-through (no globs, no cachedViews)', () => {
+    const registry = parseSourceSpecs([
+      { id: 'remote', endpoint: 'https://example.com/sparql' },
+      {
+        id: 'wrapped',
+        from: '@remote',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+    ]);
 
-    expect(chain.views.map((v) => v.id)).toEqual(['cached']);
-    expect(chain.cachedViews).toEqual([]);
-    expect(chain.globs).toEqual(['data/*.ttl']);
+    const chain = buildWatcherChain(registry);
+
+    expect(chain.sources).toEqual([]);
+    expect(chain.passThrough.map((s) => (s as { id?: string }).id).sort()).toEqual(
+      ['remote', 'wrapped'].sort(),
+    );
+  });
+
+  it('skips reference entries entirely (neither plan nor passThrough)', () => {
+    const registry = parseSourceSpecs([
+      { id: 'real', glob: 'data/*.ttl' },
+      '@real',
+    ]);
+
+    const chain = buildWatcherChain(registry);
+
+    expect(chain.sources.map((s) => s.id)).toEqual(['real']);
+    expect(chain.passThrough).toEqual([]);
   });
 });
