@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sparqly diff</title>
+<style>
+body{font:14px/1.5 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;margin:0;padding:1.5rem;color:#222}
+header{margin-bottom:1.5rem}
+h1{font-size:1.25rem;margin:0 0 .25rem}
+.summary{margin:0;color:#555;font-family:ui-monospace,Menlo,Consolas,monospace}
+.block{margin-bottom:1.5rem}
+.block h2{font-size:1rem;margin:0 0 .5rem}
+.empty{color:#888;font-style:italic;margin:0}
+.hunk{border-left:3px solid #ccc;padding:.5rem .75rem;margin:.5rem 0;background:#fafafa}
+.hunk.removed{border-left-color:#c33;background:#fff4f4}
+.hunk.added{border-left-color:#393;background:#f4fff4}
+.hunk.changed{border-left-color:#06c;background:#f4f8ff}
+.hunk-header{margin:0 0 .25rem}
+.hunk-title{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:600}
+.hunk-chips{margin:.25rem 0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.8125rem;line-height:1.8}
+.chip{display:inline-block;padding:0 .5rem;margin:0 .25rem .125rem 0;border-radius:3px;text-decoration:none;color:#222;border:1px solid transparent}
+.chip:hover{text-decoration:underline}
+.chip-left{background:#fee;border-color:#f4caca}
+.chip-right{background:#efe;border-color:#cce8cc}
+.hunk-body{margin:.5rem 0 0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.875rem;line-height:1.5}
+.line{display:block;padding:0 .25rem;white-space:pre-wrap;word-break:break-all}
+.line-removed{background:#fff4f4}
+.line-added{background:#f4fff4}
+.marker{display:inline-block;width:1ch;text-align:center;color:#888;user-select:none}
+.line-removed .marker{color:#c33}
+.line-added .marker{color:#393}
+.pair{border-left:2px solid #d8d8d8;margin:.125rem 0;padding-left:.25rem}
+.hunk-snippets{margin-top:.5rem}
+.snippet-header{margin:.25rem 0 .125rem;font-size:.8125rem;font-family:ui-monospace,Menlo,Consolas,monospace;color:#06c}
+.snippet-header a{color:inherit;text-decoration:none}
+.snippet-header a:hover{text-decoration:underline}
+.snippet-note{color:#888;font-style:italic;font-size:.8125rem;margin:.25rem 0}
+.snippet{margin:.125rem 0 .5rem;padding:.5rem;background:#fff;border:1px solid #e5e5e5;border-radius:3px;overflow-x:auto;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.8125rem;line-height:1.4}
+.snippet .line{display:block}
+.snippet .gutter{display:inline-block;width:3ch;text-align:right;color:#888;user-select:none;margin-right:.75rem;border-right:1px solid #eee;padding-right:.5rem}
+.snippet .focal{font-weight:600}
+</style>
+</head>
+<body>
+<header>
+<h1>sparqly diff</h1>
+<p class="summary">left=21 right=21 +21 −21</p>
+</header>
+<section class="block changed">
+<h2>Changed</h2>
+<article class="hunk changed">
+<header class="hunk-header">
+<div class="hunk-title">ex:Foo  [-21 +21]</div>
+</header>
+<details class="hunk-overflow">
+<summary>Show 42 more</summary>
+<div class="hunk-body">
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p1 &quot;v1-1&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p1 &quot;v2-1&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p10 &quot;v1-10&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p10 &quot;v2-10&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p11 &quot;v1-11&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p11 &quot;v2-11&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p12 &quot;v1-12&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p12 &quot;v2-12&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p13 &quot;v1-13&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p13 &quot;v2-13&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p14 &quot;v1-14&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p14 &quot;v2-14&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p15 &quot;v1-15&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p15 &quot;v2-15&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p16 &quot;v1-16&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p16 &quot;v2-16&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p17 &quot;v1-17&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p17 &quot;v2-17&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p18 &quot;v1-18&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p18 &quot;v2-18&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p19 &quot;v1-19&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p19 &quot;v2-19&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p2 &quot;v1-2&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p2 &quot;v2-2&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p20 &quot;v1-20&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p20 &quot;v2-20&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p21 &quot;v1-21&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p21 &quot;v2-21&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p3 &quot;v1-3&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p3 &quot;v2-3&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p4 &quot;v1-4&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p4 &quot;v2-4&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p5 &quot;v1-5&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p5 &quot;v2-5&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p6 &quot;v1-6&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p6 &quot;v2-6&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p7 &quot;v1-7&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p7 &quot;v2-7&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p8 &quot;v1-8&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p8 &quot;v2-8&quot; .</span></div>
+</div>
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:p9 &quot;v1-9&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:p9 &quot;v2-9&quot; .</span></div>
+</div>
+</div>
+</details>
+</article>
+</section>
+<section class="block removed">
+<h2>Removed</h2>
+<p class="empty">(none)</p>
+</section>
+<section class="block added">
+<h2>Added</h2>
+<p class="empty">(none)</p>
+</section>
+</body>
+</html>
