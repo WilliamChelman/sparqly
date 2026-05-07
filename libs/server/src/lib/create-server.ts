@@ -19,6 +19,7 @@ import {
 } from 'core';
 import { EngineMap } from './engine-map';
 import { ServerModule } from './server.module';
+import { SnippetAllowList } from './snippet-allow-list';
 import type { SourceListingEntry, StoreRef } from './tokens';
 import {
   buildWatcherChain,
@@ -76,6 +77,7 @@ export async function createServer(
 
   let engine: QueryEngine;
   let storeRef: StoreRef | undefined;
+  let initialFiles: ReadonlyArray<string> = [];
   if (querySources.mode === 'pass-through') {
     logger.log(
       `Federating to endpoint ${querySources.endpoint.endpoint} in ${
@@ -92,7 +94,13 @@ export async function createServer(
     storeRef = { current: querySources.store };
     const ref = storeRef;
     engine = new QueryEngine(() => ref.current);
+    initialFiles = querySources.files;
   }
+
+  const snippetAllowList = new SnippetAllowList();
+  snippetAllowList.update(initialFiles);
+  const singleSourceFiles = new Map<ParsedSource, ReadonlyArray<string>>();
+  singleSourceFiles.set(target, initialFiles);
 
   const app = await NestFactory.create<NestExpressApplication>(
     ServerModule.forRoot({
@@ -100,6 +108,7 @@ export async function createServer(
       engine,
       listing: buildSingleListing(target),
       config: { mutable: options.mutable === true },
+      snippetAllowList,
     }),
     { abortOnError: false },
   );
@@ -126,6 +135,8 @@ export async function createServer(
         logger,
         debounceMs: options.watchDebounceMs ?? DEFAULT_DEBOUNCE_MS,
         pollMs: options.watchPollMs ?? DEFAULT_POLL_MS,
+        snippetAllowList,
+        singleSourceFiles,
       })
     : undefined;
   if (watcher) {
@@ -164,6 +175,9 @@ async function startRegistryMode(
 
   const listing = buildListing(registry);
 
+  const snippetAllowList = new SnippetAllowList();
+  snippetAllowList.update(engineMap.allFiles());
+
   const app = await NestFactory.create<NestExpressApplication>(
     ServerModule.forRoot({
       mode: 'registry',
@@ -171,6 +185,7 @@ async function startRegistryMode(
       registry,
       listing,
       config: { mutable: options.mutable === true },
+      snippetAllowList,
     }),
     { abortOnError: false },
   );
@@ -199,6 +214,7 @@ async function startRegistryMode(
         logger,
         debounceMs: options.watchDebounceMs ?? DEFAULT_DEBOUNCE_MS,
         pollMs: options.watchPollMs ?? DEFAULT_POLL_MS,
+        snippetAllowList,
       })
     : undefined;
   if (watcher) {
@@ -284,6 +300,8 @@ interface SingleSourceWatcherOptions {
   logger: Logger;
   debounceMs: number;
   pollMs: number;
+  snippetAllowList: SnippetAllowList;
+  singleSourceFiles: Map<ParsedSource, ReadonlyArray<string>>;
 }
 
 async function maybeStartSingleSourceWatcher(
@@ -322,6 +340,7 @@ async function maybeStartSingleSourceWatcher(
     globBases: plan.globBases,
   };
   const storeRef = opts.storeRef;
+  const filesMap = opts.singleSourceFiles;
   return startMultiSourceWatcher(
     [
       {
@@ -329,6 +348,10 @@ async function maybeStartSingleSourceWatcher(
         storeRef,
         target: opts.target,
         registry: opts.registry,
+        onRebuiltFiles: (files) => {
+          filesMap.set(opts.target, files);
+          opts.snippetAllowList.update(unionFiles(filesMap.values()));
+        },
       },
     ],
     narrowedChain,
@@ -348,6 +371,7 @@ interface RegistryWatcherOptions {
   logger: Logger;
   debounceMs: number;
   pollMs: number;
+  snippetAllowList: SnippetAllowList;
 }
 
 async function maybeStartRegistryWatcher(
@@ -379,11 +403,16 @@ async function maybeStartRegistryWatcher(
       );
       continue;
     }
+    const sourceId = plan.id;
     targets.push({
       plan,
       storeRef,
       target: plan.source,
       registry: opts.registry,
+      onRebuiltFiles: (files) => {
+        opts.engineMap.setFiles(sourceId, files);
+        opts.snippetAllowList.update(opts.engineMap.allFiles());
+      },
     });
   }
 
@@ -402,6 +431,13 @@ interface WatchedSource {
   storeRef: StoreRef;
   target: ParsedSource;
   registry: ReadonlyArray<ParsedSource>;
+  /**
+   * Notification fired after every successful materialized rebuild with the
+   * absolute paths the loader actually opened on this rebuild. Used to keep
+   * the snippet allow-list in sync with the resolution result so that newly
+   * matched files become readable and removed files stop being readable.
+   */
+  onRebuiltFiles?: (files: ReadonlyArray<string>) => void;
 }
 
 interface MultiSourceWatcherDeps {
@@ -521,6 +557,7 @@ function createSourceRunner(
       });
       if (refreshed.mode === 'materialized') {
         target.storeRef.current = refreshed.store;
+        target.onRebuiltFiles?.(refreshed.files);
         deps.logger.log(
           `${labelPrefix}Rebuilt store: ${refreshed.files.length} file(s), ${refreshed.store.size} quads in ${
             Date.now() - start
@@ -666,6 +703,16 @@ async function runAskAgainstUpstream(
     );
   }
   return (await result.execute()) as boolean;
+}
+
+function unionFiles(
+  perSource: Iterable<ReadonlyArray<string>>,
+): string[] {
+  const out: string[] = [];
+  for (const files of perSource) {
+    for (const f of files) out.push(f);
+  }
+  return out;
 }
 
 function portFromUrl(url: string): number | undefined {

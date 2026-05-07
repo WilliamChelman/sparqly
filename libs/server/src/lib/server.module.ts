@@ -4,6 +4,8 @@ import { DiffController } from './diff.controller';
 import { DiffService } from './diff.service';
 import type { EngineMap } from './engine-map';
 import { RegistrySparqlController } from './registry-sparql.controller';
+import { SnippetAllowList } from './snippet-allow-list';
+import { SnippetController } from './snippet.controller';
 import { SourcesController } from './sources.controller';
 import { SparqlController } from './sparql.controller';
 import {
@@ -12,6 +14,7 @@ import {
   SPARQL_ENGINE,
   SPARQL_ENGINE_MAP,
   SPARQL_REGISTRY_LISTING,
+  SPARQL_SNIPPET_ALLOW_LIST,
   type SourceListingEntry,
   type SparqlServerConfig,
 } from './tokens';
@@ -21,6 +24,7 @@ export interface SingleSourceModuleOptions {
   engine: QueryEngine;
   listing: ReadonlyArray<SourceListingEntry>;
   config: SparqlServerConfig;
+  snippetAllowList: SnippetAllowList;
 }
 
 export interface RegistryModuleOptions {
@@ -29,6 +33,7 @@ export interface RegistryModuleOptions {
   registry: ReadonlyArray<ParsedSource>;
   listing: ReadonlyArray<SourceListingEntry>;
   config: SparqlServerConfig;
+  snippetAllowList: SnippetAllowList;
 }
 
 export type ServerModuleOptions =
@@ -38,9 +43,13 @@ export type ServerModuleOptions =
 @Module({})
 export class ServerModule {
   static forRoot(options: ServerModuleOptions): DynamicModule {
-    const controllers: Type<unknown>[] = [];
+    const controllers: Type<unknown>[] = [SnippetController];
     const providers: DynamicModule['providers'] = [
       { provide: SPARQL_CONFIG, useValue: options.config },
+      {
+        provide: SPARQL_SNIPPET_ALLOW_LIST,
+        useValue: options.snippetAllowList,
+      },
     ];
     if (options.mode === 'single') {
       controllers.push(SparqlController, SourcesController);
