@@ -38,9 +38,9 @@ import { configureLogger } from '../logging';
 import { writeOutputToFile } from '../output';
 import type { FieldDescriptor } from '../runner/field';
 import {
-  baseField,
+  contextBaseField,
+  contextPrefixesField,
   outFieldFor,
-  prefixesField,
   singleSourceSchema,
   verbosityFieldsFor,
 } from '../runner/fields-shared';
@@ -56,7 +56,7 @@ const DIFF_FORMATS = [
 ] as const;
 type DiffFormat = (typeof DIFF_FORMATS)[number];
 
-const MAX_CONTEXT = 100;
+const MAX_SNIPPET_CONTEXT = 100;
 
 interface DiffConfig {
   sources?: SourceSpecInput[];
@@ -66,7 +66,7 @@ interface DiffConfig {
   prefixes?: Record<string, string>;
   base?: string;
   out?: string;
-  context?: number;
+  snippetContext?: number;
   query?: string;
   queryFile?: string;
   leftQuery?: string;
@@ -216,19 +216,19 @@ const skipAutoSourceAnnotationField: FieldDescriptor = {
   ],
 };
 
-const contextField: FieldDescriptor = {
-  key: 'context',
+const snippetContextField: FieldDescriptor = {
+  key: 'snippetContext',
   schema: z.preprocess((v) => {
     if (typeof v === 'string' && v.trim() !== '') {
       const n = Number(v);
       if (Number.isFinite(n)) return n;
     }
     return v;
-  }, z.number().int().min(0).max(MAX_CONTEXT)),
+  }, z.number().int().min(0).max(MAX_SNIPPET_CONTEXT)),
   flags: [
     {
-      spec: '-C, --context <n>',
-      description: `Number of source-file context lines around each focal line in the \`html\` format (default 3, max ${MAX_CONTEXT}). Loud-errors when used with any non-html format.`,
+      spec: '-C, --snippet-context <n>',
+      description: `Number of source-file context lines around each focal line in the \`html\` format (default 3, max ${MAX_SNIPPET_CONTEXT}). Loud-errors when used with any non-html format.`,
     },
   ],
 };
@@ -261,10 +261,10 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     rightQueryField,
     rightQueryFileField,
     formatField,
-    contextField,
+    snippetContextField,
     skipAutoSourceAnnotationField,
-    prefixesField,
-    baseField,
+    contextPrefixesField,
+    contextBaseField,
     outFieldFor('diff'),
     ...verbosityFieldsFor('diff'),
   ],
@@ -280,12 +280,12 @@ export const diffSpec: CommandSpec<DiffConfig> = {
           (val.format as DiffFormat | undefined) ??
           inferDiffFormatFromOut(val.out as string | undefined) ??
           'human';
-        if (val.context !== undefined && effectiveFormat !== 'html') {
+        if (val.snippetContext !== undefined && effectiveFormat !== 'html') {
           ctx.addIssue({
             code: 'custom',
             message:
-              '`--context` is only valid with `--format=html`; remove `--context` or pass `--format=html`',
-            path: ['context'],
+              '`--snippet-context` is only valid with `--format=html`; remove `--snippet-context` or pass `--format=html`',
+            path: ['snippetContext'],
           });
         }
         const hasSymQuery = typeof val.query === 'string';
@@ -410,7 +410,7 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     );
 
     const cwd = process.cwd();
-    const context = config.context ?? 3;
+    const snippetContext = config.snippetContext ?? 3;
     // Test-only synchronization hook: emits a stable stderr marker and
     // pauses for N ms so an e2e parent can mutate the filesystem between
     // load and snippet fetching, making the load→snippet boundary
@@ -437,7 +437,7 @@ export const diffSpec: CommandSpec<DiffConfig> = {
       format === 'html'
         ? await fetchSnippetsForHunkedDiff(
             hunked as ReturnType<typeof groupRdfDiffByEntity>,
-            context,
+            snippetContext,
           )
         : new Map<string, SnippetReadResult>();
     const body =
@@ -445,7 +445,7 @@ export const diffSpec: CommandSpec<DiffConfig> = {
         ? composeHtmlDiff(
             hunked as ReturnType<typeof groupRdfDiffByEntity>,
             snippetsByRecord,
-            { cwd, context, prefixes: resolvedPrefixes },
+            { cwd, context: snippetContext, prefixes: resolvedPrefixes },
           )
         : format === 'turtle'
           ? formatRdfDiff(diff, 'turtle', {

@@ -739,17 +739,16 @@ describe('registerSpec', () => {
       expect(received).toEqual({ sources: ['data/*.ttl'] });
     });
 
-    it('format sees the `format` block (deep-merged prefixes survive)', async () => {
+    it('format sees the `format` block (objectAnchoredPredicates flows to its field key)', async () => {
       let received: Record<string, unknown> | undefined;
-      const prefixesField: FieldDescriptor = {
-        key: 'prefixes',
-        schema: z.record(z.string(), z.string()),
-        merge: 'deep',
+      const oapField: FieldDescriptor = {
+        key: 'objectAnchoredPredicates',
+        schema: z.array(z.string()),
       };
       const spec: CommandSpec<Record<string, unknown>> = {
         name: 'format',
         description: 'f',
-        fields: [sourcesField, prefixesField, baseFmtField],
+        fields: [sourcesField, oapField],
         configScope: { sources: true, block: 'format' },
         handler: (c) => {
           received = c as Record<string, unknown>;
@@ -763,10 +762,7 @@ describe('registerSpec', () => {
         loadFile: async () => ({
           data: {
             sources: ['data/*.ttl'],
-            format: {
-              prefixes: { ex: 'http://example.org/' },
-              base: 'http://example.org/',
-            },
+            format: { objectAnchoredPredicates: ['rdfs:label'] },
           },
           filepath: '/cfg.yaml',
         }),
@@ -777,8 +773,7 @@ describe('registerSpec', () => {
       );
       expect(received).toEqual({
         sources: ['data/*.ttl'],
-        prefixes: { ex: 'http://example.org/' },
-        base: 'http://example.org/',
+        objectAnchoredPredicates: ['rdfs:label'],
       });
     });
 
@@ -837,6 +832,151 @@ describe('registerSpec', () => {
         from: 'user',
       });
       expect(received?.port).toBe(9000);
+    });
+
+    it('format sees context.prefixes / context.base flattened onto field keys (regardless of configScope.block)', async () => {
+      let received: Record<string, unknown> | undefined;
+      const prefixesField: FieldDescriptor = {
+        key: 'prefixes',
+        schema: z.record(z.string(), z.string()),
+        merge: 'deep',
+      };
+      const spec: CommandSpec<Record<string, unknown>> = {
+        name: 'format',
+        description: 'f',
+        fields: [sourcesField, prefixesField, baseFmtField],
+        configScope: { sources: true, block: 'format' },
+        handler: (c) => {
+          received = c as Record<string, unknown>;
+        },
+        exitCode: () => 1,
+      };
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        loadFile: async () => ({
+          data: {
+            sources: ['data/*.ttl'],
+            format: { objectAnchoredPredicates: ['rdfs:label'] },
+            context: {
+              prefixes: { ex: 'http://example.org/' },
+              base: 'http://example.org/',
+            },
+          },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(['format', '--config', '/cfg.yaml'], {
+        from: 'user',
+      });
+      expect(received).toMatchObject({
+        sources: ['data/*.ttl'],
+        prefixes: { ex: 'http://example.org/' },
+        base: 'http://example.org/',
+      });
+    });
+
+    it('diff (no command-scoped block) still picks up context.prefixes / context.base', async () => {
+      let received: Record<string, unknown> | undefined;
+      const prefixesField: FieldDescriptor = {
+        key: 'prefixes',
+        schema: z.record(z.string(), z.string()),
+        merge: 'deep',
+      };
+      const spec: CommandSpec<Record<string, unknown>> = {
+        name: 'diff',
+        description: 'd',
+        fields: [sourcesField, prefixesField, baseFmtField],
+        configScope: { sources: true },
+        handler: (c) => {
+          received = c as Record<string, unknown>;
+        },
+        exitCode: () => 1,
+      };
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        loadFile: async () => ({
+          data: {
+            sources: ['data/*.ttl'],
+            context: {
+              prefixes: { ex: 'http://example.org/' },
+              base: 'http://example.org/',
+            },
+          },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(['diff', '--config', '/cfg.yaml'], {
+        from: 'user',
+      });
+      expect(received).toMatchObject({
+        prefixes: { ex: 'http://example.org/' },
+        base: 'http://example.org/',
+      });
+    });
+
+    it('a command without prefixes/base fields silently ignores context: values', async () => {
+      let received: Record<string, unknown> | undefined;
+      const spec: CommandSpec<Record<string, unknown>> = {
+        name: 'hash',
+        description: 'h',
+        fields: [sourcesField],
+        configScope: { sources: true },
+        handler: (c) => {
+          received = c as Record<string, unknown>;
+        },
+        exitCode: () => 1,
+      };
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        loadFile: async () => ({
+          data: {
+            sources: ['data/*.ttl'],
+            context: { prefixes: { ex: 'http://example.org/' } },
+          },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(['hash', '--config', '/cfg.yaml'], {
+        from: 'user',
+      });
+      expect(received).toEqual({ sources: ['data/*.ttl'] });
+    });
+
+    it('absent context: leaves the field-config layer untouched', async () => {
+      let received: Record<string, unknown> | undefined;
+      const prefixesField: FieldDescriptor = {
+        key: 'prefixes',
+        schema: z.record(z.string(), z.string()).optional(),
+      };
+      const spec: CommandSpec<Record<string, unknown>> = {
+        name: 'diff',
+        description: 'd',
+        fields: [sourcesField, prefixesField],
+        configScope: { sources: true },
+        handler: (c) => {
+          received = c as Record<string, unknown>;
+        },
+        exitCode: () => 1,
+      };
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        loadFile: async () => ({
+          data: { sources: ['data/*.ttl'] },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(['diff', '--config', '/cfg.yaml'], {
+        from: 'user',
+      });
+      expect(received).toEqual({ sources: ['data/*.ttl'] });
     });
 
     it('SPARQLY_CACHE_DIR env overrides cache.dir from the file', async () => {

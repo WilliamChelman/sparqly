@@ -14,9 +14,15 @@ const serveBlockSchema = z
 
 const formatBlockSchema = z
   .object({
+    objectAnchoredPredicates: z.array(z.string()),
+  })
+  .partial()
+  .strict();
+
+const contextBlockSchema = z
+  .object({
     prefixes: z.record(z.string(), z.string()),
     base: z.string(),
-    objectAnchoredPredicates: z.array(z.string()),
   })
   .partial()
   .strict();
@@ -37,7 +43,7 @@ const PER_INVOCATION_KEYS = new Set([
   'compareWith',
   'left',
   'right',
-  'context',
+  'snippetContext',
   'skipAutoSourceAnnotation',
   'json',
 ]);
@@ -48,13 +54,24 @@ const ROOT_KEY_DESTINATIONS: Record<string, string> = {
   watchDebounce: 'serve.watchDebounce',
   watchPoll: 'serve.watchPoll',
   mutable: 'serve.mutable',
-  prefixes: 'format.prefixes',
-  base: 'format.base',
+  prefixes: 'context.prefixes',
+  base: 'context.base',
   objectAnchoredPredicates: 'format.objectAnchoredPredicates',
   cacheDir: 'cache.dir',
 };
 
-const KNOWN_TOP_LEVEL = new Set(['sources', 'serve', 'format', 'cache']);
+const FORMAT_BLOCK_REDIRECTS: Record<string, string> = {
+  prefixes: 'context.prefixes',
+  base: 'context.base',
+};
+
+const KNOWN_TOP_LEVEL = new Set([
+  'sources',
+  'serve',
+  'format',
+  'cache',
+  'context',
+]);
 
 const baseProjectSchema = z
   .object({
@@ -62,6 +79,7 @@ const baseProjectSchema = z
     serve: serveBlockSchema.optional(),
     format: formatBlockSchema.optional(),
     cache: cacheBlockSchema.optional(),
+    context: contextBlockSchema.optional(),
   })
   .strict();
 
@@ -98,6 +116,21 @@ export function validateProjectConfig(parsed: unknown):
           path: key,
           message: `${key} at root not allowed; move to ${dest}`,
         });
+      }
+    }
+    const formatBlock = obj.format;
+    if (
+      formatBlock !== null &&
+      typeof formatBlock === 'object' &&
+      !Array.isArray(formatBlock)
+    ) {
+      for (const [k, dest] of Object.entries(FORMAT_BLOCK_REDIRECTS)) {
+        if (k in (formatBlock as Record<string, unknown>)) {
+          issues.push({
+            path: `format.${k}`,
+            message: `${k} under format: not allowed; move to ${dest}`,
+          });
+        }
       }
     }
   }

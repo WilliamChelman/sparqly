@@ -22,7 +22,11 @@ import {
 import { EngineMap } from './engine-map';
 import { ServerModule } from './server.module';
 import { SnippetAllowList } from './snippet-allow-list';
-import type { SourceListingEntry, StoreRef } from './tokens';
+import type {
+  SourceListingEntry,
+  SparqlContext,
+  StoreRef,
+} from './tokens';
 import {
   buildWatcherChain,
   type WatcherChain,
@@ -44,6 +48,12 @@ export interface CreateServerOptions {
   watch?: boolean;
   watchDebounceMs?: number;
   watchPollMs?: number;
+  /**
+   * Display context (`prefixes`/`base`) surfaced to clients via /api/config so
+   * they can shorten IRIs the same way the CLI does. Optional — defaults to
+   * empty `prefixes` and no `base`.
+   */
+  context?: SparqlContext;
 }
 
 export interface CreatedServer {
@@ -110,6 +120,7 @@ export async function createServer(
       engine,
       listing: buildSingleListing(target),
       config: { mutable: options.mutable === true },
+      context: options.context ?? { prefixes: {} },
       snippetAllowList,
     }),
     { abortOnError: false },
@@ -187,6 +198,7 @@ async function startRegistryMode(
       registry,
       listing,
       config: { mutable: options.mutable === true },
+      context: options.context ?? { prefixes: {} },
       snippetAllowList,
     }),
     { abortOnError: false },
@@ -203,7 +215,7 @@ async function startRegistryMode(
   for (const id of engineMap.allIds()) {
     logger.log(`SPARQL endpoint for @${id} at ${url}/api/sparql/${id}`);
   }
-  logger.log(`Source listing at ${url}/api/sources`);
+  logger.log(`Config + source listing at ${url}/api/config`);
   if (options.webRootDir) {
     logger.log(`Web playground served at ${url}/`);
   }

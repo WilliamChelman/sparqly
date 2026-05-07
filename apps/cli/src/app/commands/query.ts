@@ -18,10 +18,10 @@ import { configureLogger } from '../logging';
 import { writeOutputToFile } from '../output';
 import type { FieldDescriptor } from '../runner/field';
 import {
-  baseField,
+  contextBaseField,
+  contextPrefixesField,
   mutableFieldsFor,
   outFieldFor,
-  prefixesField,
   sourceField,
   verbosityFieldsFor,
 } from '../runner/fields-shared';
@@ -101,8 +101,8 @@ export const querySpec: CommandSpec<QueryConfig> = {
     queryFileField,
     formatField,
     ...mutableFieldsFor('query'),
-    prefixesField,
-    baseField,
+    contextPrefixesField,
+    contextBaseField,
     outFieldFor('query'),
     ...verbosityFieldsFor('query'),
   ],

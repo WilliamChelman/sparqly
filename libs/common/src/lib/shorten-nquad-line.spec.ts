@@ -43,6 +43,57 @@ describe('shortenNQuadLine', () => {
     );
   });
 
+  it('emits <localname> for an IRI starting with `base` when no prefix matches', () => {
+    const line =
+      '<http://example.org/Foo> <http://example.org/p> <http://example.org/Bar> .';
+    const out = shortenNQuadLine(line, {
+      prefixes: {},
+      base: 'http://example.org/',
+    });
+    expect(out).toBe('<Foo> <p> <Bar> .');
+  });
+
+  it('prefers a prefix match over the base fallback', () => {
+    const line =
+      '<http://example.org/Foo> <http://example.org/p> <http://example.org/Bar> .';
+    const out = shortenNQuadLine(line, {
+      prefixes: { ex: 'http://example.org/' },
+      base: 'http://example.org/',
+    });
+    expect(out).toBe('ex:Foo ex:p ex:Bar .');
+  });
+
+  it('keeps full IRIs in <…> when neither prefix nor base matches', () => {
+    const line =
+      '<http://other.org/Foo> <http://other.org/p> <http://other.org/Bar> .';
+    const out = shortenNQuadLine(line, {
+      prefixes: {},
+      base: 'http://example.org/',
+    });
+    expect(out).toBe(
+      '<http://other.org/Foo> <http://other.org/p> <http://other.org/Bar> .',
+    );
+  });
+
+  it('does not affect literals when base is set', () => {
+    const line =
+      '<http://example.org/Foo> <http://example.org/p> "a literal value" .';
+    const out = shortenNQuadLine(line, {
+      prefixes: {},
+      base: 'http://example.org/',
+    });
+    expect(out).toBe('<Foo> <p> "a literal value" .');
+  });
+
+  it('absent base behaves exactly as before (full IRI when no prefix matches)', () => {
+    const line =
+      '<http://example.org/Foo> <http://example.org/p> <http://example.org/Bar> .';
+    const out = shortenNQuadLine(line, { prefixes: {} });
+    expect(out).toBe(
+      '<http://example.org/Foo> <http://example.org/p> <http://example.org/Bar> .',
+    );
+  });
+
   it('DEFAULT_PREFIXES covers rdf, rdfs, owl, and xsd', () => {
     expect(DEFAULT_PREFIXES.rdf).toBe(
       'http://www.w3.org/1999/02/22-rdf-syntax-ns#',

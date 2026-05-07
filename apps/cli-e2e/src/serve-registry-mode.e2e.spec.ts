@@ -19,7 +19,7 @@ describe('sparqly serve — Registry mode default (issue #141)', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it('exposes /api/sources and /api/sparql/<id> for every non-reference source', async () => {
+  it('exposes /api/config and /api/sparql/<id> for every non-reference source', async () => {
     const alphaPath = join(dir, 'alpha.ttl');
     const betaPath = join(dir, 'beta.ttl');
     await writeFile(
@@ -46,7 +46,7 @@ describe('sparqly serve — Registry mode default (issue #141)', () => {
 
     handle = await startServe(['--config', configPath]);
 
-    const sourcesRes = await fetch(`${handle.baseUrl}/api/sources`);
+    const sourcesRes = await fetch(`${handle.baseUrl}/api/config`);
     expect(sourcesRes.status).toBe(200);
     const sourcesJson = (await sourcesRes.json()) as {
       sources: Array<{ id: string; kind: string; default?: boolean }>;
@@ -95,7 +95,7 @@ describe('sparqly serve — Registry mode default (issue #141)', () => {
     handle = await startServe(['--config', configPath]);
 
     const sources = (await (
-      await fetch(`${handle.baseUrl}/api/sources`)
+      await fetch(`${handle.baseUrl}/api/config`)
     ).json()) as { sources: Array<{ id: string }> };
     expect(sources.sources.map((s) => s.id).sort()).toEqual(['alpha', 'dead']);
 

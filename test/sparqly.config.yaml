@@ -12,3 +12,7 @@ sources:
 serve:
   port: 3000
   watch: true
+
+context:
+  prefixes:
+    fedlex: 'https://fedlex.data.admin.ch/filestore/fedlex.data.admin.ch/eli/cc/'

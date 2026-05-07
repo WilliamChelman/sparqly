@@ -9,15 +9,15 @@ import {
   signal,
 } from '@angular/core';
 import {
-  SourcesService,
+  ConfigService,
   type SourceListingEntry,
-} from './sources.service';
+} from './config.service';
 
 export type {
   SourceKind,
   SourceListing,
   SourceListingEntry,
-} from './sources.service';
+} from './config.service';
 
 @Component({
   selector: 'app-sources-picker',
@@ -47,7 +47,7 @@ export class SourcesPicker implements OnInit {
   @Input() label = 'source';
   @Output() valueChange = new EventEmitter<string>();
 
-  private readonly sourcesService = inject(SourcesService);
+  private readonly configService = inject(ConfigService);
   readonly sources = signal<SourceListingEntry[]>([]);
   readonly selectedId = signal<string>('');
 
@@ -58,7 +58,7 @@ export class SourcesPicker implements OnInit {
   }
 
   ngOnInit(): void {
-    this.sourcesService.list().subscribe((listing) => {
+    this.configService.list().subscribe((listing) => {
       this.sources.set(listing.sources);
       if (this.selectedId() === '') {
         const def = listing.sources.find((s) => s.default === true);

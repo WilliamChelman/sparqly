@@ -57,12 +57,6 @@ describe('formatSpec', () => {
     expect(schema.safeParse({ check: true }).success).toBe(true);
   });
 
-  it('exposes a --prefix flag (string[]) field', () => {
-    const prefix = formatSpec.fields.find((f) => f.key === 'prefix');
-    expect(prefix).toBeDefined();
-    expect(prefix?.flags?.[0].spec).toBe('--prefix <name=iri>');
-  });
-
   it('exitCode returns 2 in --check mode and 1 otherwise', () => {
     expect(
       formatSpec.exitCode(new Error('x'), {

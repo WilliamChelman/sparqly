@@ -61,7 +61,7 @@ export class SourceSnippet implements OnInit {
     const params = new HttpParams()
       .set('file', this.file())
       .set('line', String(this.line()))
-      .set('context', String(this.context()));
+      .set('snippetContext', String(this.context()));
     this.http
       .get<SnippetReadResult>('/api/source-snippet', { params })
       .subscribe({

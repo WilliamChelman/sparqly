@@ -175,19 +175,19 @@ describe('sparqly diff -f html', () => {
     expect(quiet.stderr).toBe('');
   });
 
-  it('rejects --context against a non-html format with a loud error', async () => {
+  it('rejects --snippet-context against a non-html format with a loud error', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
     await writeFile(leftPath, '');
     await writeFile(rightPath, '');
 
     const result = await runCli(
-      ['diff', '-f', 'human', '--context', '5', leftPath, rightPath],
+      ['diff', '-f', 'human', '--snippet-context', '5', leftPath, rightPath],
       { cwd: scratch },
     );
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/--context/);
+    expect(result.stderr).toMatch(/--snippet-context/);
     expect(result.stderr).toMatch(/html/);
   });
 
@@ -347,7 +347,7 @@ describe('sparqly diff -f html', () => {
     expect(result.stdout).toContain('ex:e');
   });
 
-  it('rejects --context above 100', async () => {
+  it('rejects --snippet-context above 100', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
     await writeFile(leftPath, '');
@@ -358,7 +358,7 @@ describe('sparqly diff -f html', () => {
         'diff',
         '-f',
         'html',
-        '--context',
+        '--snippet-context',
         '101',
         leftPath,
         rightPath,

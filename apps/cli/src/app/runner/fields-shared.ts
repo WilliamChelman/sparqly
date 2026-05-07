@@ -196,29 +196,13 @@ export function mutableFieldsFor(
   ];
 }
 
-export const prefixesField: FieldDescriptor = {
+export const contextPrefixesField: FieldDescriptor = {
   key: 'prefixes',
   schema: z.record(z.string(), z.string()),
   merge: 'deep',
 };
 
-export const baseField: FieldDescriptor = {
+export const contextBaseField: FieldDescriptor = {
   key: 'base',
   schema: z.string(),
-};
-
-export const prefixField: FieldDescriptor = {
-  key: 'prefix',
-  schema: z.array(z.string()),
-  flags: [
-    {
-      spec: '--prefix <name=iri>',
-      description:
-        'Add or override a prefix mapping (repeatable, highest precedence). Example: --prefix ex=http://example.org/',
-      parse: (value, prev) => [
-        ...((prev as string[] | undefined) ?? []),
-        value,
-      ],
-    },
-  ],
 };

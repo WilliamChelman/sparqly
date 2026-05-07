@@ -13,6 +13,7 @@ export const DEFAULT_PREFIXES: Readonly<Record<string, string>> = Object.freeze(
 
 export interface ShortenNQuadLineConfig {
   prefixes: Record<string, string>;
+  base?: string;
 }
 
 export function shortenNQuadLine(
@@ -30,17 +31,18 @@ export function shortenNQuadLine(
   if (quads.length !== 1) return line;
   const q = quads[0];
   const entries = Object.entries(config.prefixes);
+  const base = config.base;
   const predicateText =
     q.predicate.termType === 'NamedNode' && q.predicate.value === RDF_TYPE
       ? 'a'
-      : renderTerm(q.predicate, entries);
+      : renderTerm(q.predicate, entries, base);
   const parts = [
-    renderTerm(q.subject, entries),
+    renderTerm(q.subject, entries, base),
     predicateText,
-    renderTerm(q.object, entries),
+    renderTerm(q.object, entries, base),
   ];
   if (q.graph.termType !== 'DefaultGraph') {
-    parts.push(renderTerm(q.graph, entries));
+    parts.push(renderTerm(q.graph, entries, base));
   }
   return `${parts.join(' ')} .`;
 }
@@ -48,12 +50,16 @@ export function shortenNQuadLine(
 function renderTerm(
   term: Term,
   entries: ReadonlyArray<[string, string]>,
+  base: string | undefined,
 ): string {
   if (term.termType === 'NamedNode') {
     const match = bestPrefixEntryFor(term.value, entries);
     if (match) {
       const [name, ns] = match;
       return `${name}:${term.value.slice(ns.length)}`;
+    }
+    if (base !== undefined && term.value.startsWith(base)) {
+      return `<${term.value.slice(base.length)}>`;
     }
     return `<${term.value}>`;
   }

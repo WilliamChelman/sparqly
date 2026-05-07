@@ -6,6 +6,7 @@ import {
   input,
 } from '@angular/core';
 import { bestPrefixEntryFor, DEFAULT_PREFIXES, shortenNQuadLine } from 'common';
+import type { DisplayContext } from './config.service';
 import type {
   BnodePathStep,
   DiffResponse,
@@ -284,6 +285,16 @@ const OVERFLOW_LINE_THRESHOLD = 20;
 export class DiffResultRenderer {
   readonly result = input.required<DiffResponse>();
   readonly context = input<number>(3);
+  readonly displayContext = input<DisplayContext>({ prefixes: {} });
+
+  readonly effectivePrefixes = computed<Record<string, string>>(() => ({
+    ...DEFAULT_PREFIXES,
+    ...this.displayContext().prefixes,
+  }));
+
+  readonly effectiveBase = computed<string | undefined>(
+    () => this.displayContext().base,
+  );
 
   readonly errorView = computed(() => {
     const r = this.result();
@@ -346,8 +357,10 @@ export class DiffResultRenderer {
 
   termText(term: TabularTerm | undefined): string {
     if (!term) return '';
+    const prefixes = this.effectivePrefixes();
+    const base = this.effectiveBase();
     if (term.termType === 'NamedNode') {
-      return shortenNamedNode(term.value);
+      return shortenNamedNode(term.value, prefixes, base);
     }
     if (term.termType === 'BlankNode') return `_:${term.value}`;
     if (term.termType === 'Literal') {
@@ -359,7 +372,7 @@ export class DiffResultRenderer {
         dt !== 'http://www.w3.org/2001/XMLSchema#string' &&
         dt !== 'http://www.w3.org/1999/02/22-rdf-syntax-ns#langString'
       ) {
-        return `${lex}^^${shortenNamedNode(dt)}`;
+        return `${lex}^^${shortenNamedNode(dt, prefixes, base)}`;
       }
       return lex;
     }
@@ -367,11 +380,12 @@ export class DiffResultRenderer {
   }
 
   formatLineBody(line: HunkLine, rh: RenderedHunk): string {
-    const prefixes: Record<string, string> = { ...DEFAULT_PREFIXES };
+    const prefixes = this.effectivePrefixes();
+    const base = this.effectiveBase();
     if (line.bnodePath !== undefined && line.bnodePath.length > 0) {
-      return renderAbsorbedBnodeLine(line, prefixes);
+      return renderAbsorbedBnodeLine(line, prefixes, base);
     }
-    const shortened = shortenNQuadLine(line.nquad, { prefixes });
+    const shortened = shortenNQuadLine(line.nquad, { prefixes, base });
     const prefix = `${rh.anchorDisplay} `;
     return shortened.startsWith(prefix)
       ? shortened.slice(prefix.length)
@@ -379,10 +393,11 @@ export class DiffResultRenderer {
   }
 
   private renderHunk(hunk: Hunk): RenderedHunk {
-    const prefixEntries = Object.entries(DEFAULT_PREFIXES);
-    const anchorDisplay = renderAnchor(hunk, prefixEntries);
+    const prefixEntries = Object.entries(this.effectivePrefixes());
+    const base = this.effectiveBase();
+    const anchorDisplay = renderAnchor(hunk, prefixEntries, base);
     const rdfTypeDisplay =
-      hunk.rdfType !== undefined ? curieOrIri(hunk.rdfType, prefixEntries) : null;
+      hunk.rdfType !== undefined ? curieOrIri(hunk.rdfType, prefixEntries, base) : null;
     const stateLabel = hunk.state === 'changed' ? null : hunk.state;
     const countsLabel = `[-${hunk.removed} +${hunk.added}]`;
     const clusters = clusterLinesIntoPairs(hunk.lines);
@@ -500,41 +515,50 @@ function clusterLinesIntoPairs(lines: ReadonlyArray<HunkLine>): LineCluster[] {
 function renderAnchor(
   hunk: Hunk,
   prefixEntries: ReadonlyArray<[string, string]>,
+  base: string | undefined,
 ): string {
   if (hunk.orphan === true) return hunk.anchor;
-  return curieOrIri(hunk.anchor, prefixEntries);
+  return curieOrIri(hunk.anchor, prefixEntries, base);
 }
 
 function curieOrIri(
   iri: string,
   entries: ReadonlyArray<[string, string]>,
+  base: string | undefined,
 ): string {
   const match = bestPrefixEntryFor(iri, entries);
-  if (match === undefined) return `<${iri}>`;
-  const [name, ns] = match;
-  return `${name}:${iri.slice(ns.length)}`;
-}
-
-function shortenNamedNode(iri: string): string {
-  for (const [name, ns] of Object.entries(DEFAULT_PREFIXES)) {
-    if (iri.startsWith(ns)) return `${name}:${iri.slice(ns.length)}`;
+  if (match !== undefined) {
+    const [name, ns] = match;
+    return `${name}:${iri.slice(ns.length)}`;
+  }
+  if (base !== undefined && iri.startsWith(base)) {
+    return `<${iri.slice(base.length)}>`;
   }
   return `<${iri}>`;
+}
+
+function shortenNamedNode(
+  iri: string,
+  prefixes: Record<string, string>,
+  base: string | undefined,
+): string {
+  return curieOrIri(iri, Object.entries(prefixes), base);
 }
 
 function renderAbsorbedBnodeLine(
   line: HunkLine,
   prefixes: Record<string, string>,
+  base: string | undefined,
 ): string {
   const prefixEntries = Object.entries(prefixes);
   const path = line.bnodePath as BnodePathStep[];
   const segments = path.map((step) => {
     if (step.identityIsBlank) return step.identityValue;
-    const idPredicateCurie = curieOrIri(step.identityPredicate ?? '', prefixEntries);
-    const idValueDisplay = renderIdentityValue(step.identityValue, prefixEntries);
+    const idPredicateCurie = curieOrIri(step.identityPredicate ?? '', prefixEntries, base);
+    const idValueDisplay = renderIdentityValue(step.identityValue, prefixEntries, base);
     return `[${idPredicateCurie} ${idValueDisplay}]`;
   });
-  const shortened = shortenNQuadLine(line.nquad, { prefixes });
+  const shortened = shortenNQuadLine(line.nquad, { prefixes, base });
   const firstSpace = shortened.indexOf(' ');
   const tail = firstSpace >= 0 ? shortened.slice(firstSpace + 1) : shortened;
   return `${segments.join(' / ')} / ${tail}`;
@@ -543,12 +567,13 @@ function renderAbsorbedBnodeLine(
 function renderIdentityValue(
   value: string,
   prefixEntries: ReadonlyArray<[string, string]>,
+  base: string | undefined,
 ): string {
   if (value.startsWith('"') || value.startsWith('_:') || value.startsWith('<')) {
     return value;
   }
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value)) {
-    return curieOrIri(value, prefixEntries);
+    return curieOrIri(value, prefixEntries, base);
   }
   return value;
 }
