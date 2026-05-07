@@ -5,7 +5,15 @@ const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 const SH_PATH_IRI = 'http://www.w3.org/ns/shacl#path';
 
 export interface HunkedRdfDiff {
-  hunks: Hunk[];
+  /**
+   * Hunks for entities that exist on both sides — i.e. paired changes. This
+   * is the most informative case and is rendered first.
+   */
+  changed: Hunk[];
+  /** Hunks for entities present only on the left side. */
+  removed: Hunk[];
+  /** Hunks for entities present only on the right side. */
+  added: Hunk[];
   totals: DiffTotals;
 }
 
@@ -14,6 +22,12 @@ export interface Hunk {
   anchor: string;
   /** Full IRI of `rdf:type` for the anchor, when present on either side. */
   rdfType?: string;
+  /**
+   * Section assignment derived from whether the anchor exists on both sides
+   * (`changed`) or only on the left/right (`removed` / `added`). Mirrors the
+   * section the hunk lives in.
+   */
+  state: 'changed' | 'removed' | 'added';
   /** Count of `-` lines in this hunk. */
   removed: number;
   /** Count of `+` lines in this hunk. */
@@ -103,6 +117,7 @@ export function groupRdfDiffByEntity(
     if (h === undefined) {
       h = {
         anchor,
+        state: 'changed',
         removed: 0,
         added: 0,
         lines: [],
@@ -157,17 +172,48 @@ export function groupRdfDiffByEntity(
     addLine(nquad, '+', diff.sourceRecords.right.get(nquad));
   }
 
+  const changed: Hunk[] = [];
+  const removedSection: Hunk[] = [];
+  const addedSection: Hunk[] = [];
+
   for (const hunk of hunks.values()) {
     hunk.lines.sort(compareHunkLines);
     const rdfType = lookupRdfType(hunk.anchor, right.store, left.store);
     if (rdfType !== undefined) hunk.rdfType = rdfType;
+    const onLeft = anchorPresentInStore(hunk.anchor, left.store);
+    const onRight = anchorPresentInStore(hunk.anchor, right.store);
+    if (onLeft && !onRight) {
+      hunk.state = 'removed';
+      removedSection.push(hunk);
+    } else if (!onLeft && onRight) {
+      hunk.state = 'added';
+      addedSection.push(hunk);
+    } else {
+      hunk.state = 'changed';
+      changed.push(hunk);
+    }
   }
 
-  const sortedHunks = [...hunks.values()].sort((a, b) =>
-    a.anchor < b.anchor ? -1 : a.anchor > b.anchor ? 1 : 0,
-  );
+  const byAnchor = (a: Hunk, b: Hunk): number =>
+    a.anchor < b.anchor ? -1 : a.anchor > b.anchor ? 1 : 0;
+  changed.sort(byAnchor);
+  removedSection.sort(byAnchor);
+  addedSection.sort(byAnchor);
 
-  return { hunks: sortedHunks, totals: diff.totals };
+  return {
+    changed,
+    removed: removedSection,
+    added: addedSection,
+    totals: diff.totals,
+  };
+}
+
+function anchorPresentInStore(anchorIri: string, store: Store): boolean {
+  const subject = DataFactory.namedNode(anchorIri);
+  // `getQuads(s, null, null, null)` is O(1) on the s-indexed map; we only need
+  // existence, not enumeration.
+  const quads = store.getQuads(subject, null, null, null);
+  return quads.length > 0;
 }
 
 function invertCanonicalIdMap(

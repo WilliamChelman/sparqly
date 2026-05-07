@@ -1,89 +1,8 @@
 {
-  "hunks": [
-    {
-      "anchor": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
-      "removed": 0,
-      "added": 10,
-      "lines": [
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
-          "predicate": "http://data.europa.eu/949/affectedClass",
-          "object": "<http://data.europa.eu/949/VehicleTypeConfigParameterSet>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://data.europa.eu/949/affectedClass> <http://data.europa.eu/949/VehicleTypeConfigParameterSet> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
-          "predicate": "http://data.europa.eu/949/affectedProperty",
-          "object": "<http://data.europa.eu/949/contactStripMaterial>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://data.europa.eu/949/affectedProperty> <http://data.europa.eu/949/contactStripMaterial> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
-          "predicate": "http://data.europa.eu/949/eratvIndex",
-          "object": "\"4.10.10\"",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://data.europa.eu/949/eratvIndex> \"4.10.10\" ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-          "object": "<http://www.w3.org/ns/shacl#PropertyShape>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#PropertyShape> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
-          "predicate": "http://www.w3.org/2000/01/rdf-schema#comment",
-          "object": "\"Validation for contactStripMaterial property.\"@en",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://www.w3.org/2000/01/rdf-schema#comment> \"Validation for contactStripMaterial property.\"@en ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
-          "predicate": "http://www.w3.org/ns/shacl#maxCount",
-          "object": "\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://www.w3.org/ns/shacl#maxCount> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
-          "predicate": "http://www.w3.org/ns/shacl#message",
-          "object": "\"era:contactStripMaterial: its value must be an IRI.\"@en",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://www.w3.org/ns/shacl#message> \"era:contactStripMaterial: its value must be an IRI.\"@en ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
-          "predicate": "http://www.w3.org/ns/shacl#nodeKind",
-          "object": "<http://www.w3.org/ns/shacl#IRI>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://www.w3.org/ns/shacl#nodeKind> <http://www.w3.org/ns/shacl#IRI> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
-          "predicate": "http://www.w3.org/ns/shacl#path",
-          "object": "<http://data.europa.eu/949/contactStripMaterial>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://www.w3.org/ns/shacl#path> <http://data.europa.eu/949/contactStripMaterial> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
-          "predicate": "http://www.w3.org/ns/shacl#severity",
-          "object": "<http://www.w3.org/ns/shacl#Violation>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://www.w3.org/ns/shacl#severity> <http://www.w3.org/ns/shacl#Violation> ."
-        }
-      ],
-      "sourceRecords": {
-        "left": [],
-        "right": []
-      },
-      "rdfType": "http://www.w3.org/ns/shacl#PropertyShape"
-    },
+  "changed": [
     {
       "anchor": "http://data.europa.eu/949/eratv/shapes/MaximumContactWireHeight",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -109,319 +28,8 @@
       "rdfType": "http://www.w3.org/ns/shacl#PropertyShape"
     },
     {
-      "anchor": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
-      "removed": 0,
-      "added": 10,
-      "lines": [
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
-          "predicate": "http://data.europa.eu/949/affectedClass",
-          "object": "<http://data.europa.eu/949/VehicleTypeConfigParameterSet>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://data.europa.eu/949/affectedClass> <http://data.europa.eu/949/VehicleTypeConfigParameterSet> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
-          "predicate": "http://data.europa.eu/949/affectedProperty",
-          "object": "<http://data.europa.eu/949/minimumContactWireHeight>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://data.europa.eu/949/affectedProperty> <http://data.europa.eu/949/minimumContactWireHeight> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
-          "predicate": "http://data.europa.eu/949/eratvIndex",
-          "object": "\"4.10.5\"",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://data.europa.eu/949/eratvIndex> \"4.10.5\" ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-          "object": "<http://www.w3.org/ns/shacl#PropertyShape>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#PropertyShape> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
-          "predicate": "http://www.w3.org/2000/01/rdf-schema#comment",
-          "object": "\"Indication of the minimum contact wire height expressed in metres.\"@en",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://www.w3.org/2000/01/rdf-schema#comment> \"Indication of the minimum contact wire height expressed in metres.\"@en ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
-          "predicate": "http://www.w3.org/ns/shacl#datatype",
-          "object": "<http://www.w3.org/2001/XMLSchema#double>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://www.w3.org/ns/shacl#datatype> <http://www.w3.org/2001/XMLSchema#double> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
-          "predicate": "http://www.w3.org/ns/shacl#maxCount",
-          "object": "\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://www.w3.org/ns/shacl#maxCount> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
-          "predicate": "http://www.w3.org/ns/shacl#message",
-          "object": "\"minimumContactWireHeight (4.10.5): The value must be a double (real) number.\"@en",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://www.w3.org/ns/shacl#message> \"minimumContactWireHeight (4.10.5): The value must be a double (real) number.\"@en ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
-          "predicate": "http://www.w3.org/ns/shacl#path",
-          "object": "<http://data.europa.eu/949/minimumContactWireHeight>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://www.w3.org/ns/shacl#path> <http://data.europa.eu/949/minimumContactWireHeight> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
-          "predicate": "http://www.w3.org/ns/shacl#severity",
-          "object": "<http://www.w3.org/ns/shacl#Violation>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://www.w3.org/ns/shacl#severity> <http://www.w3.org/ns/shacl#Violation> ."
-        }
-      ],
-      "sourceRecords": {
-        "left": [],
-        "right": []
-      },
-      "rdfType": "http://www.w3.org/ns/shacl#PropertyShape"
-    },
-    {
-      "anchor": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
-      "removed": 0,
-      "added": 14,
-      "lines": [
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
-          "predicate": "http://data.europa.eu/949/affectedClass",
-          "object": "<http://data.europa.eu/949/VehicleType>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://data.europa.eu/949/affectedClass> <http://data.europa.eu/949/VehicleType> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
-          "predicate": "http://data.europa.eu/949/affectedProperty",
-          "object": "<http://data.europa.eu/949/minimumHorizontalRadius>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://data.europa.eu/949/affectedProperty> <http://data.europa.eu/949/minimumHorizontalRadius> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
-          "predicate": "http://data.europa.eu/949/eratvIndex",
-          "object": "\"4.8.4\"",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://data.europa.eu/949/eratvIndex> \"4.8.4\" ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-          "object": "<http://www.w3.org/ns/shacl#PropertyShape>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#PropertyShape> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
-          "predicate": "http://www.w3.org/2000/01/rdf-schema#comment",
-          "object": "\"Validation for minimumHorizontalRadius property.\"@en",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://www.w3.org/2000/01/rdf-schema#comment> \"Validation for minimumHorizontalRadius property.\"@en ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
-          "predicate": "http://www.w3.org/ns/shacl#maxCount",
-          "object": "\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://www.w3.org/ns/shacl#maxCount> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
-          "predicate": "http://www.w3.org/ns/shacl#message",
-          "object": "\"The minimumHorizontalRadius value must be an integer or a decimal.\"@en",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://www.w3.org/ns/shacl#message> \"The minimumHorizontalRadius value must be an integer or a decimal.\"@en ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
-          "predicate": "http://www.w3.org/ns/shacl#or",
-          "object": "_:c14n28",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://www.w3.org/ns/shacl#or> _:c14n28 ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
-          "predicate": "http://www.w3.org/ns/shacl#path",
-          "object": "<http://data.europa.eu/949/minimumHorizontalRadius>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://www.w3.org/ns/shacl#path> <http://data.europa.eu/949/minimumHorizontalRadius> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
-          "predicate": "http://www.w3.org/ns/shacl#severity",
-          "object": "<http://www.w3.org/ns/shacl#Violation>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://www.w3.org/ns/shacl#severity> <http://www.w3.org/ns/shacl#Violation> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-69",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n0",
-          "nquad": "_:c14n28 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n0 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-69",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-69",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n48",
-          "nquad": "_:c14n28 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n48 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-69",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-69/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-71",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n1",
-          "nquad": "_:c14n48 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n1 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-69",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-71",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-69/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-71",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
-          "nquad": "_:c14n48 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-69",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-71",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        }
-      ],
-      "sourceRecords": {
-        "left": [],
-        "right": []
-      },
-      "rdfType": "http://www.w3.org/ns/shacl#PropertyShape"
-    },
-    {
-      "anchor": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
-      "removed": 0,
-      "added": 10,
-      "lines": [
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
-          "predicate": "http://data.europa.eu/949/affectedClass",
-          "object": "<http://data.europa.eu/949/VehicleType>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://data.europa.eu/949/affectedClass> <http://data.europa.eu/949/VehicleType> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
-          "predicate": "http://data.europa.eu/949/affectedProperty",
-          "object": "<http://data.europa.eu/949/usesGroup555>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://data.europa.eu/949/affectedProperty> <http://data.europa.eu/949/usesGroup555> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
-          "predicate": "http://data.europa.eu/949/eratvIndex",
-          "object": "\"4.13.2.12\"",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://data.europa.eu/949/eratvIndex> \"4.13.2.12\" ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-          "object": "<http://www.w3.org/ns/shacl#PropertyShape>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#PropertyShape> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
-          "predicate": "http://www.w3.org/2000/01/rdf-schema#comment",
-          "object": "\"Validation for usesGroup555 property.\"@en",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://www.w3.org/2000/01/rdf-schema#comment> \"Validation for usesGroup555 property.\"@en ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
-          "predicate": "http://www.w3.org/ns/shacl#datatype",
-          "object": "<http://www.w3.org/2001/XMLSchema#boolean>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://www.w3.org/ns/shacl#datatype> <http://www.w3.org/2001/XMLSchema#boolean> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
-          "predicate": "http://www.w3.org/ns/shacl#maxCount",
-          "object": "\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://www.w3.org/ns/shacl#maxCount> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
-          "predicate": "http://www.w3.org/ns/shacl#message",
-          "object": "\"The usesGroup555 value must be a boolean (true/false).\"@en",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://www.w3.org/ns/shacl#message> \"The usesGroup555 value must be a boolean (true/false).\"@en ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
-          "predicate": "http://www.w3.org/ns/shacl#path",
-          "object": "<http://data.europa.eu/949/usesGroup555>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://www.w3.org/ns/shacl#path> <http://data.europa.eu/949/usesGroup555> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
-          "predicate": "http://www.w3.org/ns/shacl#severity",
-          "object": "<http://www.w3.org/ns/shacl#Violation>",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://www.w3.org/ns/shacl#severity> <http://www.w3.org/ns/shacl#Violation> ."
-        }
-      ],
-      "sourceRecords": {
-        "left": [],
-        "right": []
-      },
-      "rdfType": "http://www.w3.org/ns/shacl#PropertyShape"
-    },
-    {
       "anchor": "http://data.europa.eu/949/id/dataset/eratv/era-shapes",
+      "state": "changed",
       "removed": 2,
       "added": 2,
       "lines": [
@@ -462,6 +70,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/id/dataset/rinf/era-shapes",
+      "state": "changed",
       "removed": 2,
       "added": 3,
       "lines": [
@@ -509,6 +118,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/ActivityType",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -535,6 +145,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/ActivityTypeSKOS",
+      "state": "changed",
       "removed": 2,
       "added": 2,
       "lines": [
@@ -575,6 +186,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/AlternativeTypeName",
+      "state": "changed",
       "removed": 1,
       "added": 2,
       "lines": [
@@ -608,6 +220,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/AreaOfUseSKOS",
+      "state": "changed",
       "removed": 2,
       "added": 0,
       "lines": [
@@ -634,6 +247,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/AssessedCantDeficiency",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -660,6 +274,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/AuthorisingMemberStateSKOS",
+      "state": "changed",
       "removed": 2,
       "added": 0,
       "lines": [
@@ -686,6 +301,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/AxleSpacing",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -712,6 +328,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/AxleSpacingDistanceA",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -738,6 +355,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/AxleSpacingDistanceB",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -764,6 +382,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/AxleSpacingDistanceC",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -790,6 +409,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/AxleSpacingExplanation",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -816,6 +436,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/BrakeWeightPercentage",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -842,6 +463,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/CommonCharacteristicsSubsetShape",
+      "state": "changed",
       "removed": 0,
       "added": 2,
       "lines": [
@@ -868,6 +490,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/ConditionsChargingElectricEnergyStorage",
+      "state": "changed",
       "removed": 2,
       "added": 2,
       "lines": [
@@ -908,6 +531,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/ConfigDependentCompliance",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -934,6 +558,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/ConfigDependentCondition",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -960,6 +585,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/ContactLineSystemShape",
+      "state": "changed",
       "removed": 2,
       "added": 0,
       "lines": [
@@ -986,6 +612,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/ContactStripMaterial",
+      "state": "changed",
       "removed": 5,
       "added": 5,
       "lines": [
@@ -1068,6 +695,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/ContainerHandlingFlag",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -1094,6 +722,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/Creator",
+      "state": "changed",
       "removed": 3,
       "added": 4,
       "lines": [
@@ -1205,6 +834,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/DangerousGoodsTankCode",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -1231,6 +861,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/DemonstrationINF",
+      "state": "changed",
       "removed": 1,
       "added": 2,
       "lines": [
@@ -1264,6 +895,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/DrivingCabs",
+      "state": "changed",
       "removed": 7,
       "added": 7,
       "lines": [
@@ -1518,6 +1150,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/ETCS70ShapeSPARQLWarning",
+      "state": "changed",
       "removed": 4,
       "added": 4,
       "lines": [
@@ -1628,6 +1261,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/ETCSNon70ShapeSPARQLViolation",
+      "state": "changed",
       "removed": 4,
       "added": 4,
       "lines": [
@@ -1738,6 +1372,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/EndLocation",
+      "state": "changed",
       "removed": 4,
       "added": 1,
       "lines": [
@@ -1821,6 +1456,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/EraOntologyClassSPARQL",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -1847,6 +1483,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/EraOntologyDeprecatedClassSPARQL",
+      "state": "changed",
       "removed": 2,
       "added": 2,
       "lines": [
@@ -1887,6 +1524,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/EraOntologyDeprecatedPropertySPARQL",
+      "state": "changed",
       "removed": 2,
       "added": 2,
       "lines": [
@@ -1927,6 +1565,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/EraOntologyPredicateSPARQL",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -1953,6 +1592,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/EtcsBaselineIncompleteCompatibility",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -1979,6 +1619,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/FreightFlag",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -2005,6 +1646,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/GprsForETCS",
+      "state": "changed",
       "removed": 2,
       "added": 0,
       "lines": [
@@ -2031,6 +1673,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/GprsImplementationArea",
+      "state": "changed",
       "removed": 2,
       "added": 0,
       "lines": [
@@ -2057,6 +1700,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/GsmRAdditionalInfo",
+      "state": "changed",
       "removed": 2,
       "added": 0,
       "lines": [
@@ -2083,6 +1727,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab",
+      "state": "changed",
       "removed": 9,
       "added": 8,
       "lines": [
@@ -2424,6 +2069,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HandoverPointFlag",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -2450,6 +2096,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasBrakingPerformance",
+      "state": "changed",
       "removed": 2,
       "added": 0,
       "lines": [
@@ -2476,6 +2123,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasCantDefficiencyCompensation",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -2502,6 +2150,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasCompositeBrakeBlockRetrofitted",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -2528,6 +2177,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasCurrentLimitation",
+      "state": "changed",
       "removed": 2,
       "added": 0,
       "lines": [
@@ -2554,6 +2204,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasEddyCurrentBrake",
+      "state": "changed",
       "removed": 3,
       "added": 0,
       "lines": [
@@ -2587,6 +2238,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasEddyCurrentBrakePrevention",
+      "state": "changed",
       "removed": 3,
       "added": 0,
       "lines": [
@@ -2620,6 +2272,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasFerromagneticWheelMaterial",
+      "state": "changed",
       "removed": 3,
       "added": 0,
       "lines": [
@@ -2653,6 +2306,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasFlangeLubrication",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -2679,6 +2333,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasLrsCoordinate",
+      "state": "changed",
       "removed": 3,
       "added": 3,
       "lines": [
@@ -2761,6 +2416,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasMagneticBrake",
+      "state": "changed",
       "removed": 3,
       "added": 0,
       "lines": [
@@ -2794,6 +2450,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasMagneticBrakePrevention",
+      "state": "changed",
       "removed": 3,
       "added": 0,
       "lines": [
@@ -2827,6 +2484,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasMandatoryParkingBrake",
+      "state": "changed",
       "removed": 4,
       "added": 0,
       "lines": [
@@ -2867,6 +2525,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasOnboardEnergyMeasurement",
+      "state": "changed",
       "removed": 3,
       "added": 0,
       "lines": [
@@ -2900,6 +2559,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasParkingBrake",
+      "state": "changed",
       "removed": 3,
       "added": 0,
       "lines": [
@@ -2933,6 +2593,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasPartSoL",
+      "state": "changed",
       "removed": 8,
       "added": 8,
       "lines": [
@@ -3201,6 +2862,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasRegenerativeBrakePrevention",
+      "state": "changed",
       "removed": 3,
       "added": 0,
       "lines": [
@@ -3234,6 +2896,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasStrictLocalHistoricalTouristUse",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -3260,6 +2923,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/HasWheelSlideProtectionSystem",
+      "state": "changed",
       "removed": 2,
       "added": 0,
       "lines": [
@@ -3286,6 +2950,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/InstancesMustHaveTypeShape",
+      "state": "changed",
       "removed": 9,
       "added": 9,
       "lines": [
@@ -3530,6 +3195,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/IsConditionBasedRestriction",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -3556,6 +3222,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/IsPassByNoiseMeasuredUnderReferenceConditions",
+      "state": "changed",
       "removed": 4,
       "added": 0,
       "lines": [
@@ -3596,6 +3263,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/IsPreEngagementApplication",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -3622,6 +3290,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/IsTimeBasedRestriction",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -3648,6 +3317,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/IsTransportableOnFerry",
+      "state": "changed",
       "removed": 3,
       "added": 0,
       "lines": [
@@ -3681,6 +3351,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/LegacyRadioSystemComment",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -3707,6 +3378,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/MaxDistConsecutiveAxle",
+      "state": "changed",
       "removed": 3,
       "added": 0,
       "lines": [
@@ -3740,6 +3412,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/MaximumContactWireHeight",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -3766,6 +3439,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/MaximumLocomotivesCoupled",
+      "state": "changed",
       "removed": 2,
       "added": 0,
       "lines": [
@@ -3792,6 +3466,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/MinDistConsecutiveAxle",
+      "state": "changed",
       "removed": 3,
       "added": 0,
       "lines": [
@@ -3825,6 +3500,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/MinImpedanceFrequency",
+      "state": "changed",
       "removed": 1,
       "added": 0,
       "lines": [
@@ -3844,6 +3520,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/MinImpedanceResistance",
+      "state": "changed",
       "removed": 1,
       "added": 0,
       "lines": [
@@ -3863,6 +3540,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/MinimumContactWireHeight",
+      "state": "changed",
       "removed": 2,
       "added": 0,
       "lines": [
@@ -3889,6 +3567,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/MinimumHorizontalRadius",
+      "state": "changed",
       "removed": 9,
       "added": 0,
       "lines": [
@@ -4002,6 +3681,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/NationalLineSoL",
+      "state": "changed",
       "removed": 2,
       "added": 2,
       "lines": [
@@ -4042,6 +3722,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/NotApplicable",
+      "state": "changed",
       "removed": 5,
       "added": 3,
       "lines": [
@@ -4196,6 +3877,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/NotApplicableProperty",
+      "state": "changed",
       "removed": 5,
       "added": 3,
       "lines": [
@@ -4345,6 +4027,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/NotYetAvailable",
+      "state": "changed",
       "removed": 5,
       "added": 3,
       "lines": [
@@ -4480,6 +4163,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/NotYetAvailableProperty",
+      "state": "changed",
       "removed": 3,
       "added": 6,
       "lines": [
@@ -4624,6 +4308,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/NumberOfToilet",
+      "state": "changed",
       "removed": 3,
       "added": 0,
       "lines": [
@@ -4657,6 +4342,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/OfParameter",
+      "state": "changed",
       "removed": 7,
       "added": 7,
       "lines": [
@@ -4901,6 +4587,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/OpTypeP",
+      "state": "changed",
       "removed": 1,
       "added": 0,
       "lines": [
@@ -4920,6 +4607,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/OperationalPointShape",
+      "state": "changed",
       "removed": 0,
       "added": 1,
       "lines": [
@@ -4939,6 +4627,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/PassengerFlag",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -4965,6 +4654,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/PermissionChargingElectricEnergyTractionStandstill",
+      "state": "changed",
       "removed": 2,
       "added": 2,
       "lines": [
@@ -5005,6 +4695,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/PhaseInfoDistanceType",
+      "state": "changed",
       "removed": 3,
       "added": 3,
       "lines": [
@@ -5121,6 +4812,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/PlatformEdgeShape",
+      "state": "changed",
       "removed": 0,
       "added": 2,
       "lines": [
@@ -5147,6 +4839,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/PreEngagementBaseline",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -5173,6 +4866,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/PrioritySeat",
+      "state": "changed",
       "removed": 3,
       "added": 0,
       "lines": [
@@ -5206,6 +4900,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/PrmAccessibleToilet",
+      "state": "changed",
       "removed": 3,
       "added": 0,
       "lines": [
@@ -5239,6 +4934,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/ProfileDeceleration",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -5265,6 +4961,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/ProfileLoadConditionMass",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -5291,6 +4988,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/ProfileStoppingDistance",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -5316,89 +5014,8 @@
       "rdfType": "http://www.w3.org/ns/shacl#PropertyShape"
     },
     {
-      "anchor": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
-      "removed": 0,
-      "added": 10,
-      "lines": [
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
-          "predicate": "http://data.europa.eu/949/affectedClass",
-          "object": "<http://data.europa.eu/949/RunningTrack>",
-          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://data.europa.eu/949/affectedClass> <http://data.europa.eu/949/RunningTrack> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
-          "predicate": "http://data.europa.eu/949/affectedProperty",
-          "object": "<http://data.europa.eu/949/protectionLegacySystem>",
-          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://data.europa.eu/949/affectedProperty> <http://data.europa.eu/949/protectionLegacySystem> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
-          "predicate": "http://data.europa.eu/949/rinfIndex",
-          "object": "\"1.1.1.3.5.3\"",
-          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://data.europa.eu/949/rinfIndex> \"1.1.1.3.5.3\" ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
-          "predicate": "http://data.europa.eu/949/scope",
-          "object": "\"local\"",
-          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://data.europa.eu/949/scope> \"local\" ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-          "object": "<http://www.w3.org/ns/shacl#PropertyShape>",
-          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#PropertyShape> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
-          "predicate": "http://www.w3.org/2000/01/rdf-schema#comment",
-          "object": "\"Indication of which class B system is installed.\"@en",
-          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://www.w3.org/2000/01/rdf-schema#comment> \"Indication of which class B system is installed.\"@en ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
-          "predicate": "http://www.w3.org/ns/shacl#message",
-          "object": "\"protectionLegacySystem (1.1.1.3.5.3): The track has an indication of the class B system that must be an IRI.\"@en",
-          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://www.w3.org/ns/shacl#message> \"protectionLegacySystem (1.1.1.3.5.3): The track has an indication of the class B system that must be an IRI.\"@en ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
-          "predicate": "http://www.w3.org/ns/shacl#nodeKind",
-          "object": "<http://www.w3.org/ns/shacl#IRI>",
-          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://www.w3.org/ns/shacl#nodeKind> <http://www.w3.org/ns/shacl#IRI> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
-          "predicate": "http://www.w3.org/ns/shacl#path",
-          "object": "<http://data.europa.eu/949/protectionLegacySystem>",
-          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://www.w3.org/ns/shacl#path> <http://data.europa.eu/949/protectionLegacySystem> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
-          "predicate": "http://www.w3.org/ns/shacl#severity",
-          "object": "<http://www.w3.org/ns/shacl#Violation>",
-          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://www.w3.org/ns/shacl#severity> <http://www.w3.org/ns/shacl#Violation> ."
-        }
-      ],
-      "sourceRecords": {
-        "left": [],
-        "right": []
-      },
-      "rdfType": "http://www.w3.org/ns/shacl#PropertyShape"
-    },
-    {
       "anchor": "http://data.europa.eu/949/shapes/RadioSwitchOverSpecialCondition",
+      "state": "changed",
       "removed": 3,
       "added": 0,
       "lines": [
@@ -5432,6 +5049,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/RaisedPantographsSpeed",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -5458,6 +5076,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/RunningTrackShape",
+      "state": "changed",
       "removed": 0,
       "added": 2,
       "lines": [
@@ -5484,6 +5103,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/SafetyDeclaration",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -5510,6 +5130,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/ServiceBrakingProfile",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -5536,6 +5157,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/SidingShape",
+      "state": "changed",
       "removed": 1,
       "added": 3,
       "lines": [
@@ -5576,6 +5198,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/SleepingPlace",
+      "state": "changed",
       "removed": 3,
       "added": 0,
       "lines": [
@@ -5609,6 +5232,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/StartLocation",
+      "state": "changed",
       "removed": 5,
       "added": 1,
       "lines": [
@@ -5706,6 +5330,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/TotalVehicleMass",
+      "state": "changed",
       "removed": 2,
       "added": 0,
       "lines": [
@@ -5732,6 +5357,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/TrainControlSwitchOverSpecialCondition",
+      "state": "changed",
       "removed": 3,
       "added": 0,
       "lines": [
@@ -5765,6 +5391,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/TrainDetectionSystemSpecificCheck",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -5791,6 +5418,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/TrainDetectionSystemSpecificCheckApplicability",
+      "state": "changed",
       "removed": 3,
       "added": 3,
       "lines": [
@@ -5845,6 +5473,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/TrainDetectionSystemSpecificCheckDocumentApplicability",
+      "state": "changed",
       "removed": 3,
       "added": 3,
       "lines": [
@@ -5899,6 +5528,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/TrainDetectionSystemType",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -5924,96 +5554,8 @@
       "rdfType": "http://www.w3.org/ns/shacl#PropertyShape"
     },
     {
-      "anchor": "http://data.europa.eu/949/shapes/TypeName",
-      "removed": 0,
-      "added": 11,
-      "lines": [
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
-          "predicate": "http://data.europa.eu/949/affectedClass",
-          "object": "<http://data.europa.eu/949/VehicleType>",
-          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://data.europa.eu/949/affectedClass> <http://data.europa.eu/949/VehicleType> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
-          "predicate": "http://data.europa.eu/949/affectedProperty",
-          "object": "<http://www.w3.org/2000/01/rdf-schema#label>",
-          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://data.europa.eu/949/affectedProperty> <http://www.w3.org/2000/01/rdf-schema#label> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
-          "predicate": "http://data.europa.eu/949/eratvIndex",
-          "object": "\"1.1\"",
-          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://data.europa.eu/949/eratvIndex> \"1.1\" ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-          "object": "<http://www.w3.org/ns/shacl#PropertyShape>",
-          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#PropertyShape> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
-          "predicate": "http://www.w3.org/2000/01/rdf-schema#comment",
-          "object": "\"Validation for Type Name property.\"@en",
-          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://www.w3.org/2000/01/rdf-schema#comment> \"Validation for Type Name property.\"@en ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
-          "predicate": "http://www.w3.org/ns/shacl#datatype",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#langString>",
-          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://www.w3.org/ns/shacl#datatype> <http://www.w3.org/1999/02/22-rdf-syntax-ns#langString> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
-          "predicate": "http://www.w3.org/ns/shacl#maxLength",
-          "object": "\"256\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://www.w3.org/ns/shacl#maxLength> \"256\"^^<http://www.w3.org/2001/XMLSchema#integer> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
-          "predicate": "http://www.w3.org/ns/shacl#message",
-          "object": "\"The Type Name value must be a character string with a maximum length of 256 characters.\"@en",
-          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://www.w3.org/ns/shacl#message> \"The Type Name value must be a character string with a maximum length of 256 characters.\"@en ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
-          "predicate": "http://www.w3.org/ns/shacl#path",
-          "object": "<http://www.w3.org/2000/01/rdf-schema#label>",
-          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://www.w3.org/ns/shacl#path> <http://www.w3.org/2000/01/rdf-schema#label> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
-          "predicate": "http://www.w3.org/ns/shacl#severity",
-          "object": "<http://www.w3.org/ns/shacl#Violation>",
-          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://www.w3.org/ns/shacl#severity> <http://www.w3.org/ns/shacl#Violation> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
-          "predicate": "http://www.w3.org/ns/shacl#uniqueLang",
-          "object": "\"true\"^^<http://www.w3.org/2001/XMLSchema#boolean>",
-          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://www.w3.org/ns/shacl#uniqueLang> \"true\"^^<http://www.w3.org/2001/XMLSchema#boolean> ."
-        }
-      ],
-      "sourceRecords": {
-        "left": [],
-        "right": []
-      },
-      "rdfType": "http://www.w3.org/ns/shacl#PropertyShape"
-    },
-    {
       "anchor": "http://data.europa.eu/949/shapes/TypeVersionNumber",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -6040,6 +5582,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/UsesGroup555",
+      "state": "changed",
       "removed": 4,
       "added": 0,
       "lines": [
@@ -6080,6 +5623,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/ValidDate",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -6106,6 +5650,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/VehicleContactForceFormula",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -6132,6 +5677,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/VehicleKeeper",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -6158,6 +5704,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/VehicleNumber",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -6184,6 +5731,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/VehicleSeries",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -6210,6 +5758,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/VehicleType",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -6236,6 +5785,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/VehicleTypeAuthorisationHolder",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -6262,6 +5812,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/VehicleTypeAuthorisationRestrictionShape",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -6288,6 +5839,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/VehicleTypeConfigParameterSetShape",
+      "state": "changed",
       "removed": 2,
       "added": 2,
       "lines": [
@@ -6328,6 +5880,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/VehicleTypeMaximumCantDeficiency",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -6354,6 +5907,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/VehicleTypeMaximumSpeed",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -6380,6 +5934,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/VehicleTypePlatform",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -6406,6 +5961,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/VehicleTypeShape",
+      "state": "changed",
       "removed": 2,
       "added": 3,
       "lines": [
@@ -6453,6 +6009,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/VehicleTypesCompatibleTrafficLoad",
+      "state": "changed",
       "removed": 6,
       "added": 5,
       "lines": [
@@ -6664,6 +6221,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/VehiclesCompatibleTrafficLoad",
+      "state": "changed",
       "removed": 5,
       "added": 4,
       "lines": [
@@ -6827,6 +6385,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/VerificationINF",
+      "state": "changed",
       "removed": 1,
       "added": 2,
       "lines": [
@@ -6860,6 +6419,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/WheelchairSleepingPlace",
+      "state": "changed",
       "removed": 4,
       "added": 0,
       "lines": [
@@ -6900,6 +6460,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/WithBrakedMass",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -6926,6 +6487,7 @@
     },
     {
       "anchor": "http://data.europa.eu/949/shapes/WithBrakedMassPercentage",
+      "state": "changed",
       "removed": 1,
       "added": 1,
       "lines": [
@@ -6942,6 +6504,580 @@
           "predicate": "http://www.w3.org/ns/shacl#message",
           "object": "\"withBrakedMassPercentage: The value must be a decimal representing braked mass percentage.\"@en",
           "nquad": "<http://data.europa.eu/949/shapes/WithBrakedMassPercentage> <http://www.w3.org/ns/shacl#message> \"withBrakedMassPercentage: The value must be a decimal representing braked mass percentage.\"@en ."
+        }
+      ],
+      "sourceRecords": {
+        "left": [],
+        "right": []
+      },
+      "rdfType": "http://www.w3.org/ns/shacl#PropertyShape"
+    }
+  ],
+  "removed": [],
+  "added": [
+    {
+      "anchor": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
+      "state": "added",
+      "removed": 0,
+      "added": 10,
+      "lines": [
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
+          "predicate": "http://data.europa.eu/949/affectedClass",
+          "object": "<http://data.europa.eu/949/VehicleTypeConfigParameterSet>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://data.europa.eu/949/affectedClass> <http://data.europa.eu/949/VehicleTypeConfigParameterSet> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
+          "predicate": "http://data.europa.eu/949/affectedProperty",
+          "object": "<http://data.europa.eu/949/contactStripMaterial>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://data.europa.eu/949/affectedProperty> <http://data.europa.eu/949/contactStripMaterial> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
+          "predicate": "http://data.europa.eu/949/eratvIndex",
+          "object": "\"4.10.10\"",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://data.europa.eu/949/eratvIndex> \"4.10.10\" ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
+          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+          "object": "<http://www.w3.org/ns/shacl#PropertyShape>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#PropertyShape> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
+          "predicate": "http://www.w3.org/2000/01/rdf-schema#comment",
+          "object": "\"Validation for contactStripMaterial property.\"@en",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://www.w3.org/2000/01/rdf-schema#comment> \"Validation for contactStripMaterial property.\"@en ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
+          "predicate": "http://www.w3.org/ns/shacl#maxCount",
+          "object": "\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://www.w3.org/ns/shacl#maxCount> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
+          "predicate": "http://www.w3.org/ns/shacl#message",
+          "object": "\"era:contactStripMaterial: its value must be an IRI.\"@en",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://www.w3.org/ns/shacl#message> \"era:contactStripMaterial: its value must be an IRI.\"@en ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
+          "predicate": "http://www.w3.org/ns/shacl#nodeKind",
+          "object": "<http://www.w3.org/ns/shacl#IRI>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://www.w3.org/ns/shacl#nodeKind> <http://www.w3.org/ns/shacl#IRI> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
+          "predicate": "http://www.w3.org/ns/shacl#path",
+          "object": "<http://data.europa.eu/949/contactStripMaterial>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://www.w3.org/ns/shacl#path> <http://data.europa.eu/949/contactStripMaterial> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/ContactStripMaterial",
+          "predicate": "http://www.w3.org/ns/shacl#severity",
+          "object": "<http://www.w3.org/ns/shacl#Violation>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/ContactStripMaterial> <http://www.w3.org/ns/shacl#severity> <http://www.w3.org/ns/shacl#Violation> ."
+        }
+      ],
+      "sourceRecords": {
+        "left": [],
+        "right": []
+      },
+      "rdfType": "http://www.w3.org/ns/shacl#PropertyShape"
+    },
+    {
+      "anchor": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
+      "state": "added",
+      "removed": 0,
+      "added": 10,
+      "lines": [
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
+          "predicate": "http://data.europa.eu/949/affectedClass",
+          "object": "<http://data.europa.eu/949/VehicleTypeConfigParameterSet>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://data.europa.eu/949/affectedClass> <http://data.europa.eu/949/VehicleTypeConfigParameterSet> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
+          "predicate": "http://data.europa.eu/949/affectedProperty",
+          "object": "<http://data.europa.eu/949/minimumContactWireHeight>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://data.europa.eu/949/affectedProperty> <http://data.europa.eu/949/minimumContactWireHeight> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
+          "predicate": "http://data.europa.eu/949/eratvIndex",
+          "object": "\"4.10.5\"",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://data.europa.eu/949/eratvIndex> \"4.10.5\" ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
+          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+          "object": "<http://www.w3.org/ns/shacl#PropertyShape>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#PropertyShape> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
+          "predicate": "http://www.w3.org/2000/01/rdf-schema#comment",
+          "object": "\"Indication of the minimum contact wire height expressed in metres.\"@en",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://www.w3.org/2000/01/rdf-schema#comment> \"Indication of the minimum contact wire height expressed in metres.\"@en ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
+          "predicate": "http://www.w3.org/ns/shacl#datatype",
+          "object": "<http://www.w3.org/2001/XMLSchema#double>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://www.w3.org/ns/shacl#datatype> <http://www.w3.org/2001/XMLSchema#double> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
+          "predicate": "http://www.w3.org/ns/shacl#maxCount",
+          "object": "\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://www.w3.org/ns/shacl#maxCount> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
+          "predicate": "http://www.w3.org/ns/shacl#message",
+          "object": "\"minimumContactWireHeight (4.10.5): The value must be a double (real) number.\"@en",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://www.w3.org/ns/shacl#message> \"minimumContactWireHeight (4.10.5): The value must be a double (real) number.\"@en ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
+          "predicate": "http://www.w3.org/ns/shacl#path",
+          "object": "<http://data.europa.eu/949/minimumContactWireHeight>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://www.w3.org/ns/shacl#path> <http://data.europa.eu/949/minimumContactWireHeight> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight",
+          "predicate": "http://www.w3.org/ns/shacl#severity",
+          "object": "<http://www.w3.org/ns/shacl#Violation>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumContactWireHeight> <http://www.w3.org/ns/shacl#severity> <http://www.w3.org/ns/shacl#Violation> ."
+        }
+      ],
+      "sourceRecords": {
+        "left": [],
+        "right": []
+      },
+      "rdfType": "http://www.w3.org/ns/shacl#PropertyShape"
+    },
+    {
+      "anchor": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
+      "state": "added",
+      "removed": 0,
+      "added": 14,
+      "lines": [
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
+          "predicate": "http://data.europa.eu/949/affectedClass",
+          "object": "<http://data.europa.eu/949/VehicleType>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://data.europa.eu/949/affectedClass> <http://data.europa.eu/949/VehicleType> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
+          "predicate": "http://data.europa.eu/949/affectedProperty",
+          "object": "<http://data.europa.eu/949/minimumHorizontalRadius>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://data.europa.eu/949/affectedProperty> <http://data.europa.eu/949/minimumHorizontalRadius> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
+          "predicate": "http://data.europa.eu/949/eratvIndex",
+          "object": "\"4.8.4\"",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://data.europa.eu/949/eratvIndex> \"4.8.4\" ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
+          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+          "object": "<http://www.w3.org/ns/shacl#PropertyShape>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#PropertyShape> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
+          "predicate": "http://www.w3.org/2000/01/rdf-schema#comment",
+          "object": "\"Validation for minimumHorizontalRadius property.\"@en",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://www.w3.org/2000/01/rdf-schema#comment> \"Validation for minimumHorizontalRadius property.\"@en ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
+          "predicate": "http://www.w3.org/ns/shacl#maxCount",
+          "object": "\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://www.w3.org/ns/shacl#maxCount> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
+          "predicate": "http://www.w3.org/ns/shacl#message",
+          "object": "\"The minimumHorizontalRadius value must be an integer or a decimal.\"@en",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://www.w3.org/ns/shacl#message> \"The minimumHorizontalRadius value must be an integer or a decimal.\"@en ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
+          "predicate": "http://www.w3.org/ns/shacl#or",
+          "object": "_:c14n28",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://www.w3.org/ns/shacl#or> _:c14n28 ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
+          "predicate": "http://www.w3.org/ns/shacl#path",
+          "object": "<http://data.europa.eu/949/minimumHorizontalRadius>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://www.w3.org/ns/shacl#path> <http://data.europa.eu/949/minimumHorizontalRadius> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
+          "predicate": "http://www.w3.org/ns/shacl#severity",
+          "object": "<http://www.w3.org/ns/shacl#Violation>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://www.w3.org/ns/shacl#severity> <http://www.w3.org/ns/shacl#Violation> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-69",
+          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
+          "object": "_:c14n0",
+          "nquad": "_:c14n28 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n0 .",
+          "bnodePath": [
+            {
+              "identityValue": "_:n3-69",
+              "identityIsBlank": true,
+              "parentPredicate": "http://www.w3.org/ns/shacl#or"
+            }
+          ]
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-69",
+          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
+          "object": "_:c14n48",
+          "nquad": "_:c14n28 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n48 .",
+          "bnodePath": [
+            {
+              "identityValue": "_:n3-69",
+              "identityIsBlank": true,
+              "parentPredicate": "http://www.w3.org/ns/shacl#or"
+            }
+          ]
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-69/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-71",
+          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
+          "object": "_:c14n1",
+          "nquad": "_:c14n48 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n1 .",
+          "bnodePath": [
+            {
+              "identityValue": "_:n3-69",
+              "identityIsBlank": true,
+              "parentPredicate": "http://www.w3.org/ns/shacl#or"
+            },
+            {
+              "identityValue": "_:n3-71",
+              "identityIsBlank": true,
+              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
+            }
+          ]
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-69/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-71",
+          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
+          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
+          "nquad": "_:c14n48 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
+          "bnodePath": [
+            {
+              "identityValue": "_:n3-69",
+              "identityIsBlank": true,
+              "parentPredicate": "http://www.w3.org/ns/shacl#or"
+            },
+            {
+              "identityValue": "_:n3-71",
+              "identityIsBlank": true,
+              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
+            }
+          ]
+        }
+      ],
+      "sourceRecords": {
+        "left": [],
+        "right": []
+      },
+      "rdfType": "http://www.w3.org/ns/shacl#PropertyShape"
+    },
+    {
+      "anchor": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
+      "state": "added",
+      "removed": 0,
+      "added": 10,
+      "lines": [
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
+          "predicate": "http://data.europa.eu/949/affectedClass",
+          "object": "<http://data.europa.eu/949/VehicleType>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://data.europa.eu/949/affectedClass> <http://data.europa.eu/949/VehicleType> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
+          "predicate": "http://data.europa.eu/949/affectedProperty",
+          "object": "<http://data.europa.eu/949/usesGroup555>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://data.europa.eu/949/affectedProperty> <http://data.europa.eu/949/usesGroup555> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
+          "predicate": "http://data.europa.eu/949/eratvIndex",
+          "object": "\"4.13.2.12\"",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://data.europa.eu/949/eratvIndex> \"4.13.2.12\" ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
+          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+          "object": "<http://www.w3.org/ns/shacl#PropertyShape>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#PropertyShape> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
+          "predicate": "http://www.w3.org/2000/01/rdf-schema#comment",
+          "object": "\"Validation for usesGroup555 property.\"@en",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://www.w3.org/2000/01/rdf-schema#comment> \"Validation for usesGroup555 property.\"@en ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
+          "predicate": "http://www.w3.org/ns/shacl#datatype",
+          "object": "<http://www.w3.org/2001/XMLSchema#boolean>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://www.w3.org/ns/shacl#datatype> <http://www.w3.org/2001/XMLSchema#boolean> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
+          "predicate": "http://www.w3.org/ns/shacl#maxCount",
+          "object": "\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://www.w3.org/ns/shacl#maxCount> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
+          "predicate": "http://www.w3.org/ns/shacl#message",
+          "object": "\"The usesGroup555 value must be a boolean (true/false).\"@en",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://www.w3.org/ns/shacl#message> \"The usesGroup555 value must be a boolean (true/false).\"@en ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
+          "predicate": "http://www.w3.org/ns/shacl#path",
+          "object": "<http://data.europa.eu/949/usesGroup555>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://www.w3.org/ns/shacl#path> <http://data.europa.eu/949/usesGroup555> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/eratv/shapes/UsesGroup555",
+          "predicate": "http://www.w3.org/ns/shacl#severity",
+          "object": "<http://www.w3.org/ns/shacl#Violation>",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/UsesGroup555> <http://www.w3.org/ns/shacl#severity> <http://www.w3.org/ns/shacl#Violation> ."
+        }
+      ],
+      "sourceRecords": {
+        "left": [],
+        "right": []
+      },
+      "rdfType": "http://www.w3.org/ns/shacl#PropertyShape"
+    },
+    {
+      "anchor": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
+      "state": "added",
+      "removed": 0,
+      "added": 10,
+      "lines": [
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
+          "predicate": "http://data.europa.eu/949/affectedClass",
+          "object": "<http://data.europa.eu/949/RunningTrack>",
+          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://data.europa.eu/949/affectedClass> <http://data.europa.eu/949/RunningTrack> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
+          "predicate": "http://data.europa.eu/949/affectedProperty",
+          "object": "<http://data.europa.eu/949/protectionLegacySystem>",
+          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://data.europa.eu/949/affectedProperty> <http://data.europa.eu/949/protectionLegacySystem> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
+          "predicate": "http://data.europa.eu/949/rinfIndex",
+          "object": "\"1.1.1.3.5.3\"",
+          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://data.europa.eu/949/rinfIndex> \"1.1.1.3.5.3\" ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
+          "predicate": "http://data.europa.eu/949/scope",
+          "object": "\"local\"",
+          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://data.europa.eu/949/scope> \"local\" ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
+          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+          "object": "<http://www.w3.org/ns/shacl#PropertyShape>",
+          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#PropertyShape> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
+          "predicate": "http://www.w3.org/2000/01/rdf-schema#comment",
+          "object": "\"Indication of which class B system is installed.\"@en",
+          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://www.w3.org/2000/01/rdf-schema#comment> \"Indication of which class B system is installed.\"@en ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
+          "predicate": "http://www.w3.org/ns/shacl#message",
+          "object": "\"protectionLegacySystem (1.1.1.3.5.3): The track has an indication of the class B system that must be an IRI.\"@en",
+          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://www.w3.org/ns/shacl#message> \"protectionLegacySystem (1.1.1.3.5.3): The track has an indication of the class B system that must be an IRI.\"@en ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
+          "predicate": "http://www.w3.org/ns/shacl#nodeKind",
+          "object": "<http://www.w3.org/ns/shacl#IRI>",
+          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://www.w3.org/ns/shacl#nodeKind> <http://www.w3.org/ns/shacl#IRI> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
+          "predicate": "http://www.w3.org/ns/shacl#path",
+          "object": "<http://data.europa.eu/949/protectionLegacySystem>",
+          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://www.w3.org/ns/shacl#path> <http://data.europa.eu/949/protectionLegacySystem> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/ProtectionLegacySystem",
+          "predicate": "http://www.w3.org/ns/shacl#severity",
+          "object": "<http://www.w3.org/ns/shacl#Violation>",
+          "nquad": "<http://data.europa.eu/949/shapes/ProtectionLegacySystem> <http://www.w3.org/ns/shacl#severity> <http://www.w3.org/ns/shacl#Violation> ."
+        }
+      ],
+      "sourceRecords": {
+        "left": [],
+        "right": []
+      },
+      "rdfType": "http://www.w3.org/ns/shacl#PropertyShape"
+    },
+    {
+      "anchor": "http://data.europa.eu/949/shapes/TypeName",
+      "state": "added",
+      "removed": 0,
+      "added": 11,
+      "lines": [
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
+          "predicate": "http://data.europa.eu/949/affectedClass",
+          "object": "<http://data.europa.eu/949/VehicleType>",
+          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://data.europa.eu/949/affectedClass> <http://data.europa.eu/949/VehicleType> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
+          "predicate": "http://data.europa.eu/949/affectedProperty",
+          "object": "<http://www.w3.org/2000/01/rdf-schema#label>",
+          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://data.europa.eu/949/affectedProperty> <http://www.w3.org/2000/01/rdf-schema#label> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
+          "predicate": "http://data.europa.eu/949/eratvIndex",
+          "object": "\"1.1\"",
+          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://data.europa.eu/949/eratvIndex> \"1.1\" ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
+          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+          "object": "<http://www.w3.org/ns/shacl#PropertyShape>",
+          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/shacl#PropertyShape> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
+          "predicate": "http://www.w3.org/2000/01/rdf-schema#comment",
+          "object": "\"Validation for Type Name property.\"@en",
+          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://www.w3.org/2000/01/rdf-schema#comment> \"Validation for Type Name property.\"@en ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
+          "predicate": "http://www.w3.org/ns/shacl#datatype",
+          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#langString>",
+          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://www.w3.org/ns/shacl#datatype> <http://www.w3.org/1999/02/22-rdf-syntax-ns#langString> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
+          "predicate": "http://www.w3.org/ns/shacl#maxLength",
+          "object": "\"256\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://www.w3.org/ns/shacl#maxLength> \"256\"^^<http://www.w3.org/2001/XMLSchema#integer> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
+          "predicate": "http://www.w3.org/ns/shacl#message",
+          "object": "\"The Type Name value must be a character string with a maximum length of 256 characters.\"@en",
+          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://www.w3.org/ns/shacl#message> \"The Type Name value must be a character string with a maximum length of 256 characters.\"@en ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
+          "predicate": "http://www.w3.org/ns/shacl#path",
+          "object": "<http://www.w3.org/2000/01/rdf-schema#label>",
+          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://www.w3.org/ns/shacl#path> <http://www.w3.org/2000/01/rdf-schema#label> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
+          "predicate": "http://www.w3.org/ns/shacl#severity",
+          "object": "<http://www.w3.org/ns/shacl#Violation>",
+          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://www.w3.org/ns/shacl#severity> <http://www.w3.org/ns/shacl#Violation> ."
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/TypeName",
+          "predicate": "http://www.w3.org/ns/shacl#uniqueLang",
+          "object": "\"true\"^^<http://www.w3.org/2001/XMLSchema#boolean>",
+          "nquad": "<http://data.europa.eu/949/shapes/TypeName> <http://www.w3.org/ns/shacl#uniqueLang> \"true\"^^<http://www.w3.org/2001/XMLSchema#boolean> ."
         }
       ],
       "sourceRecords": {

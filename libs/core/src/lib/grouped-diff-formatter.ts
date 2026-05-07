@@ -14,12 +14,13 @@ export function formatGroupedRdfDiff(
   hunked: HunkedRdfDiff,
   options: FormatGroupedRdfDiffOptions,
 ): string {
-  const totalRemoved = hunked.hunks.reduce((acc, h) => acc + h.removed, 0);
-  const totalAdded = hunked.hunks.reduce((acc, h) => acc + h.added, 0);
+  const allHunks = [...hunked.changed, ...hunked.removed, ...hunked.added];
+  const totalRemoved = allHunks.reduce((acc, h) => acc + h.removed, 0);
+  const totalAdded = allHunks.reduce((acc, h) => acc + h.added, 0);
   const summary = `# left=${hunked.totals.left} right=${hunked.totals.right} +${totalAdded} -${totalRemoved}\n`;
   const parts: string[] = [summary];
   const prefixEntries = Object.entries(options.prefixes);
-  for (const hunk of hunked.hunks) {
+  for (const hunk of allHunks) {
     const anchorDisplay = curieOrIri(hunk.anchor, prefixEntries);
     parts.push(renderHunkHeader(hunk, anchorDisplay, prefixEntries));
     for (const line of hunk.lines) {
@@ -38,7 +39,9 @@ function renderHunkHeader(
     hunk.rdfType !== undefined
       ? `  (${curieOrIri(hunk.rdfType, prefixEntries)})`
       : '';
-  return `${anchorDisplay}${typeSuffix}  [-${hunk.removed} +${hunk.added}]\n`;
+  const stateSuffix =
+    hunk.state === 'changed' ? '' : `  (${hunk.state})`;
+  return `${anchorDisplay}${typeSuffix}${stateSuffix}  [-${hunk.removed} +${hunk.added}]\n`;
 }
 
 function renderHunkLine(
