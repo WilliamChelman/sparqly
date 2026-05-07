@@ -89,8 +89,12 @@ The per-side magnitudes carried alongside every `diff` result. In **graph diff**
 _Avoid_: "row count" (tabular only), "store size" (pre-strip and ambiguous about annotations)
 
 **Source-file snippet**:
-A span of context lines centered on a **Source record**'s `line`, read from the absolute `file://` path at HTML diff render time. Rendered only by the `html` diff format; other formats carry only the (file, line) reference. Implies that `html` diff output is non-deterministic in source-file content — re-running `diff -f html` after editing a source file can produce a different document even when the canonicalized diff result is unchanged. Other formats remain content-deterministic.
-_Avoid_: "context window" (overloaded with LLM/parsing terminology), "hunk preview"
+A span of snippet context lines centered on a **Source record**'s `line`, read from the absolute `file://` path at HTML diff render time. The window is sized by `--snippet-context K` on `diff` (and the `context` query param on `GET /api/source-snippet`). Rendered only by the `html` diff format; other formats carry only the (file, line) reference. Implies that `html` diff output is non-deterministic in source-file content — re-running `diff -f html` after editing a source file can produce a different document even when the canonicalized diff result is unchanged. Other formats remain content-deterministic.
+_Avoid_: "context window" (overloaded with LLM/parsing terminology), "hunk preview", bare "context lines" (now reserved for the **Context block**)
+
+**Context block**:
+The top-level `context:` block in the project config, carrying registry-wide IRI display config: `{ prefixes: Record<string, string>, base?: string }`. Named after JSON-LD's `@context` for the prefix-map + base semantic; the in-file shape uses sparqly-internal subkeys (`prefixes:` and `base:`), not the literal JSON-LD spelling. Read by every command that declares a `prefixes` or `base` field (today: `format`, `diff`, `query`) — the runner treats `context:` as a top-tier layer alongside `sources:`, flattening `context.prefixes` → field `prefixes` and `context.base` → field `base`, with no per-command opt-in. The effective renderer prefix map is `DEFAULT_PREFIXES` (rdf, rdfs, owl, xsd) ∪ `context.prefixes` with config winning on conflicts; `context.base` is a strict-fallback short-form (`<localname>`) for IRIs no prefix matches. Surfaced to the webapp via `GET /api/config` so the diff renderer applies the same rules to tabular cells, hunk anchors, and hunk lines. The block is config-only — there are no `--prefix`/`--prefixes`/`--base` CLI overrides.
+_Avoid_: "format block" (`format:` no longer carries prefixes/base — only `objectAnchoredPredicates` remains), "display config", "prefix block"
 
 ## Relationships
 
@@ -106,6 +110,7 @@ _Avoid_: "context window" (overloaded with LLM/parsing terminology), "hunk previ
 - The **Annotate-source transformation** populates **Source records** on the glob's own asserted triples; annotations do not propagate through a downstream **View** unless that view's query explicitly references them, and they are stripped by **Canonicalization**.
 - `diff` injects **Auto source annotation** by default for any glob target it loads (inline or declared), unless `--skip-auto-source-annotation` is passed; an explicit `annotateSource` declaration in config takes precedence, preserving custom predicate IRIs.
 - `diff` (in **graph-diff** mode) extracts **Source records** per side after **Canonicalization** and surfaces them across every graph output format; the `html` format additionally renders a **Source-file snippet** per record, reading the source file from disk at render time. **Tabular diff** carries no source records.
+- Every command that renders IRIs (`format`'s Turtle/TriG output, `diff`'s `human`/`rdf-patch`/`turtle`/`html` output, `query`'s Turtle output, the webapp's diff renderer for tabular cells, hunk anchors, and hunk lines) reads from the **Context block** under one rule: prefix map = `DEFAULT_PREFIXES` ∪ `context.prefixes` (config wins); base = `context.base` as strict fallback after prefix match. The webapp consumes the block via `GET /api/config` (a registry-wide static payload combining `sources` and `context`).
 
 ## Example dialogue
 
@@ -120,3 +125,4 @@ _Avoid_: "context window" (overloaded with LLM/parsing terminology), "hunk previ
 - **"Cache the upstream"** confused users who expected the cache to grow with endpoint size; resolved — the **result cache** stores the view's *output*, bounded by the view query.
 - **"Pushdown"** appeared informally as a synonym for what the codebase calls **pass-through**; resolved — the canonical term is **pass-through**, matching `QuerySources.mode` in `loadQuerySources`.
 - **"`annotate` transform"** (legacy name from ADR-0006) was renamed to **`annotateSource`** to disambiguate from a hypothetical future "annotate by inference" or "annotate by SHACL"; resolved — only `annotateSource` parses (pre-1.0 hard rename).
+- **"context"** carried two meanings until grilling on 2026-05-07: (a) snippet context lines on `diff`'s `html` output, surfaced as the CLI flag `--context K` and the prose "context lines" in **Source-file snippet**, and (b) JSON-LD-style display config (prefix map + base). Resolved — the CLI flag renames to `--snippet-context K`, the **Source-file snippet** definition speaks of "snippet context lines", and the unqualified noun **context** refers only to the **Context block**. Pre-1.0 hard rename, no compat shim — same precedent as `annotateSource`.
