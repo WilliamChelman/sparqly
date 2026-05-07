@@ -1,10 +1,12 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  effect,
   inject,
   OnInit,
   signal,
 } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   SourcesPicker,
 } from './sources-picker';
@@ -142,6 +144,8 @@ import { DiffResultRenderer } from './diff-result-renderer';
 export class DiffPage implements OnInit {
   private readonly sourcesService = inject(SourcesService);
   private readonly diffService = inject(DiffService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
   readonly sources = signal<SourceListingEntry[] | null>(null);
   readonly leftId = signal<string>('');
@@ -154,6 +158,33 @@ export class DiffPage implements OnInit {
   readonly context = signal<number>(3);
   readonly skipAutoSourceAnnotation = signal<boolean>(false);
 
+  constructor() {
+    const params = this.route.snapshot.queryParamMap;
+    const left = params.get('left');
+    const right = params.get('right');
+    const leftQuery = params.get('leftQuery');
+    const rightQuery = params.get('rightQuery');
+    if (left) this.leftId.set(left);
+    if (right) this.rightId.set(right);
+    if (leftQuery !== null) this.leftQuery.set(leftQuery);
+    if (rightQuery !== null) this.rightQuery.set(rightQuery);
+
+    effect(() => {
+      const queryParams: Record<string, string | null> = {
+        left: this.leftId() || null,
+        right: this.rightId() || null,
+        leftQuery: this.leftQuery() || null,
+        rightQuery: this.rightQuery() || null,
+      };
+      this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams,
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      });
+    });
+  }
+
   setContext(raw: string): void {
     const n = Number.parseInt(raw, 10);
     if (Number.isFinite(n) && n >= 0) this.context.set(n);
@@ -165,8 +196,8 @@ export class DiffPage implements OnInit {
       const def = listing.sources.find((s) => s.default === true);
       const initial = def?.id ?? listing.sources[0]?.id ?? '';
       if (initial !== '') {
-        this.leftId.set(initial);
-        this.rightId.set(initial);
+        if (this.leftId() === '') this.leftId.set(initial);
+        if (this.rightId() === '') this.rightId.set(initial);
       }
     });
   }

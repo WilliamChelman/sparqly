@@ -1,5 +1,6 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter, Router } from '@angular/router';
 import { of, Subject } from 'rxjs';
 import { DiffPage } from './diff-page';
 import { DiffResultRenderer } from './diff-result-renderer';
@@ -76,13 +77,14 @@ function makeDiffStub(): DiffStub {
   return stub;
 }
 
-function setup(listing: SourceListing) {
+async function setup(listing: SourceListing, initialUrl = '/diff') {
   const sourcesStub: Pick<SourcesService, 'list'> = { list: () => of(listing) };
   const diffStub = makeDiffStub();
 
   TestBed.configureTestingModule({
     imports: [DiffPage],
     providers: [
+      provideRouter([{ path: 'diff', component: DiffPage }]),
       { provide: SourcesService, useValue: sourcesStub },
       { provide: DiffService, useValue: diffStub },
     ],
@@ -97,9 +99,13 @@ function setup(listing: SourceListing) {
     })
     .compileComponents();
 
+  const router = TestBed.inject(Router);
+  await router.navigateByUrl(initialUrl);
   const fixture = TestBed.createComponent(DiffPage);
   fixture.detectChanges();
-  return { fixture, diffStub };
+  await fixture.whenStable();
+  fixture.detectChanges();
+  return { fixture, diffStub, router };
 }
 
 function pickerStubs(fixture: {
@@ -121,30 +127,30 @@ function pickerStubs(fixture: {
 }
 
 describe('DiffPage', () => {
-  it('renders two pickers, two editors, and a Run button when registry has ≥2 entries', () => {
-    const { fixture } = setup(TWO);
+  it('renders two pickers, two editors, and a Run button when registry has ≥2 entries', async () => {
+    const { fixture } = await setup(TWO);
     const root = fixture.nativeElement as HTMLElement;
     expect(root.querySelectorAll('app-sources-picker').length).toBe(2);
     expect(root.querySelectorAll('textarea').length).toBe(2);
     expect(root.querySelector('button[data-testid=run-diff]')).toBeTruthy();
   });
 
-  it('shows the empty-state when the registry has ≤1 entries (single-source mode)', () => {
-    const { fixture } = setup(ONE);
+  it('shows the empty-state when the registry has ≤1 entries (single-source mode)', async () => {
+    const { fixture } = await setup(ONE);
     const root = fixture.nativeElement as HTMLElement;
     expect(root.querySelector('[data-testid=empty-state]')).toBeTruthy();
     expect(root.querySelector('app-sources-picker')).toBeFalsy();
     expect(root.querySelector('button[data-testid=run-diff]')).toBeFalsy();
   });
 
-  it('shows the empty-state when the registry has 0 entries', () => {
-    const { fixture } = setup(ZERO);
+  it('shows the empty-state when the registry has 0 entries', async () => {
+    const { fixture } = await setup(ZERO);
     const root = fixture.nativeElement as HTMLElement;
     expect(root.querySelector('[data-testid=empty-state]')).toBeTruthy();
   });
 
   it('Run delegates to DiffService with picked ids and editor text, and renders the response via DiffResultRenderer', async () => {
-    const { fixture, diffStub } = setup(TWO);
+    const { fixture, diffStub } = await setup(TWO);
     const root = fixture.nativeElement as HTMLElement;
 
     const { left, right } = pickerStubs(fixture);
@@ -206,8 +212,8 @@ describe('DiffPage', () => {
     expect(root.querySelectorAll('[data-testid=added-line]').length).toBe(1);
   });
 
-  it('keeps editor text when the picked @id changes', () => {
-    const { fixture } = setup(TWO);
+  it('keeps editor text when the picked @id changes', async () => {
+    const { fixture } = await setup(TWO);
     const root = fixture.nativeElement as HTMLElement;
     const [leftTa] = Array.from(
       root.querySelectorAll('textarea'),
@@ -226,8 +232,8 @@ describe('DiffPage', () => {
     );
   });
 
-  it('exposes an advanced disclosure with skipAutoSourceAnnotation checkbox (default off) and context number input (default 3)', () => {
-    const { fixture } = setup(TWO);
+  it('exposes an advanced disclosure with skipAutoSourceAnnotation checkbox (default off) and context number input (default 3)', async () => {
+    const { fixture } = await setup(TWO);
     const root = fixture.nativeElement as HTMLElement;
     const skip = root.querySelector(
       'input[data-testid=skip-auto-source-annotation]',
@@ -243,8 +249,8 @@ describe('DiffPage', () => {
     expect(ctx?.value).toBe('3');
   });
 
-  it('forwards skipAutoSourceAnnotation in the /api/diff request body when checked', () => {
-    const { fixture, diffStub } = setup(TWO);
+  it('forwards skipAutoSourceAnnotation in the /api/diff request body when checked', async () => {
+    const { fixture, diffStub } = await setup(TWO);
     const root = fixture.nativeElement as HTMLElement;
     const { left, right } = pickerStubs(fixture);
     left.valueChange.emit('a');
@@ -266,7 +272,7 @@ describe('DiffPage', () => {
   });
 
   it('forwards the context input value into the DiffResultRenderer', async () => {
-    const { fixture, diffStub } = setup(TWO);
+    const { fixture, diffStub } = await setup(TWO);
     const root = fixture.nativeElement as HTMLElement;
     const { left, right } = pickerStubs(fixture);
     left.valueChange.emit('a');
@@ -321,7 +327,7 @@ describe('DiffPage', () => {
   });
 
   it('renders both per-side errors at once when DiffService returns an error response', async () => {
-    const { fixture, diffStub } = setup(TWO);
+    const { fixture, diffStub } = await setup(TWO);
     const root = fixture.nativeElement as HTMLElement;
     const { left, right } = pickerStubs(fixture);
     left.valueChange.emit('a');
@@ -346,5 +352,48 @@ describe('DiffPage', () => {
       (root.querySelector('[data-testid=error-right]') as HTMLElement | null)
         ?.textContent,
     ).toContain('right boom');
+  });
+
+  it('seeds the picked sources and queries from URL query params', async () => {
+    const initialUrl =
+      '/diff?left=a&right=b' +
+      '&leftQuery=' +
+      encodeURIComponent('SELECT ?l { ?l ?p ?o }') +
+      '&rightQuery=' +
+      encodeURIComponent('SELECT ?r { ?r ?p ?o }');
+    const { fixture } = await setup(TWO, initialUrl);
+    const root = fixture.nativeElement as HTMLElement;
+    const { left, right } = pickerStubs(fixture);
+    expect(left.value).toBe('a');
+    expect(right.value).toBe('b');
+    const [leftTa, rightTa] = Array.from(
+      root.querySelectorAll('textarea'),
+    ) as HTMLTextAreaElement[];
+    expect(leftTa.value).toBe('SELECT ?l { ?l ?p ?o }');
+    expect(rightTa.value).toBe('SELECT ?r { ?r ?p ?o }');
+  });
+
+  it('mirrors picked sources and queries into URL query params', async () => {
+    const { fixture, router } = await setup(TWO);
+    const root = fixture.nativeElement as HTMLElement;
+    const { left, right } = pickerStubs(fixture);
+    left.valueChange.emit('a');
+    right.valueChange.emit('b');
+    fixture.detectChanges();
+    const [leftTa, rightTa] = Array.from(
+      root.querySelectorAll('textarea'),
+    ) as HTMLTextAreaElement[];
+    leftTa.value = 'SELECT ?l { ?l ?p ?o }';
+    leftTa.dispatchEvent(new Event('input'));
+    rightTa.value = 'SELECT ?r { ?r ?p ?o }';
+    rightTa.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const tree = router.parseUrl(router.url);
+    expect(tree.queryParamMap.get('left')).toBe('a');
+    expect(tree.queryParamMap.get('right')).toBe('b');
+    expect(tree.queryParamMap.get('leftQuery')).toBe('SELECT ?l { ?l ?p ?o }');
+    expect(tree.queryParamMap.get('rightQuery')).toBe('SELECT ?r { ?r ?p ?o }');
   });
 });
