@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { isAbsolute, resolve } from 'node:path';
+import { sep } from 'node:path';
 import * as chokidar from 'chokidar';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -20,7 +20,11 @@ import {
 import { EngineMap } from './engine-map';
 import { ServerModule } from './server.module';
 import type { SourceListingEntry, StoreRef } from './tokens';
-import { buildWatcherChain, type WatcherChain } from './watcher-chain';
+import {
+  buildWatcherChain,
+  type WatcherChain,
+  type WatcherSourcePlan,
+} from './watcher-chain';
 
 export interface CreateServerOptions {
   sources: SourceSpecInput | ReadonlyArray<SourceSpecInput>;
@@ -114,7 +118,7 @@ export async function createServer(
   }
 
   const watcher = options.watch
-    ? await maybeStartWatcher({
+    ? await maybeStartSingleSourceWatcher({
         target,
         registry,
         graphMode: options.graphMode,
@@ -186,13 +190,28 @@ async function startRegistryMode(
     logger.log(`Web playground served at ${url}/`);
   }
 
-  if (options.watch) {
-    logger.warn('--watch is not yet wired in Registry mode');
+  const watcher = options.watch
+    ? await maybeStartRegistryWatcher({
+        registry,
+        engineMap,
+        graphMode: options.graphMode,
+        logger,
+        debounceMs: options.watchDebounceMs ?? DEFAULT_DEBOUNCE_MS,
+        pollMs: options.watchPollMs ?? DEFAULT_POLL_MS,
+      })
+    : undefined;
+  if (watcher) {
+    logger.log(
+      `Watching for changes (debounce: ${
+        options.watchDebounceMs ?? DEFAULT_DEBOUNCE_MS
+      }ms)`,
+    );
   }
 
   return {
     port: portFromUrl(url) ?? options.port,
     close: async () => {
+      if (watcher) await watcher.close();
       await app.close();
       await engineMap.close();
     },
@@ -241,7 +260,7 @@ interface WatcherHandle {
 }
 
 type RefreshTrigger =
-  | { kind: 'file-change' }
+  | { kind: 'file-change'; path: string }
   | { kind: 'ttl'; viewId: string }
   | { kind: 'freshness'; viewId: string };
 
@@ -256,7 +275,7 @@ function triggerLabel(trigger: RefreshTrigger): string {
   }
 }
 
-interface StartWatcherOptions {
+interface SingleSourceWatcherOptions {
   target: ParsedSource;
   registry: ReadonlyArray<ParsedSource>;
   graphMode?: GraphMode;
@@ -266,14 +285,24 @@ interface StartWatcherOptions {
   pollMs: number;
 }
 
-async function maybeStartWatcher(
-  opts: StartWatcherOptions,
+async function maybeStartSingleSourceWatcher(
+  opts: SingleSourceWatcherOptions,
 ): Promise<WatcherHandle | undefined> {
-  const chain = buildWatcherChain(opts.registry, opts.target);
+  // Single-source mode reuses the multi-source builder over the full registry
+  // — including any `@id` upstreams the target's `from:` chain needs — but
+  // narrows the resulting WatcherChain down to just the target's plan. The
+  // target may not be in `opts.registry` when it was supplied as an inline
+  // positional/--source (`selectTarget` synthesises a fresh source in that
+  // case), so we ensure it leads the effective registry.
+  const effectiveRegistry: ReadonlyArray<ParsedSource> = opts.registry.includes(
+    opts.target,
+  )
+    ? opts.registry
+    : [opts.target, ...opts.registry];
+  const fullChain = buildWatcherChain(effectiveRegistry);
+  const plan = fullChain.sources.find((p) => p.source === opts.target);
 
-  if (chain.globs.length === 0 && chain.cachedViews.length === 0) {
-    // No glob source and no ttl/freshness view to drive refreshes — typically a
-    // raw endpoint (pass-through) or an everlasting-cached view.
+  if (!plan) {
     opts.logger.warn(
       '--watch ignored: no glob source in the target chain and no `cache.ttl`/`cache.freshness` views to refresh. SPARQL endpoints are not auto-refreshed; restart the process to pick up upstream changes.',
     );
@@ -286,20 +315,109 @@ async function maybeStartWatcher(
     return undefined;
   }
 
-  return startWatcher({ ...opts, storeRef: opts.storeRef }, chain);
+  const narrowedChain: WatcherChain = {
+    sources: [plan],
+    passThrough: [],
+    globBases: plan.globBases,
+  };
+  const storeRef = opts.storeRef;
+  return startMultiSourceWatcher(
+    [
+      {
+        plan,
+        storeRef,
+        target: opts.target,
+        registry: opts.registry,
+      },
+    ],
+    narrowedChain,
+    {
+      graphMode: opts.graphMode,
+      logger: opts.logger,
+      debounceMs: opts.debounceMs,
+      pollMs: opts.pollMs,
+    },
+  );
 }
 
-async function startWatcher(
-  opts: StartWatcherOptions & { storeRef: StoreRef },
-  chain: WatcherChain,
-): Promise<WatcherHandle> {
-  const inChainViewIds = chain.views.map((v) => v.id);
-  const cachedViews = chain.cachedViews;
+interface RegistryWatcherOptions {
+  registry: ReadonlyArray<ParsedSource>;
+  engineMap: EngineMap;
+  graphMode?: GraphMode;
+  logger: Logger;
+  debounceMs: number;
+  pollMs: number;
+}
 
+async function maybeStartRegistryWatcher(
+  opts: RegistryWatcherOptions,
+): Promise<WatcherHandle | undefined> {
+  const chain = buildWatcherChain(opts.registry);
+
+  for (const skipped of chain.passThrough) {
+    const id = (skipped as { id?: string }).id;
+    if (id === undefined) continue;
+    if (skipped.kind === 'endpoint') {
+      opts.logger.warn(
+        `--watch: skipping @${id}; endpoint sources are not auto-refreshed.`,
+      );
+    } else {
+      opts.logger.warn(
+        `--watch: skipping @${id}; chain has no glob source and no \`cache.ttl\`/\`cache.freshness\` views to refresh.`,
+      );
+    }
+  }
+
+  const targets: WatchedSource[] = [];
+  for (const plan of chain.sources) {
+    if (plan.id === undefined) continue;
+    const storeRef = opts.engineMap.getStoreRef(plan.id);
+    if (!storeRef) {
+      opts.logger.warn(
+        `--watch: skipping @${plan.id}; resolves pass-through to an endpoint.`,
+      );
+      continue;
+    }
+    targets.push({
+      plan,
+      storeRef,
+      target: plan.source,
+      registry: opts.registry,
+    });
+  }
+
+  if (targets.length === 0) return undefined;
+
+  return startMultiSourceWatcher(targets, chain, {
+    graphMode: opts.graphMode,
+    logger: opts.logger,
+    debounceMs: opts.debounceMs,
+    pollMs: opts.pollMs,
+  });
+}
+
+interface WatchedSource {
+  plan: WatcherSourcePlan;
+  storeRef: StoreRef;
+  target: ParsedSource;
+  registry: ReadonlyArray<ParsedSource>;
+}
+
+interface MultiSourceWatcherDeps {
+  graphMode?: GraphMode;
+  logger: Logger;
+  debounceMs: number;
+  pollMs: number;
+}
+
+async function startMultiSourceWatcher(
+  targets: ReadonlyArray<WatchedSource>,
+  chain: WatcherChain,
+  deps: MultiSourceWatcherDeps,
+): Promise<WatcherHandle> {
   let watcher: chokidar.FSWatcher | undefined;
-  if (chain.globs.length > 0) {
-    const baseDirs = Array.from(new Set(chain.globs.map((p) => globBase(p))));
-    watcher = chokidar.watch(baseDirs, {
+  if (chain.globBases.length > 0) {
+    watcher = chokidar.watch([...chain.globBases], {
       ignoreInitial: true,
       persistent: true,
       awaitWriteFinish: { stabilityThreshold: 50, pollInterval: 10 },
@@ -319,6 +437,64 @@ async function startWatcher(
     });
   }
 
+  const sourceRunners = new Map<WatchedSource, SourceRunner>();
+  for (const t of targets) {
+    sourceRunners.set(t, createSourceRunner(t, deps));
+  }
+
+  const onFileEvent = (path: string): void => {
+    for (const [t, runner] of sourceRunners) {
+      if (!pathBelongsToPlan(path, t.plan)) continue;
+      runner.schedule({ kind: 'file-change', path });
+    }
+  };
+
+  if (watcher) {
+    watcher.on('add', onFileEvent);
+    watcher.on('change', onFileEvent);
+    watcher.on('unlink', onFileEvent);
+  }
+
+  // Per-source TTL + freshness handles.
+  const ttlHandles: ScheduledHandle[] = [];
+  const freshnessHandles: ScheduledHandle[] = [];
+  for (const t of targets) {
+    const runner = sourceRunners.get(t);
+    if (!runner) continue;
+    ttlHandles.push(startTtlTimers(t.plan.cachedViews, runner.schedule));
+    freshnessHandles.push(
+      startFreshnessPolls(
+        t.plan.cachedViews,
+        t.plan.chain,
+        deps.pollMs,
+        deps.logger,
+        runner.schedule,
+      ),
+    );
+  }
+
+  return {
+    close: async () => {
+      for (const runner of sourceRunners.values()) runner.dispose();
+      for (const h of ttlHandles) h.stop();
+      for (const h of freshnessHandles) h.stop();
+      if (watcher) await watcher.close();
+    },
+  };
+}
+
+interface SourceRunner {
+  schedule: (trigger: RefreshTrigger) => void;
+  dispose: () => void;
+}
+
+function createSourceRunner(
+  target: WatchedSource,
+  deps: MultiSourceWatcherDeps,
+): SourceRunner {
+  const inChainViewIds = target.plan.views.map((v) => v.id);
+  const labelPrefix = target.plan.id ? `@${target.plan.id}: ` : '';
+
   let pending: NodeJS.Timeout | undefined;
   let inFlight = false;
   let queued: RefreshTrigger | undefined;
@@ -333,26 +509,26 @@ async function startWatcher(
       const refreshedIds =
         trigger.kind === 'file-change' ? inChainViewIds : [trigger.viewId];
       for (const id of refreshedIds) {
-        opts.logger.log(
-          `Refreshing view "${id}" (trigger: ${triggerLabel(trigger)})`,
+        deps.logger.log(
+          `${labelPrefix}Refreshing view "${id}" (trigger: ${triggerLabel(trigger)})`,
         );
       }
       const start = Date.now();
-      const refreshed = await resolveSource(opts.target, {
-        graphMode: opts.graphMode,
-        registry: opts.registry,
+      const refreshed = await resolveSource(target.target, {
+        graphMode: deps.graphMode,
+        registry: target.registry,
       });
       if (refreshed.mode === 'materialized') {
-        opts.storeRef.current = refreshed.store;
-        opts.logger.log(
-          `Rebuilt store: ${refreshed.files.length} file(s), ${refreshed.store.size} quads in ${
+        target.storeRef.current = refreshed.store;
+        deps.logger.log(
+          `${labelPrefix}Rebuilt store: ${refreshed.files.length} file(s), ${refreshed.store.size} quads in ${
             Date.now() - start
           }ms`,
         );
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      opts.logger.error(`Rebuild failed: ${message}`);
+      deps.logger.error(`${labelPrefix}Rebuild failed: ${message}`);
     } finally {
       inFlight = false;
       const next = queued;
@@ -368,36 +544,30 @@ async function startWatcher(
     pending = setTimeout(() => {
       pending = undefined;
       void rebuild(trigger);
-    }, opts.debounceMs);
+    }, deps.debounceMs);
   };
 
-  if (watcher) {
-    const onFileEvent = (): void => schedule({ kind: 'file-change' });
-    watcher.on('add', onFileEvent);
-    watcher.on('change', onFileEvent);
-    watcher.on('unlink', onFileEvent);
-  }
-
-  const ttlTimers = startTtlTimers(cachedViews, schedule);
-  const freshnessPolls = startFreshnessPolls(
-    cachedViews,
-    chain.registry,
-    opts.pollMs,
-    opts.logger,
-    schedule,
-  );
-
   return {
-    close: async () => {
+    schedule,
+    dispose: () => {
       if (pending) {
         clearTimeout(pending);
         pending = undefined;
       }
-      ttlTimers.stop();
-      freshnessPolls.stop();
-      if (watcher) await watcher.close();
     },
   };
+}
+
+function pathBelongsToPlan(
+  path: string,
+  plan: WatcherSourcePlan,
+): boolean {
+  for (const base of plan.globBases) {
+    if (path === base) return true;
+    if (path.startsWith(base + sep)) return true;
+    if (sep !== '/' && path.startsWith(base + '/')) return true;
+  }
+  return false;
 }
 
 interface ScheduledHandle {
@@ -495,21 +665,6 @@ async function runAskAgainstUpstream(
     );
   }
   return (await result.execute()) as boolean;
-}
-
-function globBase(pattern: string): string {
-  const isAbs = isAbsolute(pattern);
-  const segments = pattern.split(/[\\/]+/);
-  const out: string[] = [];
-  for (const seg of segments) {
-    if (/[*?[\]{}!()]/.test(seg)) break;
-    out.push(seg);
-  }
-  const joined = out.join('/');
-  if (joined === '' || joined === '.') return resolve('.');
-  if (!isAbs) return resolve(joined);
-  if (out.length === 1 && out[0] === '') return '/';
-  return joined;
 }
 
 function portFromUrl(url: string): number | undefined {
