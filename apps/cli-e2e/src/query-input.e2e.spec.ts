@@ -11,7 +11,7 @@ describe('sparqly query — input paths', () => {
   const sources = queryFixture('people.ttl');
 
   it('-q runs an inline SPARQL query against a positional glob (US 1, 2)', async () => {
-    const result = await runCli(['query', sources, '-q', SELECT_ALL]);
+    const result = await runCli(['query', sources, '-q', SELECT_ALL, '--quiet']);
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');

@@ -141,6 +141,48 @@ describe('formatGroupedRdfDiff', () => {
     ]);
   });
 
+  it('renders an `(orphan)` marker in the header for orphan bnode-tree hunks (left-only routes to removed; right-only to added)', async () => {
+    const RDF_FIRST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#first';
+    const RDF_REST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#rest';
+    const RDF_NIL = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#nil';
+    const EX = 'http://example.org/';
+
+    // Left side has an orphan list head; right side has it gone AND a new one.
+    const leftNquads =
+      `_:l <${RDF_FIRST}> <${EX}a> .\n` +
+      `_:l <${RDF_REST}> <${RDF_NIL}> .\n`;
+    const rightNquads =
+      `_:r <${RDF_FIRST}> <${EX}b> .\n` +
+      `_:r <${RDF_REST}> <${RDF_NIL}> .\n`;
+    const leftStore = storeOf(leftNquads);
+    const rightStore = storeOf(rightNquads);
+    const diff = await diffStores(
+      { store: leftStore },
+      { store: rightStore },
+    );
+
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    const out = formatGroupedRdfDiff(hunked, {
+      prefixes: { ex: 'http://example.org/' },
+    });
+
+    const headerLines = out.split('\n').filter((l) => l.includes('  ['));
+    expect(headerLines).toHaveLength(2);
+    // Both are orphan hunks: one removed, one added.
+    expect(headerLines[0]).toContain('(orphan)');
+    expect(headerLines[0]).toContain('(removed)');
+    expect(headerLines[1]).toContain('(orphan)');
+    expect(headerLines[1]).toContain('(added)');
+    // Anchor renders with `_:` prefix, not as a CURIE.
+    expect(headerLines[0].startsWith('_:')).toBe(true);
+    expect(headerLines[1].startsWith('_:')).toBe(true);
+  });
+
   it('renders rdf:type as a CURIE in the hunk header in parentheses', () => {
     const RDF_TYPE = '<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>';
     const SHAPE = '<http://www.w3.org/ns/shacl#NodeShape>';

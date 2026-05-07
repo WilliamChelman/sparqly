@@ -302,6 +302,152 @@ describe('groupRdfDiffByEntity — blank-node absorption into named parent', () 
   });
 });
 
+describe('groupRdfDiffByEntity — multi-parent bnode duplication', () => {
+  const SH = 'http://www.w3.org/ns/shacl#';
+  const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
+  const EX = 'http://example.org/';
+
+  it('duplicates a changed bnode-line under each named parent that reaches it (one HunkLine per parent, deterministic by anchor)', async () => {
+    // Two NodeShapes share a single PropertyShape blank node. The shared
+    // bnode's sh:datatype flips between sides. The reader looking at either
+    // parent shape should see the change in full, so the change is duplicated
+    // under both parent hunks.
+    const leftNquads =
+      `<${EX}A> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}B> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}A> <${SH}property> _:shared .\n` +
+      `<${EX}B> <${SH}property> _:shared .\n` +
+      `_:shared <${SH}path> <${EX}foo> .\n` +
+      `_:shared <${SH}datatype> <http://www.w3.org/2001/XMLSchema#decimal> .\n`;
+    const rightNquads =
+      `<${EX}A> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}B> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}A> <${SH}property> _:shared .\n` +
+      `<${EX}B> <${SH}property> _:shared .\n` +
+      `_:shared <${SH}path> <${EX}foo> .\n` +
+      `_:shared <${SH}datatype> <http://www.w3.org/2001/XMLSchema#integer> .\n`;
+    const leftStore = storeOf(leftNquads);
+    const rightStore = storeOf(rightNquads);
+    const diff = await diffStores({ store: leftStore }, { store: rightStore });
+
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    expect(hunked.changed.map((h) => h.anchor)).toEqual([`${EX}A`, `${EX}B`]);
+    // Each parent's hunk must carry both -/+ lines for the shared bnode.
+    for (const hunk of hunked.changed) {
+      expect(hunk.removed).toBe(1);
+      expect(hunk.added).toBe(1);
+      expect(hunk.lines.map((l) => `${l.side} ${l.predicate}`)).toEqual([
+        `- ${SH}datatype`,
+        `+ ${SH}datatype`,
+      ]);
+    }
+  });
+});
+
+describe('groupRdfDiffByEntity — orphan bnode trees (no named parent on either side)', () => {
+  const RDF_FIRST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#first';
+  const RDF_REST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#rest';
+  const RDF_NIL = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#nil';
+  const EX = 'http://example.org/';
+
+  it('right-only orphan tree: anchors on the orphan root and routes the hunk to `added` with `orphan` set', async () => {
+    const leftNquads = '';
+    const rightNquads =
+      `_:head <${RDF_FIRST}> <${EX}a> .\n` +
+      `_:head <${RDF_REST}> <${RDF_NIL}> .\n`;
+    const leftStore = storeOf(leftNquads);
+    const rightStore = storeOf(rightNquads);
+    const diff = await diffStores({ store: leftStore }, { store: rightStore });
+
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    expect(hunked.changed).toEqual([]);
+    expect(hunked.removed).toEqual([]);
+    expect(hunked.added).toHaveLength(1);
+    const hunk = hunked.added[0];
+    expect(hunk.orphan).toBe(true);
+    expect(hunk.state).toBe('added');
+    expect(hunk.anchor.startsWith('_:')).toBe(true);
+    expect(hunk.added).toBe(2);
+    expect(hunk.removed).toBe(0);
+    expect(hunk.lines.every((l) => l.side === '+')).toBe(true);
+  });
+
+  it('orphan trees on both sides: each side produces its own hunk and they are not paired by canonical label', async () => {
+    // A left orphan list AND a right orphan list. The left tree is entirely
+    // gone and a different right tree appears. Their canonical bnode labels
+    // may collide on the same string (`c14n0` per-side), so the algorithm
+    // must scope orphan hunks per side rather than merging by anchor.
+    const leftNquads =
+      `_:l1 <${RDF_FIRST}> <${EX}a> .\n` +
+      `_:l1 <${RDF_REST}> <${RDF_NIL}> .\n`;
+    const rightNquads =
+      `_:r1 <${RDF_FIRST}> <${EX}b> .\n` +
+      `_:r1 <${RDF_REST}> <${RDF_NIL}> .\n`;
+    const leftStore = storeOf(leftNquads);
+    const rightStore = storeOf(rightNquads);
+    const diff = await diffStores({ store: leftStore }, { store: rightStore });
+
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    expect(hunked.changed).toEqual([]);
+    expect(hunked.removed).toHaveLength(1);
+    expect(hunked.added).toHaveLength(1);
+    expect(hunked.removed[0].orphan).toBe(true);
+    expect(hunked.added[0].orphan).toBe(true);
+    expect(hunked.removed[0].lines.every((l) => l.side === '-')).toBe(true);
+    expect(hunked.added[0].lines.every((l) => l.side === '+')).toBe(true);
+  });
+
+  it('left-only orphan tree: synthesizes a hunk anchored on the orphan-root canonical bnode label, marks it `orphan`, and routes it to `removed`', async () => {
+    // An RDF list head with no named parent on either side: present only on
+    // the left, deleted on the right. Every changed quad about the list lives
+    // in `diff.removed`; no named ancestor exists, so the algorithm must
+    // synthesize an anchor from the orphan tree's root canonical bnode label
+    // rather than silently drop the changes.
+    const leftNquads =
+      `_:head <${RDF_FIRST}> <${EX}a> .\n` +
+      `_:head <${RDF_REST}> <${RDF_NIL}> .\n`;
+    const rightNquads = '';
+    const leftStore = storeOf(leftNquads);
+    const rightStore = storeOf(rightNquads);
+    const diff = await diffStores({ store: leftStore }, { store: rightStore });
+
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    expect(hunked.changed).toEqual([]);
+    expect(hunked.added).toEqual([]);
+    expect(hunked.removed).toHaveLength(1);
+    const hunk = hunked.removed[0];
+    expect(hunk.orphan).toBe(true);
+    expect(hunk.state).toBe('removed');
+    // Anchor is the canonical bnode label rendered with the `_:` prefix.
+    expect(hunk.anchor.startsWith('_:')).toBe(true);
+    // Both changed quads land inside this orphan hunk.
+    expect(hunk.removed).toBe(2);
+    expect(hunk.added).toBe(0);
+    expect(hunk.lines).toHaveLength(2);
+    expect(hunk.lines.every((l) => l.side === '-')).toBe(true);
+  });
+});
+
 describe('groupRdfDiffByEntity — section bucketing (changed/removed/added)', () => {
   const SH = 'http://www.w3.org/ns/shacl#';
   const RDFS = 'http://www.w3.org/2000/01/rdf-schema#';

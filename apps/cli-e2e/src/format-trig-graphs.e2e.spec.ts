@@ -4,7 +4,7 @@ import { formatFixture } from './helpers/hash';
 
 describe('sparqly format — TriG named graph sorting', () => {
   it('emits the default graph first, then named graphs in alphabetical order', async () => {
-    const result = await runCli(['format', formatFixture('multi-graphs.trig')]);
+    const result = await runCli(['format', formatFixture('multi-graphs.trig'), '--quiet']);
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');

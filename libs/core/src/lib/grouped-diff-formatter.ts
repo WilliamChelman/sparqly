@@ -21,13 +21,23 @@ export function formatGroupedRdfDiff(
   const parts: string[] = [summary];
   const prefixEntries = Object.entries(options.prefixes);
   for (const hunk of allHunks) {
-    const anchorDisplay = curieOrIri(hunk.anchor, prefixEntries);
+    const anchorDisplay = renderAnchor(hunk, prefixEntries);
     parts.push(renderHunkHeader(hunk, anchorDisplay, prefixEntries));
     for (const line of hunk.lines) {
       parts.push(renderHunkLine(line, anchorDisplay, options.prefixes));
     }
   }
   return parts.join('');
+}
+
+function renderAnchor(
+  hunk: Hunk,
+  prefixEntries: ReadonlyArray<[string, string]>,
+): string {
+  // Orphan hunks anchor on a canonical bnode label already prefixed with
+  // `_:`; render verbatim. Named anchors go through CURIE shortening.
+  if (hunk.orphan === true) return hunk.anchor;
+  return curieOrIri(hunk.anchor, prefixEntries);
 }
 
 function renderHunkHeader(
@@ -39,9 +49,10 @@ function renderHunkHeader(
     hunk.rdfType !== undefined
       ? `  (${curieOrIri(hunk.rdfType, prefixEntries)})`
       : '';
+  const orphanSuffix = hunk.orphan === true ? '  (orphan)' : '';
   const stateSuffix =
     hunk.state === 'changed' ? '' : `  (${hunk.state})`;
-  return `${anchorDisplay}${typeSuffix}${stateSuffix}  [-${hunk.removed} +${hunk.added}]\n`;
+  return `${anchorDisplay}${typeSuffix}${orphanSuffix}${stateSuffix}  [-${hunk.removed} +${hunk.added}]\n`;
 }
 
 function renderHunkLine(
