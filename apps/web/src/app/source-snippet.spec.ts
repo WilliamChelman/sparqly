@@ -70,7 +70,7 @@ describe('SourceSnippet', () => {
     http.verify();
   });
 
-  it('forwards file/line/context as query params on the GET', () => {
+  it('forwards file/line/snippetContext as query params on the GET', () => {
     const { http } = setup();
     render({ file: 'file:///tmp/x.ttl', line: 12, context: 4 });
     const req = http.expectOne(
@@ -79,7 +79,7 @@ describe('SourceSnippet', () => {
     expect(req.request.method).toBe('GET');
     expect(req.request.params.get('file')).toBe('file:///tmp/x.ttl');
     expect(req.request.params.get('line')).toBe('12');
-    expect(req.request.params.get('context')).toBe('4');
+    expect(req.request.params.get('snippetContext')).toBe('4');
     req.flush({
       kind: 'snippet',
       startLine: 12,

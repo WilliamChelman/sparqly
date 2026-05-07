@@ -47,7 +47,7 @@ describe('GET /api/source-snippet', () => {
     const params = new URLSearchParams({
       file: args.file,
       line: String(args.line),
-      context: String(args.context),
+      snippetContext: String(args.context),
     });
     return `${baseUrl}?${params.toString()}`;
   }
@@ -96,7 +96,7 @@ describe('GET /api/source-snippet', () => {
   });
 
   it('returns 400 when `file` is missing', async () => {
-    const resp = await fetch(`${baseUrl}?line=1&context=0`);
+    const resp = await fetch(`${baseUrl}?line=1&snippetContext=0`);
     expect(resp.status).toBe(400);
   });
 
@@ -132,7 +132,7 @@ describe('GET /api/source-snippet', () => {
           new URLSearchParams({
             file: fileUri,
             line: '1',
-            context: '0',
+            snippetContext: '0',
           }).toString(),
       );
       expect(resp.status).toBe(404);
@@ -177,7 +177,7 @@ describe('GET /api/source-snippet — --watch rebuild refreshes the allow-list',
     const params = new URLSearchParams({
       file: pathToFileURL(absPath).href,
       line: '1',
-      context: '0',
+      snippetContext: '0',
     });
     return fetch(`${baseUrl}?${params.toString()}`);
   }

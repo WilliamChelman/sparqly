@@ -14,10 +14,9 @@ import { configureLogger } from '../logging';
 import { writeOutputToFile } from '../output';
 import type { FieldDescriptor } from '../runner/field';
 import {
-  baseField,
   coercedBooleanSchema,
-  prefixField,
-  prefixesField,
+  contextBaseField,
+  contextPrefixesField,
   sourcesField,
   verbosityFieldsFor,
 } from '../runner/fields-shared';
@@ -25,7 +24,6 @@ import type { CommandSpec } from '../runner/spec';
 
 interface FormatConfig {
   sources?: string | string[];
-  prefix?: string[];
   prefixes?: Record<string, string>;
   base?: string;
   objectAnchoredPredicates?: string[];
@@ -91,9 +89,8 @@ export const formatSpec: CommandSpec<FormatConfig> = {
     'Pretty-print Turtle/TriG files. Reads a glob, or stdin when no glob is supplied, and writes the formatted result to stdout.',
   fields: [
     sourcesField,
-    prefixField,
-    prefixesField,
-    baseField,
+    contextPrefixesField,
+    contextBaseField,
     objectAnchoredPredicatesField,
     writeField,
     checkField,
@@ -151,7 +148,7 @@ export const formatSpec: CommandSpec<FormatConfig> = {
 
     const logger = new Logger('sparqly');
     const positional = typeof config.sources === 'string' ? config.sources : '';
-    const configPrefixes = mergeCliPrefixes(config.prefixes ?? {}, config.prefix);
+    const configPrefixes = config.prefixes ?? {};
     const base = config.base;
     const objectAnchoredPredicates = config.objectAnchoredPredicates;
     const mode: 'stdout' | 'write' | 'check' = config.write
@@ -308,21 +305,6 @@ async function processPerFile(args: {
     }
     if (unformatted.length > 0) throw new FormatCheckMismatchSignal();
   }
-}
-
-function mergeCliPrefixes(
-  base: Record<string, string>,
-  cli: string[] | undefined,
-): Record<string, string> {
-  const out = { ...base };
-  for (const entry of cli ?? []) {
-    const eq = entry.indexOf('=');
-    if (eq <= 0 || eq === entry.length - 1) {
-      throw new Error(`--prefix '${entry}': expected name=<iri>`);
-    }
-    out[entry.slice(0, eq)] = entry.slice(eq + 1);
-  }
-  return out;
 }
 
 async function firstFileBase(files: string[]): Promise<string | undefined> {

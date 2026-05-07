@@ -37,8 +37,8 @@ describe('createServer — Registry mode', () => {
     await rm(dirB, { recursive: true, force: true });
   });
 
-  it('GET /api/sources lists every non-reference source with id, kind, label, default?', async () => {
-    const resp = await fetch(`${baseUrl}/api/sources`);
+  it('GET /api/config lists every non-reference source with id, kind, label, default? alongside the context block', async () => {
+    const resp = await fetch(`${baseUrl}/api/config`);
 
     expect(resp.status).toBe(200);
     const json = (await resp.json()) as {
@@ -48,6 +48,7 @@ describe('createServer — Registry mode', () => {
         label: string;
         default?: boolean;
       }>;
+      context: { prefixes: Record<string, string>; base?: string };
     };
     expect(json.sources).toHaveLength(3);
     const byId = new Map(json.sources.map((s) => [s.id, s]));
@@ -55,6 +56,8 @@ describe('createServer — Registry mode', () => {
     expect(byId.get('beta')).toMatchObject({ kind: 'glob', default: true });
     expect(byId.get('remote')).toMatchObject({ kind: 'endpoint' });
     expect(byId.get('alpha')?.default).toBeUndefined();
+    expect(json.context).toBeDefined();
+    expect(json.context.prefixes).toBeDefined();
   });
 
   it('GET /api/sparql/:id returns SPARQL JSON results for the named source', async () => {

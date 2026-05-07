@@ -4,10 +4,16 @@ import type { EngineMap } from './engine-map';
 
 export const SPARQL_ENGINE = Symbol('SPARQL_ENGINE');
 export const SPARQL_CONFIG = Symbol('SPARQL_CONFIG');
+export const SPARQL_CONTEXT = Symbol('SPARQL_CONTEXT');
 export const SPARQL_ENGINE_MAP = Symbol('SPARQL_ENGINE_MAP');
 export const SPARQL_REGISTRY_LISTING = Symbol('SPARQL_REGISTRY_LISTING');
 export const SPARQL_DIFF_SERVICE = Symbol('SPARQL_DIFF_SERVICE');
 export const SPARQL_SNIPPET_ALLOW_LIST = Symbol('SPARQL_SNIPPET_ALLOW_LIST');
+
+export interface SparqlContext {
+  prefixes: Record<string, string>;
+  base?: string;
+}
 
 export interface StoreRef {
   current: Store;

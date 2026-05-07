@@ -51,7 +51,7 @@ describe('sparqly serve — Single-source mode (issue #142)', () => {
     expect(registryShaped.status).toBe(404);
   });
 
-  it('exposes /api/sources with exactly one entry in Single-source mode', async () => {
+  it('exposes /api/config with exactly one source entry in Single-source mode', async () => {
     const alphaPath = join(dir, 'alpha.ttl');
     const betaPath = join(dir, 'beta.ttl');
     await writeFile(
@@ -77,7 +77,7 @@ describe('sparqly serve — Single-source mode (issue #142)', () => {
 
     handle = await startServe(['--config', configPath, '--source', '@alpha']);
 
-    const res = await fetch(`${handle.baseUrl}/api/sources`);
+    const res = await fetch(`${handle.baseUrl}/api/config`);
     expect(res.status).toBe(200);
     const json = (await res.json()) as {
       sources: Array<{ id: string; kind: string; default?: boolean }>;

@@ -10,7 +10,11 @@ import { ActivatedRoute, Router } from '@angular/router';
 import {
   SourcesPicker,
 } from './sources-picker';
-import { SourcesService, type SourceListingEntry } from './sources.service';
+import {
+  ConfigService,
+  type DisplayContext,
+  type SourceListingEntry,
+} from './config.service';
 import {
   DiffService,
   type DiffErrorResponse,
@@ -136,14 +140,18 @@ import { YasqeEditor } from './yasqe-editor';
           </button>
         </div>
         @if (result(); as r) {
-          <app-diff-result-renderer [result]="r" [context]="context()" />
+          <app-diff-result-renderer
+            [result]="r"
+            [context]="context()"
+            [displayContext]="displayContext()"
+          />
         }
       </main>
     }
   `,
 })
 export class DiffPage implements OnInit {
-  private readonly sourcesService = inject(SourcesService);
+  private readonly configService = inject(ConfigService);
   private readonly diffService = inject(DiffService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -158,6 +166,7 @@ export class DiffPage implements OnInit {
   readonly errors = signal<DiffErrorResponse['errors'] | null>(null);
   readonly context = signal<number>(3);
   readonly skipAutoSourceAnnotation = signal<boolean>(false);
+  readonly displayContext = signal<DisplayContext>({ prefixes: {} });
 
   constructor() {
     const params = this.route.snapshot.queryParamMap;
@@ -192,10 +201,11 @@ export class DiffPage implements OnInit {
   }
 
   ngOnInit(): void {
-    this.sourcesService.list().subscribe((listing) => {
-      this.sources.set(listing.sources);
-      const def = listing.sources.find((s) => s.default === true);
-      const initial = def?.id ?? listing.sources[0]?.id ?? '';
+    this.configService.config().subscribe((config) => {
+      this.sources.set(config.sources);
+      this.displayContext.set(config.context);
+      const def = config.sources.find((s) => s.default === true);
+      const initial = def?.id ?? config.sources[0]?.id ?? '';
       if (initial !== '') {
         if (this.leftId() === '') this.leftId.set(initial);
         if (this.rightId() === '') this.rightId.set(initial);

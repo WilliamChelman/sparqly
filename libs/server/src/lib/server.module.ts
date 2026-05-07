@@ -1,21 +1,23 @@
 import { DynamicModule, Module, type Type } from '@nestjs/common';
 import type { ParsedSource, QueryEngine } from 'core';
+import { ConfigController } from './config.controller';
 import { DiffController } from './diff.controller';
 import { DiffService } from './diff.service';
 import type { EngineMap } from './engine-map';
 import { RegistrySparqlController } from './registry-sparql.controller';
 import { SnippetAllowList } from './snippet-allow-list';
 import { SnippetController } from './snippet.controller';
-import { SourcesController } from './sources.controller';
 import { SparqlController } from './sparql.controller';
 import {
   SPARQL_CONFIG,
+  SPARQL_CONTEXT,
   SPARQL_DIFF_SERVICE,
   SPARQL_ENGINE,
   SPARQL_ENGINE_MAP,
   SPARQL_REGISTRY_LISTING,
   SPARQL_SNIPPET_ALLOW_LIST,
   type SourceListingEntry,
+  type SparqlContext,
   type SparqlServerConfig,
 } from './tokens';
 
@@ -24,6 +26,7 @@ export interface SingleSourceModuleOptions {
   engine: QueryEngine;
   listing: ReadonlyArray<SourceListingEntry>;
   config: SparqlServerConfig;
+  context: SparqlContext;
   snippetAllowList: SnippetAllowList;
 }
 
@@ -33,6 +36,7 @@ export interface RegistryModuleOptions {
   registry: ReadonlyArray<ParsedSource>;
   listing: ReadonlyArray<SourceListingEntry>;
   config: SparqlServerConfig;
+  context: SparqlContext;
   snippetAllowList: SnippetAllowList;
 }
 
@@ -46,19 +50,20 @@ export class ServerModule {
     const controllers: Type<unknown>[] = [SnippetController];
     const providers: DynamicModule['providers'] = [
       { provide: SPARQL_CONFIG, useValue: options.config },
+      { provide: SPARQL_CONTEXT, useValue: options.context },
       {
         provide: SPARQL_SNIPPET_ALLOW_LIST,
         useValue: options.snippetAllowList,
       },
     ];
     if (options.mode === 'single') {
-      controllers.push(SparqlController, SourcesController);
+      controllers.push(SparqlController, ConfigController);
       providers.push(
         { provide: SPARQL_ENGINE, useValue: options.engine },
         { provide: SPARQL_REGISTRY_LISTING, useValue: options.listing },
       );
     } else {
-      controllers.push(SourcesController, RegistrySparqlController, DiffController);
+      controllers.push(ConfigController, RegistrySparqlController, DiffController);
       providers.push(
         { provide: SPARQL_ENGINE_MAP, useValue: options.engineMap },
         { provide: SPARQL_REGISTRY_LISTING, useValue: options.listing },

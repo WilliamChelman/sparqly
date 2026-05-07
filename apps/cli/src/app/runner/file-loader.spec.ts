@@ -175,7 +175,7 @@ describe('makeFileLoader — whole-project schema', () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it('accepts a valid whole-project config (sources + serve + format + cache) and returns blocks intact', async () => {
+  it('accepts a valid whole-project config (sources + serve + format + cache + context) and returns blocks intact', async () => {
     const path = join(dir, 'sparqly.config.yaml');
     await writeFile(
       path,
@@ -190,13 +190,14 @@ describe('makeFileLoader — whole-project schema', () => {
         '  watchDebounce: 250',
         '  watchPoll: 1000',
         'format:',
-        '  prefixes:',
-        '    ex: http://example.org/',
-        '  base: http://example.org/',
         '  objectAnchoredPredicates:',
         '    - rdfs:label',
         'cache:',
         '  dir: .sparqly-cache',
+        'context:',
+        '  prefixes:',
+        '    ex: http://example.org/',
+        '  base: http://example.org/',
         '',
       ].join('\n'),
     );
@@ -215,14 +216,46 @@ describe('makeFileLoader — whole-project schema', () => {
         watchPoll: 1000,
       },
       format: {
-        prefixes: { ex: 'http://example.org/' },
-        base: 'http://example.org/',
         objectAnchoredPredicates: ['rdfs:label'],
       },
       cache: { dir: join(dir, '.sparqly-cache') },
+      context: {
+        prefixes: { ex: 'http://example.org/' },
+        base: 'http://example.org/',
+      },
     });
     expect(result.filepath).toBe(path);
   });
+
+  it('accepts an empty context: block', async () => {
+    const path = join(dir, 'sparqly.config.yaml');
+    await writeFile(path, 'context: {}\n');
+    const load = makeFileLoader();
+    const result = await load(path, dir);
+    expect(result.data).toEqual({ context: {} });
+  });
+
+  it('rejects an unknown key inside the context: block (strict)', async () => {
+    const path = join(dir, 'sparqly.config.yaml');
+    await writeFile(path, 'context:\n  bogus: 1\n');
+    const load = makeFileLoader();
+    await expect(load(path, dir)).rejects.toThrow(/bogus/);
+  });
+
+  it.each([
+    ['prefixes', 'format:\n  prefixes:\n    ex: http://example.org/'],
+    ['base', 'format:\n  base: http://example.org/'],
+  ])(
+    'rejects %s under format:, redirecting to context.*',
+    async (key, body) => {
+      const path = join(dir, 'sparqly.config.yaml');
+      await writeFile(path, `${body}\n`);
+      const load = makeFileLoader();
+      await expect(load(path, dir)).rejects.toThrow(
+        new RegExp(`${key}.*context\\.${key}`, 's'),
+      );
+    },
+  );
 
   it.each([
     ['out', 'out: ./report.txt'],
@@ -233,7 +266,7 @@ describe('makeFileLoader — whole-project schema', () => {
     ['compareWith', 'compareWith: data/**/*.ttl'],
     ['left', 'left: data/a.ttl'],
     ['right', 'right: data/b.ttl'],
-    ['context', 'context: 5'],
+    ['snippetContext', 'snippetContext: 5'],
     ['skipAutoSourceAnnotation', 'skipAutoSourceAnnotation: true'],
     ['json', 'json: true'],
   ])(
@@ -254,8 +287,8 @@ describe('makeFileLoader — whole-project schema', () => {
     ['watchDebounce', 'watchDebounce: 250', 'serve.watchDebounce'],
     ['watchPoll', 'watchPoll: 1000', 'serve.watchPoll'],
     ['mutable', 'mutable: false', 'serve.mutable'],
-    ['prefixes', 'prefixes:\n  ex: http://example.org/', 'format.prefixes'],
-    ['base', 'base: http://example.org/', 'format.base'],
+    ['prefixes', 'prefixes:\n  ex: http://example.org/', 'context.prefixes'],
+    ['base', 'base: http://example.org/', 'context.base'],
     [
       'objectAnchoredPredicates',
       'objectAnchoredPredicates:\n  - rdfs:label',

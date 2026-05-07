@@ -18,7 +18,7 @@ const SNIPPET_QUERY_SCHEMA = z
   .object({
     file: z.string().min(1),
     line: z.coerce.number().int().positive(),
-    context: z.coerce.number().int().nonnegative(),
+    snippetContext: z.coerce.number().int().nonnegative(),
   })
   .strict();
 
@@ -71,7 +71,7 @@ export class SnippetController {
     const result: SnippetReadResult = await readSourceSnippet(
       absPath,
       parsed.data.line,
-      parsed.data.context,
+      parsed.data.snippetContext,
     );
 
     const status = is404Reason(result)

@@ -36,7 +36,7 @@ describe('diffSpec', () => {
       'rightQueryFile',
       'format',
       'skipAutoSourceAnnotation',
-      'context',
+      'snippetContext',
       'out',
     ];
     for (const key of perInvocation) {
@@ -59,55 +59,55 @@ describe('diffSpec', () => {
     }
   });
 
-  it('rejects --context above 100', () => {
+  it('rejects --snippet-context above 100', () => {
     const schema = blockSchemaFromFields(diffSpec.fields);
-    expect(schema.safeParse({ context: 101 }).success).toBe(false);
-    expect(schema.safeParse({ context: 100 }).success).toBe(true);
-    expect(schema.safeParse({ context: 0 }).success).toBe(true);
+    expect(schema.safeParse({ snippetContext: 101 }).success).toBe(false);
+    expect(schema.safeParse({ snippetContext: 100 }).success).toBe(true);
+    expect(schema.safeParse({ snippetContext: 0 }).success).toBe(true);
   });
 
-  it('rejects negative or non-integer --context', () => {
+  it('rejects negative or non-integer --snippet-context', () => {
     const schema = blockSchemaFromFields(diffSpec.fields);
-    expect(schema.safeParse({ context: -1 }).success).toBe(false);
-    expect(schema.safeParse({ context: 1.5 }).success).toBe(false);
+    expect(schema.safeParse({ snippetContext: -1 }).success).toBe(false);
+    expect(schema.safeParse({ snippetContext: 1.5 }).success).toBe(false);
   });
 
-  it('rejects --context against any non-html format (loud-error, no silent ignore)', () => {
+  it('rejects --snippet-context against any non-html format (loud-error, no silent ignore)', () => {
     const schema = blockSchemaFromFields(diffSpec.fields);
     // Refined schema lives on diffSpec.refine; build a refined version like the runner does.
     const refined = diffSpec.refine
       ? diffSpec.refine(schema as never)
       : schema;
     for (const f of ['human', 'json', 'rdf-patch', 'turtle']) {
-      const r = refined.safeParse({ format: f, context: 5 });
+      const r = refined.safeParse({ format: f, snippetContext: 5 });
       expect(r.success).toBe(false);
       if (!r.success) {
         const msg = r.error.issues.map((i) => i.message).join('\n');
-        expect(msg).toMatch(/--context/);
+        expect(msg).toMatch(/--snippet-context/);
         expect(msg).toMatch(/html/);
       }
     }
-    expect(refined.safeParse({ format: 'html', context: 5 }).success).toBe(
+    expect(refined.safeParse({ format: 'html', snippetContext: 5 }).success).toBe(
       true,
     );
   });
 
-  it('accepts --context when --format is omitted but --out infers html (e.g. .html)', () => {
+  it('accepts --snippet-context when --format is omitted but --out infers html (e.g. .html)', () => {
     const schema = blockSchemaFromFields(diffSpec.fields);
     const refined = diffSpec.refine
       ? diffSpec.refine(schema as never)
       : schema;
-    const r = refined.safeParse({ context: 5, out: 'fedlex-diff.html' });
+    const r = refined.safeParse({ snippetContext: 5, out: 'fedlex-diff.html' });
     expect(r.success).toBe(true);
   });
 
-  it('still rejects --context when --format is explicitly non-html (explicit wins over --out inference)', () => {
+  it('still rejects --snippet-context when --format is explicitly non-html (explicit wins over --out inference)', () => {
     const schema = blockSchemaFromFields(diffSpec.fields);
     const refined = diffSpec.refine
       ? diffSpec.refine(schema as never)
       : schema;
     const r = refined.safeParse({
-      context: 5,
+      snippetContext: 5,
       format: 'human',
       out: 'fedlex-diff.html',
     });

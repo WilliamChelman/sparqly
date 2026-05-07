@@ -13,6 +13,8 @@ import type { FieldDescriptor } from '../runner/field';
 import {
   coercedBooleanSchema,
   coercedIntSchema,
+  contextBaseField,
+  contextPrefixesField,
   mutableFieldsFor,
   sourceField,
   verbosityFieldsFor,
@@ -29,6 +31,8 @@ interface ServeConfig {
   watch?: boolean;
   watchDebounce?: number;
   watchPoll?: number;
+  prefixes?: Record<string, string>;
+  base?: string;
   verbose?: boolean;
   quiet?: boolean;
 }
@@ -104,7 +108,7 @@ export function resolveServeTarget(config: ServeConfig): ParsedSource {
 export const serveSpec: CommandSpec<ServeConfig> = {
   name: 'serve',
   description:
-    'Serve a W3C SPARQL Protocol endpoint. With no positional/--source, boots in Registry mode and exposes /api/sparql/<id> for every non-`reference` source plus /api/sources. With a positional or --source, boots in Single-source mode and exposes /api/sparql against that target. Intended for single-user development; not hardened for concurrent users.',
+    'Serve a W3C SPARQL Protocol endpoint. With no positional/--source, boots in Registry mode and exposes /api/sparql/<id> for every non-`reference` source plus /api/config. With a positional or --source, boots in Single-source mode and exposes /api/sparql against that target. Intended for single-user development; not hardened for concurrent users.',
   fields: [
     sourceField,
     sourcesRegistryField,
@@ -113,6 +117,8 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     watchField,
     watchDebounceField,
     watchPollField,
+    contextPrefixesField,
+    contextBaseField,
     ...verbosityFieldsFor('serve'),
   ],
   positionals: [{ field: 'source', name: 'glob' }],
@@ -154,6 +160,10 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       watch: config.watch === true,
       watchDebounceMs: config.watchDebounce,
       watchPollMs: config.watchPoll,
+      context: {
+        prefixes: config.prefixes ?? {},
+        base: config.base,
+      },
     });
   },
 };

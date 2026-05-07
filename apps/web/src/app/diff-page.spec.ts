@@ -7,7 +7,11 @@ import { DiffResultRenderer } from './diff-result-renderer';
 import { SourcesPicker } from './sources-picker';
 import { SourceSnippet } from './source-snippet';
 import { YasqeEditor } from './yasqe-editor';
-import { SourcesService, type SourceListing } from './sources.service';
+import {
+  ConfigService,
+  type ConfigPayload,
+  type SourceListing,
+} from './config.service';
 import {
   DiffService,
   type DiffRequest,
@@ -92,14 +96,22 @@ function makeDiffStub(): DiffStub {
 }
 
 async function setup(listing: SourceListing, initialUrl = '/diff') {
-  const sourcesStub: Pick<SourcesService, 'list'> = { list: () => of(listing) };
+  const payload: ConfigPayload = {
+    sources: listing.sources,
+    context: { prefixes: {} },
+  };
+  const configStub: Pick<ConfigService, 'list' | 'config' | 'context'> = {
+    list: () => of(listing),
+    config: () => of(payload),
+    context: () => of(payload.context),
+  };
   const diffStub = makeDiffStub();
 
   TestBed.configureTestingModule({
     imports: [DiffPage],
     providers: [
       provideRouter([{ path: 'diff', component: DiffPage }]),
-      { provide: SourcesService, useValue: sourcesStub },
+      { provide: ConfigService, useValue: configStub },
       { provide: DiffService, useValue: diffStub },
     ],
   })

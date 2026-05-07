@@ -158,6 +158,14 @@ function projectFileLayer(
   if (scope.sources !== false && data.sources !== undefined) {
     out.sources = data.sources;
   }
+  const ctx = data.context;
+  if (ctx && typeof ctx === 'object' && !Array.isArray(ctx)) {
+    const fieldKeys = new Set(spec.fields.map((f) => f.key));
+    for (const [k, v] of Object.entries(ctx as Record<string, unknown>)) {
+      if (v === undefined) continue;
+      if (fieldKeys.has(k)) out[k] = v;
+    }
+  }
   if (scope.block !== undefined) {
     const raw = data[scope.block];
     if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
