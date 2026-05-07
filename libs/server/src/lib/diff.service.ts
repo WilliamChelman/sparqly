@@ -14,6 +14,7 @@ import {
   type SourceRecord,
   type SourceSpecInput,
   type TabularDiffResult,
+  type TabularRow,
 } from 'core';
 import type { Store } from 'n3';
 
@@ -376,7 +377,7 @@ function anonymousUpstream(
 }
 
 type TabularSideResult =
-  | { kind: 'ok'; value: { rows: import('core').TabularRow[] } }
+  | { kind: 'ok'; value: { rows: TabularRow[] } }
   | { kind: 'err'; side: 'left' | 'right'; message: string };
 
 async function resolveTabularSidesSafe(
