@@ -65,7 +65,7 @@ describe('sparqly serve — view-of-endpoint materialized snapshot (US 47)', () 
             query: "SELECT ?s ?p ?o WHERE { ?s ?p ?o }"
       ` + '\n',
     );
-    handle = await startServe(['--config', configPath]);
+    handle = await startServe(['--config', configPath, '--source', '@snap']);
   }
 
   it('loads the SPARQL source at boot and serves further queries from memory without re-querying the upstream', async () => {

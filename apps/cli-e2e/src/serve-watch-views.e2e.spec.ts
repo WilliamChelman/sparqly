@@ -83,6 +83,8 @@ describe('sparqly serve --watch with views', () => {
     handle = await startServe([
       '--config',
       configPath,
+      '--source',
+      '@people',
       '--watch',
       '--watch-debounce',
       '100',
@@ -179,6 +181,8 @@ describe('sparqly serve --watch with views', () => {
       handle = await startServe([
         '--config',
         configPath,
+        '--source',
+        '@snap',
         '--watch',
         '--watch-debounce',
         '50',
@@ -273,6 +277,8 @@ describe('sparqly serve --watch with views', () => {
       handle = await startServe([
         '--config',
         configPath,
+        '--source',
+        '@snap',
         '--watch',
         '--watch-debounce',
         '50',

@@ -48,7 +48,7 @@ describe('sparqly serve — view source materialized snapshot', () => {
       ` + '\n',
     );
 
-    handle = await startServe(['--config', configPath]);
+    handle = await startServe(['--config', configPath, '--source', '@kept']);
 
     const res = await fetch(
       `${handle.baseUrl}/api/sparql?query=${encodeURIComponent(SELECT_ALL)}`,

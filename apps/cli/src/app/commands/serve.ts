@@ -103,7 +103,7 @@ export function resolveServeTarget(config: ServeConfig): ParsedSource {
 export const serveSpec: CommandSpec<ServeConfig> = {
   name: 'serve',
   description:
-    'Serve a W3C SPARQL Protocol endpoint at /api/sparql against a target source (an `@id` ref into the config registry, or an inline glob/URL)',
+    'Serve a W3C SPARQL Protocol endpoint. With no positional/--source, boots in Registry mode and exposes /api/sparql/<id> for every non-`reference` source plus /api/sources. With a positional or --source, boots in Single-source mode and exposes /api/sparql against that target. Intended for single-user development; not hardened for concurrent users.',
   fields: [
     sourceField,
     sourcesRegistryField,
@@ -138,7 +138,9 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     }
 
     if (sources.length === 0 && target === undefined) {
-      throw new Error('a source is required');
+      throw new Error(
+        'No sources configured. Pass a positional/--source, or define `sources:` in your config to boot in Registry mode.',
+      );
     }
 
     await createServer({

@@ -59,7 +59,7 @@ describe('sparqly serve — empty source with SERVICE composition', () => {
       ` + '\n',
     );
 
-    handle = await startServe(['--config', configPath]);
+    handle = await startServe(['--config', configPath, '--source', '@composed']);
 
     const res = await fetch(
       `${handle.baseUrl}/api/sparql?query=${encodeURIComponent(

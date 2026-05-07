@@ -78,6 +78,8 @@ describe('sparqly serve --watch — single-target scoping (ADR-0005)', () => {
     handle = await startServe([
       '--config',
       configPath,
+      '--source',
+      '@target',
       '--watch',
       '--watch-debounce',
       '100',
@@ -134,6 +136,8 @@ describe('sparqly serve --watch — single-target scoping (ADR-0005)', () => {
     handle = await startServe([
       '--config',
       configPath,
+      '--source',
+      '@target',
       '--watch',
       '--watch-debounce',
       '100',

@@ -17,8 +17,9 @@ import {
   selectTarget,
   type SourceSpecInput,
 } from 'core';
+import { EngineMap } from './engine-map';
 import { ServerModule } from './server.module';
-import type { StoreRef } from './tokens';
+import type { SourceListingEntry, StoreRef } from './tokens';
 import { buildWatcherChain, type WatcherChain } from './watcher-chain';
 
 export interface CreateServerOptions {
@@ -52,6 +53,15 @@ export async function createServer(
   const logger = new Logger('sparqly');
   const inputs = toSourceArray(options.sources);
   const registry = parseSourceSpecs(inputs);
+
+  const isRegistryMode =
+    options.target === undefined &&
+    !(inputs.length === 1 && registry.length === 1 && registry[0].id === undefined);
+
+  if (isRegistryMode) {
+    return startRegistryMode(options, registry, logger);
+  }
+
   const target = selectTarget(registry, options.target);
 
   const loadStart = Date.now();
@@ -82,6 +92,7 @@ export async function createServer(
 
   const app = await NestFactory.create<NestExpressApplication>(
     ServerModule.forRoot({
+      mode: 'single',
       engine,
       config: { mutable: options.mutable === true },
     }),
@@ -127,6 +138,82 @@ export async function createServer(
       await app.close();
     },
   };
+}
+
+async function startRegistryMode(
+  options: CreateServerOptions,
+  registry: ReadonlyArray<ParsedSource>,
+  logger: Logger,
+): Promise<CreatedServer> {
+  const totalStart = Date.now();
+  const engineMap = await EngineMap.create(registry, {
+    onSourceLoaded: (id, kind, ms) => {
+      logger.log(`Loaded @${id} (${kind}) in ${ms}ms`);
+    },
+  });
+  logger.log(
+    `Registry mode: ${engineMap.allIds().length} source(s) ready in ${
+      Date.now() - totalStart
+    }ms`,
+  );
+
+  const listing = buildListing(registry);
+
+  const app = await NestFactory.create<NestExpressApplication>(
+    ServerModule.forRoot({
+      mode: 'registry',
+      engineMap,
+      listing,
+      config: { mutable: options.mutable === true },
+    }),
+    { abortOnError: false },
+  );
+  app.setGlobalPrefix('api');
+  app.use(sparqlQueryBodyParser);
+
+  if (options.webRootDir) {
+    app.useStaticAssets(options.webRootDir, { index: ['index.html'] });
+  }
+
+  await app.listen(options.port);
+  const url = await app.getUrl();
+  for (const id of engineMap.allIds()) {
+    logger.log(`SPARQL endpoint for @${id} at ${url}/api/sparql/${id}`);
+  }
+  logger.log(`Source listing at ${url}/api/sources`);
+  if (options.webRootDir) {
+    logger.log(`Web playground served at ${url}/`);
+  }
+
+  if (options.watch) {
+    logger.warn('--watch is not yet wired in Registry mode');
+  }
+
+  return {
+    port: portFromUrl(url) ?? options.port,
+    close: async () => {
+      await app.close();
+      await engineMap.close();
+    },
+  };
+}
+
+function buildListing(
+  registry: ReadonlyArray<ParsedSource>,
+): SourceListingEntry[] {
+  const out: SourceListingEntry[] = [];
+  for (const src of registry) {
+    if (src.kind === 'reference') continue;
+    if (src.id === undefined) continue;
+    const entry: SourceListingEntry = {
+      id: src.id,
+      kind: src.kind,
+      label: src.id,
+    };
+    if ((src as { default?: true }).default === true) entry.default = true;
+    out.push(entry);
+  }
+  return out;
 }
 
 function toSourceArray(
