@@ -14,12 +14,13 @@ import {
   type DiffErrorResponse,
   type DiffResponse,
 } from './diff.service';
+import { DiffResultRenderer } from './diff-result-renderer';
 
 @Component({
   selector: 'app-diff-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SourcesPicker],
+  imports: [SourcesPicker, DiffResultRenderer],
   template: `
     @if (sources() === null) {
       <main class="p-4 text-sm text-slate-500">loading…</main>
@@ -102,11 +103,8 @@ import {
             {{ running() ? 'running…' : 'Run' }}
           </button>
         </div>
-        @if (result() !== null) {
-          <pre
-            data-testid="diff-result"
-            class="overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-50"
-          ><code>{{ resultText() }}</code></pre>
+        @if (result(); as r) {
+          <app-diff-result-renderer [result]="r" />
         }
       </main>
     }
@@ -135,11 +133,6 @@ export class DiffPage implements OnInit {
         this.rightId.set(initial);
       }
     });
-  }
-
-  resultText(): string {
-    const r = this.result();
-    return r === null ? '' : JSON.stringify(r, null, 2);
   }
 
   run(): void {

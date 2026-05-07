@@ -232,11 +232,23 @@ importers:
 
   apps/cli: {}
 
+  libs/common:
+    dependencies:
+      n3:
+        specifier: ^2.0.3
+        version: 2.0.3
+      tslib:
+        specifier: ^2.3.0
+        version: 2.8.1
+
   libs/core:
     dependencies:
       '@comunica/query-sparql':
         specifier: ^5.2.1
         version: 5.2.1(encoding@0.1.13)
+      common:
+        specifier: workspace:*
+        version: link:../common
       n3:
         specifier: ^2.0.3
         version: 2.0.3

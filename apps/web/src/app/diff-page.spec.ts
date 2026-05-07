@@ -121,7 +121,7 @@ describe('DiffPage', () => {
     expect(root.querySelector('[data-testid=empty-state]')).toBeTruthy();
   });
 
-  it('Run delegates to DiffService with picked ids and editor text, and renders the JSON response', async () => {
+  it('Run delegates to DiffService with picked ids and editor text, and renders the response via DiffResultRenderer', async () => {
     const { fixture, diffStub } = setup(TWO);
     const root = fixture.nativeElement as HTMLElement;
 
@@ -150,15 +150,23 @@ describe('DiffPage', () => {
     });
     diffStub.calls[0].responses.next({
       kind: 'graph',
-      diff: { added: [], removed: [], totals: { left: 0, right: 0 } },
+      diff: {
+        added: [
+          '<http://example.org/a> <http://example.org/p> <http://example.org/b> .',
+        ],
+        removed: [],
+        totals: { left: 0, right: 1 },
+      },
       sourceRecords: { left: {}, right: {} },
-      totals: { left: 0, right: 0 },
+      totals: { left: 0, right: 1 },
     });
     fixture.detectChanges();
     await fixture.whenStable();
 
-    const pre = root.querySelector('[data-testid=diff-result]') as HTMLElement | null;
-    expect(pre?.textContent).toContain('"kind": "graph"');
+    expect(root.querySelector('[data-testid=diff-totals]')?.textContent).toContain(
+      'left=0 right=1 +1 -0',
+    );
+    expect(root.querySelectorAll('[data-testid=added-line]').length).toBe(1);
   });
 
   it('keeps editor text when the picked @id changes', () => {
