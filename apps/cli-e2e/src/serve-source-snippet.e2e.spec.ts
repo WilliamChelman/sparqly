@@ -16,12 +16,12 @@ const SAMPLE_TTL = [
 
 function snippetUrl(
   baseUrl: string,
-  args: { file: string; line: number; context: number },
+  args: { file: string; line: number; snippetContext: number },
 ): string {
   const params = new URLSearchParams({
     file: args.file,
     line: String(args.line),
-    context: String(args.context),
+    snippetContext: String(args.snippetContext),
   });
   return `${baseUrl}/api/source-snippet?${params.toString()}`;
 }
@@ -59,7 +59,7 @@ describe('sparqly serve — GET /api/source-snippet (issue #145)', () => {
       snippetUrl(handle.baseUrl, {
         file: pathToFileURL(dataPath).href,
         line: 3,
-        context: 1,
+        snippetContext: 1,
       }),
     );
 
@@ -98,7 +98,7 @@ describe('sparqly serve — GET /api/source-snippet (issue #145)', () => {
       snippetUrl(handle.baseUrl, {
         file: pathToFileURL(sneakyPath).href,
         line: 1,
-        context: 0,
+        snippetContext: 0,
       }),
     );
     expect(resp.status).toBe(403);
@@ -130,7 +130,7 @@ describe('sparqly serve — GET /api/source-snippet (issue #145)', () => {
       snippetUrl(handle.baseUrl, {
         file: pathToFileURL(newPath).href,
         line: 1,
-        context: 0,
+        snippetContext: 0,
       }),
     );
     expect(beforeResp.status).toBe(403);
@@ -145,7 +145,7 @@ describe('sparqly serve — GET /api/source-snippet (issue #145)', () => {
         snippetUrl(handle.baseUrl, {
           file: pathToFileURL(newPath).href,
           line: 3,
-          context: 0,
+          snippetContext: 0,
         }),
       );
     } while (after.status !== 200 && Date.now() < deadline);
