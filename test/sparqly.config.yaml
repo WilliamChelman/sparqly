@@ -6,6 +6,8 @@ sources:
   - id: era-shapes-head
     glob: ./data/era-shapes.ttl
     default: true
+  - id: fedlex
+    endpoint: https://fedlex.data.admin.ch/sparqlendpoint
 
 serve:
   port: 3000
