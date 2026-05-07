@@ -626,6 +626,51 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
     expect(lines[stmtIdx - 1]).toBe('# from c.jsonld');
   });
 
+  it('byte-stability: human/json/rdf-patch/turtle output is unchanged when the `grouped` format option is available (regression guard for issue #151)', () => {
+    const left = [triple('c', 'q', 'd')];
+    const right = [triple('e', 'r', 'f')];
+    const diff = diffCanonicalStatements(left, right);
+
+    expect(formatRdfDiff(diff, 'human')).toBe(
+      `# left=1 right=1 +1 -1\n` +
+        `- ${triple('c', 'q', 'd')}\n` +
+        `+ ${triple('e', 'r', 'f')}\n`,
+    );
+    expect(formatRdfDiff(diff, 'rdf-patch')).toBe(
+      `# left=1 right=1 +1 -1\n` +
+        `D ${triple('c', 'q', 'd')}\n` +
+        `A ${triple('e', 'r', 'f')}\n`,
+    );
+    expect(formatRdfDiff(diff, 'json')).toBe(
+      `${JSON.stringify({
+        added: [
+          {
+            s: { termType: 'NamedNode', value: 'http://example.org/e' },
+            p: { termType: 'NamedNode', value: 'http://example.org/r' },
+            o: { termType: 'NamedNode', value: 'http://example.org/f' },
+          },
+        ],
+        removed: [
+          {
+            s: { termType: 'NamedNode', value: 'http://example.org/c' },
+            p: { termType: 'NamedNode', value: 'http://example.org/q' },
+            o: { termType: 'NamedNode', value: 'http://example.org/d' },
+          },
+        ],
+        totals: { left: 1, right: 1 },
+      })}\n`,
+    );
+    expect(formatRdfDiff(diff, 'turtle', { prefixes: { ex: 'http://example.org/' } })).toBe(
+      `# left=1 right=1 +1 -1\n` +
+        `# --- removed ---\n` +
+        `@prefix ex: <http://example.org/> .\n\n` +
+        `ex:c ex:q ex:d .\n` +
+        `# --- added ---\n` +
+        `@prefix ex: <http://example.org/> .\n\n` +
+        `ex:e ex:r ex:f .\n`,
+    );
+  });
+
   it('output is stable: same inputs produce byte-identical output across invocations, and added/removed are sorted', () => {
     const left = [
       triple('c', 'p', 'c2'),

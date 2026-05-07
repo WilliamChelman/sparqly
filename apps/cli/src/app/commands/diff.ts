@@ -13,6 +13,7 @@ import {
   formatHumanSourceComment,
   formatRdfDiff,
   formatTabularDiff,
+  groupRdfDiffByEntity,
   hasAnnotateTransform,
   parseSourceSpecs,
   readSourceSnippet,
@@ -44,7 +45,14 @@ import {
 } from '../runner/fields-shared';
 import type { CommandSpec } from '../runner/spec';
 
-const DIFF_FORMATS = ['html', 'human', 'json', 'rdf-patch', 'turtle'] as const;
+const DIFF_FORMATS = [
+  'html',
+  'human',
+  'json',
+  'rdf-patch',
+  'turtle',
+  'grouped',
+] as const;
 type DiffFormat = (typeof DIFF_FORMATS)[number];
 
 const MAX_CONTEXT = 100;
@@ -441,10 +449,19 @@ export const diffSpec: CommandSpec<DiffConfig> = {
                 diff.sourceRecords,
                 cwd,
               )
-            : formatRdfDiff(diff, format, {
-                cwd,
-                sourceRecords: diff.sourceRecords,
-              });
+            : format === 'grouped'
+              ? formatRdfDiff(diff, 'grouped', {
+                  prefixes: resolvedPrefixes,
+                  hunked: groupRdfDiffByEntity({
+                    diff,
+                    left: { store: leftResolved.store },
+                    right: { store: rightResolved.store },
+                  }),
+                })
+              : formatRdfDiff(diff, format, {
+                  cwd,
+                  sourceRecords: diff.sourceRecords,
+                });
     const { added, removed } = diff;
 
     if (config.out !== undefined) {
