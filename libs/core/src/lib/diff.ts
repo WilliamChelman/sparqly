@@ -2,13 +2,23 @@ import { Parser, type Quad, type Store, type Term } from 'n3';
 import { canonicalizeStore } from './canonicalize';
 import { formatHumanSourceComment } from './format-human-source-comment';
 import { shortenNQuadLine } from './formatter';
+import {
+  formatGroupedRdfDiff,
+  type FormatGroupedRdfDiffOptions,
+} from './grouped-diff-formatter';
+import type { HunkedRdfDiff } from './group-rdf-diff-by-entity';
 import { displaySourcePath } from './source-path-display';
 import {
   DEFAULT_ANNOTATION_PREDICATE_IRIS,
   type AnnotationPredicateIris,
 } from './source-record-builder';
 
-export type RdfDiffFormat = 'human' | 'json' | 'rdf-patch' | 'turtle';
+export type RdfDiffFormat =
+  | 'human'
+  | 'json'
+  | 'rdf-patch'
+  | 'turtle'
+  | 'grouped';
 
 export interface RdfDiffResult {
   /** Canonical N-Quads strings present on the right but not the left, sorted lexicographically. */
@@ -262,6 +272,14 @@ export interface FormatRdfDiffOptions {
    * `# --- removed/added ---` block. Ignored by other formats.
    */
   prefixes?: Record<string, string>;
+  /**
+   * Pre-computed `HunkedRdfDiff` used by the `grouped` format. Required when
+   * `format === 'grouped'`; ignored by other formats. Built by callers via
+   * {@link import('./group-rdf-diff-by-entity').groupRdfDiffByEntity} so the
+   * grouping algorithm sees both Stores while {@link formatRdfDiff} stays
+   * Store-agnostic.
+   */
+  hunked?: HunkedRdfDiff;
 }
 
 export function formatRdfDiff(
@@ -269,6 +287,17 @@ export function formatRdfDiff(
   format: RdfDiffFormat,
   options: FormatRdfDiffOptions = {},
 ): string {
+  if (format === 'grouped') {
+    if (options.hunked === undefined) {
+      throw new Error(
+        "formatRdfDiff: format 'grouped' requires options.hunked — call groupRdfDiffByEntity first to build it from both sides' Stores",
+      );
+    }
+    const groupedOpts: FormatGroupedRdfDiffOptions = {
+      prefixes: options.prefixes ?? {},
+    };
+    return formatGroupedRdfDiff(options.hunked, groupedOpts);
+  }
   if (format === 'json') {
     const leftRecordsJson = options.sourceRecords?.left;
     const rightRecordsJson = options.sourceRecords?.right;
