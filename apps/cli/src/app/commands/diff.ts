@@ -5,7 +5,6 @@ import { Logger } from '@nestjs/common';
 import { type Store } from 'n3';
 import { z } from 'zod';
 import {
-  ANNOTATE_SOURCE_TRANSFORM,
   composeHtmlDiff,
   detectSelectShape,
   diffStores,
@@ -23,10 +22,10 @@ import {
   selectTarget,
   shortenNQuadLine,
   tabularDiff,
+  withAutoSourceAnnotation,
   type AnnotationPredicateIris,
   type HtmlDiffSnippets,
   type ParsedSource,
-  type ParsedTransform,
   type RdfDiffResult,
   type SelectShapeReport,
   type SnippetReadResult,
@@ -224,30 +223,6 @@ const contextField: FieldDescriptor = {
     },
   ],
 };
-
-/**
- * Implement the ADR-0008 carve-out: `diff` prepends `annotateSource` to a
- * glob target's transform pipeline so HTML/turtle/json output gets line
- * numbers without ceremony. Skipped if the user passed
- * `--skip-auto-source-annotation`, if the target isn't a glob (views and
- * endpoints can't carry source records anyway), or if an explicit
- * `annotateSource` is already declared (explicit predicates win).
- */
-export function withAutoSourceAnnotation(
-  target: ParsedSource,
-  opts: { skipAuto: boolean },
-): ParsedSource {
-  if (opts.skipAuto) return target;
-  if (target.kind !== 'glob') return target;
-  const declared = target.transforms ?? [];
-  if (declared.some((t) => t.key === 'annotateSource')) return target;
-  const parsed = ANNOTATE_SOURCE_TRANSFORM.parse({});
-  const implicit: ParsedTransform =
-    typeof parsed === 'function'
-      ? { key: 'annotateSource', apply: parsed }
-      : { key: 'annotateSource', apply: parsed.apply, config: parsed.config };
-  return { ...target, transforms: [implicit, ...declared] };
-}
 
 export function resolveDiffSide(
   config: DiffConfig,
@@ -834,4 +809,9 @@ export function inferDiffFormatFromOut(
   return undefined;
 }
 
-export { DiffPresentSignal, DIFF_FORMATS, detectTabularDispatch };
+export {
+  DiffPresentSignal,
+  DIFF_FORMATS,
+  detectTabularDispatch,
+  withAutoSourceAnnotation,
+};

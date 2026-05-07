@@ -168,6 +168,7 @@ async function startRegistryMode(
     ServerModule.forRoot({
       mode: 'registry',
       engineMap,
+      registry,
       listing,
       config: { mutable: options.mutable === true },
     }),

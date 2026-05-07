@@ -2,6 +2,8 @@ export * from './lib/server.module';
 export * from './lib/sparql.controller';
 export * from './lib/sources.controller';
 export * from './lib/registry-sparql.controller';
+export * from './lib/diff.controller';
+export * from './lib/diff.service';
 export * from './lib/create-server';
 export * from './lib/watcher-chain';
 export * from './lib/engine-map';

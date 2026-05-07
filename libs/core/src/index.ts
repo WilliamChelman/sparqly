@@ -17,6 +17,7 @@ export * from './lib/html-diff-composer';
 export * from './lib/source-snippet-reader';
 export * from './lib/strip-annotations';
 export * from './lib/annotate-transform';
+export * from './lib/with-auto-source-annotation';
 export * from './lib/resolve-source-references';
 export * from './lib/view-query-validate';
 export * from './lib/view-resolver';
