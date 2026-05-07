@@ -4,11 +4,11 @@ import { provideRouter, Router } from '@angular/router';
 import { App } from './app';
 
 @Component({
-  selector: 'app-yasgui-page',
+  selector: 'app-query-page',
   standalone: true,
-  template: '<div data-testid="stub-yasgui"></div>',
+  template: '<div data-testid="stub-query"></div>',
 })
-class YasguiPageStub {}
+class QueryPageStub {}
 
 @Component({
   selector: 'app-diff-page',
@@ -23,14 +23,14 @@ describe('App routing', () => {
       imports: [App],
       providers: [
         provideRouter([
-          { path: '', component: YasguiPageStub },
+          { path: '', component: QueryPageStub },
           { path: 'diff', component: DiffPageStub },
         ]),
       ],
     }).compileComponents();
   });
 
-  it('renders the Yasgui page on /', async () => {
+  it('renders the Query page on /', async () => {
     const fixture = TestBed.createComponent(App);
     const router = TestBed.inject(Router);
     await router.navigateByUrl('/');
@@ -38,7 +38,7 @@ describe('App routing', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('[data-testid=stub-yasgui]')).toBeTruthy();
+    expect(compiled.querySelector('[data-testid=stub-query]')).toBeTruthy();
     expect(compiled.querySelector('[data-testid=stub-diff]')).toBeFalsy();
   });
 
@@ -51,7 +51,7 @@ describe('App routing', () => {
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.querySelector('[data-testid=stub-diff]')).toBeTruthy();
-    expect(compiled.querySelector('[data-testid=stub-yasgui]')).toBeFalsy();
+    expect(compiled.querySelector('[data-testid=stub-query]')).toBeFalsy();
   });
 
   it('exposes header nav links to / and /diff', async () => {
