@@ -15,16 +15,46 @@ export interface DiffErrorResponse {
   errors: { left?: string; right?: string; top?: string };
 }
 
+export interface SourceRecord {
+  file: string;
+  line?: number;
+}
+
 export interface GraphDiffResponse {
   kind: 'graph';
-  diff: { added: unknown[]; removed: unknown[]; totals: { left: number; right: number } };
-  sourceRecords: { left: Record<string, unknown[]>; right: Record<string, unknown[]> };
+  diff: {
+    added: string[];
+    removed: string[];
+    totals: { left: number; right: number };
+  };
+  sourceRecords: {
+    left: Record<string, SourceRecord[]>;
+    right: Record<string, SourceRecord[]>;
+  };
   totals: { left: number; right: number };
+}
+
+export interface TabularTerm {
+  termType: 'NamedNode' | 'BlankNode' | 'Literal' | 'DefaultGraph' | 'Variable';
+  value: string;
+  language?: string;
+  datatype?: { value: string };
+}
+
+export type TabularRow = Record<string, TabularTerm | undefined>;
+
+export interface TabularDiffEntry {
+  row: TabularRow;
+  count: number;
 }
 
 export interface TabularDiffResponse {
   kind: 'tabular';
-  diff: unknown;
+  diff: {
+    added: TabularDiffEntry[];
+    removed: TabularDiffEntry[];
+    totals: { left: number; right: number };
+  };
   totals: { left: number; right: number };
   variables: string[];
 }

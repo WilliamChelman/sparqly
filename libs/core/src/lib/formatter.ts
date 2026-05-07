@@ -1,4 +1,15 @@
-import { DataFactory, Parser, Writer, type Quad, type Term } from 'n3';
+import { DataFactory, Writer, type Quad, type Term } from 'n3';
+import {
+  RDF_NS,
+  RDF_TYPE,
+  XSD_STRING,
+  bestPrefixEntryFor,
+  shortenNQuadLine,
+  type ShortenNQuadLineConfig,
+} from 'common';
+
+export { shortenNQuadLine };
+export type { ShortenNQuadLineConfig };
 
 export type FormatSerialization = 'turtle' | 'trig';
 
@@ -79,64 +90,6 @@ export function formatRdf(
   return config.base ? `@base <${config.base}>.\n${body}` : body;
 }
 
-export interface ShortenNQuadLineConfig {
-  prefixes: Record<string, string>;
-}
-
-export function shortenNQuadLine(
-  line: string,
-  config: ShortenNQuadLineConfig,
-): string {
-  const trimmed = line.endsWith('\n') ? line.slice(0, -1) : line;
-  const parser = new Parser({ format: 'application/n-quads' });
-  const quads = parser.parse(trimmed);
-  if (quads.length !== 1) return line;
-  const q = quads[0];
-  const entries = Object.entries(config.prefixes);
-  const predicateText =
-    q.predicate.termType === 'NamedNode' && q.predicate.value === RDF_TYPE
-      ? 'a'
-      : renderTerm(q.predicate, entries);
-  const parts = [
-    renderTerm(q.subject, entries),
-    predicateText,
-    renderTerm(q.object, entries),
-  ];
-  if (q.graph.termType !== 'DefaultGraph') {
-    parts.push(renderTerm(q.graph, entries));
-  }
-  return `${parts.join(' ')} .`;
-}
-
-function renderTerm(
-  term: Term,
-  entries: ReadonlyArray<[string, string]>,
-): string {
-  if (term.termType === 'NamedNode') {
-    const match = bestPrefixEntryFor(term.value, entries);
-    if (match) {
-      const [name, ns] = match;
-      return `${name}:${term.value.slice(ns.length)}`;
-    }
-    return `<${term.value}>`;
-  }
-  if (term.termType === 'BlankNode') return `_:${term.value}`;
-  if (term.termType === 'Literal') {
-    const lit = term as Term & {
-      language?: string;
-      datatype?: { value: string };
-    };
-    const lex = `"${escapeLiteral(term.value)}"`;
-    if (lit.language) return `${lex}@${lit.language}`;
-    if (lit.datatype && lit.datatype.value !== XSD_STRING) {
-      return `${lex}^^<${lit.datatype.value}>`;
-    }
-    return lex;
-  }
-  return `<${term.value}>`;
-}
-
-const XSD_STRING = 'http://www.w3.org/2001/XMLSchema#string';
 const RDF_LANG_STRING =
   'http://www.w3.org/1999/02/22-rdf-syntax-ns#langString';
 
@@ -198,15 +151,6 @@ function escapeMultilineBody(value: string): string {
   return result;
 }
 
-function escapeLiteral(value: string): string {
-  return value
-    .replace(/\\/g, '\\\\')
-    .replace(/"/g, '\\"')
-    .replace(/\n/g, '\\n')
-    .replace(/\r/g, '\\r')
-    .replace(/\t/g, '\\t');
-}
-
 function pickUsedPrefixes(
   quads: ReadonlyArray<Quad>,
   prefixes: Record<string, string>,
@@ -259,8 +203,6 @@ function normalizeBlankLabels(quads: ReadonlyArray<Quad>): Quad[] {
   );
 }
 
-const RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
-const RDF_TYPE = `${RDF_NS}type`;
 const RDF_FIRST = `${RDF_NS}first`;
 const RDF_REST = `${RDF_NS}rest`;
 const RDF_NIL = `${RDF_NS}nil`;
@@ -673,20 +615,4 @@ function bestPrefixFor(
 ): string | undefined {
   if (term.termType !== 'NamedNode') return undefined;
   return bestPrefixEntryFor(term.value, entries)?.[0];
-}
-
-function bestPrefixEntryFor(
-  iri: string,
-  entries: ReadonlyArray<[string, string]>,
-): [string, string] | undefined {
-  let best: [string, string] | undefined;
-  let bestLength = -1;
-  for (const entry of entries) {
-    const ns = entry[1];
-    if (iri.startsWith(ns) && ns.length > bestLength) {
-      best = entry;
-      bestLength = ns.length;
-    }
-  }
-  return best;
 }
