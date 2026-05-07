@@ -2,11 +2,11 @@
 
 Project-stable settings live in a single `sparqly.config.{yaml,yml,json}` at the project root. The file declares the **source registry** plus settings that are stable across many invocations — per-invocation values (output paths, ad-hoc queries, format selection, comparison targets) belong on the CLI, not in the file.
 
-This page covers the file shape, discovery, the four top-level blocks, environment variables, and `@id` resolution at the CLI. The source-spec reference (per-kind schema, transforms, view caching) lives in [`sources.md`](./sources.md).
+This page covers the file shape, discovery, the five top-level blocks, environment variables, and `@id` resolution at the CLI. The source-spec reference (per-kind schema, transforms, view caching) lives in [`sources.md`](./sources.md).
 
 ## File layout
 
-The schema is strict: only four top-level keys are accepted, and unknown keys produce errors that name the destination.
+The schema is strict: only five top-level keys are accepted, and unknown keys produce errors that name the destination.
 
 ```yaml
 # sparqly.config.yaml
@@ -14,9 +14,10 @@ sources: # source registry (see sources.md)
 serve: # serve-command settings
 format: # format-command settings
 cache: # cache-block settings
+context: # shared IRI-display config (prefixes, base)
 ```
 
-Each command reads only the sections it cares about: `query` / `hash` / `diff` read `sources`; `serve` reads `sources` + `serve`; `format` reads `sources` + `format`; `cache list` / `cache clear` read `cache`. `query` has no command-scoped block — every flag it has is per-invocation. The whole-file schema design lives in [ADR-0010](./adr/0010-project-config-scope-layout-and-discovery.md).
+`context:` is the project-wide carve-out: every IRI-rendering command (`query`, `format`, `diff`, `serve`'s webapp) reads it. The other blocks follow the "block name = command name" convention: `serve` reads `sources` + `serve` + `context`; `format` reads `sources` + `format` + `context`; `query` / `diff` read `sources` + `context`; `hash` reads `sources`; `cache list` / `cache clear` read `cache`. `query` has no command-scoped block — every flag it has is per-invocation. The whole-file schema design lives in [ADR-0010](./adr/0010-project-config-scope-layout-and-discovery.md); the `context:` carve-out is [ADR-0012](./adr/0012-context-block-shared-display-config.md).
 
 ## Discovery
 
@@ -57,19 +58,36 @@ All fields are optional; unset fields fall back to their built-in defaults.
 
 ```yaml
 format:
-  prefixes:
-    ex: http://example.org/
-    schema: http://schema.org/
-  base: http://example.org/
   objectAnchoredPredicates:
     - http://www.w3.org/2000/01/rdf-schema#label
 ```
 
-| Field                      | Type                     | Meaning                                                             |
-| -------------------------- | ------------------------ | ------------------------------------------------------------------- |
-| `prefixes`                 | `Record<string, string>` | Prefix → IRI namespace map for emitted Turtle.                      |
-| `base`                     | string                   | Default base IRI for emitted Turtle.                                |
-| `objectAnchoredPredicates` | `string[]`               | Predicate IRIs that should anchor object grouping in pretty output. |
+| Field                      | Type       | Meaning                                                             |
+| -------------------------- | ---------- | ------------------------------------------------------------------- |
+| `objectAnchoredPredicates` | `string[]` | Predicate IRIs that should anchor object grouping in pretty output. |
+
+`prefixes` and `base` used to live here; they moved to [`context:`](#context) (ADR-0012). A config that still puts them under `format:` fails validation with a redirect message to `context.prefixes` / `context.base`.
+
+## `context:`
+
+Shared IRI-display config consumed by every command that renders IRIs (`query`, `format`, `diff`) and by the webapp's diff renderer.
+
+```yaml
+context:
+  prefixes:
+    ex: http://example.org/
+    schema: http://schema.org/
+  base: http://example.org/
+```
+
+| Field      | Type                     | Meaning                                                                                                                       |
+| ---------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `prefixes` | `Record<string, string>` | Prefix → IRI namespace map. Merged on top of the universal RDF baseline (rdf, rdfs, owl, xsd); user prefixes win on conflict. |
+| `base`     | string                   | Strict fallback after prefix match — IRIs starting with `base` emit as `<localname>`.                                         |
+
+Both fields are optional; an empty `context:` block is legal and equivalent to omitting it. The block is named after JSON-LD's `@context` for the prefix-map + base semantic, but the contents use sparqly-internal subkeys.
+
+There are no CLI overrides for these values — `--prefix`, `--prefixes`, and `--base` were removed across `format`, `diff`, and `query`. Display config lives in `context:` or it doesn't live (ADR-0012).
 
 ## `cache:`
 

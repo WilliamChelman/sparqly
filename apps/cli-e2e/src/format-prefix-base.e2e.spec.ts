@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
-import { formatFixture } from './helpers/hash';
 
 describe('sparqly format — config prefixes', () => {
   let dir: string;
@@ -18,11 +17,11 @@ describe('sparqly format — config prefixes', () => {
   });
 
   it('config prefixes win over input-file prefixes; orphan input IRIs go full form', async () => {
-    const configPath = join(dir, 'sparqly.format.yaml');
+    const configPath = join(dir, 'sparqly.config.yaml');
     await writeFile(
       configPath,
       dedent`
-        format:
+        context:
           prefixes:
             ex: "http://override.example/"
       ` + '\n',
@@ -51,11 +50,11 @@ describe('sparqly format — config prefixes', () => {
   });
 
   it('config prefixes apply when input file declares no matching prefix', async () => {
-    const configPath = join(dir, 'sparqly.format.yaml');
+    const configPath = join(dir, 'sparqly.config.yaml');
     await writeFile(
       configPath,
       dedent`
-        format:
+        context:
           prefixes:
             ex: "http://example.org/"
       ` + '\n',
@@ -88,8 +87,8 @@ describe('sparqly format — config base', () => {
   });
 
   it('emits @base from config and shortens matching IRIs to relative form', async () => {
-    const configPath = join(dir, 'sparqly.format.yaml');
-    await writeFile(configPath, 'format:\n  base: "http://example.org/"\n');
+    const configPath = join(dir, 'sparqly.config.yaml');
+    await writeFile(configPath, 'context:\n  base: "http://example.org/"\n');
     await writeFile(
       join(dir, 'data.ttl'),
       '<http://example.org/a> <http://example.org/p> <http://example.org/b> .\n',
@@ -130,8 +129,8 @@ describe('sparqly format — config base', () => {
   });
 
   it('config base wins over the input file @base', async () => {
-    const configPath = join(dir, 'sparqly.format.yaml');
-    await writeFile(configPath, 'format:\n  base: "http://config.example/"\n');
+    const configPath = join(dir, 'sparqly.config.yaml');
+    await writeFile(configPath, 'context:\n  base: "http://config.example/"\n');
     await writeFile(
       join(dir, 'data.ttl'),
       dedent`
@@ -155,11 +154,11 @@ describe('sparqly format — config base', () => {
   });
 
   it('round-trips: parsing the formatted output yields the same triples', async () => {
-    const configPath = join(dir, 'sparqly.format.yaml');
+    const configPath = join(dir, 'sparqly.config.yaml');
     await writeFile(
       configPath,
       dedent`
-        format:
+        context:
           base: "http://example.org/"
           prefixes:
             rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
@@ -196,82 +195,3 @@ describe('sparqly format — config base', () => {
   });
 });
 
-describe('sparqly format — --prefix CLI flag', () => {
-  let dir: string;
-
-  beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'sparqly-format-'));
-  });
-
-  afterEach(async () => {
-    await rm(dir, { recursive: true, force: true });
-  });
-
-  it('CLI --prefix wins over config prefixes for the same name', async () => {
-    const configPath = join(dir, 'sparqly.format.yaml');
-    await writeFile(
-      configPath,
-      dedent`
-        format:
-          prefixes:
-            ex: "http://config.example/"
-      ` + '\n',
-    );
-    await writeFile(
-      join(dir, 'data.ttl'),
-      '<http://cli.example/a> <http://cli.example/p> <http://cli.example/b> .\n',
-    );
-
-    const result = await runCli(
-      [
-        'format',
-        '--config',
-        configPath,
-        '--prefix',
-        'ex=http://cli.example/',
-        'data.ttl',
-      ],
-      { cwd: dir },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('@prefix ex: <http://cli.example/>');
-    expect(result.stdout).toContain('ex:a ex:p ex:b');
-    expect(result.stdout).not.toContain('http://config.example/');
-  });
-
-  it('repeatable --prefix name=<iri> introduces a CURIE for matching IRIs', async () => {
-    const stdin =
-      '<http://other.example/a> <http://other.example/p> <http://other.example/b> .\n';
-
-    const result = await runCli(
-      ['format', '--prefix', 'oth=http://other.example/'],
-      { stdin },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toBe('');
-    expect(result.stdout).toContain('@prefix oth: <http://other.example/>');
-    expect(result.stdout).toContain('oth:a oth:p oth:b');
-    expect(result.stdout).not.toContain('<http://other.example/a>');
-  });
-
-  it('CLI --prefix overrides config and file prefixes (highest precedence)', async () => {
-    const result = await runCli(
-      [
-        'format',
-        '--prefix',
-        'ex=http://override.example/',
-        formatFixture('simple.ttl'),
-      ],
-    );
-
-    expect(result.exitCode).toBe(0);
-    // The CLI prefix replaces ex, but file's IRIs (http://example.org/...)
-    // no longer match it, so they fall back to full <...> form.
-    expect(result.stdout).not.toMatch(
-      /@prefix ex: <http:\/\/example\.org\/>/,
-    );
-    expect(result.stdout).toContain('<http://example.org/a>');
-  });
-});
