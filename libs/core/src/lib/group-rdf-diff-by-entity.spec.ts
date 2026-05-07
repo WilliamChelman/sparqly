@@ -59,12 +59,12 @@ describe('groupRdfDiffByEntity — named-entity anchoring', () => {
     });
 
     expect(hunked.totals).toEqual(diff.totals);
-    expect(hunked.hunks).toHaveLength(1);
-    expect(hunked.hunks[0].anchor).toBe(ex('a'));
+    expect(hunked.changed).toHaveLength(1);
+    expect(hunked.changed[0].anchor).toBe(ex('a'));
     // Two `-` plus two `+` lines.
-    expect(hunked.hunks[0].removed).toBe(2);
-    expect(hunked.hunks[0].added).toBe(2);
-    expect(hunked.hunks[0].lines).toHaveLength(4);
+    expect(hunked.changed[0].removed).toBe(2);
+    expect(hunked.changed[0].added).toBe(2);
+    expect(hunked.changed[0].lines).toHaveLength(4);
   });
 
   it('within a hunk, lines are sorted by (subject-path, predicate); `-` precedes `+` for the same (identity, predicate) cluster', () => {
@@ -81,8 +81,8 @@ describe('groupRdfDiffByEntity — named-entity anchoring', () => {
       right: { store: storeOf(right.join('\n') + '\n') },
     });
 
-    expect(hunked.hunks).toHaveLength(1);
-    const lines = hunked.hunks[0].lines;
+    expect(hunked.changed).toHaveLength(1);
+    const lines = hunked.changed[0].lines;
     expect(lines.map((l) => `${l.side} ${l.predicate} ${l.object}`)).toEqual([
       `- ${ex('p')} <${ex('b1')}>`,
       `+ ${ex('p')} <${ex('b2')}>`,
@@ -112,11 +112,11 @@ describe('groupRdfDiffByEntity — named-entity anchoring', () => {
       right: { store: storeOf(right.join('\n') + '\n') },
     });
 
-    expect(hunked.hunks).toHaveLength(1);
-    expect(hunked.hunks[0].sourceRecords.left).toEqual([
+    expect(hunked.changed).toHaveLength(1);
+    expect(hunked.changed[0].sourceRecords.left).toEqual([
       { file: 'file:///x/a.ttl', line: 7 },
     ]);
-    expect(hunked.hunks[0].sourceRecords.right).toEqual([
+    expect(hunked.changed[0].sourceRecords.right).toEqual([
       { file: 'file:///x/b.ttl', line: 3 },
       { file: 'file:///x/b.ttl', line: 9 },
     ]);
@@ -139,7 +139,7 @@ describe('groupRdfDiffByEntity — named-entity anchoring', () => {
       right: { store: storeOf(rightStoreNquads) },
     });
 
-    expect(hunked.hunks[0].rdfType).toBe('http://www.w3.org/ns/shacl#NodeShape');
+    expect(hunked.changed[0].rdfType).toBe('http://www.w3.org/ns/shacl#NodeShape');
   });
 
   it('produces one hunk per distinct named subject, sorted lex by anchor IRI', () => {
@@ -153,7 +153,7 @@ describe('groupRdfDiffByEntity — named-entity anchoring', () => {
       right: { store: storeOf(right.join('\n') + '\n') },
     });
 
-    expect(hunked.hunks.map((h) => h.anchor)).toEqual([ex('a'), ex('z')]);
+    expect(hunked.changed.map((h) => h.anchor)).toEqual([ex('a'), ex('z')]);
   });
 });
 
@@ -183,8 +183,8 @@ describe('groupRdfDiffByEntity — blank-node absorption into named parent', () 
       right: { store: rightStore },
     });
 
-    expect(hunked.hunks.map((h) => h.anchor)).toEqual([`${EX}Shape`]);
-    const hunk = hunked.hunks[0];
+    expect(hunked.changed.map((h) => h.anchor)).toEqual([`${EX}Shape`]);
+    const hunk = hunked.changed[0];
     expect(hunk.removed).toBe(1);
     expect(hunk.added).toBe(1);
     // The two changed `_:b1 sh:datatype ...` quads land under the named parent.
@@ -216,9 +216,9 @@ describe('groupRdfDiffByEntity — blank-node absorption into named parent', () 
       right: { store: rightStore },
     });
 
-    expect(hunked.hunks.map((h) => h.anchor)).toEqual([`${EX}Shape`]);
-    expect(hunked.hunks[0].removed).toBe(1);
-    expect(hunked.hunks[0].added).toBe(1);
+    expect(hunked.changed.map((h) => h.anchor)).toEqual([`${EX}Shape`]);
+    expect(hunked.changed[0].removed).toBe(1);
+    expect(hunked.changed[0].added).toBe(1);
   });
 
   it('uses sh:path value as identity for cross-side pairing of bnodes hanging off the same parent+predicate', async () => {
@@ -251,8 +251,8 @@ describe('groupRdfDiffByEntity — blank-node absorption into named parent', () 
       right: { store: rightStore },
     });
 
-    expect(hunked.hunks).toHaveLength(1);
-    const hunk = hunked.hunks[0];
+    expect(hunked.changed).toHaveLength(1);
+    const hunk = hunked.changed[0];
     expect(hunk.anchor).toBe(`${EX}Shape`);
     // Lines for the same sh:path identity sort adjacent: `-` precedes `+`.
     const datatypeLines = hunk.lines.filter(
@@ -286,8 +286,8 @@ describe('groupRdfDiffByEntity — blank-node absorption into named parent', () 
       right: { store: rightStore },
     });
 
-    expect(hunked.hunks).toHaveLength(1);
-    const hunk = hunked.hunks[0];
+    expect(hunked.changed).toHaveLength(1);
+    const hunk = hunked.changed[0];
     expect(hunk.anchor).toBe(`${EX}Shape`);
     // The diff has 4 changed quads (the parent sh:property triples flip their
     // bnode object, plus sh:datatype flips). Lines exist for each. The
@@ -299,6 +299,141 @@ describe('groupRdfDiffByEntity — blank-node absorption into named parent', () 
     );
     expect(datatypeLines).toHaveLength(2);
     expect(datatypeLines[0].subjectPath).not.toBe(datatypeLines[1].subjectPath);
+  });
+});
+
+describe('groupRdfDiffByEntity — section bucketing (changed/removed/added)', () => {
+  const SH = 'http://www.w3.org/ns/shacl#';
+  const RDFS = 'http://www.w3.org/2000/01/rdf-schema#';
+  const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
+  const EX = 'http://example.org/';
+
+  it('routes a changed-on-both-sides entity to `changed` and a left-only entity to `removed`', async () => {
+    // Foo exists on both sides with a label flip → changed.
+    // Bar exists only on the left → removed.
+    const leftNquads =
+      `<${EX}Foo> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Foo> <${RDFS}label> "Foo v1" .\n` +
+      `<${EX}Bar> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Bar> <${RDFS}label> "Bar v1" .\n`;
+    const rightNquads =
+      `<${EX}Foo> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Foo> <${RDFS}label> "Foo v2" .\n`;
+
+    const leftStore = storeOf(leftNquads);
+    const rightStore = storeOf(rightNquads);
+    const diff = await diffStores(
+      { store: leftStore },
+      { store: rightStore },
+    );
+
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    expect(hunked.changed.map((h) => h.anchor)).toEqual([`${EX}Foo`]);
+    expect(hunked.changed[0].state).toBe('changed');
+    expect(hunked.removed.map((h) => h.anchor)).toEqual([`${EX}Bar`]);
+    expect(hunked.removed[0].state).toBe('removed');
+    expect(hunked.added).toEqual([]);
+  });
+
+  it('routes a right-only entity to the `added` section with state `added`', async () => {
+    const leftNquads =
+      `<${EX}Foo> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Foo> <${RDFS}label> "Foo v1" .\n`;
+    const rightNquads =
+      `<${EX}Foo> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Foo> <${RDFS}label> "Foo v1" .\n` +
+      `<${EX}New> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}New> <${RDFS}label> "New" .\n`;
+
+    const leftStore = storeOf(leftNquads);
+    const rightStore = storeOf(rightNquads);
+    const diff = await diffStores(
+      { store: leftStore },
+      { store: rightStore },
+    );
+
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    expect(hunked.changed).toEqual([]);
+    expect(hunked.removed).toEqual([]);
+    expect(hunked.added.map((h) => h.anchor)).toEqual([`${EX}New`]);
+    expect(hunked.added[0].state).toBe('added');
+  });
+
+  it('the body of a single-side hunk renders only the triples in the diff (no full entity dump) and counts reflect those', async () => {
+    // Bar is removed entirely on the right. The diff carries every triple about
+    // Bar as `-` lines; the body must contain exactly those (not invent extra
+    // lines, not drop any).
+    const leftNquads =
+      `<${EX}Foo> <${RDFS}label> "Foo v1" .\n` +
+      `<${EX}Bar> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Bar> <${RDFS}label> "Bar v1" .\n` +
+      `<${EX}Bar> <${RDFS}comment> "ext" .\n`;
+    const rightNquads = `<${EX}Foo> <${RDFS}label> "Foo v1" .\n`;
+
+    const leftStore = storeOf(leftNquads);
+    const rightStore = storeOf(rightNquads);
+    const diff = await diffStores(
+      { store: leftStore },
+      { store: rightStore },
+    );
+
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    expect(hunked.removed).toHaveLength(1);
+    const hunk = hunked.removed[0];
+    expect(hunk.anchor).toBe(`${EX}Bar`);
+    expect(hunk.added).toBe(0);
+    // The diff has 3 quads about Bar; all three should appear as `-` lines and
+    // nothing else.
+    expect(hunk.removed).toBe(3);
+    expect(hunk.lines).toHaveLength(3);
+    expect(hunk.lines.every((l) => l.side === '-')).toBe(true);
+  });
+
+  it('within each section, hunks are sorted lex by anchor IRI', async () => {
+    // Three changed entities. Build them in lex-reverse insertion order to
+    // confirm the comparator (not the insertion order) drives output.
+    const leftNquads =
+      `<${EX}c> <${RDFS}label> "c1" .\n` +
+      `<${EX}b> <${RDFS}label> "b1" .\n` +
+      `<${EX}a> <${RDFS}label> "a1" .\n`;
+    const rightNquads =
+      `<${EX}c> <${RDFS}label> "c2" .\n` +
+      `<${EX}b> <${RDFS}label> "b2" .\n` +
+      `<${EX}a> <${RDFS}label> "a2" .\n`;
+
+    const leftStore = storeOf(leftNquads);
+    const rightStore = storeOf(rightNquads);
+    const diff = await diffStores(
+      { store: leftStore },
+      { store: rightStore },
+    );
+
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    expect(hunked.changed.map((h) => h.anchor)).toEqual([
+      `${EX}a`,
+      `${EX}b`,
+      `${EX}c`,
+    ]);
   });
 });
 
@@ -335,10 +470,11 @@ describe('groupRdfDiffByEntity — golden HunkedRdfDiff JSON on a small SHACL-st
 
     expect(JSON.parse(JSON.stringify(hunked))).toEqual({
       totals: { left: 4, right: 4 },
-      hunks: [
+      changed: [
         {
           anchor: `${EX}Foo`,
           rdfType: `${SH}NodeShape`,
+          state: 'changed',
           removed: 1,
           added: 1,
           lines: [
@@ -360,6 +496,8 @@ describe('groupRdfDiffByEntity — golden HunkedRdfDiff JSON on a small SHACL-st
           sourceRecords: { left: [], right: [] },
         },
       ],
+      removed: [],
+      added: [],
     });
   });
 });

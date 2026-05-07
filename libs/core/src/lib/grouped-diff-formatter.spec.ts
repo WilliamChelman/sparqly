@@ -92,6 +92,55 @@ describe('formatGroupedRdfDiff', () => {
     );
   });
 
+  it('emits sections in order changed → removed → added, with `(removed)` and `(added)` markers in single-side headers', async () => {
+    const SH = 'http://www.w3.org/ns/shacl#';
+    const RDFS = 'http://www.w3.org/2000/01/rdf-schema#';
+    const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
+    const EX = 'http://example.org/';
+
+    // Foo: changed (label flip). Bar: removed only on the left. Baz: added
+    // only on the right. Output must list them in section order.
+    const leftNquads =
+      `<${EX}Foo> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Foo> <${RDFS}label> "Foo v1" .\n` +
+      `<${EX}Bar> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Bar> <${RDFS}label> "Bar v1" .\n`;
+    const rightNquads =
+      `<${EX}Foo> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Foo> <${RDFS}label> "Foo v2" .\n` +
+      `<${EX}Baz> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Baz> <${RDFS}label> "Baz v1" .\n`;
+
+    const leftStore = storeOf(leftNquads);
+    const rightStore = storeOf(rightNquads);
+    const diff = await diffStores(
+      { store: leftStore },
+      { store: rightStore },
+    );
+
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    const out = formatGroupedRdfDiff(hunked, {
+      prefixes: {
+        ex: 'http://example.org/',
+        sh: 'http://www.w3.org/ns/shacl#',
+        rdfs: 'http://www.w3.org/2000/01/rdf-schema#',
+      },
+    });
+
+    // changed → removed → added; removed/added carry section state in header.
+    const headerLines = out.split('\n').filter((l) => l.includes('  ['));
+    expect(headerLines).toEqual([
+      'ex:Foo  (sh:NodeShape)  [-1 +1]',
+      'ex:Bar  (sh:NodeShape)  (removed)  [-2 +0]',
+      'ex:Baz  (sh:NodeShape)  (added)  [-0 +2]',
+    ]);
+  });
+
   it('renders rdf:type as a CURIE in the hunk header in parentheses', () => {
     const RDF_TYPE = '<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>';
     const SHAPE = '<http://www.w3.org/ns/shacl#NodeShape>';
