@@ -6,6 +6,7 @@ import { DiffPage } from './diff-page';
 import { DiffResultRenderer } from './diff-result-renderer';
 import { SourcesPicker } from './sources-picker';
 import { SourceSnippet } from './source-snippet';
+import { YasqeEditor } from './yasqe-editor';
 import { SourcesService, type SourceListing } from './sources.service';
 import {
   DiffService,
@@ -38,6 +39,19 @@ class SourceSnippetStub {
 })
 class SourcesPickerStub {
   @Input() label = 'side';
+  @Input() value = '';
+  @Output() valueChange = new EventEmitter<string>();
+}
+
+@Component({
+  selector: 'app-yasqe-editor',
+  standalone: true,
+  template: `<textarea
+    [value]="value"
+    (input)="valueChange.emit($any($event.target).value)"
+  ></textarea>`,
+})
+class YasqeEditorStub {
   @Input() value = '';
   @Output() valueChange = new EventEmitter<string>();
 }
@@ -90,8 +104,8 @@ async function setup(listing: SourceListing, initialUrl = '/diff') {
     ],
   })
     .overrideComponent(DiffPage, {
-      remove: { imports: [SourcesPicker] },
-      add: { imports: [SourcesPickerStub] },
+      remove: { imports: [SourcesPicker, YasqeEditor] },
+      add: { imports: [SourcesPickerStub, YasqeEditorStub] },
     })
     .overrideComponent(DiffResultRenderer, {
       remove: { imports: [SourceSnippet] },

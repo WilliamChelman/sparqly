@@ -8,6 +8,7 @@ import {
 } from 'core';
 import { createServer } from 'server';
 import { configureLogger } from '../logging';
+import { printServeSplash } from './serve-splash';
 import type { FieldDescriptor } from '../runner/field';
 import {
   coercedBooleanSchema,
@@ -122,6 +123,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       verbose: config.verbose === true,
       quiet: config.quiet === true,
     });
+    printServeSplash({ quiet: config.quiet === true });
 
     const port = config.port ?? 3000;
     const mutable = config.mutable === true;
