@@ -1,3 +1,35 @@
+## [0.17.0](https://github.com/WilliamChelman/sparqly/compare/v0.16.0...v0.17.0) (2026-05-07)
+
+### ⚠ BREAKING CHANGES
+
+* **serve:** extend WatcherChain to multi-source registry (#143)
+* **serve:** Registry mode default with EngineMap, /api/sources, /api/sparql/<id> (#141)
+
+### Features
+
+* **config:** shared context block for IRI display (ADR-0012, [#158](https://github.com/WilliamChelman/sparqly/issues/158)) ([34e4b99](https://github.com/WilliamChelman/sparqly/commit/34e4b99fa3d63ef1c94888e619624e2924929876))
+* **diff:** bnode absorption into named parent + sh:path-keyed identity ([#152](https://github.com/WilliamChelman/sparqly/issues/152)) ([4cab202](https://github.com/WilliamChelman/sparqly/commit/4cab202d1f4455543c452924cc5df1a23f058050))
+* **diff:** bucket grouped hunks into changed/removed/added sections ([#153](https://github.com/WilliamChelman/sparqly/issues/153)) ([7b878f2](https://github.com/WilliamChelman/sparqly/commit/7b878f24a5b2a8817bbec6b30aa6e68a8f6693ee))
+* **diff:** groupRdfDiffByEntity MVP + --format=grouped CLI tracer ([#151](https://github.com/WilliamChelman/sparqly/issues/151)) ([1758c57](https://github.com/WilliamChelman/sparqly/commit/1758c57d86ce334de55f915b359fbcff92a98c57))
+* **diff:** multi-parent bnode duplication + orphan synthetic anchor ([#154](https://github.com/WilliamChelman/sparqly/issues/154)) ([50af35f](https://github.com/WilliamChelman/sparqly/commit/50af35f96854bc09c7ac7085c265990211853f69))
+* **diff:** rewrite html composer to render HunkedRdfDiff ([#155](https://github.com/WilliamChelman/sparqly/issues/155)) ([7f7e37a](https://github.com/WilliamChelman/sparqly/commit/7f7e37ab2fa8e39be31afb9b6b88d04206a857ae))
+* **diff:** server kind='grouped' payload + web sections renderer ([576cef0](https://github.com/WilliamChelman/sparqly/commit/576cef0f4e5db6a58db5d925b6e96d7c790bb17a))
+* **serve:** DiffService + POST /api/diff ([#144](https://github.com/WilliamChelman/sparqly/issues/144)) ([4ec410c](https://github.com/WilliamChelman/sparqly/commit/4ec410c1a69e9f7ca2ffdbaf8ea126a7071ff4ed))
+* **serve:** extend WatcherChain to multi-source registry ([#143](https://github.com/WilliamChelman/sparqly/issues/143)) ([b9cff01](https://github.com/WilliamChelman/sparqly/commit/b9cff0199624919b1eb882577682ff75a2207b58))
+* **serve:** mount /api/sources in Single-source mode ([#142](https://github.com/WilliamChelman/sparqly/issues/142)) ([b013a55](https://github.com/WilliamChelman/sparqly/commit/b013a55743bb85c843f99c6471ec90e5cd69d7c8))
+* **serve:** Registry mode default with EngineMap, /api/sources, /api/sparql/<id> ([#141](https://github.com/WilliamChelman/sparqly/issues/141)) ([f507c61](https://github.com/WilliamChelman/sparqly/commit/f507c61e90f465ff4bf3e7f00b7a370d0bef45b1))
+* **serve:** SnippetAllowList + GET /api/source-snippet ([#145](https://github.com/WilliamChelman/sparqly/issues/145)) ([41c6445](https://github.com/WilliamChelman/sparqly/commit/41c6445bf77afca3d68ea2e1eb94c02e4cbf25ee))
+* **web:** bind diff page sources and queries to URL query params ([0b81317](https://github.com/WilliamChelman/sparqly/commit/0b81317bea6f3cc1cf6b6ee55d6fcd60938bbf05))
+* **web:** DiffResultRenderer for graph, tabular, and error modes ([#147](https://github.com/WilliamChelman/sparqly/issues/147)) ([6f37bb9](https://github.com/WilliamChelman/sparqly/commit/6f37bb94abc5124382fdd601aa4fb5f32adb18a6)), closes [#148](https://github.com/WilliamChelman/sparqly/issues/148)
+* **web:** playground SPA fallback + split snippets and overflow-safe diff layout ([e9b7a14](https://github.com/WilliamChelman/sparqly/commit/e9b7a141baa72829277e98e71e006c00a3bb46f4))
+* **web:** prettier header with logo, yasqe editor on diff page, serve splash ([35b7ee4](https://github.com/WilliamChelman/sparqly/commit/35b7ee424d8a6207ac3b76f402cc5f26b1b90f9c))
+* **web:** routing, header nav, and /diff page skeleton ([#146](https://github.com/WilliamChelman/sparqly/issues/146)) ([6bae13a](https://github.com/WilliamChelman/sparqly/commit/6bae13a63eb47759695e74e9081762e71a83af19))
+* **web:** SourceSnippet component with lazy fetch and graceful degrade ([#148](https://github.com/WilliamChelman/sparqly/issues/148)) ([1ff7d76](https://github.com/WilliamChelman/sparqly/commit/1ff7d764dfb60b091528827ceea9947f049b05c7))
+
+### Bug Fixes
+
+* **server:** unblock lint by removing dynamic core import and declaring zod dep ([911c637](https://github.com/WilliamChelman/sparqly/commit/911c63745c0d3c72f63bbd282e23dc665f0ed0be))
+
 ## [0.16.0](https://github.com/WilliamChelman/sparqly/compare/v0.15.0...v0.16.0) (2026-05-06)
 
 ### ⚠ BREAKING CHANGES
