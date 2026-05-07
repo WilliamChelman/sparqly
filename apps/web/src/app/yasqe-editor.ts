@@ -50,7 +50,7 @@ export class YasqeEditor implements AfterViewInit, OnDestroy {
       persistenceId: null,
       requestConfig: { endpoint: '/api/sparql' },
     });
-    if (this.currentValue) this.instance['setValue'](this.currentValue);
+    this.instance['setValue'](this.currentValue);
     this.instance.on('change', () => {
       const v = (this.instance?.['getValue']() as string) ?? '';
       if (v !== this.currentValue) {
