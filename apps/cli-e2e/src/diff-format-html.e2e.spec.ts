@@ -341,9 +341,10 @@ describe('sparqly diff -f html', () => {
     expect(result.stdout).toContain('(source file unavailable)');
     expect(result.stdout).not.toMatch(/<pre[^>]*class="snippet"/);
     // Hunks still render their statements — degradation is per-snippet, not
-    // per-hunk.
-    expect(result.stdout).toContain('http://example.org/c');
-    expect(result.stdout).toContain('http://example.org/e');
+    // per-hunk. The composer shortens IRIs against discovered prefixes, so
+    // assert against the CURIE form.
+    expect(result.stdout).toContain('ex:c');
+    expect(result.stdout).toContain('ex:e');
   });
 
   it('rejects --context above 100', async () => {

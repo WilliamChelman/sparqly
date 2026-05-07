@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { blockSchemaFromFields, defaultsFromFields } from '../runner/field';
 import {
-  collectSnippetKeysForDiff,
+  collectSnippetKeysForHunkedDiff,
   detectTabularDispatch,
   diffSpec,
   inferDiffFormatFromOut,
@@ -486,82 +486,80 @@ describe('resolveDiffSide — selection precedence', () => {
   });
 });
 
-describe('collectSnippetKeysForDiff — scope to changed hunks only', () => {
-  // Auto-injected `annotateSource` populates the per-side records map for
-  // every asserted triple, not just the changed ones. The HTML composer only
-  // ever renders snippets for `diff.added` / `diff.removed`, so the snippet
-  // fetcher must scope to those — otherwise large unchanged stores produce
-  // tens of thousands of redundant `createReadStream` calls and exhaust the
-  // heap. (regression: ERA shapes ~16k-line ttl OOMing the v8 heap)
-  it('returns only keys whose canonical statement is in diff.added (right) or diff.removed (left), ignoring unchanged-triple records', () => {
-    const sourceRecords = {
-      left: new Map([
-        ['<a> <p> <b> .', [{ file: 'file:///left.ttl', line: 10 }]],
-        ['<a> <p> <gone> .', [{ file: 'file:///left.ttl', line: 20 }]],
-        ['<a> <p> <c> .', [{ file: 'file:///left.ttl', line: 30 }]],
-      ]),
-      right: new Map([
-        ['<a> <p> <b> .', [{ file: 'file:///right.ttl', line: 10 }]],
-        ['<a> <p> <new> .', [{ file: 'file:///right.ttl', line: 25 }]],
-        ['<a> <p> <c> .', [{ file: 'file:///right.ttl', line: 30 }]],
-      ]),
+describe('collectSnippetKeysForHunkedDiff — scope to changed hunks only', () => {
+  // Hunks built by `groupRdfDiffByEntity` only carry sourceRecords gathered
+  // from changed lines, so unchanged-triple records can never reach this
+  // function. This protects against a previous regression where iterating
+  // the full per-side records map (auto-`annotateSource`) walked every triple
+  // in 16k-line .ttl inputs and OOM'd v8.
+  function hunk(
+    over: Partial<{
+      left: { file: string; line?: number }[];
+      right: { file: string; line?: number }[];
+    }> = {},
+  ) {
+    return {
+      anchor: 'http://example.org/X',
+      state: 'changed' as const,
+      removed: 0,
+      added: 0,
+      lines: [],
+      sourceRecords: {
+        left: over.left ?? [],
+        right: over.right ?? [],
+      },
     };
-    const diff = {
-      added: ['<a> <p> <new> .'],
-      removed: ['<a> <p> <gone> .'],
-    };
+  }
 
-    const keys = collectSnippetKeysForDiff(diff, sourceRecords);
+  it('returns the union of unique (file, line) keys across both sides of every hunk', () => {
+    const keys = collectSnippetKeysForHunkedDiff({
+      changed: [
+        hunk({
+          left: [{ file: 'file:///l.ttl', line: 20 }],
+          right: [{ file: 'file:///r.ttl', line: 25 }],
+        }),
+      ],
+      removed: [],
+      added: [],
+    });
 
     expect([...keys.keys()].sort()).toEqual([
-      'file:///left.ttl:20',
-      'file:///right.ttl:25',
+      'file:///l.ttl:20',
+      'file:///r.ttl:25',
     ]);
   });
 
   it('dedupes identical (file, line) pairs across multiple records on the same hunk', () => {
-    const sourceRecords = {
-      left: new Map(),
-      right: new Map([
-        [
-          '<a> <p> <new> .',
-          [
+    const keys = collectSnippetKeysForHunkedDiff({
+      changed: [],
+      removed: [],
+      added: [
+        hunk({
+          right: [
             { file: 'file:///r.ttl', line: 7 },
             { file: 'file:///r.ttl', line: 7 },
           ],
-        ],
-      ]),
-    };
-    const keys = collectSnippetKeysForDiff(
-      { added: ['<a> <p> <new> .'], removed: [] },
-      sourceRecords,
-    );
+        }),
+      ],
+    });
     expect([...keys.keys()]).toEqual(['file:///r.ttl:7']);
   });
 
   it('skips records that do not carry a line', () => {
-    const sourceRecords = {
-      left: new Map([
-        ['<a> <p> <gone> .', [{ file: 'file:///l.ttl' }]],
-      ]),
-      right: new Map(),
-    };
-    const keys = collectSnippetKeysForDiff(
-      { added: [], removed: ['<a> <p> <gone> .'] },
-      sourceRecords,
-    );
+    const keys = collectSnippetKeysForHunkedDiff({
+      changed: [],
+      removed: [hunk({ left: [{ file: 'file:///l.ttl' }] })],
+      added: [],
+    });
     expect(keys.size).toBe(0);
   });
 
-  it('returns an empty map when the diff is empty, even with thousands of records present', () => {
-    const left = new Map<string, { file: string; line: number }[]>();
-    for (let i = 0; i < 5000; i++) {
-      left.set(`stmt${i}`, [{ file: 'file:///l.ttl', line: i }]);
-    }
-    const keys = collectSnippetKeysForDiff(
-      { added: [], removed: [] },
-      { left, right: new Map() },
-    );
+  it('returns an empty map when there are no hunks', () => {
+    const keys = collectSnippetKeysForHunkedDiff({
+      changed: [],
+      removed: [],
+      added: [],
+    });
     expect(keys.size).toBe(0);
   });
 });
