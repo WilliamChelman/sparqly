@@ -36,7 +36,7 @@ describe('sparqly format — config prefixes', () => {
     );
 
     const result = await runCli(
-      ['format', '--config', configPath, 'data.ttl'],
+      ['format', '--config', configPath, 'data.ttl', '--quiet'],
       { cwd: dir },
     );
 
@@ -96,7 +96,7 @@ describe('sparqly format — config base', () => {
     );
 
     const result = await runCli(
-      ['format', '--config', configPath, 'data.ttl'],
+      ['format', '--config', configPath, 'data.ttl', '--quiet'],
       { cwd: dir },
     );
 
@@ -118,7 +118,7 @@ describe('sparqly format — config base', () => {
       ` + '\n',
     );
 
-    const result = await runCli(['format', 'data.ttl'], { cwd: dir });
+    const result = await runCli(['format', 'data.ttl', '--quiet'], { cwd: dir });
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');

@@ -42,6 +42,7 @@ describe('sparqly query — SPARQL endpoint source', () => {
       endpoint.url,
       '-q',
       'SELECT ?s WHERE { ?s ?p ?o } ORDER BY ?s',
+      '--quiet',
     ]);
 
     expect(result.exitCode).toBe(0);

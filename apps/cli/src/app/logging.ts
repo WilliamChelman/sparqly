@@ -12,7 +12,7 @@ export function configureLogger(options: LoggerOptions): void {
   }
   const levels: LogLevel[] = options.verbose
     ? ['error', 'warn', 'log', 'debug', 'verbose']
-    : ['error', 'warn'];
+    : ['error', 'warn', 'log'];
   Logger.overrideLogger(new StderrLogger(levels));
 }
 

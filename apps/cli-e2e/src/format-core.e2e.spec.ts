@@ -5,7 +5,7 @@ import { formatFixture } from './helpers/hash';
 
 describe('sparqly format — core happy path', () => {
   it('formats a glob and prints to stdout, exit 0', async () => {
-    const result = await runCli(['format', formatFixture('simple.ttl')]);
+    const result = await runCli(['format', formatFixture('simple.ttl'), '--quiet']);
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
@@ -21,7 +21,7 @@ describe('sparqly format — core happy path', () => {
       ex:a ex:p ex:b .
     ` + '\n';
 
-    const result = await runCli(['format'], { stdin: turtle });
+    const result = await runCli(['format', '--quiet'], { stdin: turtle });
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');

@@ -105,6 +105,35 @@ describe('sparqly diff -f grouped', () => {
     ]);
   });
 
+  it('surfaces a bnode tree with no named-entity parent on either side as an `(orphan)`-marked hunk anchored on the canonical bnode label', async () => {
+    const leftPath = join(scratch, 'left.ttl');
+    const rightPath = join(scratch, 'right.ttl');
+    // An RDF list head with no named subject pointing at it: an orphan tree.
+    // Removed entirely on the right.
+    await writeFile(
+      leftPath,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+        _:head rdf:first ex:a ;
+          rdf:rest rdf:nil .
+      ` + '\n',
+    );
+    await writeFile(rightPath, '');
+
+    const result = await runCli(
+      ['diff', '--quiet', '--format=grouped', leftPath, rightPath],
+      { cwd: scratch },
+    );
+
+    expect(result.exitCode).toBe(1);
+    const lines = diffBodyLines(result.stdout);
+    // The header carries the `(orphan)` marker plus `(removed)` because the
+    // tree is left-only. The anchor is the orphan root's canonical bnode
+    // label, rendered with the `_:` prefix rather than as a CURIE.
+    expect(lines[0]).toMatch(/^_:[^\s]+ {2}\(orphan\) {2}\(removed\) {2}\[-\d+ \+0\]$/);
+  });
+
   it('absorbs an edited PropertyShape blank node into its parent NodeShape, pairing -/+ by sh:path identity with a [sh:path …] / predicate notation', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');

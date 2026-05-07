@@ -18,7 +18,11 @@ export interface HunkedRdfDiff {
 }
 
 export interface Hunk {
-  /** Full IRI of the named entity that owns this hunk. */
+  /**
+   * Full IRI of the named entity that owns this hunk, OR — for an orphan
+   * bnode-tree hunk — the orphan root's canonical bnode label rendered with
+   * the `_:` prefix.
+   */
   anchor: string;
   /** Full IRI of `rdf:type` for the anchor, when present on either side. */
   rdfType?: string;
@@ -28,6 +32,12 @@ export interface Hunk {
    * section the hunk lives in.
    */
   state: 'changed' | 'removed' | 'added';
+  /**
+   * True for synthetic hunks anchored on a bnode tree with no named-entity
+   * parent on either side. The renderer surfaces an `(orphan)` marker so the
+   * hunk is visible rather than silently absorbed.
+   */
+  orphan?: boolean;
   /** Count of `-` lines in this hunk. */
   removed: number;
   /** Count of `+` lines in this hunk. */
@@ -103,7 +113,7 @@ export function groupRdfDiffByEntity(
   const parser = new Parser({ format: 'application/n-quads', blankNodePrefix: '' });
 
   const hunks = new Map<string, Hunk>();
-  const seenSourceRecords = new Map<string, Set<string>>(); // anchor -> set of "side|file|line"
+  const seenSourceRecords = new Map<string, Set<string>>(); // hunkKey -> set of "side|file|line"
 
   // Invert canonical→raw bnode labels per side so we can locate a changed
   // canonical bnode subject in the side's raw Store and walk up its parent
@@ -112,8 +122,8 @@ export function groupRdfDiffByEntity(
   const inverseLeft = invertCanonicalIdMap(diff.canonicalIdMap?.left);
   const inverseRight = invertCanonicalIdMap(diff.canonicalIdMap?.right);
 
-  function ensureHunk(anchor: string): Hunk {
-    let h = hunks.get(anchor);
+  function ensureHunk(key: string, anchor: string, orphan: boolean): Hunk {
+    let h = hunks.get(key);
     if (h === undefined) {
       h = {
         anchor,
@@ -123,8 +133,9 @@ export function groupRdfDiffByEntity(
         lines: [],
         sourceRecords: { left: [], right: [] },
       };
-      hunks.set(anchor, h);
-      seenSourceRecords.set(anchor, new Set());
+      if (orphan) h.orphan = true;
+      hunks.set(key, h);
+      seenSourceRecords.set(key, new Set());
     }
     return h;
   }
@@ -139,28 +150,33 @@ export function groupRdfDiffByEntity(
     const q = quads[0];
     const sideStore = side === '-' ? left.store : right.store;
     const sideInverse = side === '-' ? inverseLeft : inverseRight;
-    const resolved = resolveAnchor(q, sideStore, sideInverse);
-    if (resolved === undefined) return;
-    const { anchor, bnodePath } = resolved;
-    const hunk = ensureHunk(anchor);
-    hunk.lines.push({
-      side,
-      subjectPath: buildSubjectPath(anchor, bnodePath, q.subject),
-      predicate: q.predicate.value,
-      object: serializeObject(q.object),
-      nquad,
-      ...(bnodePath.length > 0 ? { bnodePath } : {}),
-    });
-    if (side === '-') hunk.removed += 1;
-    else hunk.added += 1;
-    if (sourceRecords !== undefined && sourceRecords.length > 0) {
-      const seen = seenSourceRecords.get(anchor) as Set<string>;
-      const bucket = side === '-' ? hunk.sourceRecords.left : hunk.sourceRecords.right;
-      for (const rec of sourceRecords) {
-        const key = `${side}|${rec.file}|${rec.line ?? ''}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        bucket.push(rec);
+    const sideForward = side === '-' ? diff.canonicalIdMap?.left : diff.canonicalIdMap?.right;
+    const resolved = resolveAnchors(q, sideStore, sideInverse, sideForward);
+    if (resolved.length === 0) return;
+    for (const { anchor, bnodePath, orphan } of resolved) {
+      // Orphan hunks are scoped per side so left and right orphan trees that
+      // happen to share a canonical bnode label do not merge into one hunk.
+      const hunkKey = orphan ? `orphan|${side}|${anchor}` : anchor;
+      const hunk = ensureHunk(hunkKey, anchor, orphan);
+      hunk.lines.push({
+        side,
+        subjectPath: buildSubjectPath(anchor, bnodePath, q.subject),
+        predicate: q.predicate.value,
+        object: serializeObject(q.object),
+        nquad,
+        ...(bnodePath.length > 0 ? { bnodePath } : {}),
+      });
+      if (side === '-') hunk.removed += 1;
+      else hunk.added += 1;
+      if (sourceRecords !== undefined && sourceRecords.length > 0) {
+        const seen = seenSourceRecords.get(hunkKey) as Set<string>;
+        const bucket = side === '-' ? hunk.sourceRecords.left : hunk.sourceRecords.right;
+        for (const rec of sourceRecords) {
+          const key = `${side}|${rec.file}|${rec.line ?? ''}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          bucket.push(rec);
+        }
       }
     }
   }
@@ -178,6 +194,21 @@ export function groupRdfDiffByEntity(
 
   for (const hunk of hunks.values()) {
     hunk.lines.sort(compareHunkLines);
+    if (hunk.orphan === true) {
+      // Orphan hunks have no named anchor in either store — derive section
+      // and state from which sides contributed lines.
+      if (hunk.removed > 0 && hunk.added === 0) {
+        hunk.state = 'removed';
+        removedSection.push(hunk);
+      } else if (hunk.added > 0 && hunk.removed === 0) {
+        hunk.state = 'added';
+        addedSection.push(hunk);
+      } else {
+        hunk.state = 'changed';
+        changed.push(hunk);
+      }
+      continue;
+    }
     const rdfType = lookupRdfType(hunk.anchor, right.store, left.store);
     if (rdfType !== undefined) hunk.rdfType = rdfType;
     const onLeft = anchorPresentInStore(hunk.anchor, left.store);
@@ -245,72 +276,173 @@ interface ResolvedAnchor {
   anchor: string;
   /** Empty when subject is the named anchor itself. */
   bnodePath: BnodePathStep[];
+  /** True when this anchor was synthesized from an orphan bnode tree. */
+  orphan: boolean;
 }
 
-function resolveAnchor(
+function resolveAnchors(
   q: Quad,
   store: Store,
   inverseCanonicalIdMap: Map<string, string> | undefined,
-): ResolvedAnchor | undefined {
+  forwardCanonicalIdMap: Map<string, string> | undefined,
+): ResolvedAnchor[] {
   if (q.subject.termType === 'NamedNode') {
-    return { anchor: q.subject.value, bnodePath: [] };
+    return [{ anchor: q.subject.value, bnodePath: [], orphan: false }];
   }
-  if (q.subject.termType !== 'BlankNode') return undefined;
-  if (inverseCanonicalIdMap === undefined) return undefined;
+  if (q.subject.termType !== 'BlankNode') return [];
+  if (inverseCanonicalIdMap === undefined) return [];
   // The diff exposes canonical bnode labels (e.g. `c14n0`); walk the parent
   // chain in the side's raw Store, where bnodes carry their original parser
   // labels. Map canonical → raw via the inverted canonicalIdMap.
   const canonicalLabel = q.subject.value;
   const rawLabel = inverseCanonicalIdMap.get(canonicalLabel);
-  if (rawLabel === undefined) return undefined;
-  return walkToNamedAncestor(rawLabel, store);
+  if (rawLabel === undefined) return [];
+  const named = findAllNamedAncestors(rawLabel, store);
+  if (named.length > 0) return named;
+  // No named ancestor — synthesize an orphan anchor on the bnode tree's root
+  // canonical label so the changes surface rather than getting silently
+  // dropped.
+  const orphan = synthesizeOrphanAnchor(rawLabel, store, forwardCanonicalIdMap);
+  return orphan === undefined ? [] : [orphan];
 }
 
-function walkToNamedAncestor(
+function findAllNamedAncestors(
   startRawLabel: string,
   store: Store,
-): ResolvedAnchor | undefined {
-  // Climb from the bnode toward a named ancestor, recording each hop's
-  // (parentPredicate, identity) so child-bnode lines can be rendered with a
-  // path notation and so cross-side pairing is keyed on stable identity
-  // (sh:path value when present, canonical bnode label otherwise).
-  const visited = new Set<string>();
-  // Reverse path: hops are appended deepest-first; we reverse before return.
-  const reversedHops: BnodePathStep[] = [];
-  let currentRaw = startRawLabel;
-  while (true) {
-    if (visited.has(currentRaw)) return undefined;
-    visited.add(currentRaw);
+): ResolvedAnchor[] {
+  // BFS upward through the bnode parent chain, collecting every distinct
+  // named ancestor reachable from the start bnode. For the multi-parent case
+  // (a bnode reachable from two or more named parents) we emit one anchor per
+  // named ancestor; the caller duplicates the line under each.
+  const results = new Map<string, ResolvedAnchor>();
+  // Each frame: (currentRawLabel, reversedHops-so-far, set-of-visited-on-this-path).
+  // We track visited per-path so independent paths upward can share bnodes
+  // without one short-circuiting the other.
+  const queue: Array<{
+    current: string;
+    reversedHops: BnodePathStep[];
+    visited: Set<string>;
+  }> = [{ current: startRawLabel, reversedHops: [], visited: new Set() }];
+  while (queue.length > 0) {
+    const frame = queue.shift() as (typeof queue)[number];
+    const { current, reversedHops, visited } = frame;
+    if (visited.has(current)) continue;
+    const nextVisited = new Set(visited);
+    nextVisited.add(current);
     const incoming = store.getQuads(
       null,
       null,
-      DataFactory.blankNode(currentRaw),
+      DataFactory.blankNode(current),
       null,
     );
-    if (incoming.length === 0) return undefined;
-    // Prefer named-node parents; otherwise pick a deterministic bnode parent
-    // (lex by raw label) and recurse.
-    const namedParent = incoming.find(
-      (qq) => qq.subject.termType === 'NamedNode',
-    );
-    const step = bnodeStepFor(currentRaw, store);
-    if (namedParent !== undefined) {
-      reversedHops.push({ ...step, parentPredicate: namedParent.predicate.value });
+    if (incoming.length === 0) continue;
+    const step = bnodeStepFor(current, store);
+    // Sort incoming for determinism: named parents lex by IRI, then bnode
+    // parents lex by raw label.
+    const namedParents = incoming
+      .filter((qq) => qq.subject.termType === 'NamedNode')
+      .sort((a, b) =>
+        a.subject.value < b.subject.value
+          ? -1
+          : a.subject.value > b.subject.value
+            ? 1
+            : a.predicate.value < b.predicate.value
+              ? -1
+              : a.predicate.value > b.predicate.value
+                ? 1
+                : 0,
+      );
+    for (const np of namedParents) {
+      const hops = [
+        ...reversedHops,
+        { ...step, parentPredicate: np.predicate.value },
+      ];
       const path: BnodePathStep[] = [];
-      for (let i = reversedHops.length - 1; i >= 0; i--) path.push(reversedHops[i]);
-      return { anchor: namedParent.subject.value, bnodePath: path };
+      for (let i = hops.length - 1; i >= 0; i--) path.push(hops[i]);
+      const anchor = np.subject.value;
+      // Dedup: if multiple paths lead to the same named ancestor, keep the
+      // first (deterministic by BFS order + sort).
+      if (!results.has(anchor)) {
+        results.set(anchor, { anchor, bnodePath: path, orphan: false });
+      }
+    }
+    const bnodeParents = incoming
+      .filter((qq) => qq.subject.termType === 'BlankNode')
+      .sort((a, b) =>
+        a.subject.value < b.subject.value ? -1 : a.subject.value > b.subject.value ? 1 : 0,
+      );
+    for (const bp of bnodeParents) {
+      queue.push({
+        current: bp.subject.value,
+        reversedHops: [
+          ...reversedHops,
+          { ...step, parentPredicate: bp.predicate.value },
+        ],
+        visited: nextVisited,
+      });
+    }
+  }
+  // Sort by anchor IRI for deterministic emission order.
+  return Array.from(results.values()).sort((a, b) =>
+    a.anchor < b.anchor ? -1 : a.anchor > b.anchor ? 1 : 0,
+  );
+}
+
+function synthesizeOrphanAnchor(
+  startRawLabel: string,
+  store: Store,
+  forwardCanonicalIdMap: Map<string, string> | undefined,
+): ResolvedAnchor | undefined {
+  // Walk up through bnode parents to find the orphan tree's root. For cycles
+  // or shared-ancestor topologies we pick the lex-smallest reachable root
+  // canonical label, so the anchor is stable regardless of which leaf bnode
+  // started the walk.
+  const visited = new Set<string>();
+  const stack: string[] = [startRawLabel];
+  const roots = new Set<string>();
+  while (stack.length > 0) {
+    const current = stack.pop() as string;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    const incoming = store.getQuads(
+      null,
+      null,
+      DataFactory.blankNode(current),
+      null,
+    );
+    if (incoming.length === 0) {
+      roots.add(current);
+      continue;
     }
     const bnodeParents = incoming.filter(
       (qq) => qq.subject.termType === 'BlankNode',
     );
-    if (bnodeParents.length === 0) return undefined;
-    bnodeParents.sort((a, b) =>
-      a.subject.value < b.subject.value ? -1 : a.subject.value > b.subject.value ? 1 : 0,
-    );
-    const next = bnodeParents[0];
-    reversedHops.push({ ...step, parentPredicate: next.predicate.value });
-    currentRaw = next.subject.value;
+    if (bnodeParents.length === 0) {
+      // Only non-bnode parents remain after filtering, but findAllNamedAncestors
+      // already failed — treat the current node as a root for cycle robustness.
+      roots.add(current);
+      continue;
+    }
+    let advanced = false;
+    for (const bp of bnodeParents) {
+      if (!visited.has(bp.subject.value)) {
+        stack.push(bp.subject.value);
+        advanced = true;
+      }
+    }
+    if (!advanced) roots.add(current);
   }
+  if (roots.size === 0) return undefined;
+  // Translate raw labels to canonical labels so the anchor is stable across
+  // the side's parser-assigned blank-node names. Pick the lex-smallest
+  // canonical label.
+  const canonicals: string[] = [];
+  for (const raw of roots) {
+    const canonical = forwardCanonicalIdMap?.get(raw) ?? raw;
+    canonicals.push(canonical);
+  }
+  canonicals.sort();
+  return { anchor: `_:${canonicals[0]}`, bnodePath: [], orphan: true };
 }
 
 function bnodeStepFor(

@@ -78,7 +78,7 @@ describe('sparqly diff — core properties', () => {
     ]);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toBe('# left=3 right=4 +1 -0\n');
+    expect(result.stderr).toContain('# left=3 right=4 +1 -0\n');
   });
 
   it('--quiet suppresses the summary line', async () => {
