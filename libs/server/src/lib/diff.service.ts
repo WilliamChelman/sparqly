@@ -3,15 +3,15 @@ import {
   detectSelectShape,
   diffStores,
   extractAnnotationPredicates,
+  groupRdfDiffByEntity,
   resolveAnonymousSelectBindings,
   resolveAnonymousView,
   resolveSource,
   tabularDiff,
   withAutoSourceAnnotation,
+  type HunkedRdfDiff,
   type ParsedSource,
-  type RdfDiffResult,
   type SelectShapeReport,
-  type SourceRecord,
   type SourceSpecInput,
   type TabularDiffResult,
   type TabularRow,
@@ -26,14 +26,9 @@ export interface DiffRequest {
   skipAutoSourceAnnotation?: boolean;
 }
 
-export interface GraphDiffResponse {
-  kind: 'graph';
-  diff: RdfDiffResult;
-  sourceRecords: {
-    left: Record<string, SourceRecord[]>;
-    right: Record<string, SourceRecord[]>;
-  };
-  totals: { left: number; right: number };
+export interface GroupedDiffResponse {
+  kind: 'grouped';
+  hunked: HunkedRdfDiff;
 }
 
 export interface TabularDiffResponse {
@@ -49,7 +44,7 @@ export interface DiffErrorResponse {
 }
 
 export type DiffResponse =
-  | GraphDiffResponse
+  | GroupedDiffResponse
   | TabularDiffResponse
   | DiffErrorResponse;
 
@@ -132,7 +127,7 @@ function packageSideErrors(
 }
 
 type TabularDispatch =
-  | { kind: 'graph' }
+  | { kind: 'graph-mode' }
   | { kind: 'tabular'; left: SelectShapeReport; right: SelectShapeReport }
   | { kind: 'mixed'; message: string };
 
@@ -140,17 +135,17 @@ function detectTabularDispatchSafe(
   leftQuery: string | undefined,
   rightQuery: string | undefined,
 ): TabularDispatch {
-  if (leftQuery === undefined || rightQuery === undefined) return { kind: 'graph' };
+  if (leftQuery === undefined || rightQuery === undefined) return { kind: 'graph-mode' };
   let left: SelectShapeReport;
   let right: SelectShapeReport;
   try {
     left = detectSelectShape(leftQuery);
     right = detectSelectShape(rightQuery);
   } catch {
-    return { kind: 'graph' };
+    return { kind: 'graph-mode' };
   }
   if (left.shape === 'triples' && right.shape === 'triples') {
-    return { kind: 'graph' };
+    return { kind: 'graph-mode' };
   }
   if (left.shape !== right.shape) {
     const tuplesSide = left.shape === 'tuples' ? 'left' : 'right';
@@ -202,15 +197,13 @@ async function runGraph(args: RunGraphArgs): Promise<DiffResponse> {
     },
   );
 
-  return {
-    kind: 'graph',
-    diff: { added: result.added, removed: result.removed, totals: result.totals },
-    sourceRecords: {
-      left: mapToRecord(result.sourceRecords.left),
-      right: mapToRecord(result.sourceRecords.right),
-    },
-    totals: result.totals,
-  };
+  const hunked = groupRdfDiffByEntity({
+    diff: result,
+    left: { store: left.store },
+    right: { store: right.store },
+  });
+
+  return { kind: 'grouped', hunked };
 }
 
 type GraphSideResolved =
@@ -416,10 +409,3 @@ async function resolveTabularSafe(
   }
 }
 
-function mapToRecord(
-  m: Map<string, SourceRecord[]>,
-): Record<string, SourceRecord[]> {
-  const out: Record<string, SourceRecord[]> = {};
-  for (const [k, v] of m) out[k] = v;
-  return out;
-}

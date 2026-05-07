@@ -38,10 +38,13 @@ describe('DiffService', () => {
       rightQuery: 'q2',
     });
     const response: DiffResponse = {
-      kind: 'graph',
-      diff: { added: [], removed: [], totals: { left: 0, right: 0 } },
-      sourceRecords: { left: {}, right: {} },
-      totals: { left: 0, right: 0 },
+      kind: 'grouped',
+      hunked: {
+        changed: [],
+        removed: [],
+        added: [],
+        totals: { left: 0, right: 0 },
+      },
     };
     req.flush(response);
     expect(await promise).toEqual(response);

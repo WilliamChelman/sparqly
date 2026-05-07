@@ -171,16 +171,31 @@ describe('DiffPage', () => {
       rightQuery: 'SELECT * { ?s ?p ?o }',
     });
     diffStub.calls[0].responses.next({
-      kind: 'graph',
-      diff: {
-        added: [
-          '<http://example.org/a> <http://example.org/p> <http://example.org/b> .',
-        ],
+      kind: 'grouped',
+      hunked: {
+        changed: [],
         removed: [],
+        added: [
+          {
+            anchor: 'http://example.org/a',
+            state: 'added',
+            removed: 0,
+            added: 1,
+            lines: [
+              {
+                side: '+',
+                subjectPath: 'http://example.org/a',
+                predicate: 'http://example.org/p',
+                object: '<http://example.org/b>',
+                nquad:
+                  '<http://example.org/a> <http://example.org/p> <http://example.org/b> .',
+              },
+            ],
+            sourceRecords: { left: [], right: [] },
+          },
+        ],
         totals: { left: 0, right: 1 },
       },
-      sourceRecords: { left: {}, right: {} },
-      totals: { left: 0, right: 1 },
     });
     fixture.detectChanges();
     await fixture.whenStable();
@@ -268,20 +283,34 @@ describe('DiffPage', () => {
     (root.querySelector('button[data-testid=run-diff]') as HTMLButtonElement).click();
     fixture.detectChanges();
     diffStub.calls[0].responses.next({
-      kind: 'graph',
-      diff: {
-        added: ['<http://example.org/a> <http://example.org/p> <http://example.org/b> .'],
+      kind: 'grouped',
+      hunked: {
+        changed: [],
         removed: [],
+        added: [
+          {
+            anchor: 'http://example.org/a',
+            state: 'added',
+            removed: 0,
+            added: 1,
+            lines: [
+              {
+                side: '+',
+                subjectPath: 'http://example.org/a',
+                predicate: 'http://example.org/p',
+                object: '<http://example.org/b>',
+                nquad:
+                  '<http://example.org/a> <http://example.org/p> <http://example.org/b> .',
+              },
+            ],
+            sourceRecords: {
+              left: [],
+              right: [{ file: 'file:///tmp/right.ttl', line: 4 }],
+            },
+          },
+        ],
         totals: { left: 0, right: 1 },
       },
-      sourceRecords: {
-        left: {},
-        right: {
-          ['<http://example.org/a> <http://example.org/p> <http://example.org/b> .']:
-            [{ file: 'file:///tmp/right.ttl', line: 4 }],
-        },
-      },
-      totals: { left: 0, right: 1 },
     });
     fixture.detectChanges();
     await fixture.whenStable();

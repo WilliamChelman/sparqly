@@ -70,24 +70,40 @@ describe('POST /api/diff', () => {
     expect(resp.status).toBe(400);
   });
 
-  it('returns kind=graph with diff/sourceRecords/totals on a glob×glob pair', async () => {
+  it('returns kind=grouped carrying a HunkedRdfDiff (changed/removed/added hunks + totals) on a glob×glob pair', async () => {
     const resp = await postJson({ left: '@alpha', right: '@beta' });
     expect(resp.status).toBe(200);
     const json = (await resp.json()) as {
       kind: string;
-      diff: { added: string[]; removed: string[]; totals: unknown };
-      sourceRecords: { left: Record<string, unknown>; right: Record<string, unknown> };
-      totals: { left: number; right: number };
+      hunked: {
+        changed: Array<{
+          anchor: string;
+          state: string;
+          removed: number;
+          added: number;
+          lines: Array<{ side: string }>;
+          sourceRecords: {
+            left: Array<{ file: string; line?: number }>;
+            right: Array<{ file: string; line?: number }>;
+          };
+        }>;
+        removed: unknown[];
+        added: unknown[];
+        totals: { left: number; right: number };
+      };
     };
-    expect(json.kind).toBe('graph');
-    expect(json.totals).toEqual({ left: 2, right: 2 });
-    expect(json.diff.added).toEqual([
-      '<http://example.org/a> <http://example.org/p> <http://example.org/d> .',
-    ]);
-    expect(json.diff.removed).toEqual([
-      '<http://example.org/a> <http://example.org/p> <http://example.org/b> .',
-    ]);
-    expect(Object.keys(json.sourceRecords.left).length).toBeGreaterThan(0);
+    expect(json.kind).toBe('grouped');
+    expect(json.hunked.totals).toEqual({ left: 2, right: 2 });
+    expect(json.hunked.changed).toHaveLength(1);
+    expect(json.hunked.removed).toHaveLength(0);
+    expect(json.hunked.added).toHaveLength(0);
+    const hunk = json.hunked.changed[0];
+    expect(hunk.anchor).toBe('http://example.org/a');
+    expect(hunk.state).toBe('changed');
+    expect(hunk.removed).toBe(1);
+    expect(hunk.added).toBe(1);
+    expect(hunk.sourceRecords.left.length).toBeGreaterThan(0);
+    expect(hunk.sourceRecords.right.length).toBeGreaterThan(0);
   });
 
   it('returns kind=tabular with bag-difference rows when both sides project tuples', async () => {
@@ -135,7 +151,7 @@ describe('POST /api/diff', () => {
     expect(json.errors.top).toMatch(/mixed.*shape|shape mismatch/i);
   });
 
-  it('skipAutoSourceAnnotation in body suppresses source records on glob targets', async () => {
+  it('skipAutoSourceAnnotation in body leaves per-hunk source records empty on glob targets', async () => {
     const resp = await postJson({
       left: '@alpha',
       right: '@beta',
@@ -144,11 +160,29 @@ describe('POST /api/diff', () => {
     expect(resp.status).toBe(200);
     const json = (await resp.json()) as {
       kind: string;
-      sourceRecords: { left: Record<string, unknown>; right: Record<string, unknown> };
+      hunked: {
+        changed: Array<{
+          sourceRecords: { left: unknown[]; right: unknown[] };
+        }>;
+        removed: Array<{
+          sourceRecords: { left: unknown[]; right: unknown[] };
+        }>;
+        added: Array<{
+          sourceRecords: { left: unknown[]; right: unknown[] };
+        }>;
+      };
     };
-    expect(json.kind).toBe('graph');
-    expect(Object.keys(json.sourceRecords.left)).toHaveLength(0);
-    expect(Object.keys(json.sourceRecords.right)).toHaveLength(0);
+    expect(json.kind).toBe('grouped');
+    for (const section of [
+      json.hunked.changed,
+      json.hunked.removed,
+      json.hunked.added,
+    ]) {
+      for (const h of section) {
+        expect(h.sourceRecords.left).toEqual([]);
+        expect(h.sourceRecords.right).toEqual([]);
+      }
+    }
   });
 });
 
