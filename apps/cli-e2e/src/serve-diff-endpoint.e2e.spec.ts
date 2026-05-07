@@ -43,7 +43,7 @@ describe('sparqly serve — POST /api/diff (issue #144)', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it('returns kind=graph with totals + sourceRecords on a glob×glob pair', async () => {
+  it('returns kind=grouped with a HunkedRdfDiff (changed hunk + totals + sourceRecords) on a glob×glob pair', async () => {
     const resp = await fetch(`${handle!.baseUrl}/api/diff`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -52,20 +52,41 @@ describe('sparqly serve — POST /api/diff (issue #144)', () => {
     expect(resp.status).toBe(200);
     const json = (await resp.json()) as {
       kind: string;
-      diff: { added: string[]; removed: string[] };
-      totals: { left: number; right: number };
-      sourceRecords: { left: Record<string, unknown>; right: Record<string, unknown> };
+      hunked: {
+        changed: Array<{
+          anchor: string;
+          state: string;
+          removed: number;
+          added: number;
+          lines: Array<{ side: string; nquad: string }>;
+          sourceRecords: {
+            left: Array<{ file: string; line?: number }>;
+            right: Array<{ file: string; line?: number }>;
+          };
+        }>;
+        removed: unknown[];
+        added: unknown[];
+        totals: { left: number; right: number };
+      };
     };
-    expect(json.kind).toBe('graph');
-    expect(json.totals).toEqual({ left: 2, right: 2 });
-    expect(json.diff.added).toEqual([
-      '<http://example.org/a> <http://example.org/p> <http://example.org/d> .',
-    ]);
-    expect(json.diff.removed).toEqual([
+    expect(json.kind).toBe('grouped');
+    expect(json.hunked.totals).toEqual({ left: 2, right: 2 });
+    expect(json.hunked.changed).toHaveLength(1);
+    expect(json.hunked.removed).toHaveLength(0);
+    expect(json.hunked.added).toHaveLength(0);
+    const hunk = json.hunked.changed[0];
+    expect(hunk.anchor).toBe('http://example.org/a');
+    expect(hunk.state).toBe('changed');
+    expect(hunk.removed).toBe(1);
+    expect(hunk.added).toBe(1);
+    expect(hunk.lines.filter((l) => l.side === '-').map((l) => l.nquad)).toEqual([
       '<http://example.org/a> <http://example.org/p> <http://example.org/b> .',
     ]);
-    expect(Object.keys(json.sourceRecords.left).length).toBeGreaterThan(0);
-    expect(Object.keys(json.sourceRecords.right).length).toBeGreaterThan(0);
+    expect(hunk.lines.filter((l) => l.side === '+').map((l) => l.nquad)).toEqual([
+      '<http://example.org/a> <http://example.org/p> <http://example.org/d> .',
+    ]);
+    expect(hunk.sourceRecords.left.length).toBeGreaterThan(0);
+    expect(hunk.sourceRecords.right.length).toBeGreaterThan(0);
   });
 
   it('returns kind=tabular with bag-difference rows when both sides project tuples', async () => {
