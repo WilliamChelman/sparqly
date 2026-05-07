@@ -18,12 +18,13 @@ import {
   type DiffResponse,
 } from './diff.service';
 import { DiffResultRenderer } from './diff-result-renderer';
+import { YasqeEditor } from './yasqe-editor';
 
 @Component({
   selector: 'app-diff-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SourcesPicker, DiffResultRenderer],
+  imports: [SourcesPicker, DiffResultRenderer, YasqeEditor],
   template: `
     @if (sources() === null) {
       <main class="p-4 text-sm text-slate-500">loading…</main>
@@ -50,12 +51,12 @@ import { DiffResultRenderer } from './diff-result-renderer';
               [value]="leftId()"
               (valueChange)="leftId.set($event)"
             />
-            <textarea
-              class="min-h-32 rounded border border-slate-300 p-2 font-mono text-sm"
-              placeholder="optional SPARQL scoping query (left)"
+            <app-yasqe-editor
+              data-testid="editor-left"
               [value]="leftQuery()"
-              (input)="leftQuery.set($any($event.target).value)"
-            ></textarea>
+              (valueChange)="leftQuery.set($event)"
+            />
+
             @if (errors()?.left) {
               <p
                 data-testid="error-left"
@@ -71,12 +72,12 @@ import { DiffResultRenderer } from './diff-result-renderer';
               [value]="rightId()"
               (valueChange)="rightId.set($event)"
             />
-            <textarea
-              class="min-h-32 rounded border border-slate-300 p-2 font-mono text-sm"
-              placeholder="optional SPARQL scoping query (right)"
+            <app-yasqe-editor
+              data-testid="editor-right"
               [value]="rightQuery()"
-              (input)="rightQuery.set($any($event.target).value)"
-            ></textarea>
+              (valueChange)="rightQuery.set($event)"
+            />
+
             @if (errors()?.right) {
               <p
                 data-testid="error-right"
