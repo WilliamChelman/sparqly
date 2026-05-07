@@ -16,6 +16,7 @@ import {
 export interface SingleSourceModuleOptions {
   mode: 'single';
   engine: QueryEngine;
+  listing: ReadonlyArray<SourceListingEntry>;
   config: SparqlServerConfig;
 }
 
@@ -38,8 +39,11 @@ export class ServerModule {
       { provide: SPARQL_CONFIG, useValue: options.config },
     ];
     if (options.mode === 'single') {
-      controllers.push(SparqlController);
-      providers.push({ provide: SPARQL_ENGINE, useValue: options.engine });
+      controllers.push(SparqlController, SourcesController);
+      providers.push(
+        { provide: SPARQL_ENGINE, useValue: options.engine },
+        { provide: SPARQL_REGISTRY_LISTING, useValue: options.listing },
+      );
     } else {
       controllers.push(SourcesController, RegistrySparqlController);
       providers.push(

@@ -94,6 +94,7 @@ export async function createServer(
     ServerModule.forRoot({
       mode: 'single',
       engine,
+      listing: buildSingleListing(target),
       config: { mutable: options.mutable === true },
     }),
     { abortOnError: false },
@@ -196,6 +197,18 @@ async function startRegistryMode(
       await engineMap.close();
     },
   };
+}
+
+function buildSingleListing(target: ParsedSource): SourceListingEntry[] {
+  if (target.kind === 'reference') return [];
+  const id = target.id ?? 'source';
+  const entry: SourceListingEntry = {
+    id,
+    kind: target.kind,
+    label: id,
+    default: true,
+  };
+  return [entry];
 }
 
 function buildListing(
