@@ -1,8 +1,11 @@
 ---
 status: accepted
+amended-by: 0011
 ---
 
 # Commands target a single source; cross-source composition uses SPARQL `SERVICE`
+
+> **Status:** amended by [ADR-0011](0011-webapp-registry-aware-surface-for-serve.md) — `serve` now defaults to **Registry mode** (every non-`reference` source exposed simultaneously); the single-target contract below is preserved for `serve` only when `--source`/positional is given (**Single-source mode**). `query`, `hash`, `diff` are unchanged.
 
 The `query`, `serve`, `hash`, and `diff` commands run against exactly one **target source** chosen from the **source registry**. The CLI accepts a single `--source`/positional value (an `@id` ref or an inline glob/URL); configs declare a multi-entry registry and may mark one entry `default: true`. Multi-source merging at the command boundary is removed: the previous "load every registry entry into one merged Store" path is replaced by target-only resolution, and `loadQuerySources(inputs[])` is split into `selectTarget(registry, target) → ParsedSource` and `resolveSource(parsed) → QuerySources`. Cross-source composition is delegated to `SERVICE` clauses authored in a view query, optionally hosted on an **empty source** when the upstream cannot federate.
 

@@ -27,6 +27,7 @@
 - serve
   - trigger data dump (ui and/or ipc)
   - download full query result
+  - per-source `mutable` (today registry-wide on `serve`; once Yasgui is registry-aware, individual `@id`s may want independent read-only/mutable policies — e.g. one editable scratch source alongside read-only declared globs)
 - diff
   - prefixes
   - rdf:list compression
