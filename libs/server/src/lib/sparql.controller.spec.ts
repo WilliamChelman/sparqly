@@ -226,6 +226,21 @@ describe('createServer with webRootDir', () => {
     expect(resp.status).toBe(200);
     expect(resp.headers.get('content-type')).toMatch(/sparql-results\+json/);
   });
+
+  it('falls back to index.html for SPA deep links (e.g. /diff)', async () => {
+    const resp = await fetch(`${rootUrl}/diff`);
+
+    expect(resp.status).toBe(200);
+    expect(resp.headers.get('content-type')).toMatch(/text\/html/);
+    const body = await resp.text();
+    expect(body).toContain('yasgui-marker');
+  });
+
+  it('still 404s missing static assets instead of serving the SPA shell', async () => {
+    const resp = await fetch(`${rootUrl}/missing.js`);
+
+    expect(resp.status).toBe(404);
+  });
 });
 
 describe('createServer with --watch', () => {

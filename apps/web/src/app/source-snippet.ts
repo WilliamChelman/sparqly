@@ -29,13 +29,13 @@ export type SnippetReadResult = SnippetPayload | SnippetUnavailable;
   template: `
     @if (snippet(); as s) {
       <pre
-        class="rounded bg-slate-50 p-2 font-mono text-[11px] leading-snug text-slate-800"
+        class="overflow-x-auto rounded bg-slate-50 p-2 font-mono text-[11px] leading-snug text-slate-800"
       >@for (l of s.lines; track $index) {<span
           data-testid="snippet-line"
           [attr.data-line-number]="s.startLine + $index"
           [attr.data-focal]="s.startLine + $index === s.focalLine ? 'true' : null"
           [class.bg-yellow-100]="s.startLine + $index === s.focalLine"
-          class="block whitespace-pre"
+          class="block w-max min-w-full whitespace-pre"
           ><span class="mr-2 select-none text-slate-400">{{
           s.startLine + $index
         }}</span>{{ l }}</span>}</pre>
