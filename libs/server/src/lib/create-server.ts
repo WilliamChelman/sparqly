@@ -1,6 +1,8 @@
 import 'reflect-metadata';
+import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { sep } from 'node:path';
+import { join, sep } from 'node:path';
 import * as chokidar from 'chokidar';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -116,7 +118,7 @@ export async function createServer(
   app.use(sparqlQueryBodyParser);
 
   if (options.webRootDir) {
-    app.useStaticAssets(options.webRootDir, { index: ['index.html'] });
+    mountWebPlayground(app, options.webRootDir);
   }
 
   await app.listen(options.port);
@@ -193,7 +195,7 @@ async function startRegistryMode(
   app.use(sparqlQueryBodyParser);
 
   if (options.webRootDir) {
-    app.useStaticAssets(options.webRootDir, { index: ['index.html'] });
+    mountWebPlayground(app, options.webRootDir);
   }
 
   await app.listen(options.port);
@@ -713,6 +715,58 @@ function unionFiles(
     for (const f of files) out.push(f);
   }
   return out;
+}
+
+function mountWebPlayground(
+  app: NestExpressApplication,
+  webRootDir: string,
+): void {
+  app.useStaticAssets(webRootDir, { index: ['index.html'] });
+  const indexPath = join(webRootDir, 'index.html');
+  app.use((req: IncomingMessage, res: ServerResponse, next: Next) => {
+    const method = req.method ?? 'GET';
+    if (method !== 'GET' && method !== 'HEAD') {
+      next();
+      return;
+    }
+    const url = req.url ?? '/';
+    const path = url.split('?', 1)[0];
+    if (path.startsWith('/api/') || path === '/api') {
+      next();
+      return;
+    }
+    // Static-assets middleware already handled real files. Anything still
+    // unresolved with a file extension is a missing asset — let it 404
+    // rather than silently masking it with the SPA shell.
+    const lastSegment = path.slice(path.lastIndexOf('/') + 1);
+    if (lastSegment.includes('.')) {
+      next();
+      return;
+    }
+    const accept = (req.headers['accept'] ?? '').toString();
+    if (accept && !accept.includes('text/html') && !accept.includes('*/*')) {
+      next();
+      return;
+    }
+    void (async () => {
+      try {
+        const info = await stat(indexPath);
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Content-Length', String(info.size));
+        res.setHeader('Cache-Control', 'no-cache');
+        if (method === 'HEAD') {
+          res.end();
+          return;
+        }
+        const stream = createReadStream(indexPath);
+        stream.on('error', next);
+        stream.pipe(res);
+      } catch (err) {
+        next(err);
+      }
+    })();
+  });
 }
 
 function portFromUrl(url: string): number | undefined {

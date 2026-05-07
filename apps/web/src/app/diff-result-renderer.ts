@@ -23,6 +23,7 @@ interface DedupedRecord {
   file: string;
   line: number;
   anchorId: string;
+  side: 'left' | 'right';
 }
 
 interface LineCluster {
@@ -38,6 +39,8 @@ interface RenderedHunk {
   stateLabel: string | null;
   clusters: LineCluster[];
   records: DedupedRecord[];
+  leftRecords: DedupedRecord[];
+  rightRecords: DedupedRecord[];
   overflow: boolean;
   overflowLabel: string;
   chips: ReadonlyArray<RenderedChip>;
@@ -135,7 +138,7 @@ const OVERFLOW_LINE_THRESHOLD = 20;
           class="my-2 border-l-2 border-slate-300 pl-2"
         >
           <header data-testid="hunk-header" class="flex flex-col gap-1">
-            <div data-testid="hunk-title" class="font-mono text-xs font-semibold">
+            <div data-testid="hunk-title" class="break-all font-mono text-xs font-semibold">
               {{ rh.anchorDisplay }}@if (rh.rdfTypeDisplay) {  ({{ rh.rdfTypeDisplay }}) }@if (rh.hunk.orphan) {  (orphan) }@if (rh.stateLabel) {  ({{ rh.stateLabel }}) }  {{ rh.countsLabel }}
             </div>
             @if (rh.chips.length > 0) {
@@ -163,18 +166,49 @@ const OVERFLOW_LINE_THRESHOLD = 20;
             <ng-container *ngTemplateOutlet="bodyTpl; context: { $implicit: rh }" />
           }
           @if (rh.records.length > 0) {
-            <div data-testid="hunk-snippets" class="mt-1 flex flex-col gap-1">
-              @for (rec of rh.records; track rec.anchorId) {
+            <div data-testid="hunk-snippets" class="mt-1 flex flex-col gap-3">
+              @if (rh.leftRecords.length > 0) {
                 <div
-                  [attr.id]="rec.anchorId"
-                  [attr.data-testid]="'hunk-snippet'"
-                  [attr.data-anchor-id]="rec.anchorId"
+                  data-testid="hunk-snippets-left"
+                  class="flex flex-col gap-1 rounded border border-red-200 bg-red-50/40 p-2"
                 >
-                  <app-source-snippet
-                    [file]="rec.file"
-                    [line]="rec.line"
-                    [context]="context()"
-                  />
+                  <div class="font-mono text-[11px] font-semibold uppercase tracking-wide text-red-700">left</div>
+                  @for (rec of rh.leftRecords; track rec.anchorId) {
+                    <div
+                      [attr.id]="rec.anchorId"
+                      [attr.data-testid]="'hunk-snippet'"
+                      [attr.data-anchor-id]="rec.anchorId"
+                      [attr.data-side]="'left'"
+                    >
+                      <app-source-snippet
+                        [file]="rec.file"
+                        [line]="rec.line"
+                        [context]="context()"
+                      />
+                    </div>
+                  }
+                </div>
+              }
+              @if (rh.rightRecords.length > 0) {
+                <div
+                  data-testid="hunk-snippets-right"
+                  class="flex flex-col gap-1 rounded border border-green-200 bg-green-50/40 p-2"
+                >
+                  <div class="font-mono text-[11px] font-semibold uppercase tracking-wide text-green-700">right</div>
+                  @for (rec of rh.rightRecords; track rec.anchorId) {
+                    <div
+                      [attr.id]="rec.anchorId"
+                      [attr.data-testid]="'hunk-snippet'"
+                      [attr.data-anchor-id]="rec.anchorId"
+                      [attr.data-side]="'right'"
+                    >
+                      <app-source-snippet
+                        [file]="rec.file"
+                        [line]="rec.line"
+                        [context]="context()"
+                      />
+                    </div>
+                  }
                 </div>
               }
             </div>
@@ -183,7 +217,7 @@ const OVERFLOW_LINE_THRESHOLD = 20;
       </ng-template>
 
       <ng-template #bodyTpl let-rh>
-        <div data-testid="hunk-body" class="mt-1 font-mono text-xs">
+        <div data-testid="hunk-body" class="mt-1 overflow-x-auto font-mono text-xs">
           @for (cluster of rh.clusters; track $index) {
             @if (cluster.pair) {
               <div data-testid="hunk-pair" class="border-l border-slate-300 pl-1">
@@ -206,12 +240,12 @@ const OVERFLOW_LINE_THRESHOLD = 20;
         @if (line.side === '-') {
           <span
             data-testid="removed-line"
-            class="block whitespace-pre rounded bg-red-50 px-1"
+            class="block w-max min-w-full whitespace-pre rounded bg-red-50 px-1"
           >- {{ formatLineBody(line, rh) }}</span>
         } @else {
           <span
             data-testid="added-line"
-            class="block whitespace-pre rounded bg-green-50 px-1"
+            class="block w-max min-w-full whitespace-pre rounded bg-green-50 px-1"
           >+ {{ formatLineBody(line, rh) }}</span>
         }
       </ng-template>
@@ -353,6 +387,8 @@ export class DiffResultRenderer {
     const countsLabel = `[-${hunk.removed} +${hunk.added}]`;
     const clusters = clusterLinesIntoPairs(hunk.lines);
     const records = dedupeRecordsByFileLine(hunk);
+    const leftRecords = records.filter((r) => r.side === 'left');
+    const rightRecords = records.filter((r) => r.side === 'right');
     const overflow = hunk.lines.length > OVERFLOW_LINE_THRESHOLD;
     const overflowLabel = `Show ${hunk.lines.length} more`;
     const chips = renderChips(hunk);
@@ -364,6 +400,8 @@ export class DiffResultRenderer {
       stateLabel,
       clusters,
       records,
+      leftRecords,
+      rightRecords,
       overflow,
       overflowLabel,
       chips,
@@ -390,7 +428,11 @@ function sumLines(r: GroupedDiffResponse, side: '-' | '+'): number {
 function dedupeRecordsByFileLine(hunk: Hunk): DedupedRecord[] {
   const seen = new Set<string>();
   const out: DedupedRecord[] = [];
-  for (const r of [...hunk.sourceRecords.left, ...hunk.sourceRecords.right]) {
+  const sided: ReadonlyArray<readonly [SourceRecord, 'left' | 'right']> = [
+    ...hunk.sourceRecords.left.map((r) => [r, 'left'] as const),
+    ...hunk.sourceRecords.right.map((r) => [r, 'right'] as const),
+  ];
+  for (const [r, side] of sided) {
     if (r.line === undefined) continue;
     const key = `${r.file}:${r.line}`;
     if (seen.has(key)) continue;
@@ -399,6 +441,7 @@ function dedupeRecordsByFileLine(hunk: Hunk): DedupedRecord[] {
       file: r.file,
       line: r.line,
       anchorId: anchorIdFor(r.file, r.line),
+      side,
     });
   }
   return out;

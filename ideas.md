@@ -40,3 +40,4 @@
 - diff using templting library instead of "manual" html
 - https://diffs.com/
 - service queries using source ids
+- direct access to localhost:3000 fails (SPA redirection)
