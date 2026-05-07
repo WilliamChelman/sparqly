@@ -31,7 +31,7 @@ async function makeRegistryDirs(): Promise<SidePaths> {
   return { dir, alphaTtl, betaTtl };
 }
 
-describe('DiffService — graph mode', () => {
+describe('DiffService — grouped mode', () => {
   let paths: SidePaths;
   let svc: DiffService;
 
@@ -48,49 +48,60 @@ describe('DiffService — graph mode', () => {
     await rm(paths.dir, { recursive: true, force: true });
   });
 
-  it('returns kind=graph with added/removed sets and totals when both sides are triples-shape', async () => {
+  it('returns kind=grouped carrying a HunkedRdfDiff with section totals when both sides are triples-shape', async () => {
     const out = await svc.runDiff({ left: '@alpha', right: '@beta' });
 
-    expect(out.kind).toBe('graph');
-    if (out.kind !== 'graph') return;
-    expect(out.totals).toEqual({ left: 2, right: 2 });
-    expect(out.diff.added).toEqual([
-      '<http://example.org/a> <http://example.org/p> <http://example.org/d> .',
-    ]);
-    expect(out.diff.removed).toEqual([
-      '<http://example.org/a> <http://example.org/p> <http://example.org/b> .',
-    ]);
+    expect(out.kind).toBe('grouped');
+    if (out.kind !== 'grouped') return;
+    expect(out.hunked.totals).toEqual({ left: 2, right: 2 });
+    // Both sides share the named anchor http://example.org/a so the only
+    // hunk lives in the `changed` section with one removed and one added line.
+    expect(out.hunked.changed).toHaveLength(1);
+    expect(out.hunked.removed).toHaveLength(0);
+    expect(out.hunked.added).toHaveLength(0);
+    const hunk = out.hunked.changed[0];
+    expect(hunk.anchor).toBe('http://example.org/a');
+    expect(hunk.state).toBe('changed');
+    expect(hunk.removed).toBe(1);
+    expect(hunk.added).toBe(1);
+    const sides = hunk.lines.map((l) => l.side).sort();
+    expect(sides).toEqual(['+', '-']);
   });
 
-  it('attaches source records by default on glob targets (auto source annotation)', async () => {
+  it('attaches per-hunk source records by default on glob targets (auto source annotation)', async () => {
     const out = await svc.runDiff({ left: '@alpha', right: '@beta' });
 
-    expect(out.kind).toBe('graph');
-    if (out.kind !== 'graph') return;
-    const removedKey =
-      '<http://example.org/a> <http://example.org/p> <http://example.org/b> .';
-    const addedKey =
-      '<http://example.org/a> <http://example.org/p> <http://example.org/d> .';
-    expect(out.sourceRecords.left[removedKey]).toBeDefined();
-    expect(out.sourceRecords.left[removedKey][0].file).toMatch(/alpha\.ttl$/);
-    expect(out.sourceRecords.right[addedKey]).toBeDefined();
-    expect(out.sourceRecords.right[addedKey][0].file).toMatch(/beta\.ttl$/);
+    expect(out.kind).toBe('grouped');
+    if (out.kind !== 'grouped') return;
+    const hunk = out.hunked.changed[0];
+    expect(hunk.sourceRecords.left.length).toBeGreaterThan(0);
+    expect(hunk.sourceRecords.left[0].file).toMatch(/alpha\.ttl$/);
+    expect(hunk.sourceRecords.right.length).toBeGreaterThan(0);
+    expect(hunk.sourceRecords.right[0].file).toMatch(/beta\.ttl$/);
   });
 
-  it('skipAutoSourceAnnotation suppresses the implicit annotation injection on glob targets', async () => {
+  it('skipAutoSourceAnnotation leaves per-hunk source records empty on glob targets', async () => {
     const out = await svc.runDiff({
       left: '@alpha',
       right: '@beta',
       skipAutoSourceAnnotation: true,
     });
 
-    expect(out.kind).toBe('graph');
-    if (out.kind !== 'graph') return;
-    expect(Object.keys(out.sourceRecords.left)).toHaveLength(0);
-    expect(Object.keys(out.sourceRecords.right)).toHaveLength(0);
+    expect(out.kind).toBe('grouped');
+    if (out.kind !== 'grouped') return;
+    for (const section of [
+      out.hunked.changed,
+      out.hunked.removed,
+      out.hunked.added,
+    ]) {
+      for (const hunk of section) {
+        expect(hunk.sourceRecords.left).toEqual([]);
+        expect(hunk.sourceRecords.right).toEqual([]);
+      }
+    }
   });
 
-  it('honours per-side scoping queries (anonymous view) on the graph path', async () => {
+  it('honours per-side scoping queries (anonymous view) on the grouped path', async () => {
     const onlyP =
       'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:p ?o } WHERE { ?s ex:p ?o }';
     const out = await svc.runDiff({
@@ -100,15 +111,11 @@ describe('DiffService — graph mode', () => {
       rightQuery: onlyP,
     });
 
-    expect(out.kind).toBe('graph');
-    if (out.kind !== 'graph') return;
-    expect(out.totals).toEqual({ left: 2, right: 2 });
-    expect(out.diff.added).toEqual([
-      '<http://example.org/a> <http://example.org/p> <http://example.org/d> .',
-    ]);
-    expect(out.diff.removed).toEqual([
-      '<http://example.org/a> <http://example.org/p> <http://example.org/b> .',
-    ]);
+    expect(out.kind).toBe('grouped');
+    if (out.kind !== 'grouped') return;
+    expect(out.hunked.totals).toEqual({ left: 2, right: 2 });
+    expect(out.hunked.changed).toHaveLength(1);
+    expect(out.hunked.changed[0].anchor).toBe('http://example.org/a');
   });
 });
 

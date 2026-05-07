@@ -1,13 +1,17 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
   computed,
   input,
 } from '@angular/core';
-import { DEFAULT_PREFIXES, shortenNQuadLine } from 'common';
+import { bestPrefixEntryFor, DEFAULT_PREFIXES, shortenNQuadLine } from 'common';
 import type {
+  BnodePathStep,
   DiffResponse,
-  GraphDiffResponse,
+  GroupedDiffResponse,
+  Hunk,
+  HunkLine,
   SourceRecord,
   TabularDiffEntry,
   TabularDiffResponse,
@@ -15,10 +19,42 @@ import type {
 } from './diff.service';
 import { SourceSnippet } from './source-snippet';
 
+interface DedupedRecord {
+  file: string;
+  line: number;
+  anchorId: string;
+}
+
+interface LineCluster {
+  pair: boolean;
+  lines: HunkLine[];
+}
+
+interface RenderedHunk {
+  hunk: Hunk;
+  anchorDisplay: string;
+  rdfTypeDisplay: string | null;
+  countsLabel: string;
+  stateLabel: string | null;
+  clusters: LineCluster[];
+  records: DedupedRecord[];
+  overflow: boolean;
+  overflowLabel: string;
+  chips: ReadonlyArray<RenderedChip>;
+}
+
+interface RenderedChip {
+  side: 'left' | 'right';
+  text: string;
+  anchorId: string;
+}
+
+const OVERFLOW_LINE_THRESHOLD = 20;
+
 @Component({
   selector: 'app-diff-result-renderer',
   standalone: true,
-  imports: [SourceSnippet],
+  imports: [SourceSnippet, NgTemplateOutlet],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (totalsLine(); as line) {
@@ -61,57 +97,124 @@ import { SourceSnippet } from './source-snippet';
         </tbody>
       </table>
     }
-    @if (graphView(); as g) {
-      <section class="grid grid-cols-2 gap-4">
-        <div>
-          <h2 class="text-sm font-semibold text-slate-700">removed</h2>
-          <ul class="font-mono text-xs">
-            @for (line of g.diff.removed; track $index) {
-              <li class="flex flex-col gap-1">
-                <span
-                  data-testid="removed-line"
-                  class="whitespace-pre rounded bg-red-50 px-1"
-                >
-                  {{ shorten(line) }}
-                </span>
-                @for (rec of recordsFor(g, 'left', line); track $index) {
-                  @if (rec.line !== undefined) {
-                    <app-source-snippet
-                      [file]="rec.file"
-                      [line]="rec.line"
-                      [context]="context()"
-                    />
-                  }
-                }
-              </li>
-            }
-          </ul>
-        </div>
-        <div>
-          <h2 class="text-sm font-semibold text-slate-700">added</h2>
-          <ul class="font-mono text-xs">
-            @for (line of g.diff.added; track $index) {
-              <li class="flex flex-col gap-1">
-                <span
-                  data-testid="added-line"
-                  class="whitespace-pre rounded bg-green-50 px-1"
-                >
-                  {{ shorten(line) }}
-                </span>
-                @for (rec of recordsFor(g, 'right', line); track $index) {
-                  @if (rec.line !== undefined) {
-                    <app-source-snippet
-                      [file]="rec.file"
-                      [line]="rec.line"
-                      [context]="context()"
-                    />
-                  }
-                }
-              </li>
-            }
-          </ul>
-        </div>
+    @if (groupedView(); as g) {
+      <section data-testid="section-changed">
+        <h2 class="text-sm font-semibold text-slate-700">Changed</h2>
+        @if (changedHunks().length === 0) {
+          <p data-testid="section-empty-changed" class="text-xs italic text-slate-500">(none)</p>
+        }
+        @for (rh of changedHunks(); track rh.hunk.anchor) {
+          <ng-container *ngTemplateOutlet="hunkTpl; context: { $implicit: rh, section: 'changed' }" />
+        }
       </section>
+      <section data-testid="section-removed">
+        <h2 class="text-sm font-semibold text-slate-700">Removed</h2>
+        @if (removedHunks().length === 0) {
+          <p data-testid="section-empty-removed" class="text-xs italic text-slate-500">(none)</p>
+        }
+        @for (rh of removedHunks(); track rh.hunk.anchor) {
+          <ng-container *ngTemplateOutlet="hunkTpl; context: { $implicit: rh, section: 'removed' }" />
+        }
+      </section>
+      <section data-testid="section-added">
+        <h2 class="text-sm font-semibold text-slate-700">Added</h2>
+        @if (addedHunks().length === 0) {
+          <p data-testid="section-empty-added" class="text-xs italic text-slate-500">(none)</p>
+        }
+        @for (rh of addedHunks(); track rh.hunk.anchor) {
+          <ng-container *ngTemplateOutlet="hunkTpl; context: { $implicit: rh, section: 'added' }" />
+        }
+      </section>
+
+      <ng-template #hunkTpl let-rh let-section="section">
+        <article
+          data-testid="hunk"
+          [attr.data-state]="rh.hunk.state"
+          [attr.data-section]="section"
+          [attr.data-orphan]="rh.hunk.orphan ? 'true' : null"
+          class="my-2 border-l-2 border-slate-300 pl-2"
+        >
+          <header data-testid="hunk-header" class="flex flex-col gap-1">
+            <div data-testid="hunk-title" class="font-mono text-xs font-semibold">
+              {{ rh.anchorDisplay }}@if (rh.rdfTypeDisplay) {  ({{ rh.rdfTypeDisplay }}) }@if (rh.hunk.orphan) {  (orphan) }@if (rh.stateLabel) {  ({{ rh.stateLabel }}) }  {{ rh.countsLabel }}
+            </div>
+            @if (rh.chips.length > 0) {
+              <div data-testid="hunk-chips" class="flex flex-wrap gap-1 font-mono text-[11px]">
+                @for (chip of rh.chips; track $index) {
+                  <a
+                    [attr.data-testid]="'hunk-chip-' + chip.side"
+                    [attr.href]="'#' + chip.anchorId"
+                    [class.bg-red-50]="chip.side === 'left'"
+                    [class.bg-green-50]="chip.side === 'right'"
+                    [class.border-red-200]="chip.side === 'left'"
+                    [class.border-green-200]="chip.side === 'right'"
+                    class="rounded border px-1"
+                  >{{ chip.text }}</a>
+                }
+              </div>
+            }
+          </header>
+          @if (rh.overflow) {
+            <details data-testid="hunk-overflow" class="mt-1">
+              <summary class="cursor-pointer text-xs text-slate-600">{{ rh.overflowLabel }}</summary>
+              <ng-container *ngTemplateOutlet="bodyTpl; context: { $implicit: rh }" />
+            </details>
+          } @else {
+            <ng-container *ngTemplateOutlet="bodyTpl; context: { $implicit: rh }" />
+          }
+          @if (rh.records.length > 0) {
+            <div data-testid="hunk-snippets" class="mt-1 flex flex-col gap-1">
+              @for (rec of rh.records; track rec.anchorId) {
+                <div
+                  [attr.id]="rec.anchorId"
+                  [attr.data-testid]="'hunk-snippet'"
+                  [attr.data-anchor-id]="rec.anchorId"
+                >
+                  <app-source-snippet
+                    [file]="rec.file"
+                    [line]="rec.line"
+                    [context]="context()"
+                  />
+                </div>
+              }
+            </div>
+          }
+        </article>
+      </ng-template>
+
+      <ng-template #bodyTpl let-rh>
+        <div data-testid="hunk-body" class="mt-1 font-mono text-xs">
+          @for (cluster of rh.clusters; track $index) {
+            @if (cluster.pair) {
+              <div data-testid="hunk-pair" class="border-l border-slate-300 pl-1">
+                @for (line of cluster.lines; track $index) {
+                  <ng-container
+                    *ngTemplateOutlet="lineTpl; context: { $implicit: line, rh: rh }"
+                  />
+                }
+              </div>
+            } @else {
+              <ng-container
+                *ngTemplateOutlet="lineTpl; context: { $implicit: cluster.lines[0], rh: rh }"
+              />
+            }
+          }
+        </div>
+      </ng-template>
+
+      <ng-template #lineTpl let-line let-rh="rh">
+        @if (line.side === '-') {
+          <span
+            data-testid="removed-line"
+            class="block whitespace-pre rounded bg-red-50 px-1"
+          >- {{ formatLineBody(line, rh) }}</span>
+        } @else {
+          <span
+            data-testid="added-line"
+            class="block whitespace-pre rounded bg-green-50 px-1"
+          >+ {{ formatLineBody(line, rh) }}</span>
+        }
+      </ng-template>
     }
     @if (result().kind === 'error') {
       @let errs = errorView();
@@ -153,9 +256,9 @@ export class DiffResultRenderer {
     return r.kind === 'error' ? r.errors : null;
   });
 
-  readonly graphView = computed<GraphDiffResponse | null>(() => {
+  readonly groupedView = computed<GroupedDiffResponse | null>(() => {
     const r = this.result();
-    return r.kind === 'graph' ? r : null;
+    return r.kind === 'grouped' ? r : null;
   });
 
   readonly tabularView = computed<TabularDiffResponse | null>(() => {
@@ -163,10 +266,28 @@ export class DiffResultRenderer {
     return r.kind === 'tabular' ? r : null;
   });
 
+  readonly changedHunks = computed<RenderedHunk[]>(() => {
+    const g = this.groupedView();
+    return g === null ? [] : g.hunked.changed.map((h) => this.renderHunk(h));
+  });
+
+  readonly removedHunks = computed<RenderedHunk[]>(() => {
+    const g = this.groupedView();
+    return g === null ? [] : g.hunked.removed.map((h) => this.renderHunk(h));
+  });
+
+  readonly addedHunks = computed<RenderedHunk[]>(() => {
+    const g = this.groupedView();
+    return g === null ? [] : g.hunked.added.map((h) => this.renderHunk(h));
+  });
+
   readonly totalsLine = computed<string | null>(() => {
     const r = this.result();
-    if (r.kind === 'graph') {
-      return summaryLine(r.totals, r.diff.added.length, r.diff.removed.length);
+    if (r.kind === 'grouped') {
+      const totals = r.hunked.totals;
+      const added = sumLines(r, '+');
+      const removed = sumLines(r, '-');
+      return summaryLine(totals, added, removed);
     }
     if (r.kind === 'tabular') {
       return summaryLine(
@@ -211,16 +332,42 @@ export class DiffResultRenderer {
     return term.value;
   }
 
-  shorten(line: string): string {
-    return shortenNQuadLine(line, { prefixes: { ...DEFAULT_PREFIXES } });
+  formatLineBody(line: HunkLine, rh: RenderedHunk): string {
+    const prefixes: Record<string, string> = { ...DEFAULT_PREFIXES };
+    if (line.bnodePath !== undefined && line.bnodePath.length > 0) {
+      return renderAbsorbedBnodeLine(line, prefixes);
+    }
+    const shortened = shortenNQuadLine(line.nquad, { prefixes });
+    const prefix = `${rh.anchorDisplay} `;
+    return shortened.startsWith(prefix)
+      ? shortened.slice(prefix.length)
+      : shortened;
   }
 
-  recordsFor(
-    g: GraphDiffResponse,
-    side: 'left' | 'right',
-    line: string,
-  ): ReadonlyArray<SourceRecord> {
-    return g.sourceRecords[side][line] ?? [];
+  private renderHunk(hunk: Hunk): RenderedHunk {
+    const prefixEntries = Object.entries(DEFAULT_PREFIXES);
+    const anchorDisplay = renderAnchor(hunk, prefixEntries);
+    const rdfTypeDisplay =
+      hunk.rdfType !== undefined ? curieOrIri(hunk.rdfType, prefixEntries) : null;
+    const stateLabel = hunk.state === 'changed' ? null : hunk.state;
+    const countsLabel = `[-${hunk.removed} +${hunk.added}]`;
+    const clusters = clusterLinesIntoPairs(hunk.lines);
+    const records = dedupeRecordsByFileLine(hunk);
+    const overflow = hunk.lines.length > OVERFLOW_LINE_THRESHOLD;
+    const overflowLabel = `Show ${hunk.lines.length} more`;
+    const chips = renderChips(hunk);
+    return {
+      hunk,
+      anchorDisplay,
+      rdfTypeDisplay,
+      countsLabel,
+      stateLabel,
+      clusters,
+      records,
+      overflow,
+      overflowLabel,
+      chips,
+    };
   }
 }
 
@@ -232,9 +379,133 @@ function summaryLine(
   return `left=${totals.left} right=${totals.right} +${added} -${removed}`;
 }
 
+function sumLines(r: GroupedDiffResponse, side: '-' | '+'): number {
+  let n = 0;
+  for (const h of [...r.hunked.changed, ...r.hunked.removed, ...r.hunked.added]) {
+    n += side === '-' ? h.removed : h.added;
+  }
+  return n;
+}
+
+function dedupeRecordsByFileLine(hunk: Hunk): DedupedRecord[] {
+  const seen = new Set<string>();
+  const out: DedupedRecord[] = [];
+  for (const r of [...hunk.sourceRecords.left, ...hunk.sourceRecords.right]) {
+    if (r.line === undefined) continue;
+    const key = `${r.file}:${r.line}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      file: r.file,
+      line: r.line,
+      anchorId: anchorIdFor(r.file, r.line),
+    });
+  }
+  return out;
+}
+
+function anchorIdFor(file: string, line: number): string {
+  return `${baseName(file)}-L${line}`;
+}
+
+function baseName(path: string): string {
+  const i = path.lastIndexOf('/');
+  return i < 0 ? path : path.slice(i + 1);
+}
+
+function renderChips(hunk: Hunk): ReadonlyArray<RenderedChip> {
+  const out: RenderedChip[] = [];
+  for (const r of hunk.sourceRecords.left) {
+    out.push(chipFor(r, 'left'));
+  }
+  for (const r of hunk.sourceRecords.right) {
+    out.push(chipFor(r, 'right'));
+  }
+  return out;
+}
+
+function chipFor(record: SourceRecord, side: 'left' | 'right'): RenderedChip {
+  const base = baseName(record.file);
+  const anchorId = record.line === undefined ? base : `${base}-L${record.line}`;
+  const text = record.line === undefined ? base : `${base}:${record.line}`;
+  return { side, text, anchorId };
+}
+
+function clusterLinesIntoPairs(lines: ReadonlyArray<HunkLine>): LineCluster[] {
+  const result: LineCluster[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const a = lines[i];
+    const b = lines[i + 1];
+    if (
+      b !== undefined &&
+      a.side === '-' &&
+      b.side === '+' &&
+      a.subjectPath === b.subjectPath &&
+      a.predicate === b.predicate
+    ) {
+      result.push({ pair: true, lines: [a, b] });
+      i += 2;
+    } else {
+      result.push({ pair: false, lines: [a] });
+      i += 1;
+    }
+  }
+  return result;
+}
+
+function renderAnchor(
+  hunk: Hunk,
+  prefixEntries: ReadonlyArray<[string, string]>,
+): string {
+  if (hunk.orphan === true) return hunk.anchor;
+  return curieOrIri(hunk.anchor, prefixEntries);
+}
+
+function curieOrIri(
+  iri: string,
+  entries: ReadonlyArray<[string, string]>,
+): string {
+  const match = bestPrefixEntryFor(iri, entries);
+  if (match === undefined) return `<${iri}>`;
+  const [name, ns] = match;
+  return `${name}:${iri.slice(ns.length)}`;
+}
+
 function shortenNamedNode(iri: string): string {
   for (const [name, ns] of Object.entries(DEFAULT_PREFIXES)) {
     if (iri.startsWith(ns)) return `${name}:${iri.slice(ns.length)}`;
   }
   return `<${iri}>`;
+}
+
+function renderAbsorbedBnodeLine(
+  line: HunkLine,
+  prefixes: Record<string, string>,
+): string {
+  const prefixEntries = Object.entries(prefixes);
+  const path = line.bnodePath as BnodePathStep[];
+  const segments = path.map((step) => {
+    if (step.identityIsBlank) return step.identityValue;
+    const idPredicateCurie = curieOrIri(step.identityPredicate ?? '', prefixEntries);
+    const idValueDisplay = renderIdentityValue(step.identityValue, prefixEntries);
+    return `[${idPredicateCurie} ${idValueDisplay}]`;
+  });
+  const shortened = shortenNQuadLine(line.nquad, { prefixes });
+  const firstSpace = shortened.indexOf(' ');
+  const tail = firstSpace >= 0 ? shortened.slice(firstSpace + 1) : shortened;
+  return `${segments.join(' / ')} / ${tail}`;
+}
+
+function renderIdentityValue(
+  value: string,
+  prefixEntries: ReadonlyArray<[string, string]>,
+): string {
+  if (value.startsWith('"') || value.startsWith('_:') || value.startsWith('<')) {
+    return value;
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value)) {
+    return curieOrIri(value, prefixEntries);
+  }
+  return value;
 }

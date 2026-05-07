@@ -20,18 +20,43 @@ export interface SourceRecord {
   line?: number;
 }
 
-export interface GraphDiffResponse {
-  kind: 'graph';
-  diff: {
-    added: string[];
-    removed: string[];
-    totals: { left: number; right: number };
-  };
-  sourceRecords: {
-    left: Record<string, SourceRecord[]>;
-    right: Record<string, SourceRecord[]>;
-  };
+export interface BnodePathStep {
+  parentPredicate: string;
+  identityPredicate?: string;
+  identityValue: string;
+  identityIsBlank: boolean;
+}
+
+export interface HunkLine {
+  side: '-' | '+';
+  subjectPath: string;
+  predicate: string;
+  object: string;
+  nquad: string;
+  bnodePath?: BnodePathStep[];
+}
+
+export interface Hunk {
+  anchor: string;
+  rdfType?: string;
+  state: 'changed' | 'removed' | 'added';
+  orphan?: boolean;
+  removed: number;
+  added: number;
+  lines: HunkLine[];
+  sourceRecords: { left: SourceRecord[]; right: SourceRecord[] };
+}
+
+export interface HunkedRdfDiff {
+  changed: Hunk[];
+  removed: Hunk[];
+  added: Hunk[];
   totals: { left: number; right: number };
+}
+
+export interface GroupedDiffResponse {
+  kind: 'grouped';
+  hunked: HunkedRdfDiff;
 }
 
 export interface TabularTerm {
@@ -60,7 +85,7 @@ export interface TabularDiffResponse {
 }
 
 export type DiffResponse =
-  | GraphDiffResponse
+  | GroupedDiffResponse
   | TabularDiffResponse
   | DiffErrorResponse;
 
