@@ -1,6 +1,6 @@
 import { Parser, Store } from 'n3';
 import { describe, expect, it } from 'vitest';
-import { diffCanonicalStatements } from './diff';
+import { diffCanonicalStatements, diffStores } from './diff';
 import type { RdfDiffWithSourcesResult } from './diff';
 import { groupRdfDiffByEntity } from './group-rdf-diff-by-entity';
 import { formatGroupedRdfDiff } from './grouped-diff-formatter';
@@ -48,6 +48,47 @@ describe('formatGroupedRdfDiff', () => {
         'ex:a  [-1 +1]\n' +
         '- ex:p ex:b1 .\n' +
         '+ ex:p ex:b2 .\n',
+    );
+  });
+
+  it('renders absorbed-bnode lines with a path notation [sh:path <iri>] / <predicate> instead of the raw bnode subject', async () => {
+    const SH = 'http://www.w3.org/ns/shacl#';
+    const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
+    const EX = 'http://example.org/';
+    const leftNquads =
+      `<${EX}Shape> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Shape> <${SH}property> _:l1 .\n` +
+      `_:l1 <${SH}path> <${EX}foo> .\n` +
+      `_:l1 <${SH}datatype> <http://www.w3.org/2001/XMLSchema#decimal> .\n`;
+    const rightNquads =
+      `<${EX}Shape> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Shape> <${SH}property> _:r1 .\n` +
+      `_:r1 <${SH}path> <${EX}foo> .\n` +
+      `_:r1 <${SH}datatype> <http://www.w3.org/2001/XMLSchema#integer> .\n`;
+    const leftStore = storeOf(leftNquads);
+    const rightStore = storeOf(rightNquads);
+    const diff = await diffStores(
+      { store: leftStore },
+      { store: rightStore },
+    );
+
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    const out = formatGroupedRdfDiff(hunked, {
+      prefixes: {
+        ex: 'http://example.org/',
+        sh: 'http://www.w3.org/ns/shacl#',
+        xsd: 'http://www.w3.org/2001/XMLSchema#',
+      },
+    });
+
+    expect(out).toContain(
+      '- [sh:path ex:foo] / sh:datatype xsd:decimal .\n' +
+        '+ [sh:path ex:foo] / sh:datatype xsd:integer .\n',
     );
   });
 
