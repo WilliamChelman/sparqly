@@ -1,0 +1,12 @@
+sources:
+  - id: era-shapes-3-2-0
+    glob: ./data/era-shapes-3.2.0.ttl
+  - id: era-shapes-3-2-2
+    glob: ./data/era-shapes-3.2.2.ttl
+  - id: era-shapes-head
+    glob: ./data/era-shapes.ttl
+    default: true
+
+serve:
+  port: 3000
+  watch: true

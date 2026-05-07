@@ -157,6 +157,151 @@ describe('groupRdfDiffByEntity — named-entity anchoring', () => {
   });
 });
 
+describe('groupRdfDiffByEntity — blank-node absorption into named parent', () => {
+  const SH = 'http://www.w3.org/ns/shacl#';
+  const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
+  const EX = 'http://example.org/';
+
+  it('absorbs a bnode subject reachable from a single named parent into that parent\'s hunk (no orphan bnode hunk)', async () => {
+    // ex:Shape sh:property _:b ; _:b sh:datatype xsd:integer
+    // Datatype changes between sides; the bnode is the same shape per side.
+    const leftNquads =
+      `<${EX}Shape> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Shape> <${SH}property> _:b1 .\n` +
+      `_:b1 <${SH}datatype> <http://www.w3.org/2001/XMLSchema#decimal> .\n`;
+    const rightNquads =
+      `<${EX}Shape> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Shape> <${SH}property> _:b1 .\n` +
+      `_:b1 <${SH}datatype> <http://www.w3.org/2001/XMLSchema#integer> .\n`;
+    const leftStore = storeOf(leftNquads);
+    const rightStore = storeOf(rightNquads);
+    const diff = await diffStores({ store: leftStore }, { store: rightStore });
+
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    expect(hunked.hunks.map((h) => h.anchor)).toEqual([`${EX}Shape`]);
+    const hunk = hunked.hunks[0];
+    expect(hunk.removed).toBe(1);
+    expect(hunk.added).toBe(1);
+    // The two changed `_:b1 sh:datatype ...` quads land under the named parent.
+    expect(hunk.lines.map((l) => `${l.side} ${l.predicate}`)).toEqual([
+      `- ${SH}datatype`,
+      `+ ${SH}datatype`,
+    ]);
+  });
+
+  it('walks through a chain of bnodes (bnode-through-bnode) to reach the named parent', async () => {
+    // ex:Shape sh:property _:outer ; _:outer sh:property _:inner ; _:inner sh:datatype xsd:int
+    const leftNquads =
+      `<${EX}Shape> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Shape> <${SH}property> _:outer .\n` +
+      `_:outer <${SH}property> _:inner .\n` +
+      `_:inner <${SH}datatype> <http://www.w3.org/2001/XMLSchema#decimal> .\n`;
+    const rightNquads =
+      `<${EX}Shape> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Shape> <${SH}property> _:outer .\n` +
+      `_:outer <${SH}property> _:inner .\n` +
+      `_:inner <${SH}datatype> <http://www.w3.org/2001/XMLSchema#integer> .\n`;
+    const leftStore = storeOf(leftNquads);
+    const rightStore = storeOf(rightNquads);
+    const diff = await diffStores({ store: leftStore }, { store: rightStore });
+
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    expect(hunked.hunks.map((h) => h.anchor)).toEqual([`${EX}Shape`]);
+    expect(hunked.hunks[0].removed).toBe(1);
+    expect(hunked.hunks[0].added).toBe(1);
+  });
+
+  it('uses sh:path value as identity for cross-side pairing of bnodes hanging off the same parent+predicate', async () => {
+    // Two PropertyShape bnodes per side, distinct sh:path. `foo` keeps sh:path
+    // but flips sh:datatype; `bar` is unchanged. The flip on `foo` must pair
+    // -/+ adjacent under the same parent.
+    const leftNquads =
+      `<${EX}Shape> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Shape> <${SH}property> _:l1 .\n` +
+      `<${EX}Shape> <${SH}property> _:l2 .\n` +
+      `_:l1 <${SH}path> <${EX}foo> .\n` +
+      `_:l1 <${SH}datatype> <http://www.w3.org/2001/XMLSchema#decimal> .\n` +
+      `_:l2 <${SH}path> <${EX}bar> .\n` +
+      `_:l2 <${SH}datatype> <http://www.w3.org/2001/XMLSchema#string> .\n`;
+    const rightNquads =
+      `<${EX}Shape> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Shape> <${SH}property> _:r1 .\n` +
+      `<${EX}Shape> <${SH}property> _:r2 .\n` +
+      `_:r1 <${SH}path> <${EX}foo> .\n` +
+      `_:r1 <${SH}datatype> <http://www.w3.org/2001/XMLSchema#integer> .\n` +
+      `_:r2 <${SH}path> <${EX}bar> .\n` +
+      `_:r2 <${SH}datatype> <http://www.w3.org/2001/XMLSchema#string> .\n`;
+    const leftStore = storeOf(leftNquads);
+    const rightStore = storeOf(rightNquads);
+    const diff = await diffStores({ store: leftStore }, { store: rightStore });
+
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    expect(hunked.hunks).toHaveLength(1);
+    const hunk = hunked.hunks[0];
+    expect(hunk.anchor).toBe(`${EX}Shape`);
+    // Lines for the same sh:path identity sort adjacent: `-` precedes `+`.
+    const datatypeLines = hunk.lines.filter(
+      (l) => l.predicate === `${SH}datatype`,
+    );
+    expect(datatypeLines.map((l) => l.side)).toEqual(['-', '+']);
+    // Both `-` and `+` should agree on `subjectPath` (i.e. share the sh:path
+    // identity) so the comparator clusters them.
+    expect(datatypeLines[0].subjectPath).toBe(datatypeLines[1].subjectPath);
+  });
+
+  it('falls back to the canonical bnode label for identity when sh:path is absent — and never pairs by label across sides', async () => {
+    // No sh:path. Two separate sh:property bnodes per side, both flipping
+    // sh:datatype. They must NOT pair across sides: each side renders its
+    // own `-`/`+` independently.
+    const leftNquads =
+      `<${EX}Shape> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Shape> <${SH}property> _:l1 .\n` +
+      `_:l1 <${SH}datatype> <http://www.w3.org/2001/XMLSchema#decimal> .\n`;
+    const rightNquads =
+      `<${EX}Shape> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
+      `<${EX}Shape> <${SH}property> _:r1 .\n` +
+      `_:r1 <${SH}datatype> <http://www.w3.org/2001/XMLSchema#integer> .\n`;
+    const leftStore = storeOf(leftNquads);
+    const rightStore = storeOf(rightNquads);
+    const diff = await diffStores({ store: leftStore }, { store: rightStore });
+
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    expect(hunked.hunks).toHaveLength(1);
+    const hunk = hunked.hunks[0];
+    expect(hunk.anchor).toBe(`${EX}Shape`);
+    // The diff has 4 changed quads (the parent sh:property triples flip their
+    // bnode object, plus sh:datatype flips). Lines exist for each. The
+    // `subjectPath` for the `-` and `+` sh:datatype lines must DIFFER so they
+    // do not collapse into a paired cluster (no cross-side bnode-label
+    // pairing).
+    const datatypeLines = hunk.lines.filter(
+      (l) => l.predicate === `${SH}datatype`,
+    );
+    expect(datatypeLines).toHaveLength(2);
+    expect(datatypeLines[0].subjectPath).not.toBe(datatypeLines[1].subjectPath);
+  });
+});
+
 describe('groupRdfDiffByEntity — golden HunkedRdfDiff JSON on a small SHACL-style fixture', () => {
   it('pins the JSON shape end-to-end through diffStores for two NodeShapes whose `rdfs:label` changed', async () => {
     const SH = 'http://www.w3.org/ns/shacl#';

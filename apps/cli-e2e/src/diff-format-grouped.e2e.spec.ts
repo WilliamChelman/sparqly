@@ -56,4 +56,48 @@ describe('sparqly diff -f grouped', () => {
       '+ rdfs:label "Foo v2" .',
     ]);
   });
+
+  it('absorbs an edited PropertyShape blank node into its parent NodeShape, pairing -/+ by sh:path identity with a [sh:path …] / predicate notation', async () => {
+    const leftPath = join(scratch, 'left.ttl');
+    const rightPath = join(scratch, 'right.ttl');
+    await writeFile(
+      leftPath,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+        ex:Shape a sh:NodeShape ;
+          sh:property [
+            sh:path ex:foo ;
+            sh:datatype xsd:decimal ;
+          ] .
+      ` + '\n',
+    );
+    await writeFile(
+      rightPath,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        @prefix sh: <http://www.w3.org/ns/shacl#> .
+        @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+        ex:Shape a sh:NodeShape ;
+          sh:property [
+            sh:path ex:foo ;
+            sh:datatype xsd:integer ;
+          ] .
+      ` + '\n',
+    );
+
+    const result = await runCli(
+      ['diff', '--quiet', '--format=grouped', leftPath, rightPath],
+      { cwd: scratch },
+    );
+
+    expect(result.exitCode).toBe(1);
+    const lines = diffBodyLines(result.stdout);
+    expect(lines).toEqual([
+      'ex:Shape  (sh:NodeShape)  [-1 +1]',
+      '- [sh:path ex:foo] / sh:datatype xsd:decimal .',
+      '+ [sh:path ex:foo] / sh:datatype xsd:integer .',
+    ]);
+  });
 });

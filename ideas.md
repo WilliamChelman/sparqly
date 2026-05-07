@@ -31,6 +31,7 @@
 - diff
   - prefixes
   - rdf:list compression
+  - ! more logs on startup (at least port used)
 - add transform to views (or add a new type 'pipe'?) to be explicit about materialization?
 - 'did you mean...' on config errors (typos and such)
 - config rationale: source on one part, cmd specific on the other + extend?

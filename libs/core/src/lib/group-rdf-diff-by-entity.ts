@@ -2,6 +2,7 @@ import { DataFactory, Parser, type Quad, type Store, type Term } from 'n3';
 import type { DiffTotals, RdfDiffWithSourcesResult, SourceRecord } from './diff';
 
 const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
+const SH_PATH_IRI = 'http://www.w3.org/ns/shacl#path';
 
 export interface HunkedRdfDiff {
   hunks: Hunk[];
@@ -28,7 +29,15 @@ export interface Hunk {
 
 export interface HunkLine {
   side: '-' | '+';
-  /** Identity path used for sorting; the subject IRI in the MVP slice. */
+  /**
+   * Identity path used to sort lines within a hunk and to cluster `-`/`+`
+   * lines about the same logical subject. For lines whose subject IS the
+   * hunk's named anchor this is simply the anchor IRI. For absorbed-bnode
+   * lines this is a stable serialization of the path from the anchor to the
+   * line's subject (parent predicate + bnode identity per hop), so that two
+   * sides that share a `sh:path` value cluster while two sides whose
+   * canonical bnode labels happen to differ stay separate.
+   */
   subjectPath: string;
   /** Predicate IRI. */
   predicate: string;
@@ -36,6 +45,31 @@ export interface HunkLine {
   object: string;
   /** Canonical N-Quads key for this changed quad (matches diff `added`/`removed`). */
   nquad: string;
+  /**
+   * When the line's subject is an absorbed blank node, the chain of
+   * `(parentPredicate, bnodeIdentity)` hops from the hunk anchor down to the
+   * subject. Empty/absent when the subject equals the hunk anchor.
+   */
+  bnodePath?: BnodePathStep[];
+}
+
+export interface BnodePathStep {
+  /** Predicate from the parent in this hop to the bnode (e.g. `sh:property`). */
+  parentPredicate: string;
+  /**
+   * Predicate whose value identifies this bnode for cross-side pairing
+   * (`sh:path` for SHACL property shapes). Omitted when no such identity
+   * predicate is present and the canonical bnode label is used as fallback.
+   */
+  identityPredicate?: string;
+  /**
+   * Identity value for this bnode within the parent+predicate cluster:
+   * the object IRI/literal of `identityPredicate` when present, otherwise
+   * the canonical bnode label.
+   */
+  identityValue: string;
+  /** True when `identityValue` is a canonical bnode label (the fallback case). */
+  identityIsBlank: boolean;
 }
 
 export interface GroupRdfDiffByEntityInput {
@@ -48,10 +82,21 @@ export function groupRdfDiffByEntity(
   input: GroupRdfDiffByEntityInput,
 ): HunkedRdfDiff {
   const { diff, left, right } = input;
-  const parser = new Parser({ format: 'application/n-quads' });
+  // `blankNodePrefix: ''` preserves canonical labels like `c14n0` from the
+  // diff's N-Quads instead of remapping them to `b<n>_c14n0`. Without this,
+  // bnode subjects from the diff would not match the canonical labels in
+  // `diff.canonicalIdMap` and bnode walks would fail.
+  const parser = new Parser({ format: 'application/n-quads', blankNodePrefix: '' });
 
   const hunks = new Map<string, Hunk>();
   const seenSourceRecords = new Map<string, Set<string>>(); // anchor -> set of "side|file|line"
+
+  // Invert canonical→raw bnode labels per side so we can locate a changed
+  // canonical bnode subject in the side's raw Store and walk up its parent
+  // chain. Absent when the diff was built via `diffCanonicalStatements`,
+  // in which case we keep the MVP behavior (skip bnode-rooted changes).
+  const inverseLeft = invertCanonicalIdMap(diff.canonicalIdMap?.left);
+  const inverseRight = invertCanonicalIdMap(diff.canonicalIdMap?.right);
 
   function ensureHunk(anchor: string): Hunk {
     let h = hunks.get(anchor);
@@ -77,15 +122,19 @@ export function groupRdfDiffByEntity(
     const quads = parser.parse(nquad);
     if (quads.length !== 1) return;
     const q = quads[0];
-    const anchor = anchorForQuad(q);
-    if (anchor === undefined) return;
+    const sideStore = side === '-' ? left.store : right.store;
+    const sideInverse = side === '-' ? inverseLeft : inverseRight;
+    const resolved = resolveAnchor(q, sideStore, sideInverse);
+    if (resolved === undefined) return;
+    const { anchor, bnodePath } = resolved;
     const hunk = ensureHunk(anchor);
     hunk.lines.push({
       side,
-      subjectPath: termToPath(q.subject),
+      subjectPath: buildSubjectPath(anchor, bnodePath, q.subject),
       predicate: q.predicate.value,
       object: serializeObject(q.object),
       nquad,
+      ...(bnodePath.length > 0 ? { bnodePath } : {}),
     });
     if (side === '-') hunk.removed += 1;
     else hunk.added += 1;
@@ -121,6 +170,15 @@ export function groupRdfDiffByEntity(
   return { hunks: sortedHunks, totals: diff.totals };
 }
 
+function invertCanonicalIdMap(
+  forward: Map<string, string> | undefined,
+): Map<string, string> | undefined {
+  if (forward === undefined) return undefined;
+  const inv = new Map<string, string>();
+  for (const [raw, canon] of forward.entries()) inv.set(canon, raw);
+  return inv;
+}
+
 function lookupRdfType(
   anchorIri: string,
   preferred: Store,
@@ -137,17 +195,129 @@ function lookupRdfType(
   return undefined;
 }
 
-function anchorForQuad(q: Quad): string | undefined {
-  if (q.subject.termType === 'NamedNode') return q.subject.value;
-  // MVP: bnode-rooted changes are not yet bucketed under a named ancestor.
-  // Sibling slices will introduce store-walk anchoring; for now skip.
-  return undefined;
+interface ResolvedAnchor {
+  anchor: string;
+  /** Empty when subject is the named anchor itself. */
+  bnodePath: BnodePathStep[];
 }
 
-function termToPath(term: Term): string {
-  if (term.termType === 'NamedNode') return term.value;
-  if (term.termType === 'BlankNode') return `_:${term.value}`;
-  return term.value;
+function resolveAnchor(
+  q: Quad,
+  store: Store,
+  inverseCanonicalIdMap: Map<string, string> | undefined,
+): ResolvedAnchor | undefined {
+  if (q.subject.termType === 'NamedNode') {
+    return { anchor: q.subject.value, bnodePath: [] };
+  }
+  if (q.subject.termType !== 'BlankNode') return undefined;
+  if (inverseCanonicalIdMap === undefined) return undefined;
+  // The diff exposes canonical bnode labels (e.g. `c14n0`); walk the parent
+  // chain in the side's raw Store, where bnodes carry their original parser
+  // labels. Map canonical → raw via the inverted canonicalIdMap.
+  const canonicalLabel = q.subject.value;
+  const rawLabel = inverseCanonicalIdMap.get(canonicalLabel);
+  if (rawLabel === undefined) return undefined;
+  return walkToNamedAncestor(rawLabel, store);
+}
+
+function walkToNamedAncestor(
+  startRawLabel: string,
+  store: Store,
+): ResolvedAnchor | undefined {
+  // Climb from the bnode toward a named ancestor, recording each hop's
+  // (parentPredicate, identity) so child-bnode lines can be rendered with a
+  // path notation and so cross-side pairing is keyed on stable identity
+  // (sh:path value when present, canonical bnode label otherwise).
+  const visited = new Set<string>();
+  // Reverse path: hops are appended deepest-first; we reverse before return.
+  const reversedHops: BnodePathStep[] = [];
+  let currentRaw = startRawLabel;
+  while (true) {
+    if (visited.has(currentRaw)) return undefined;
+    visited.add(currentRaw);
+    const incoming = store.getQuads(
+      null,
+      null,
+      DataFactory.blankNode(currentRaw),
+      null,
+    );
+    if (incoming.length === 0) return undefined;
+    // Prefer named-node parents; otherwise pick a deterministic bnode parent
+    // (lex by raw label) and recurse.
+    const namedParent = incoming.find(
+      (qq) => qq.subject.termType === 'NamedNode',
+    );
+    const step = bnodeStepFor(currentRaw, store);
+    if (namedParent !== undefined) {
+      reversedHops.push({ ...step, parentPredicate: namedParent.predicate.value });
+      const path: BnodePathStep[] = [];
+      for (let i = reversedHops.length - 1; i >= 0; i--) path.push(reversedHops[i]);
+      return { anchor: namedParent.subject.value, bnodePath: path };
+    }
+    const bnodeParents = incoming.filter(
+      (qq) => qq.subject.termType === 'BlankNode',
+    );
+    if (bnodeParents.length === 0) return undefined;
+    bnodeParents.sort((a, b) =>
+      a.subject.value < b.subject.value ? -1 : a.subject.value > b.subject.value ? 1 : 0,
+    );
+    const next = bnodeParents[0];
+    reversedHops.push({ ...step, parentPredicate: next.predicate.value });
+    currentRaw = next.subject.value;
+  }
+}
+
+function bnodeStepFor(
+  rawLabel: string,
+  store: Store,
+): { identityPredicate?: string; identityValue: string; identityIsBlank: boolean } {
+  const shPathQuads = store.getQuads(
+    DataFactory.blankNode(rawLabel),
+    DataFactory.namedNode(SH_PATH_IRI),
+    null,
+    null,
+  );
+  if (shPathQuads.length > 0) {
+    const v = shPathQuads[0].object;
+    const identityValue =
+      v.termType === 'NamedNode' || v.termType === 'BlankNode'
+        ? v.value
+        : serializeObject(v);
+    return {
+      identityPredicate: SH_PATH_IRI,
+      identityValue,
+      identityIsBlank: false,
+    };
+  }
+  // Fallback: canonical bnode label. We do not have it here (only the raw
+  // label), so callers must translate at sort/serialize time. Using the raw
+  // label is stable within a side; cross-side pairing is intentionally not
+  // performed when sh:path is absent.
+  return {
+    identityValue: `_:${rawLabel}`,
+    identityIsBlank: true,
+  };
+}
+
+function buildSubjectPath(
+  anchor: string,
+  bnodePath: BnodePathStep[],
+  subject: Term,
+): string {
+  if (bnodePath.length === 0) {
+    if (subject.termType === 'NamedNode') return subject.value;
+    if (subject.termType === 'BlankNode') return `_:${subject.value}`;
+    return subject.value;
+  }
+  // Build a stable serialization. For sh:path-keyed steps the identity is the
+  // path value (shared across sides); for the canonical-bnode-label fallback
+  // the identity is the side's raw label, so two sides never accidentally
+  // pair.
+  const segments = bnodePath.map((step) => {
+    const idKind = step.identityIsBlank ? 'bnode' : (step.identityPredicate ?? 'id');
+    return `${step.parentPredicate}|${idKind}=${step.identityValue}`;
+  });
+  return `${anchor} ${segments.join('/')}`;
 }
 
 function serializeObject(term: Term): string {

@@ -82,6 +82,17 @@ export interface RdfDiffWithSourcesResult extends RdfDiffResult {
     left: Map<string, SourceRecord[]>;
     right: Map<string, SourceRecord[]>;
   };
+  /**
+   * Per-side `Map<storeBlankNodeLabel, canonicalBlankNodeLabel>` issued by
+   * RDFC-1.0. Populated by {@link diffStores}; absent on results built via
+   * {@link diffCanonicalStatements} (which never sees the underlying Stores).
+   * Consumers that need to walk the parent chain of a canonical bnode in the
+   * raw Store invert this map.
+   */
+  canonicalIdMap?: {
+    left: Map<string, string>;
+    right: Map<string, string>;
+  };
 }
 
 export async function diffStores(
@@ -113,6 +124,10 @@ export async function diffStores(
         rightCanon.canonicalIdMap,
         right.annotationPredicates ?? DEFAULT_ANNOTATION_PREDICATE_IRIS,
       ),
+    },
+    canonicalIdMap: {
+      left: leftCanon.canonicalIdMap,
+      right: rightCanon.canonicalIdMap,
     },
   };
 }
