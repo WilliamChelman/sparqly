@@ -13,10 +13,12 @@ import type {
   TabularDiffResponse,
   TabularTerm,
 } from './diff.service';
+import { SourceSnippet } from './source-snippet';
 
 @Component({
   selector: 'app-diff-result-renderer',
   standalone: true,
+  imports: [SourceSnippet],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (totalsLine(); as line) {
@@ -73,14 +75,13 @@ import type {
                   {{ shorten(line) }}
                 </span>
                 @for (rec of recordsFor(g, 'left', line); track $index) {
-                  <span
-                    data-testid="snippet-placeholder"
-                    [attr.data-file]="rec.file"
-                    [attr.data-line]="rec.line"
-                    class="text-[10px] text-slate-500"
-                  >
-                    {{ rec.file }}:{{ rec.line }}
-                  </span>
+                  @if (rec.line !== undefined) {
+                    <app-source-snippet
+                      [file]="rec.file"
+                      [line]="rec.line"
+                      [context]="context()"
+                    />
+                  }
                 }
               </li>
             }
@@ -98,14 +99,13 @@ import type {
                   {{ shorten(line) }}
                 </span>
                 @for (rec of recordsFor(g, 'right', line); track $index) {
-                  <span
-                    data-testid="snippet-placeholder"
-                    [attr.data-file]="rec.file"
-                    [attr.data-line]="rec.line"
-                    class="text-[10px] text-slate-500"
-                  >
-                    {{ rec.file }}:{{ rec.line }}
-                  </span>
+                  @if (rec.line !== undefined) {
+                    <app-source-snippet
+                      [file]="rec.file"
+                      [line]="rec.line"
+                      [context]="context()"
+                    />
+                  }
                 }
               </li>
             }
@@ -146,6 +146,7 @@ import type {
 })
 export class DiffResultRenderer {
   readonly result = input.required<DiffResponse>();
+  readonly context = input<number>(3);
 
   readonly errorView = computed(() => {
     const r = this.result();
