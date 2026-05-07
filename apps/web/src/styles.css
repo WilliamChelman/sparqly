@@ -16,3 +16,8 @@ body {
   border: 1px solid rgb(203 213 225);
   border-radius: 0.25rem;
 }
+
+.yasqe_share,
+.yasqe_sharePopup {
+  display: none !important;
+}
