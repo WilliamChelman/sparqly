@@ -37,11 +37,17 @@ _Avoid_: "pushdown" (informal; the codebase term is pass-through), "federation" 
 The set of declared sources a command sees, derived from the config file (and/or a single inline positional). The registry may contain multiple entries because views need siblings to reference via `from:`, but a command runs against exactly one of them — the **target source**.
 
 **Target source**:
-The single source a command (`query`, `serve`, `hash`, `diff`) runs against. Selected by precedence: (1) explicit positional/flag — an `@id` ref or inline glob/URL — wins; (2) the entry marked `default: true` in the registry; (3) the sole entry when the registry has exactly one source; otherwise an error listing the available `@ids`. `kind: 'reference'` is rejected as a target. Multi-source merging at the command boundary is intentionally not provided — use `SERVICE` clauses (optionally hosted on an **empty source**) for cross-source composition.
+The single source a command (`query`, `hash`, `diff`) runs against. Selected by precedence: (1) explicit positional/flag — an `@id` ref or inline glob/URL — wins; (2) the entry marked `default: true` in the registry; (3) the sole entry when the registry has exactly one source; otherwise an error listing the available `@ids`. `kind: 'reference'` is rejected as a target. Multi-source merging at the command boundary is intentionally not provided — use `SERVICE` clauses (optionally hosted on an **empty source**) for cross-source composition. `serve` is the exception — it operates on the whole registry by default (see **Registry mode** vs **Single-source mode**).
 _Avoid_: "selected source", "active source"
 
 **Default source**:
-The registry entry marked `default: true`, picked as the **target source** when no positional/flag is given. At most one entry per registry may carry the marker.
+The registry entry marked `default: true`. In single-target commands (`query`, `hash`, `diff`) it is picked as the **target source** when no positional/flag is given. In `serve`'s **Registry mode** it is the source the web UI pre-selects on load. At most one entry per registry may carry the marker.
+
+**Registry mode** (`serve`):
+The default `serve` mode: every non-`reference` source in the registry is exposed simultaneously. The SPARQL surface is `/api/sparql/<id>` per `@id`; the web UI lists all sources via `/api/sources` and lets the user pick which to query and which two sides to diff. Triggered by omitting `--source`/positional. The **default source** is the SPA's initial selection. Engine startup splits by resolution mode: **materialized** sources resolve eagerly at boot (each with its own `StoreRef`, each watched independently under `--watch`); **pass-through** sources are lazy — the engine is just Comunica configured against the remote URL, no boot work, no watcher participation, errors surface on first query.
+
+**Single-source mode** (`serve`):
+The fallback `serve` mode: only one source from the registry (or an inline glob/URL via the positional) is exposed, matching pre-registry-mode behavior. Triggered by passing an explicit `--source`/positional. `/api/sources` returns the single entry; the web UI hides its source picker. Preserves quick-start gestures like `sparqly serve foo.ttl`.
 
 **Result cache**:
 The view cache's content. Stores the *result* of a view's query (bounded by the query's projection), not its upstream. Keyed on `view.id + from + query + upstream-spec`. Strategies: `ttl`, `freshness`, `everlasting`.
@@ -93,7 +99,7 @@ _Avoid_: "context window" (overloaded with LLM/parsing terminology), "hunk previ
 - A **View** whose `from:` is an **Endpoint source** resolves via **pass-through**; glob, empty, and view upstreams resolve via **materialized**.
 - A **View** with `cache:` declared writes to the **Result cache** after resolution; `cache.strategy: 'freshness'` triggers a **Freshness probe** on lookup. On an **empty source** view the probe must contain `SERVICE` clauses to be meaningful, since the local Store is empty.
 - The **`query` command** picks one **target source** from the **source registry** and resolves it: **pass-through** when the target is an endpoint, **materialized** otherwise (glob, empty, view).
-- The **`serve` command** picks one **target source** from the **source registry** and exposes it as a SPARQL endpoint, using the same resolution rules as `query`.
+- The **`serve` command** in **Registry mode** exposes every non-`reference` source from the **source registry** as `/api/sparql/<id>`, plus a `/api/diff` surface that pairs any two `@id`s; in **Single-source mode** it picks one **target source** and exposes it as a single `/api/sparql` endpoint, using the same resolution rules as `query`.
 - **`hash`** picks one **target source** and always **canonicalizes** the resolved Store; it refuses raw endpoints (must be wrapped in a view) and refuses arbitrary-SELECT views — `hash` requires triples.
 - **`diff`** picks one **target source** per side and dispatches by query shape: **graph diff** when both sides produce triples; **tabular diff** when both sides project arbitrary SELECT tuples with matching variable names. Mixed-shape pairs are rejected. Both modes refuse a raw endpoint as target — endpoints must be wrapped in a view (declared or anonymous) so a scoping query exists.
 - A **Glob source** may declare a **Source transformation pipeline**; transforms run in array order at load time before the Store is exposed to resolution.
