@@ -1,5 +1,7 @@
+import { Component, Input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { DiffResultRenderer } from './diff-result-renderer';
+import { SourceSnippet } from './source-snippet';
 import type {
   DiffErrorResponse,
   DiffResponse,
@@ -7,10 +9,31 @@ import type {
   TabularDiffResponse,
 } from './diff.service';
 
-function render(result: DiffResponse): HTMLElement {
-  TestBed.configureTestingModule({ imports: [DiffResultRenderer] });
+@Component({
+  selector: 'app-source-snippet',
+  standalone: true,
+  template: `<div
+    data-testid="snippet-stub"
+    [attr.data-file]="file"
+    [attr.data-line]="line"
+    [attr.data-context]="context"
+  ></div>`,
+})
+class SourceSnippetStub {
+  @Input() file = '';
+  @Input() line = 0;
+  @Input() context = 0;
+}
+
+function render(result: DiffResponse, context = 3): HTMLElement {
+  TestBed.configureTestingModule({ imports: [DiffResultRenderer] })
+    .overrideComponent(DiffResultRenderer, {
+      remove: { imports: [SourceSnippet] },
+      add: { imports: [SourceSnippetStub] },
+    });
   const fixture = TestBed.createComponent(DiffResultRenderer);
   fixture.componentRef.setInput('result', result);
+  fixture.componentRef.setInput('context', context);
   fixture.detectChanges();
   return fixture.nativeElement as HTMLElement;
 }
@@ -58,7 +81,7 @@ describe('DiffResultRenderer (graph mode)', () => {
     expect(line?.textContent).toContain('a owl:Class');
   });
 
-  it('renders one SourceSnippet placeholder per source record under each hunk line', () => {
+  it('renders one SourceSnippet child per source record under each hunk line, forwarding the context input', () => {
     const addedKey =
       '<http://example.org/a> <http://example.org/p> <http://example.org/b> .';
     const removedKey =
@@ -83,24 +106,27 @@ describe('DiffResultRenderer (graph mode)', () => {
       },
       totals: { left: 1, right: 1 },
     };
-    const root = render(result);
-    const placeholders = Array.from(
-      root.querySelectorAll('[data-testid=snippet-placeholder]'),
+    const root = render(result, 5);
+    const snippets = Array.from(
+      root.querySelectorAll('[data-testid=snippet-stub]'),
     ) as HTMLElement[];
-    expect(placeholders.length).toBe(3);
-    const removedPh = placeholders.filter(
+    expect(snippets.length).toBe(3);
+    const removedSn = snippets.filter(
       (p) => p.getAttribute('data-file') === 'file:///tmp/left.ttl',
     );
-    expect(removedPh.length).toBe(2);
-    expect(removedPh.map((p) => p.getAttribute('data-line'))).toEqual([
+    expect(removedSn.length).toBe(2);
+    expect(removedSn.map((p) => p.getAttribute('data-line'))).toEqual([
       '12',
       '18',
     ]);
-    const addedPh = placeholders.filter(
+    const addedSn = snippets.filter(
       (p) => p.getAttribute('data-file') === 'file:///tmp/right.ttl',
     );
-    expect(addedPh.length).toBe(1);
-    expect(addedPh[0].getAttribute('data-line')).toBe('7');
+    expect(addedSn.length).toBe(1);
+    expect(addedSn[0].getAttribute('data-line')).toBe('7');
+    expect(snippets.every((p) => p.getAttribute('data-context') === '5')).toBe(
+      true,
+    );
   });
 
   it('renders the canonical diff totals summary `# left=L right=R +x -y`', () => {

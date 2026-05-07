@@ -2,13 +2,31 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { of, Subject } from 'rxjs';
 import { DiffPage } from './diff-page';
+import { DiffResultRenderer } from './diff-result-renderer';
 import { SourcesPicker } from './sources-picker';
+import { SourceSnippet } from './source-snippet';
 import { SourcesService, type SourceListing } from './sources.service';
 import {
   DiffService,
   type DiffRequest,
   type DiffResponse,
 } from './diff.service';
+
+@Component({
+  selector: 'app-source-snippet',
+  standalone: true,
+  template: `<div
+    data-testid="snippet-stub"
+    [attr.data-file]="file"
+    [attr.data-line]="line"
+    [attr.data-context]="context"
+  ></div>`,
+})
+class SourceSnippetStub {
+  @Input() file = '';
+  @Input() line = 0;
+  @Input() context = 0;
+}
 
 @Component({
   selector: 'app-sources-picker',
@@ -72,6 +90,10 @@ function setup(listing: SourceListing) {
     .overrideComponent(DiffPage, {
       remove: { imports: [SourcesPicker] },
       add: { imports: [SourcesPickerStub] },
+    })
+    .overrideComponent(DiffResultRenderer, {
+      remove: { imports: [SourceSnippet] },
+      add: { imports: [SourceSnippetStub] },
     })
     .compileComponents();
 
@@ -187,6 +209,86 @@ describe('DiffPage', () => {
     expect((root.querySelectorAll('textarea')[0] as HTMLTextAreaElement).value).toBe(
       'SELECT * WHERE { ?s ?p ?o }',
     );
+  });
+
+  it('exposes an advanced disclosure with skipAutoSourceAnnotation checkbox (default off) and context number input (default 3)', () => {
+    const { fixture } = setup(TWO);
+    const root = fixture.nativeElement as HTMLElement;
+    const skip = root.querySelector(
+      'input[data-testid=skip-auto-source-annotation]',
+    ) as HTMLInputElement | null;
+    const ctx = root.querySelector(
+      'input[data-testid=snippet-context]',
+    ) as HTMLInputElement | null;
+    expect(skip).toBeTruthy();
+    expect(skip?.type).toBe('checkbox');
+    expect(skip?.checked).toBe(false);
+    expect(ctx).toBeTruthy();
+    expect(ctx?.type).toBe('number');
+    expect(ctx?.value).toBe('3');
+  });
+
+  it('forwards skipAutoSourceAnnotation in the /api/diff request body when checked', () => {
+    const { fixture, diffStub } = setup(TWO);
+    const root = fixture.nativeElement as HTMLElement;
+    const { left, right } = pickerStubs(fixture);
+    left.valueChange.emit('a');
+    right.valueChange.emit('b');
+    fixture.detectChanges();
+
+    const skip = root.querySelector(
+      'input[data-testid=skip-auto-source-annotation]',
+    ) as HTMLInputElement;
+    skip.checked = true;
+    skip.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    (root.querySelector('button[data-testid=run-diff]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(diffStub.calls.length).toBe(1);
+    expect(diffStub.calls[0].request.skipAutoSourceAnnotation).toBe(true);
+  });
+
+  it('forwards the context input value into the DiffResultRenderer', async () => {
+    const { fixture, diffStub } = setup(TWO);
+    const root = fixture.nativeElement as HTMLElement;
+    const { left, right } = pickerStubs(fixture);
+    left.valueChange.emit('a');
+    right.valueChange.emit('b');
+    fixture.detectChanges();
+
+    const ctx = root.querySelector(
+      'input[data-testid=snippet-context]',
+    ) as HTMLInputElement;
+    ctx.value = '7';
+    ctx.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    (root.querySelector('button[data-testid=run-diff]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    diffStub.calls[0].responses.next({
+      kind: 'graph',
+      diff: {
+        added: ['<http://example.org/a> <http://example.org/p> <http://example.org/b> .'],
+        removed: [],
+        totals: { left: 0, right: 1 },
+      },
+      sourceRecords: {
+        left: {},
+        right: {
+          ['<http://example.org/a> <http://example.org/p> <http://example.org/b> .']:
+            [{ file: 'file:///tmp/right.ttl', line: 4 }],
+        },
+      },
+      totals: { left: 0, right: 1 },
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const stub = root.querySelector('[data-testid=snippet-stub]') as HTMLElement | null;
+    expect(stub).toBeTruthy();
+    expect(stub?.getAttribute('data-context')).toBe('7');
   });
 
   it('renders both per-side errors at once when DiffService returns an error response', async () => {

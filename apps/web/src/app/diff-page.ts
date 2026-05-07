@@ -12,6 +12,7 @@ import { SourcesService, type SourceListingEntry } from './sources.service';
 import {
   DiffService,
   type DiffErrorResponse,
+  type DiffRequest,
   type DiffResponse,
 } from './diff.service';
 import { DiffResultRenderer } from './diff-result-renderer';
@@ -92,6 +93,34 @@ import { DiffResultRenderer } from './diff-result-renderer';
             {{ errors()?.top }}
           </p>
         }
+        <details class="rounded border border-slate-200 p-2 text-sm">
+          <summary class="cursor-pointer select-none text-slate-700">
+            Advanced
+          </summary>
+          <div class="mt-2 flex flex-col gap-2">
+            <label class="flex items-center gap-2">
+              <input
+                data-testid="skip-auto-source-annotation"
+                type="checkbox"
+                [checked]="skipAutoSourceAnnotation()"
+                (change)="skipAutoSourceAnnotation.set($any($event.target).checked)"
+              />
+              <span>Skip auto source annotation</span>
+            </label>
+            <label class="flex items-center gap-2">
+              <span>Snippet context lines</span>
+              <input
+                data-testid="snippet-context"
+                type="number"
+                min="0"
+                max="100"
+                class="w-20 rounded border border-slate-300 px-1 py-0.5"
+                [value]="context()"
+                (input)="setContext($any($event.target).value)"
+              />
+            </label>
+          </div>
+        </details>
         <div>
           <button
             data-testid="run-diff"
@@ -104,7 +133,7 @@ import { DiffResultRenderer } from './diff-result-renderer';
           </button>
         </div>
         @if (result(); as r) {
-          <app-diff-result-renderer [result]="r" />
+          <app-diff-result-renderer [result]="r" [context]="context()" />
         }
       </main>
     }
@@ -122,6 +151,13 @@ export class DiffPage implements OnInit {
   readonly running = signal<boolean>(false);
   readonly result = signal<DiffResponse | null>(null);
   readonly errors = signal<DiffErrorResponse['errors'] | null>(null);
+  readonly context = signal<number>(3);
+  readonly skipAutoSourceAnnotation = signal<boolean>(false);
+
+  setContext(raw: string): void {
+    const n = Number.parseInt(raw, 10);
+    if (Number.isFinite(n) && n >= 0) this.context.set(n);
+  }
 
   ngOnInit(): void {
     this.sourcesService.list().subscribe((listing) => {
@@ -139,13 +175,15 @@ export class DiffPage implements OnInit {
     this.running.set(true);
     this.result.set(null);
     this.errors.set(null);
+    const req: DiffRequest = {
+      left: this.leftId(),
+      right: this.rightId(),
+      leftQuery: this.leftQuery(),
+      rightQuery: this.rightQuery(),
+    };
+    if (this.skipAutoSourceAnnotation()) req.skipAutoSourceAnnotation = true;
     this.diffService
-      .run({
-        left: this.leftId(),
-        right: this.rightId(),
-        leftQuery: this.leftQuery(),
-        rightQuery: this.rightQuery(),
-      })
+      .run(req)
       .subscribe({
         next: (res) => {
           this.running.set(false);
