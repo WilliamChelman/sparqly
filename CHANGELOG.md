@@ -1,3 +1,9 @@
+## [0.17.1](https://github.com/WilliamChelman/sparqly/compare/v0.17.0...v0.17.1) (2026-05-08)
+
+### Bug Fixes
+
+* **core:** stream N3 parsing to handle files past V8 string limit ([36e3ea8](https://github.com/WilliamChelman/sparqly/commit/36e3ea8a96bb2ce4d94b0c8659aaefa0731d0a5b))
+
 ## [0.17.0](https://github.com/WilliamChelman/sparqly/compare/v0.16.0...v0.17.0) (2026-05-07)
 
 ### ⚠ BREAKING CHANGES
