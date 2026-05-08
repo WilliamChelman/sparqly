@@ -1,5 +1,4 @@
 import { createReadStream } from 'node:fs';
-import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { Parser, type Quad } from 'n3';
 import { rdfParser } from 'rdf-parse';
@@ -63,22 +62,32 @@ export async function parseRdfFile(path: string): Promise<ParseFileResult> {
   throw new Error(`Unsupported file extension: ${path}`);
 }
 
-async function parseWithN3(path: string, format: string): Promise<ParseFileResult> {
-  const text = await readFile(path, 'utf8');
+function parseWithN3(path: string, format: string): Promise<ParseFileResult> {
+  const records: RdfRecord[] = [];
   const prefixes: Record<string, string> = {};
   const parser = new LineTrackingParser({ format });
-  const quads: Quad[] = parser['parse'](
-    text,
-    null,
-    (prefix: string, iri: { value: string }) => {
-      if (prefix && iri) prefixes[prefix] = iri.value;
-    },
-  );
-  const records: RdfRecord[] = quads.map((quad) => ({
-    quad,
-    line: (quad as WithLine)[LINE_KEY],
-  }));
-  return { records, prefixes };
+
+  return new Promise((resolve, reject) => {
+    const stream = createReadStream(path, { encoding: 'utf8' });
+    let parseError: Error | null = null;
+    stream.on('error', reject);
+    parser['parse'](stream, {
+      onQuad: (err: Error | null, quad?: WithLine) => {
+        if (err) {
+          parseError = err;
+          return;
+        }
+        if (quad) records.push({ quad, line: quad[LINE_KEY] });
+      },
+      onPrefix: (prefix: string, iri: { value: string }) => {
+        if (prefix && iri) prefixes[prefix] = iri.value;
+      },
+    });
+    stream.on('end', () => {
+      if (parseError) reject(parseError);
+      else resolve({ records, prefixes });
+    });
+  });
 }
 
 function parseWithRdfParse(path: string, contentType: string): Promise<ParseFileResult> {

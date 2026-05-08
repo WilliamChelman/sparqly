@@ -164,4 +164,35 @@ describe('parseRdfFile', () => {
     await writeFile(file, 'irrelevant');
     await expect(parseRdfFile(file)).rejects.toThrow(/unsupported file extension/i);
   });
+
+  it('streams large N-Quads files preserving line numbers across chunk boundaries', async () => {
+    const file = join(dir, 'large.nq');
+    // ~6 MB: fits comfortably in memory but well past a single fs read chunk
+    // (default 64 KB), so the lexer must accumulate `_line` across many chunks.
+    const totalLines = 100_000;
+    const handle = await import('node:fs/promises').then((m) => m.open(file, 'w'));
+    try {
+      const batchSize = 5_000;
+      for (let start = 0; start < totalLines; start += batchSize) {
+        let buf = '';
+        for (let i = 0; i < batchSize && start + i < totalLines; i++) {
+          const n = start + i + 1;
+          buf += `<http://example.org/s${n}> <http://example.org/p> <http://example.org/o${n}> <http://example.org/g> .\n`;
+        }
+        await handle.write(buf);
+      }
+    } finally {
+      await handle.close();
+    }
+
+    const { records } = await parseRdfFile(file);
+    expect(records).toHaveLength(totalLines);
+    expect(records[0].quad.subject.value).toBe('http://example.org/s1');
+    expect(records[0].line).toBe(1);
+    const midIndex = Math.floor(totalLines / 2);
+    expect(records[midIndex].quad.subject.value).toBe(`http://example.org/s${midIndex + 1}`);
+    expect(records[midIndex].line).toBe(midIndex + 1);
+    expect(records[totalLines - 1].quad.subject.value).toBe(`http://example.org/s${totalLines}`);
+    expect(records[totalLines - 1].line).toBe(totalLines);
+  });
 });
