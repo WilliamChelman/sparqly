@@ -60,6 +60,16 @@ export class YasqeEditor implements AfterViewInit, OnDestroy {
     });
   }
 
+  getQueryType(): string | undefined {
+    if (!this.instance) return undefined;
+    try {
+      const t = (this.instance as unknown as { getQueryType: () => unknown }).getQueryType();
+      return typeof t === 'string' ? t : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   ngOnDestroy(): void {
     this.instance?.destroy();
   }

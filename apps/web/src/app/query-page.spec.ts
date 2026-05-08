@@ -42,6 +42,14 @@ class SourcesPickerStub {
 class YasqeEditorStub {
   @Input() value = '';
   @Output() valueChange = new EventEmitter<string>();
+  queryTypeOverride: string | undefined;
+  getQueryType(): string | undefined {
+    if (this.queryTypeOverride !== undefined) return this.queryTypeOverride;
+    const m = /^\s*(?:#[^\n]*\n|PREFIX\s+\S+\s+<[^>]*>\s*|BASE\s+<[^>]*>\s*)*\s*([A-Z]+)/i.exec(
+      this.value,
+    );
+    return m ? m[1].toUpperCase() : undefined;
+  }
 }
 
 @Component({
@@ -146,7 +154,7 @@ describe('QueryPage', () => {
     expect(root.querySelector('app-yasr-viewer')).toBeTruthy();
   });
 
-  it('Run posts SPARQL to /api/sparql/:id with sparql-query content type and sets the YasrViewer result', async () => {
+  it('Run posts a SELECT and forwards the response body and content-type to the YasrViewer', async () => {
     const { fixture, http } = await setup(TWO);
     const root = fixture.nativeElement as HTMLElement;
 
@@ -165,12 +173,66 @@ describe('QueryPage', () => {
     expect(req.request.headers.get('Content-Type')).toBe('application/sparql-query');
     expect(req.request.headers.get('Accept')).toBe('application/sparql-results+json');
 
-    const body = { head: { vars: ['s'] }, results: { bindings: [] } };
-    req.flush(body);
+    const body = JSON.stringify({ head: { vars: ['s'] }, results: { bindings: [] } });
+    req.flush(body, {
+      headers: { 'Content-Type': 'application/sparql-results+json' },
+    });
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(yasrStub(fixture).result).toEqual(body);
+    expect(yasrStub(fixture).result).toEqual({
+      data: body,
+      contentType: 'application/sparql-results+json',
+      status: 200,
+    });
+    http.verify();
+  });
+
+  it('Run posts a CONSTRUCT with text/turtle Accept and forwards the turtle body to the YasrViewer', async () => {
+    const { fixture, http } = await setup(TWO);
+    const root = fixture.nativeElement as HTMLElement;
+
+    pickerStub(fixture).valueChange.emit('a');
+    const ta = root.querySelector('textarea') as HTMLTextAreaElement;
+    ta.value = 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o } LIMIT 5';
+    ta.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    (root.querySelector('button[data-testid=run-query]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const req = http.expectOne('/api/sparql/a');
+    expect(req.request.headers.get('Accept')).toBe('text/turtle');
+
+    const turtle = '<http://example.org/s> <http://example.org/p> <http://example.org/o> .\n';
+    req.flush(turtle, { headers: { 'Content-Type': 'text/turtle' } });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(yasrStub(fixture).result).toEqual({
+      data: turtle,
+      contentType: 'text/turtle',
+      status: 200,
+    });
+    http.verify();
+  });
+
+  it('Run with an unrecognised query type sends no Accept header', async () => {
+    const { fixture, http } = await setup(TWO);
+    const root = fixture.nativeElement as HTMLElement;
+
+    pickerStub(fixture).valueChange.emit('a');
+    const ta = root.querySelector('textarea') as HTMLTextAreaElement;
+    ta.value = '   ';
+    ta.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    (root.querySelector('button[data-testid=run-query]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const req = http.expectOne('/api/sparql/a');
+    expect(req.request.headers.has('Accept')).toBe(false);
+    req.flush('', { headers: { 'Content-Type': 'text/plain' } });
     http.verify();
   });
 
@@ -238,7 +300,10 @@ describe('QueryPage', () => {
     fixture.detectChanges();
     http
       .expectOne('/api/sparql/a')
-      .flush({ message: 'malformed query' }, { status: 400, statusText: 'Bad Request' });
+      .flush(JSON.stringify({ message: 'malformed query' }), {
+        status: 400,
+        statusText: 'Bad Request',
+      });
     fixture.detectChanges();
     await fixture.whenStable();
 

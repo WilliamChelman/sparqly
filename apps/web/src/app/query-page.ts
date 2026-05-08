@@ -6,6 +6,7 @@ import {
   inject,
   OnInit,
   signal,
+  ViewChild,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
@@ -16,6 +17,19 @@ import {
 import { SourcesPicker } from './sources-picker';
 import { YasqeEditor } from './yasqe-editor';
 import { YasrViewer } from './yasr-viewer';
+
+function acceptForQueryType(queryType: string | undefined): string | undefined {
+  switch (queryType) {
+    case 'SELECT':
+    case 'ASK':
+      return 'application/sparql-results+json';
+    case 'CONSTRUCT':
+    case 'DESCRIBE':
+      return 'text/turtle';
+    default:
+      return undefined;
+  }
+}
 
 const DEFAULT_BODY = 'SELECT * WHERE {\n  ?s ?p ?o .\n} LIMIT 10';
 
@@ -54,6 +68,7 @@ function buildDefaultQuery(context: DisplayContext): string {
           (valueChange)="sourceId.set($event)"
         />
         <app-yasqe-editor
+          #editor
           data-testid="editor"
           [value]="query()"
           (valueChange)="query.set($event)"
@@ -95,6 +110,7 @@ export class QueryPage implements OnInit {
   readonly result = signal<unknown | null>(null);
   readonly error = signal<string | null>(null);
   private readonly hasUrlQuery: boolean;
+  @ViewChild('editor') private editor: YasqeEditor | undefined;
 
   constructor() {
     const params = this.route.snapshot.queryParamMap;
@@ -136,27 +152,49 @@ export class QueryPage implements OnInit {
     this.error.set(null);
     this.result.set(null);
     const url = `/api/sparql/${encodeURIComponent(this.sourceId())}`;
+    const accept = acceptForQueryType(this.editor?.getQueryType());
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/sparql-query',
+    };
+    if (accept) headers['Accept'] = accept;
     this.http
       .post(url, this.query(), {
-        headers: new HttpHeaders({
-          'Content-Type': 'application/sparql-query',
-          Accept: 'application/sparql-results+json',
-        }),
-        responseType: 'json',
+        headers: new HttpHeaders(headers),
+        observe: 'response',
+        responseType: 'text',
       })
       .subscribe({
-        next: (body) => {
+        next: (response) => {
           this.running.set(false);
-          this.result.set(body);
+          this.result.set({
+            data: response.body ?? '',
+            contentType:
+              response.headers.get('Content-Type') ?? 'application/octet-stream',
+            status: response.status,
+          });
         },
         error: (e: HttpErrorResponse) => {
           this.running.set(false);
-          this.error.set(
-            (e?.error as { message?: string } | null)?.message ??
-              e?.message ??
-              'request failed',
-          );
+          const errBody = parseErrorBody(e?.error);
+          this.error.set(errBody ?? e?.message ?? 'request failed');
         },
       });
   }
+}
+
+function parseErrorBody(body: unknown): string | undefined {
+  if (typeof body === 'string') {
+    try {
+      const parsed = JSON.parse(body) as { message?: string };
+      if (parsed && typeof parsed.message === 'string') return parsed.message;
+    } catch {
+      return body || undefined;
+    }
+    return body || undefined;
+  }
+  if (body && typeof body === 'object' && 'message' in body) {
+    const msg = (body as { message?: unknown }).message;
+    if (typeof msg === 'string') return msg;
+  }
+  return undefined;
 }
