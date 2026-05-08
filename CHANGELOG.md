@@ -1,3 +1,9 @@
+## [0.17.2](https://github.com/WilliamChelman/sparqly/compare/v0.17.1...v0.17.2) (2026-05-08)
+
+### Bug Fixes
+
+* **web:** negotiate Accept by query type so CONSTRUCT/DESCRIBE work ([a5ec4a5](https://github.com/WilliamChelman/sparqly/commit/a5ec4a5965be42acd9a92616c666ed036947c0f7))
+
 ## [0.17.1](https://github.com/WilliamChelman/sparqly/compare/v0.17.0...v0.17.1) (2026-05-08)
 
 ### Bug Fixes
