@@ -1,7 +1,7 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
-import { App } from './app';
+import { AppComponent } from './app.component';
 
 @Component({
   selector: 'app-query-page',
@@ -17,10 +17,10 @@ class QueryPageStub {}
 })
 class DiffPageStub {}
 
-describe('App routing', () => {
+describe('AppComponent routing', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [App],
+      imports: [AppComponent],
       providers: [
         provideRouter([
           { path: '', component: QueryPageStub },
@@ -31,7 +31,7 @@ describe('App routing', () => {
   });
 
   it('renders the Query page on /', async () => {
-    const fixture = TestBed.createComponent(App);
+    const fixture = TestBed.createComponent(AppComponent);
     const router = TestBed.inject(Router);
     await router.navigateByUrl('/');
     fixture.detectChanges();
@@ -43,7 +43,7 @@ describe('App routing', () => {
   });
 
   it('renders the Diff page on /diff', async () => {
-    const fixture = TestBed.createComponent(App);
+    const fixture = TestBed.createComponent(AppComponent);
     const router = TestBed.inject(Router);
     await router.navigateByUrl('/diff');
     fixture.detectChanges();
@@ -55,7 +55,7 @@ describe('App routing', () => {
   });
 
   it('exposes header nav links to / and /diff', async () => {
-    const fixture = TestBed.createComponent(App);
+    const fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
     await fixture.whenStable();
     const links = Array.from(
@@ -67,7 +67,7 @@ describe('App routing', () => {
   });
 
   it('renders the theme toggle in the header', async () => {
-    const fixture = TestBed.createComponent(App);
+    const fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
     await fixture.whenStable();
     const header = (fixture.nativeElement as HTMLElement).querySelector(
@@ -77,7 +77,7 @@ describe('App routing', () => {
   });
 
   it('renders the constellation logomark inside the brand link', async () => {
-    const fixture = TestBed.createComponent(App);
+    const fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
     await fixture.whenStable();
     const brand = (fixture.nativeElement as HTMLElement).querySelector(
@@ -87,7 +87,7 @@ describe('App routing', () => {
   });
 
   it('renders the header-drift ambient animation', async () => {
-    const fixture = TestBed.createComponent(App);
+    const fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
     await fixture.whenStable();
     const header = (fixture.nativeElement as HTMLElement).querySelector(

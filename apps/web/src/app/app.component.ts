@@ -11,4 +11,4 @@ import { HeaderComponent } from '@app/modules/header';
     <router-outlet />
   `,
 })
-export class App {}
+export class AppComponent {}
