@@ -2,11 +2,11 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { of, Subject } from 'rxjs';
+import { SourcesPickerComponent } from '@app/modules/sources-picker';
+import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
 import { DiffPage } from './diff-page';
 import { DiffResultRenderer } from './diff-result-renderer';
-import { SourcesPicker } from './sources-picker';
 import { SourceSnippet } from './source-snippet';
-import { YasqeEditor } from './yasqe-editor';
 import {
   ConfigService,
   type ConfigPayload,
@@ -116,7 +116,7 @@ async function setup(listing: SourceListing, initialUrl = '/diff') {
     ],
   })
     .overrideComponent(DiffPage, {
-      remove: { imports: [SourcesPicker, YasqeEditor] },
+      remove: { imports: [SourcesPickerComponent, YasqeEditorComponent] },
       add: { imports: [SourcesPickerStub, YasqeEditorStub] },
     })
     .overrideComponent(DiffResultRenderer, {

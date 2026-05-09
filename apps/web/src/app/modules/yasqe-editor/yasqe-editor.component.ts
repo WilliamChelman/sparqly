@@ -29,7 +29,7 @@ type YasqeInstance = InstanceType<typeof Yasqe>;
   encapsulation: ViewEncapsulation.None,
   template: `<div #host class="yasqe-editor-host"></div>`,
 })
-export class YasqeEditor implements AfterViewInit, OnDestroy {
+export class YasqeEditorComponent implements AfterViewInit, OnDestroy {
   @ViewChild('host', { static: true })
   private host!: ElementRef<HTMLDivElement>;
 

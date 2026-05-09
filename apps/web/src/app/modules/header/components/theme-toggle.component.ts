@@ -36,7 +36,7 @@ const MODES: ReadonlyArray<{ mode: ThemeMode; label: string; glyph: string }> = 
     </div>
   `,
 })
-export class ThemeToggle {
+export class ThemeToggleComponent {
   protected readonly service = inject(ThemeService);
   protected readonly modes = MODES;
 }

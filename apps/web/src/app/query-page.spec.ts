@@ -7,10 +7,10 @@ import {
 import { provideHttpClient } from '@angular/common/http';
 import { provideRouter, Router } from '@angular/router';
 import { of } from 'rxjs';
+import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import { EditorFrame } from './editor-frame';
 import { QueryPage } from './query-page';
 import { ResultPane, type ResultPaneState } from './result-pane';
-import { SourcesPicker } from './sources-picker';
 import {
   ConfigService,
   type ConfigPayload,
@@ -95,7 +95,7 @@ async function setup(
     ],
   })
     .overrideComponent(QueryPage, {
-      remove: { imports: [SourcesPicker, EditorFrame, ResultPane] },
+      remove: { imports: [SourcesPickerComponent, EditorFrame, ResultPane] },
       add: { imports: [SourcesPickerStub, EditorFrameStub, ResultPaneStub] },
     })
     .compileComponents();

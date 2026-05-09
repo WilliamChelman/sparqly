@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ThemeService, type ThemeMode } from '@app/core';
-import { ThemeToggle } from './theme-toggle';
+import { ThemeToggleComponent } from './theme-toggle.component';
 
 class FakeThemeService {
   private readonly modeSignal = signal<ThemeMode>('system');
@@ -16,7 +16,7 @@ function setup() {
   TestBed.configureTestingModule({
     providers: [{ provide: ThemeService, useValue: fake }],
   });
-  const fixture = TestBed.createComponent(ThemeToggle);
+  const fixture = TestBed.createComponent(ThemeToggleComponent);
   fixture.detectChanges();
   return { fixture, fake };
 }
@@ -29,7 +29,7 @@ function buttonByMode(el: HTMLElement, mode: ThemeMode): HTMLButtonElement {
   return btn;
 }
 
-describe('ThemeToggle', () => {
+describe('ThemeToggleComponent', () => {
   it('renders a button per mode (light/dark/system)', () => {
     const { fixture } = setup();
     const el = fixture.nativeElement as HTMLElement;

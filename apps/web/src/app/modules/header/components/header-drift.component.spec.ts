@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { HeaderDrift } from './header-drift';
+import { HeaderDriftComponent } from './header-drift.component';
 
 type MqlListener = (ev: MediaQueryListEvent) => void;
 
@@ -33,25 +33,25 @@ function installMatchMediaMock(initial: boolean): MockMql {
   return mql;
 }
 
-describe('HeaderDrift', () => {
+describe('HeaderDriftComponent', () => {
   afterEach(() => {
     delete (window as unknown as { matchMedia?: unknown }).matchMedia;
   });
 
   it('renders an SVG with constellation stars and edges', () => {
     installMatchMediaMock(false);
-    const fixture = TestBed.createComponent(HeaderDrift);
+    const fixture = TestBed.createComponent(HeaderDriftComponent);
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
     const svg = el.querySelector('svg');
-    if (!svg) throw new Error('expected svg in HeaderDrift');
+    if (!svg) throw new Error('expected svg in HeaderDriftComponent');
     expect(svg.querySelectorAll('path').length).toBeGreaterThan(0);
     expect(svg.querySelectorAll('line').length).toBeGreaterThan(0);
   });
 
   it('marks the constellation as drifting when motion is allowed', () => {
     installMatchMediaMock(false);
-    const fixture = TestBed.createComponent(HeaderDrift);
+    const fixture = TestBed.createComponent(HeaderDriftComponent);
     fixture.detectChanges();
     const group = (fixture.nativeElement as HTMLElement).querySelector(
       'svg [data-testid="constellation"]',
@@ -61,7 +61,7 @@ describe('HeaderDrift', () => {
 
   it('suppresses drift when prefers-reduced-motion: reduce', () => {
     installMatchMediaMock(true);
-    const fixture = TestBed.createComponent(HeaderDrift);
+    const fixture = TestBed.createComponent(HeaderDriftComponent);
     fixture.detectChanges();
     const group = (fixture.nativeElement as HTMLElement).querySelector(
       'svg [data-testid="constellation"]',
@@ -71,7 +71,7 @@ describe('HeaderDrift', () => {
 
   it('reacts to prefers-reduced-motion changes after construction', () => {
     const mql = installMatchMediaMock(false);
-    const fixture = TestBed.createComponent(HeaderDrift);
+    const fixture = TestBed.createComponent(HeaderDriftComponent);
     fixture.detectChanges();
     mql.fire(true);
     fixture.detectChanges();

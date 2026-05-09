@@ -1,13 +1,13 @@
 import { TestBed } from '@angular/core/testing';
-import { YasqeEditor } from './yasqe-editor';
+import { YasqeEditorComponent } from './yasqe-editor.component';
 
-function makeEditor(): YasqeEditor {
-  TestBed.configureTestingModule({ imports: [YasqeEditor] });
+function makeEditor(): YasqeEditorComponent {
+  TestBed.configureTestingModule({ imports: [YasqeEditorComponent] });
   // Avoid detectChanges() so ngAfterViewInit (which boots @triply/yasgui) does not run.
-  return TestBed.createComponent(YasqeEditor).componentInstance;
+  return TestBed.createComponent(YasqeEditorComponent).componentInstance;
 }
 
-describe('YasqeEditor signals', () => {
+describe('YasqeEditorComponent signals', () => {
   it('queryType signal reflects the current value', () => {
     const editor = makeEditor();
     editor.value = 'SELECT ?s WHERE { ?s ?p ?o }';

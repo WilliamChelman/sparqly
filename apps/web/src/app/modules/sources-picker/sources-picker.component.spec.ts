@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { of, Subject } from 'rxjs';
-import { SourcesPicker } from './sources-picker';
+import { SourcesPickerComponent } from './sources-picker.component';
 import { ConfigService, type SourceListing } from '@app/core';
 
 const TWO_SOURCE_LISTING: SourceListing = {
@@ -17,12 +17,12 @@ function setup(listing: SourceListing) {
   TestBed.configureTestingModule({
     providers: [{ provide: ConfigService, useValue: stub }],
   });
-  const fixture = TestBed.createComponent(SourcesPicker);
+  const fixture = TestBed.createComponent(SourcesPickerComponent);
   fixture.detectChanges();
   return { fixture };
 }
 
-describe('SourcesPicker', () => {
+describe('SourcesPickerComponent', () => {
   it('renders one option per source from the ConfigService listing when opened', () => {
     const { fixture } = setup(TWO_SOURCE_LISTING);
     const root = fixture.nativeElement as HTMLElement;
@@ -45,7 +45,7 @@ describe('SourcesPicker', () => {
     TestBed.configureTestingModule({
       providers: [{ provide: ConfigService, useValue: stub }],
     });
-    const fixture = TestBed.createComponent(SourcesPicker);
+    const fixture = TestBed.createComponent(SourcesPickerComponent);
     const emitted: string[] = [];
     fixture.componentInstance.valueChange.subscribe((v: string) =>
       emitted.push(v),
@@ -65,7 +65,7 @@ describe('SourcesPicker', () => {
     TestBed.configureTestingModule({
       providers: [{ provide: ConfigService, useValue: stub }],
     });
-    const fixture = TestBed.createComponent(SourcesPicker);
+    const fixture = TestBed.createComponent(SourcesPickerComponent);
     fixture.componentRef.setInput('value', 'left');
     const emitted: string[] = [];
     fixture.componentInstance.valueChange.subscribe((v: string) =>
@@ -158,7 +158,7 @@ describe('SourcesPicker', () => {
     TestBed.configureTestingModule({
       providers: [{ provide: ConfigService, useValue: stub }],
     });
-    const fixture = TestBed.createComponent(SourcesPicker);
+    const fixture = TestBed.createComponent(SourcesPickerComponent);
     fixture.detectChanges();
     const root = fixture.nativeElement as HTMLElement;
     expect(root.textContent ?? '').toContain('loading sources');

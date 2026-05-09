@@ -141,7 +141,7 @@ const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
     `,
   ],
 })
-export class HeaderDrift {
+export class HeaderDriftComponent {
   private readonly doc = inject(DOCUMENT);
   private readonly reducedMotion = signal<boolean>(false);
 
