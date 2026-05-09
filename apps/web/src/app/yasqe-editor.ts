@@ -18,7 +18,7 @@ import {
   countPrefixes,
   detectQueryType,
   type QueryType,
-} from './query-detection';
+} from '@app/core';
 
 type YasqeInstance = InstanceType<typeof Yasqe>;
 

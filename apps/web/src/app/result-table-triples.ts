@@ -5,8 +5,7 @@ import {
   computed,
   input,
 } from '@angular/core';
-import type { DisplayContext } from './config.service';
-import type { TripleResult } from './sparql-result-decoder';
+import type { DisplayContext, TripleResult } from '@app/core';
 import { TermCell } from './term-cell';
 
 @Component({

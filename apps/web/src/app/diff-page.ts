@@ -14,7 +14,7 @@ import {
   ConfigService,
   type DisplayContext,
   type SourceListingEntry,
-} from './config.service';
+} from '@app/core';
 import {
   DiffService,
   type DiffErrorResponse,

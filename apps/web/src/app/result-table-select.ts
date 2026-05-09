@@ -5,8 +5,7 @@ import {
   computed,
   input,
 } from '@angular/core';
-import type { DisplayContext } from './config.service';
-import type { SelectResult } from './sparql-result-decoder';
+import type { DisplayContext, SelectResult, Term } from '@app/core';
 import { TermCell } from './term-cell';
 
 @Component({
@@ -87,9 +86,9 @@ export class ResultTableSelect {
   }
 
   cellTerm(
-    row: Record<string, import('./sparql-result-decoder').Term>,
+    row: Record<string, Term>,
     name: string,
-  ): import('./sparql-result-decoder').Term | null {
+  ): Term | null {
     return row[name] ?? null;
   }
 }

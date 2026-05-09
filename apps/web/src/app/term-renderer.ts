@@ -1,6 +1,5 @@
 import { bestPrefixEntryFor, DEFAULT_PREFIXES } from 'common';
-import type { DisplayContext } from './config.service';
-import type { Term } from './sparql-result-decoder';
+import type { DisplayContext, Term } from '@app/core';
 
 export interface PrefixedIri {
   kind: 'prefixed-iri';

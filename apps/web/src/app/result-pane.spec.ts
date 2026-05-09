@@ -1,7 +1,6 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { DisplayContext } from './config.service';
-import type { DecodedResult } from './sparql-result-decoder';
+import type { DecodedResult, DisplayContext } from '@app/core';
 import { ResultPane, type ResultPaneState } from './result-pane';
 
 @Component({

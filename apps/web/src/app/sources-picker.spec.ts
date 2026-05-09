@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { of, Subject } from 'rxjs';
 import { SourcesPicker } from './sources-picker';
-import { ConfigService, type SourceListing } from './config.service';
+import { ConfigService, type SourceListing } from '@app/core';
 
 const TWO_SOURCE_LISTING: SourceListing = {
   sources: [

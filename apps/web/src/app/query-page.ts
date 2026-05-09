@@ -11,14 +11,14 @@ import {
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   ConfigService,
+  decodeSparqlResult,
+  detectQueryType,
   type DisplayContext,
   type SourceListingEntry,
-} from './config.service';
+} from '@app/core';
 import { EditorFrame } from './editor-frame';
-import { detectQueryType } from './query-detection';
 import { ResultPane, type ResultPaneState } from './result-pane';
 import { SourcesPicker } from './sources-picker';
-import { decodeSparqlResult } from './sparql-result-decoder';
 
 function acceptForQueryType(queryType: string | undefined): string | undefined {
   switch (queryType) {

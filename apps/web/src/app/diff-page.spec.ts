@@ -11,7 +11,7 @@ import {
   ConfigService,
   type ConfigPayload,
   type SourceListing,
-} from './config.service';
+} from '@app/core';
 import {
   DiffService,
   type DiffRequest,

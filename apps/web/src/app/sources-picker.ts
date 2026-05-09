@@ -13,13 +13,13 @@ import {
 import {
   ConfigService,
   type SourceListingEntry,
-} from './config.service';
+} from '@app/core';
 
 export type {
   SourceKind,
   SourceListing,
   SourceListingEntry,
-} from './config.service';
+} from '@app/core';
 
 @Component({
   selector: 'app-sources-picker',

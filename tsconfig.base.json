@@ -18,7 +18,10 @@
       "common": ["libs/common/src/index.ts"],
       "core": ["libs/core/src/index.ts"],
       "domain": ["libs/domain/src/index.ts"],
-      "server": ["libs/server/src/index.ts"]
+      "server": ["libs/server/src/index.ts"],
+      "@app/core": ["apps/web/src/app/core/index.ts"],
+      "@app/modules/*": ["apps/web/src/app/modules/*"],
+      "@app/pages/*": ["apps/web/src/app/pages/*"]
     }
   },
   "exclude": ["node_modules", "tmp"]

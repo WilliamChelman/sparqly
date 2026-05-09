@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ThemeService, type ThemeMode } from './theme.service';
+import { ThemeService, type ThemeMode } from '@app/core';
 import { ThemeToggle } from './theme-toggle';
 
 class FakeThemeService {

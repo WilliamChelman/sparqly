@@ -5,7 +5,15 @@ import {
   input,
   signal,
 } from '@angular/core';
-import type { DisplayContext } from './config.service';
+import type {
+  AskResult,
+  DecodedResult,
+  DisplayContext,
+  SelectResult,
+  Term,
+  Triple,
+  TripleResult,
+} from '@app/core';
 import { exportBindingsCsv } from './csv-exporter';
 import {
   ErrorConstellation,
@@ -16,14 +24,6 @@ import { ResultAsk } from './result-ask';
 import { ResultRaw } from './result-raw';
 import { ResultTableSelect } from './result-table-select';
 import { ResultTableTriples } from './result-table-triples';
-import type {
-  AskResult,
-  DecodedResult,
-  SelectResult,
-  Term,
-  Triple,
-  TripleResult,
-} from './sparql-result-decoder';
 import { StateCard } from './state-card';
 
 export type ResultPaneState =

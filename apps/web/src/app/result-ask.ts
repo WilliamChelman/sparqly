@@ -4,7 +4,7 @@ import {
   computed,
   input,
 } from '@angular/core';
-import type { AskResult } from './sparql-result-decoder';
+import type { AskResult } from '@app/core';
 import { StateCard } from './state-card';
 
 @Component({
