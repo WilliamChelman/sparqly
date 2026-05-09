@@ -7,9 +7,7 @@ import {
   signal,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import {
-  SourcesPicker,
-} from './sources-picker';
+import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import {
   ConfigService,
   type DisplayContext,
@@ -21,14 +19,14 @@ import {
   type DiffRequest,
   type DiffResponse,
 } from './diff.service';
+import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
 import { DiffResultRenderer } from './diff-result-renderer';
-import { YasqeEditor } from './yasqe-editor';
 
 @Component({
   selector: 'app-diff-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SourcesPicker, DiffResultRenderer, YasqeEditor],
+  imports: [SourcesPickerComponent, DiffResultRenderer, YasqeEditorComponent],
   template: `
     @if (sources() === null) {
       <main class="p-4 text-sm text-foreground-faint">loading…</main>

@@ -15,12 +15,6 @@ import {
   type SourceListingEntry,
 } from '@app/core';
 
-export type {
-  SourceKind,
-  SourceListing,
-  SourceListingEntry,
-} from '@app/core';
-
 @Component({
   selector: 'app-sources-picker',
   standalone: true,
@@ -166,7 +160,7 @@ export type {
     }
   `,
 })
-export class SourcesPicker implements OnInit {
+export class SourcesPickerComponent implements OnInit {
   @Input() label = 'source';
   @Output() valueChange = new EventEmitter<string>();
 

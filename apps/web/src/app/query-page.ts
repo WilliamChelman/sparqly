@@ -16,9 +16,9 @@ import {
   type DisplayContext,
   type SourceListingEntry,
 } from '@app/core';
+import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import { EditorFrame } from './editor-frame';
 import { ResultPane, type ResultPaneState } from './result-pane';
-import { SourcesPicker } from './sources-picker';
 
 function acceptForQueryType(queryType: string | undefined): string | undefined {
   switch (queryType) {
@@ -49,7 +49,7 @@ function buildDefaultQuery(context: DisplayContext): string {
   selector: 'app-query-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SourcesPicker, EditorFrame, ResultPane],
+  imports: [SourcesPickerComponent, EditorFrame, ResultPane],
   template: `
     <header class="border-b border-border-muted bg-surface px-4 py-3">
       <h1 class="font-serif text-2xl italic text-foreground">

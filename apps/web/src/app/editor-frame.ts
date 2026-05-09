@@ -7,13 +7,13 @@ import {
   ViewChild,
   computed,
 } from '@angular/core';
-import { YasqeEditor } from './yasqe-editor';
+import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
 
 @Component({
   selector: 'app-editor-frame',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [YasqeEditor],
+  imports: [YasqeEditorComponent],
   styles: [
     `
       :host {
@@ -88,7 +88,7 @@ export class EditorFrame {
   @Output() valueChange = new EventEmitter<string>();
 
   @ViewChild('editor', { static: true })
-  private editor!: YasqeEditor;
+  private editor!: YasqeEditorComponent;
 
   readonly kindLabel = computed(() => this.editor.queryType() ?? '—');
   readonly prefixLabel = computed(() => {

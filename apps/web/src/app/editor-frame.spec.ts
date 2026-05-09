@@ -1,7 +1,7 @@
 import { Component, EventEmitter, Input, Output, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
 import { EditorFrame } from './editor-frame';
-import { YasqeEditor } from './yasqe-editor';
 import type { QueryType } from '@app/core';
 
 @Component({
@@ -25,7 +25,7 @@ function setup(initial: { value?: string; name?: string } = {}) {
   TestBed.configureTestingModule({ imports: [EditorFrame] }).overrideComponent(
     EditorFrame,
     {
-      remove: { imports: [YasqeEditor] },
+      remove: { imports: [YasqeEditorComponent] },
       add: { imports: [YasqeEditorStub] },
     },
   );

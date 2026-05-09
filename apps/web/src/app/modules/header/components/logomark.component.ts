@@ -50,4 +50,4 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
     `,
   ],
 })
-export class Logomark {}
+export class LogomarkComponent {}
