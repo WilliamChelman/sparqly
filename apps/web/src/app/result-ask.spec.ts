@@ -1,6 +1,6 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { AskResult } from './sparql-result-decoder';
+import type { AskResult } from '@app/core';
 import { ResultAsk } from './result-ask';
 
 @Component({

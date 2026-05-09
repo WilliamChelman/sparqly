@@ -1,7 +1,6 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { DisplayContext } from './config.service';
-import type { TripleResult } from './sparql-result-decoder';
+import type { DisplayContext, TripleResult } from '@app/core';
 import { ResultTableTriples } from './result-table-triples';
 
 @Component({

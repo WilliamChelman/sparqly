@@ -1,5 +1,5 @@
 import { renderTerm } from './term-renderer';
-import type { DisplayContext } from './config.service';
+import type { DisplayContext } from '@app/core';
 
 const EMPTY: DisplayContext = { prefixes: {} };
 

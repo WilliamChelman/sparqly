@@ -1,5 +1,5 @@
 import { exportBindingsCsv } from './csv-exporter';
-import type { Term } from './sparql-result-decoder';
+import type { Term } from '@app/core';
 
 const NN = (value: string): Term => ({ termType: 'NamedNode', value });
 const BN = (value: string): Term => ({ termType: 'BlankNode', value });

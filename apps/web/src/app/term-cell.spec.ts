@@ -1,7 +1,6 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { DisplayContext } from './config.service';
-import type { Term } from './sparql-result-decoder';
+import type { DisplayContext, Term } from '@app/core';
 import { TermCell } from './term-cell';
 
 @Component({

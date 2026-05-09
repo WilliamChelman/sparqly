@@ -2,7 +2,7 @@ import { Component, EventEmitter, Input, Output, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { EditorFrame } from './editor-frame';
 import { YasqeEditor } from './yasqe-editor';
-import type { QueryType } from './query-detection';
+import type { QueryType } from '@app/core';
 
 @Component({
   selector: 'app-yasqe-editor',

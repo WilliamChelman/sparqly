@@ -1,7 +1,6 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { DisplayContext } from './config.service';
-import type { SelectResult } from './sparql-result-decoder';
+import type { DisplayContext, SelectResult } from '@app/core';
 import { ResultTableSelect } from './result-table-select';
 
 @Component({

@@ -6,7 +6,7 @@ import {
   input,
 } from '@angular/core';
 import { bestPrefixEntryFor, DEFAULT_PREFIXES, shortenNQuadLine } from 'common';
-import type { DisplayContext } from './config.service';
+import type { DisplayContext } from '@app/core';
 import type {
   BnodePathStep,
   DiffResponse,

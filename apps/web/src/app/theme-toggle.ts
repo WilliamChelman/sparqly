@@ -3,7 +3,7 @@ import {
   Component,
   inject,
 } from '@angular/core';
-import { ThemeService, type ThemeMode } from './theme.service';
+import { ThemeService, type ThemeMode } from '@app/core';
 
 const MODES: ReadonlyArray<{ mode: ThemeMode; label: string; glyph: string }> = [
   { mode: 'light', label: 'Light theme', glyph: '☀' },

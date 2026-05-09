@@ -16,7 +16,7 @@ import {
   type ConfigPayload,
   type DisplayContext,
   type SourceListing,
-} from './config.service';
+} from '@app/core';
 
 @Component({
   selector: 'app-sources-picker',

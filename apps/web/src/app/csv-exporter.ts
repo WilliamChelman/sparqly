@@ -1,4 +1,4 @@
-import type { Term } from './sparql-result-decoder';
+import type { Term } from '@app/core';
 
 export interface ExportBindingsCsvOptions {
   delimiter?: string;

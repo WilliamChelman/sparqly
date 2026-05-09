@@ -4,8 +4,7 @@ import {
   computed,
   input,
 } from '@angular/core';
-import type { DisplayContext } from './config.service';
-import type { Term } from './sparql-result-decoder';
+import type { DisplayContext, Term } from '@app/core';
 import { renderTerm, type TermDisplay } from './term-renderer';
 
 @Component({
