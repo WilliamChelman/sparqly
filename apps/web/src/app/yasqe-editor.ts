@@ -7,10 +7,18 @@ import {
   Input,
   OnDestroy,
   Output,
+  Signal,
   ViewChild,
   ViewEncapsulation,
+  computed,
+  signal,
 } from '@angular/core';
 import Yasgui from '@triply/yasgui';
+import {
+  countPrefixes,
+  detectQueryType,
+  type QueryType,
+} from './query-detection';
 
 type YasqeInstance = InstanceType<typeof Yasgui.Yasqe>;
 
@@ -26,18 +34,25 @@ export class YasqeEditor implements AfterViewInit, OnDestroy {
   private host!: ElementRef<HTMLDivElement>;
 
   private instance: YasqeInstance | undefined;
-  private currentValue = '';
+  private readonly valueSignal = signal('');
+
+  readonly queryType: Signal<QueryType | undefined> = computed(() =>
+    detectQueryType(this.valueSignal()),
+  );
+  readonly prefixCount: Signal<number> = computed(() =>
+    countPrefixes(this.valueSignal()),
+  );
 
   @Input()
   set value(v: string) {
     const next = v ?? '';
-    this.currentValue = next;
+    this.valueSignal.set(next);
     if (this.instance && this.instance['getValue']() !== next) {
       this.instance['setValue'](next);
     }
   }
   get value(): string {
-    return this.currentValue;
+    return this.valueSignal();
   }
 
   @Output() valueChange = new EventEmitter<string>();
@@ -50,24 +65,18 @@ export class YasqeEditor implements AfterViewInit, OnDestroy {
       persistenceId: null,
       requestConfig: { endpoint: '/api/sparql' },
     });
-    this.instance['setValue'](this.currentValue);
+    const cm = this.instance as unknown as {
+      setOption?: (name: string, value: unknown) => void;
+    };
+    cm.setOption?.('theme', 'sparqly');
+    this.instance['setValue'](this.valueSignal());
     this.instance.on('change', () => {
       const v = (this.instance?.['getValue']() as string) ?? '';
-      if (v !== this.currentValue) {
-        this.currentValue = v;
+      if (v !== this.valueSignal()) {
+        this.valueSignal.set(v);
         this.valueChange.emit(v);
       }
     });
-  }
-
-  getQueryType(): string | undefined {
-    if (!this.instance) return undefined;
-    try {
-      const t = (this.instance as unknown as { getQueryType: () => unknown }).getQueryType();
-      return typeof t === 'string' ? t : undefined;
-    } catch {
-      return undefined;
-    }
   }
 
   ngOnDestroy(): void {
