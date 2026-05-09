@@ -16,8 +16,9 @@ import {
 } from './config.service';
 import { EditorFrame } from './editor-frame';
 import { detectQueryType } from './query-detection';
+import { ResultPane, type ResultPaneState } from './result-pane';
 import { SourcesPicker } from './sources-picker';
-import { YasrViewer } from './yasr-viewer';
+import { decodeSparqlResult } from './sparql-result-decoder';
 
 function acceptForQueryType(queryType: string | undefined): string | undefined {
   switch (queryType) {
@@ -48,7 +49,7 @@ function buildDefaultQuery(context: DisplayContext): string {
   selector: 'app-query-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SourcesPicker, EditorFrame, YasrViewer],
+  imports: [SourcesPicker, EditorFrame, ResultPane],
   template: `
     <header class="border-b border-border-muted bg-surface px-4 py-3">
       <h1 class="font-serif text-2xl italic text-foreground">
@@ -88,15 +89,7 @@ function buildDefaultQuery(context: DisplayContext): string {
             {{ running() ? 'running…' : 'Run' }}
           </button>
         </div>
-        @if (error(); as e) {
-          <p
-            data-testid="error"
-            class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
-          >
-            {{ e }}
-          </p>
-        }
-        <app-yasr-viewer [result]="result()" />
+        <app-result-pane [state]="resultState()" [context]="context()" />
       </main>
     }
   `,
@@ -111,8 +104,8 @@ export class QueryPage implements OnInit {
   readonly sourceId = signal<string>('');
   readonly query = signal<string>('');
   readonly running = signal<boolean>(false);
-  readonly result = signal<unknown | null>(null);
-  readonly error = signal<string | null>(null);
+  readonly resultState = signal<ResultPaneState>({ kind: 'empty' });
+  readonly context = signal<DisplayContext>({ prefixes: {} });
   readonly queryType = computed(() => detectQueryType(this.query()));
   private readonly hasUrlQuery: boolean;
 
@@ -140,6 +133,7 @@ export class QueryPage implements OnInit {
   ngOnInit(): void {
     this.configService.config().subscribe((config) => {
       this.sources.set(config.sources);
+      this.context.set(config.context);
       if (this.sourceId() === '') {
         const def = config.sources.find((s) => s.default === true);
         const initial = def?.id ?? config.sources[0]?.id ?? '';
@@ -153,8 +147,7 @@ export class QueryPage implements OnInit {
 
   run(): void {
     this.running.set(true);
-    this.error.set(null);
-    this.result.set(null);
+    this.resultState.set({ kind: 'loading' });
     const url = `/api/sparql/${encodeURIComponent(this.sourceId())}`;
     const accept = acceptForQueryType(this.queryType());
     const headers: Record<string, string> = {
@@ -170,17 +163,19 @@ export class QueryPage implements OnInit {
       .subscribe({
         next: (response) => {
           this.running.set(false);
-          this.result.set({
-            data: response.body ?? '',
-            contentType:
-              response.headers.get('Content-Type') ?? 'application/octet-stream',
-            status: response.status,
+          const contentType =
+            response.headers.get('Content-Type') ?? 'application/octet-stream';
+          const body = response.body ?? '';
+          this.resultState.set({
+            kind: 'result',
+            result: decodeSparqlResult(body, contentType),
           });
         },
         error: (e: HttpErrorResponse) => {
           this.running.set(false);
           const errBody = parseErrorBody(e?.error);
-          this.error.set(errBody ?? e?.message ?? 'request failed');
+          const message = errBody ?? e?.message ?? 'request failed';
+          this.resultState.set({ kind: 'error', message });
         },
       });
   }
