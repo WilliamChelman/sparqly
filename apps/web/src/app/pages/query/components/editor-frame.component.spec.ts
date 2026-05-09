@@ -1,7 +1,7 @@
 import { Component, EventEmitter, Input, Output, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
-import { EditorFrame } from './editor-frame';
+import { EditorFrameComponent } from './editor-frame.component';
 import type { QueryType } from '@app/core';
 
 @Component({
@@ -22,14 +22,14 @@ class YasqeEditorStub {
 }
 
 function setup(initial: { value?: string; name?: string } = {}) {
-  TestBed.configureTestingModule({ imports: [EditorFrame] }).overrideComponent(
-    EditorFrame,
+  TestBed.configureTestingModule({ imports: [EditorFrameComponent] }).overrideComponent(
+    EditorFrameComponent,
     {
       remove: { imports: [YasqeEditorComponent] },
       add: { imports: [YasqeEditorStub] },
     },
   );
-  const fixture = TestBed.createComponent(EditorFrame);
+  const fixture = TestBed.createComponent(EditorFrameComponent);
   if (initial.value !== undefined) fixture.componentRef.setInput('value', initial.value);
   if (initial.name !== undefined) fixture.componentRef.setInput('name', initial.name);
   fixture.detectChanges();
@@ -39,7 +39,7 @@ function setup(initial: { value?: string; name?: string } = {}) {
   return { fixture, root, stub };
 }
 
-describe('EditorFrame', () => {
+describe('EditorFrameComponent', () => {
   it('renders a my-head strip with the name (defaults to "query")', () => {
     const { root } = setup();
     const head = root.querySelector('.my-head');

@@ -1,11 +1,11 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { AskResult } from '@app/core';
-import { ResultAsk } from './result-ask';
+import { ResultAskComponent } from './result-ask.component';
 
 @Component({
   standalone: true,
-  imports: [ResultAsk],
+  imports: [ResultAskComponent],
   template: `<app-result-ask [result]="result" />`,
 })
 class Host {
@@ -17,7 +17,7 @@ class Host {
   };
 }
 
-describe('ResultAsk', () => {
+describe('ResultAskComponent', () => {
   it('renders a centered glyph card showing TRUE for an ASK=true result', () => {
     const fixture = TestBed.createComponent(Host);
     fixture.componentInstance.result = {

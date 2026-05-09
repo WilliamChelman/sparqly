@@ -4,18 +4,18 @@ import {
   HttpTestingController,
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
-import { SourceSnippet } from './source-snippet';
+import { SourceSnippetComponent } from './source-snippet.component';
 
 function setup() {
   TestBed.configureTestingModule({
-    imports: [SourceSnippet],
+    imports: [SourceSnippetComponent],
     providers: [provideHttpClient(), provideHttpClientTesting()],
   });
   return { http: TestBed.inject(HttpTestingController) };
 }
 
 function render(inputs: { file: string; line: number; context: number }) {
-  const fixture = TestBed.createComponent(SourceSnippet);
+  const fixture = TestBed.createComponent(SourceSnippetComponent);
   fixture.componentRef.setInput('file', inputs.file);
   fixture.componentRef.setInput('line', inputs.line);
   fixture.componentRef.setInput('context', inputs.context);
@@ -23,7 +23,7 @@ function render(inputs: { file: string; line: number; context: number }) {
   return fixture;
 }
 
-describe('SourceSnippet', () => {
+describe('SourceSnippetComponent', () => {
   it('renders a line-numbered <pre> with the focal line highlighted on a 200 snippet payload', () => {
     const { http } = setup();
     const fixture = render({

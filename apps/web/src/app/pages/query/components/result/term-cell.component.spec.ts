@@ -1,11 +1,11 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { DisplayContext, Term } from '@app/core';
-import { TermCell } from './term-cell';
+import { TermCellComponent } from './term-cell.component';
 
 @Component({
   standalone: true,
-  imports: [TermCell],
+  imports: [TermCellComponent],
   template: `<app-term-cell [term]="term" [context]="context" />`,
 })
 class Host {
@@ -21,7 +21,7 @@ function setup(term: Term, context: DisplayContext = { prefixes: {} }) {
   return fixture.nativeElement as HTMLElement;
 }
 
-describe('TermCell', () => {
+describe('TermCellComponent', () => {
   it('renders a prefixed IRI as <prefix>:<local> with a kind data attribute', () => {
     const el = setup(
       { termType: 'NamedNode', value: 'http://example.org/Foo' },

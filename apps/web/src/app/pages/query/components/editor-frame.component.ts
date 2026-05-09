@@ -82,7 +82,7 @@ import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
     </div>
   `,
 })
-export class EditorFrame {
+export class EditorFrameComponent {
   @Input() name = 'query';
   @Input() value = '';
   @Output() valueChange = new EventEmitter<string>();

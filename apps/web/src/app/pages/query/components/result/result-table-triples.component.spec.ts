@@ -1,11 +1,11 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { DisplayContext, TripleResult } from '@app/core';
-import { ResultTableTriples } from './result-table-triples';
+import { ResultTableTriplesComponent } from './result-table-triples.component';
 
 @Component({
   standalone: true,
-  imports: [ResultTableTriples],
+  imports: [ResultTableTriplesComponent],
   template: `
     <app-result-table-triples [result]="result" [context]="context" />
   `,
@@ -20,7 +20,7 @@ class Host {
   context: DisplayContext = { prefixes: {} };
 }
 
-describe('ResultTableTriples', () => {
+describe('ResultTableTriplesComponent', () => {
   it('renders sticky header cells: # / subject / predicate / object', () => {
     const fixture = TestBed.createComponent(Host);
     fixture.detectChanges();

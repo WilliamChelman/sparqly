@@ -47,7 +47,7 @@ export type SnippetReadResult = SnippetPayload | SnippetUnavailable;
     }
   `,
 })
-export class SourceSnippet implements OnInit {
+export class SourceSnippetComponent implements OnInit {
   private readonly http = inject(HttpClient);
 
   readonly file = input.required<string>();

@@ -20,4 +20,4 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
     </article>
   `,
 })
-export class StateCard {}
+export class StateCardComponent {}

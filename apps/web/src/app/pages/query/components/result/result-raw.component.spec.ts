@@ -1,10 +1,10 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ResultRaw } from './result-raw';
+import { ResultRawComponent } from './result-raw.component';
 
 @Component({
   standalone: true,
-  imports: [ResultRaw],
+  imports: [ResultRawComponent],
   template: `<app-result-raw [text]="text" [contentType]="contentType" />`,
 })
 class Host {
@@ -12,7 +12,7 @@ class Host {
   contentType = 'text/plain';
 }
 
-describe('ResultRaw', () => {
+describe('ResultRawComponent', () => {
   it('renders the unparsed body inside a <pre> with a JetBrains Mono font class', () => {
     const fixture = TestBed.createComponent(Host);
     fixture.componentInstance.text = '<a> <b> <c> .';

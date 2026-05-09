@@ -13,7 +13,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
     </div>
   `,
 })
-export class ResultRaw {
+export class ResultRawComponent {
   readonly text = input<string>('');
   readonly contentType = input<string>('');
 }

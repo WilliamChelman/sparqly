@@ -14,17 +14,17 @@ import type {
   Triple,
   TripleResult,
 } from '@app/core';
-import { exportBindingsCsv } from './csv-exporter';
+import { exportBindingsCsv } from '../../utils/csv-exporter';
 import {
-  ErrorConstellation,
-  HeroIllustration,
-  LoadingConstellation,
-} from './result-illustrations';
-import { ResultAsk } from './result-ask';
-import { ResultRaw } from './result-raw';
-import { ResultTableSelect } from './result-table-select';
-import { ResultTableTriples } from './result-table-triples';
-import { StateCard } from './state-card';
+  ErrorConstellationComponent,
+  HeroIllustrationComponent,
+  LoadingConstellationComponent,
+} from './result-illustrations.component';
+import { ResultAskComponent } from './result-ask.component';
+import { ResultRawComponent } from './result-raw.component';
+import { ResultTableSelectComponent } from './result-table-select.component';
+import { ResultTableTriplesComponent } from './result-table-triples.component';
+import { StateCardComponent } from './state-card.component';
 
 export type ResultPaneState =
   | { kind: 'empty' }
@@ -46,14 +46,14 @@ interface DownloadOption {
   selector: 'app-result-pane',
   standalone: true,
   imports: [
-    ErrorConstellation,
-    HeroIllustration,
-    LoadingConstellation,
-    ResultAsk,
-    ResultRaw,
-    ResultTableSelect,
-    ResultTableTriples,
-    StateCard,
+    ErrorConstellationComponent,
+    HeroIllustrationComponent,
+    LoadingConstellationComponent,
+    ResultAskComponent,
+    ResultRawComponent,
+    ResultTableSelectComponent,
+    ResultTableTriplesComponent,
+    StateCardComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -170,7 +170,7 @@ interface DownloadOption {
     }
   `,
 })
-export class ResultPane {
+export class ResultPaneComponent {
   readonly state = input.required<ResultPaneState>();
   readonly context = input<DisplayContext>({ prefixes: {} });
 

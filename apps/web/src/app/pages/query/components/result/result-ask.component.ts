@@ -5,12 +5,12 @@ import {
   input,
 } from '@angular/core';
 import type { AskResult } from '@app/core';
-import { StateCard } from './state-card';
+import { StateCardComponent } from './state-card.component';
 
 @Component({
   selector: 'app-result-ask',
   standalone: true,
-  imports: [StateCard],
+  imports: [StateCardComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div data-testid="result-ask" [attr.data-value]="value()">
@@ -28,7 +28,7 @@ import { StateCard } from './state-card';
     </div>
   `,
 })
-export class ResultAsk {
+export class ResultAskComponent {
   readonly result = input.required<AskResult>();
   readonly value = computed<'true' | 'false'>(() =>
     this.result().value ? 'true' : 'false',

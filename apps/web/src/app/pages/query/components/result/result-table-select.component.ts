@@ -6,12 +6,12 @@ import {
   input,
 } from '@angular/core';
 import type { DisplayContext, SelectResult, Term } from '@app/core';
-import { TermCell } from './term-cell';
+import { TermCellComponent } from './term-cell.component';
 
 @Component({
   selector: 'app-result-table-select',
   standalone: true,
-  imports: [ScrollingModule, TermCell],
+  imports: [ScrollingModule, TermCellComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div
@@ -62,7 +62,7 @@ import { TermCell } from './term-cell';
     </div>
   `,
 })
-export class ResultTableSelect {
+export class ResultTableSelectComponent {
   readonly result = input.required<SelectResult>();
   readonly context = input<DisplayContext>({ prefixes: {} });
 

@@ -18,15 +18,19 @@ import {
   type DiffErrorResponse,
   type DiffRequest,
   type DiffResponse,
-} from './diff.service';
+} from './services/diff.service';
 import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
-import { DiffResultRenderer } from './diff-result-renderer';
+import { DiffResultRendererComponent } from './components/diff-result-renderer.component';
 
 @Component({
   selector: 'app-diff-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SourcesPickerComponent, DiffResultRenderer, YasqeEditorComponent],
+  imports: [
+    SourcesPickerComponent,
+    DiffResultRendererComponent,
+    YasqeEditorComponent,
+  ],
   template: `
     @if (sources() === null) {
       <main class="p-4 text-sm text-foreground-faint">loading…</main>

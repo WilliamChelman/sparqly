@@ -1,11 +1,11 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { DisplayContext, SelectResult } from '@app/core';
-import { ResultTableSelect } from './result-table-select';
+import { ResultTableSelectComponent } from './result-table-select.component';
 
 @Component({
   standalone: true,
-  imports: [ResultTableSelect],
+  imports: [ResultTableSelectComponent],
   template: `
     <app-result-table-select [result]="result" [context]="context" />
   `,
@@ -21,7 +21,7 @@ class Host {
   context: DisplayContext = { prefixes: {} };
 }
 
-describe('ResultTableSelect', () => {
+describe('ResultTableSelectComponent', () => {
   it('renders one header cell per projection variable, in order', () => {
     const fixture = TestBed.createComponent(Host);
     fixture.componentInstance.result = {

@@ -4,9 +4,9 @@ import { provideRouter, Router } from '@angular/router';
 import { of, Subject } from 'rxjs';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
-import { DiffPage } from './diff-page';
-import { DiffResultRenderer } from './diff-result-renderer';
-import { SourceSnippet } from './source-snippet';
+import { DiffPage } from './diff.page';
+import { DiffResultRendererComponent } from './components/diff-result-renderer.component';
+import { SourceSnippetComponent } from './components/source-snippet.component';
 import {
   ConfigService,
   type ConfigPayload,
@@ -16,7 +16,7 @@ import {
   DiffService,
   type DiffRequest,
   type DiffResponse,
-} from './diff.service';
+} from './services/diff.service';
 
 @Component({
   selector: 'app-source-snippet',
@@ -119,8 +119,8 @@ async function setup(listing: SourceListing, initialUrl = '/diff') {
       remove: { imports: [SourcesPickerComponent, YasqeEditorComponent] },
       add: { imports: [SourcesPickerStub, YasqeEditorStub] },
     })
-    .overrideComponent(DiffResultRenderer, {
-      remove: { imports: [SourceSnippet] },
+    .overrideComponent(DiffResultRendererComponent, {
+      remove: { imports: [SourceSnippetComponent] },
       add: { imports: [SourceSnippetStub] },
     })
     .compileComponents();

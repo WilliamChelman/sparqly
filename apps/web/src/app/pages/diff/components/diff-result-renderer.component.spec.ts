@@ -1,7 +1,7 @@
 import { Component, Input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { DiffResultRenderer } from './diff-result-renderer';
-import { SourceSnippet } from './source-snippet';
+import { DiffResultRendererComponent } from './diff-result-renderer.component';
+import { SourceSnippetComponent } from './source-snippet.component';
 import type {
   DiffErrorResponse,
   DiffResponse,
@@ -9,7 +9,7 @@ import type {
   Hunk,
   HunkLine,
   TabularDiffResponse,
-} from './diff.service';
+} from '../services/diff.service';
 
 @Component({
   selector: 'app-source-snippet',
@@ -28,14 +28,14 @@ class SourceSnippetStub {
 }
 
 function render(result: DiffResponse, context = 3): HTMLElement {
-  TestBed.configureTestingModule({ imports: [DiffResultRenderer] }).overrideComponent(
-    DiffResultRenderer,
+  TestBed.configureTestingModule({ imports: [DiffResultRendererComponent] }).overrideComponent(
+    DiffResultRendererComponent,
     {
-      remove: { imports: [SourceSnippet] },
+      remove: { imports: [SourceSnippetComponent] },
       add: { imports: [SourceSnippetStub] },
     },
   );
-  const fixture = TestBed.createComponent(DiffResultRenderer);
+  const fixture = TestBed.createComponent(DiffResultRendererComponent);
   fixture.componentRef.setInput('result', result);
   fixture.componentRef.setInput('context', context);
   fixture.detectChanges();
@@ -59,7 +59,7 @@ function emptyHunked(): GroupedDiffResponse {
   };
 }
 
-describe('DiffResultRenderer (grouped mode)', () => {
+describe('DiffResultRendererComponent (grouped mode)', () => {
   it('renders the three sections in order: Changed, then Removed, then Added', () => {
     const root = render(emptyHunked());
     const sections = Array.from(
@@ -444,7 +444,7 @@ describe('DiffResultRenderer (grouped mode)', () => {
   });
 });
 
-describe('DiffResultRenderer (tabular mode)', () => {
+describe('DiffResultRendererComponent (tabular mode)', () => {
   it('renders a table with one row per added/removed entry, sided count column, and projected variables as headers', () => {
     const result: TabularDiffResponse = {
       kind: 'tabular',
@@ -517,7 +517,7 @@ describe('DiffResultRenderer (tabular mode)', () => {
   });
 });
 
-describe('DiffResultRenderer (error mode)', () => {
+describe('DiffResultRendererComponent (error mode)', () => {
   it('renders left, right, and top error panels when all three are populated', () => {
     const result: DiffErrorResponse = {
       kind: 'error',

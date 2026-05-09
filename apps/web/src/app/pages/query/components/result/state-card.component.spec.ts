@@ -1,10 +1,10 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { StateCard } from './state-card';
+import { StateCardComponent } from './state-card.component';
 
 @Component({
   standalone: true,
-  imports: [StateCard],
+  imports: [StateCardComponent],
   template: `
     <app-state-card data-testid="card">
       <div data-testid="slot-illustration" illustration>ILLO</div>
@@ -15,7 +15,7 @@ import { StateCard } from './state-card';
 })
 class Host {}
 
-describe('StateCard', () => {
+describe('StateCardComponent', () => {
   it('renders an article wrapper with slotted illustration / title / copy', () => {
     const fixture = TestBed.createComponent(Host);
     fixture.detectChanges();
