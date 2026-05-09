@@ -24,6 +24,25 @@ export default [
           style: 'kebab-case',
         },
       ],
+      // ADR-0013: webapp's public-import surface uses @app/* aliases
+      // (@app/core, @app/modules/*, @app/pages/*). Whitelist them so the
+      // Nx boundaries rule stops demanding relative imports across modules.
+      '@nx/enforce-module-boundaries': [
+        'error',
+        {
+          enforceBuildableLibDependency: true,
+          allow: [
+            '^.*/eslint(\\.base)?\\.config\\.[cm]?[jt]s$',
+            '^@app/.*$',
+          ],
+          depConstraints: [
+            {
+              sourceTag: '*',
+              onlyDependOnLibsWithTags: ['*'],
+            },
+          ],
+        },
+      ],
     },
   },
   {
