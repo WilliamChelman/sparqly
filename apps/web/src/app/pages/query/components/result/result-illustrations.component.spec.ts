@@ -1,9 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import {
-  ErrorConstellation,
-  HeroIllustration,
-  LoadingConstellation,
-} from './result-illustrations';
+  ErrorConstellationComponent,
+  HeroIllustrationComponent,
+  LoadingConstellationComponent,
+} from './result-illustrations.component';
 
 type MqlListener = (ev: MediaQueryListEvent) => void;
 
@@ -42,7 +42,7 @@ afterEach(() => {
 describe('HeroIllustration', () => {
   it('renders an SVG', () => {
     installMatchMediaMock(false);
-    const fixture = TestBed.createComponent(HeroIllustration);
+    const fixture = TestBed.createComponent(HeroIllustrationComponent);
     fixture.detectChanges();
     const svg = (fixture.nativeElement as HTMLElement).querySelector('svg');
     expect(svg).toBeTruthy();
@@ -52,7 +52,7 @@ describe('HeroIllustration', () => {
 describe('LoadingConstellation', () => {
   it('marks itself spinning when motion is allowed', () => {
     installMatchMediaMock(false);
-    const fixture = TestBed.createComponent(LoadingConstellation);
+    const fixture = TestBed.createComponent(LoadingConstellationComponent);
     fixture.detectChanges();
     const group = (fixture.nativeElement as HTMLElement).querySelector(
       'svg [data-testid="loading-constellation"]',
@@ -62,7 +62,7 @@ describe('LoadingConstellation', () => {
 
   it('suppresses motion under prefers-reduced-motion: reduce', () => {
     installMatchMediaMock(true);
-    const fixture = TestBed.createComponent(LoadingConstellation);
+    const fixture = TestBed.createComponent(LoadingConstellationComponent);
     fixture.detectChanges();
     const group = (fixture.nativeElement as HTMLElement).querySelector(
       'svg [data-testid="loading-constellation"]',
@@ -72,7 +72,7 @@ describe('LoadingConstellation', () => {
 
   it('reacts to motion-preference changes after construction', () => {
     const mql = installMatchMediaMock(false);
-    const fixture = TestBed.createComponent(LoadingConstellation);
+    const fixture = TestBed.createComponent(LoadingConstellationComponent);
     fixture.detectChanges();
     mql.fire(true);
     fixture.detectChanges();
@@ -86,7 +86,7 @@ describe('LoadingConstellation', () => {
 describe('ErrorConstellation', () => {
   it('renders an SVG', () => {
     installMatchMediaMock(false);
-    const fixture = TestBed.createComponent(ErrorConstellation);
+    const fixture = TestBed.createComponent(ErrorConstellationComponent);
     fixture.detectChanges();
     const svg = (fixture.nativeElement as HTMLElement).querySelector('svg');
     expect(svg).toBeTruthy();

@@ -8,9 +8,12 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideRouter, Router } from '@angular/router';
 import { of } from 'rxjs';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
-import { EditorFrame } from './editor-frame';
-import { QueryPage } from './query-page';
-import { ResultPane, type ResultPaneState } from './result-pane';
+import { EditorFrameComponent } from './components/editor-frame.component';
+import { QueryPage } from './query.page';
+import {
+  ResultPaneComponent,
+  type ResultPaneState,
+} from './components/result/result-pane.component';
 import {
   ConfigService,
   type ConfigPayload,
@@ -95,7 +98,13 @@ async function setup(
     ],
   })
     .overrideComponent(QueryPage, {
-      remove: { imports: [SourcesPickerComponent, EditorFrame, ResultPane] },
+      remove: {
+        imports: [
+          SourcesPickerComponent,
+          EditorFrameComponent,
+          ResultPaneComponent,
+        ],
+      },
       add: { imports: [SourcesPickerStub, EditorFrameStub, ResultPaneStub] },
     })
     .compileComponents();

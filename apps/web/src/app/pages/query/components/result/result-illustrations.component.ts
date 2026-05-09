@@ -46,7 +46,7 @@ function useReducedMotion(): () => boolean {
   `,
   styles: [`:host{display:block;width:100%;height:100%}`],
 })
-export class HeroIllustration {}
+export class HeroIllustrationComponent {}
 
 @Component({
   selector: 'app-loading-constellation',
@@ -99,7 +99,7 @@ export class HeroIllustration {}
     `,
   ],
 })
-export class LoadingConstellation {
+export class LoadingConstellationComponent {
   private readonly reducedMotion = useReducedMotion();
   protected readonly motion = computed<'spin' | 'still'>(() =>
     this.reducedMotion() ? 'still' : 'spin',
@@ -128,4 +128,4 @@ export class LoadingConstellation {
   `,
   styles: [`:host{display:block;width:100%;height:100%}`],
 })
-export class ErrorConstellation {}
+export class ErrorConstellationComponent {}

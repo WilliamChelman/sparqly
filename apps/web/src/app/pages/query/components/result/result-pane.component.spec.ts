@@ -1,11 +1,14 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { DecodedResult, DisplayContext } from '@app/core';
-import { ResultPane, type ResultPaneState } from './result-pane';
+import {
+  ResultPaneComponent,
+  type ResultPaneState,
+} from './result-pane.component';
 
 @Component({
   standalone: true,
-  imports: [ResultPane],
+  imports: [ResultPaneComponent],
   template: `
     <app-result-pane [state]="state" [context]="context" />
   `,

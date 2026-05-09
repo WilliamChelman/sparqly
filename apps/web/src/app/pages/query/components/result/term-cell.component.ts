@@ -57,7 +57,7 @@ import { renderTerm, type TermDisplay } from './term-renderer';
     </span>
   `,
 })
-export class TermCell {
+export class TermCellComponent {
   readonly term = input<Term | null>(null);
   readonly context = input<DisplayContext>({ prefixes: {} });
 

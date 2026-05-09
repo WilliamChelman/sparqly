@@ -6,12 +6,12 @@ import {
   input,
 } from '@angular/core';
 import type { DisplayContext, TripleResult } from '@app/core';
-import { TermCell } from './term-cell';
+import { TermCellComponent } from './term-cell.component';
 
 @Component({
   selector: 'app-result-table-triples',
   standalone: true,
-  imports: [ScrollingModule, TermCell],
+  imports: [ScrollingModule, TermCellComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div
@@ -63,7 +63,7 @@ import { TermCell } from './term-cell';
     </div>
   `,
 })
-export class ResultTableTriples {
+export class ResultTableTriplesComponent {
   readonly result = input.required<TripleResult>();
   readonly context = input<DisplayContext>({ prefixes: {} });
 

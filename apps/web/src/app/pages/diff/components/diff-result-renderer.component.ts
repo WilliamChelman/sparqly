@@ -17,8 +17,8 @@ import type {
   TabularDiffEntry,
   TabularDiffResponse,
   TabularTerm,
-} from './diff.service';
-import { SourceSnippet } from './source-snippet';
+} from '../services/diff.service';
+import { SourceSnippetComponent } from './source-snippet.component';
 
 interface DedupedRecord {
   file: string;
@@ -58,7 +58,7 @@ const OVERFLOW_LINE_THRESHOLD = 20;
 @Component({
   selector: 'app-diff-result-renderer',
   standalone: true,
-  imports: [SourceSnippet, NgTemplateOutlet],
+  imports: [SourceSnippetComponent, NgTemplateOutlet],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (totalsLine(); as line) {
@@ -282,7 +282,7 @@ const OVERFLOW_LINE_THRESHOLD = 20;
     }
   `,
 })
-export class DiffResultRenderer {
+export class DiffResultRendererComponent {
   readonly result = input.required<DiffResponse>();
   readonly context = input<number>(3);
   readonly displayContext = input<DisplayContext>({ prefixes: {} });
