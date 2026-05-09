@@ -132,7 +132,7 @@ import { YasqeEditor } from './yasqe-editor';
           <button
             data-testid="run-diff"
             type="button"
-            class="rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-accent-strong disabled:opacity-50"
+            class="rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground shadow-sm transition-colors hover:bg-accent-strong disabled:opacity-50"
             [disabled]="running()"
             (click)="run()"
           >
