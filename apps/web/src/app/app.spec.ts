@@ -65,4 +65,14 @@ describe('App routing', () => {
     expect(hrefs).toContain('/');
     expect(hrefs).toContain('/diff');
   });
+
+  it('renders the theme toggle in the header', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const header = (fixture.nativeElement as HTMLElement).querySelector(
+      'header',
+    );
+    expect(header?.querySelector('app-theme-toggle')).toBeTruthy();
+  });
 });

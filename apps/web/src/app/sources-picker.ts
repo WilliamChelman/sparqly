@@ -25,12 +25,12 @@ export type {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (sources().length === 0) {
-      <span class="text-sm text-slate-500">loading sources…</span>
+      <span class="text-sm text-foreground-faint">loading sources…</span>
     } @else {
       <label class="flex items-center gap-2 text-sm">
-        <span class="text-slate-700">{{ label }}</span>
+        <span class="text-foreground-muted">{{ label }}</span>
         <select
-          class="rounded border border-slate-300 bg-white px-2 py-1"
+          class="rounded border border-border bg-surface px-2 py-1 text-foreground"
           (change)="onChange($event)"
         >
           @for (s of sources(); track s.id) {

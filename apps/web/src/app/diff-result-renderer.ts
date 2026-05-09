@@ -64,7 +64,7 @@ const OVERFLOW_LINE_THRESHOLD = 20;
     @if (totalsLine(); as line) {
       <p
         data-testid="diff-totals"
-        class="font-mono text-xs text-slate-600"
+        class="font-mono text-xs text-foreground-muted"
       >
         # {{ line }}
       </p>
@@ -75,7 +75,7 @@ const OVERFLOW_LINE_THRESHOLD = 20;
         class="w-full border-collapse text-xs"
       >
         <thead>
-          <tr class="border-b border-slate-300 text-left">
+          <tr class="border-b border-border text-left">
             <th class="px-2 py-1 font-semibold">side</th>
             <th class="px-2 py-1 font-semibold">count</th>
             @for (v of t.variables; track v) {
@@ -85,12 +85,12 @@ const OVERFLOW_LINE_THRESHOLD = 20;
         </thead>
         <tbody>
           @for (e of tabularRows(t); track $index) {
-            <tr class="border-b border-slate-100">
+            <tr class="border-b border-border-muted">
               <td
                 data-col="side"
                 class="px-2 py-1 font-mono"
-                [class.bg-red-50]="e.side === '-'"
-                [class.bg-green-50]="e.side === '+'"
+                [class.bg-removed-bg]="e.side === '-'"
+                [class.bg-added-bg]="e.side === '+'"
               >{{ e.side }}</td>
               <td data-col="count" class="px-2 py-1 font-mono">{{ e.entry.count }}</td>
               @for (v of t.variables; track v) {
@@ -103,27 +103,27 @@ const OVERFLOW_LINE_THRESHOLD = 20;
     }
     @if (groupedView(); as g) {
       <section data-testid="section-changed">
-        <h2 class="text-sm font-semibold text-slate-700">Changed</h2>
+        <h2 class="font-serif text-base italic text-foreground">Changed</h2>
         @if (changedHunks().length === 0) {
-          <p data-testid="section-empty-changed" class="text-xs italic text-slate-500">(none)</p>
+          <p data-testid="section-empty-changed" class="text-xs italic text-foreground-faint">(none)</p>
         }
         @for (rh of changedHunks(); track rh.hunk.anchor) {
           <ng-container *ngTemplateOutlet="hunkTpl; context: { $implicit: rh, section: 'changed' }" />
         }
       </section>
       <section data-testid="section-removed">
-        <h2 class="text-sm font-semibold text-slate-700">Removed</h2>
+        <h2 class="font-serif text-base italic text-foreground">Removed</h2>
         @if (removedHunks().length === 0) {
-          <p data-testid="section-empty-removed" class="text-xs italic text-slate-500">(none)</p>
+          <p data-testid="section-empty-removed" class="text-xs italic text-foreground-faint">(none)</p>
         }
         @for (rh of removedHunks(); track rh.hunk.anchor) {
           <ng-container *ngTemplateOutlet="hunkTpl; context: { $implicit: rh, section: 'removed' }" />
         }
       </section>
       <section data-testid="section-added">
-        <h2 class="text-sm font-semibold text-slate-700">Added</h2>
+        <h2 class="font-serif text-base italic text-foreground">Added</h2>
         @if (addedHunks().length === 0) {
-          <p data-testid="section-empty-added" class="text-xs italic text-slate-500">(none)</p>
+          <p data-testid="section-empty-added" class="text-xs italic text-foreground-faint">(none)</p>
         }
         @for (rh of addedHunks(); track rh.hunk.anchor) {
           <ng-container *ngTemplateOutlet="hunkTpl; context: { $implicit: rh, section: 'added' }" />
@@ -136,7 +136,7 @@ const OVERFLOW_LINE_THRESHOLD = 20;
           [attr.data-state]="rh.hunk.state"
           [attr.data-section]="section"
           [attr.data-orphan]="rh.hunk.orphan ? 'true' : null"
-          class="my-2 border-l-2 border-slate-300 pl-2"
+          class="my-2 border-l-2 border-border pl-2"
         >
           <header data-testid="hunk-header" class="flex flex-col gap-1">
             <div data-testid="hunk-title" class="break-all font-mono text-xs font-semibold">
@@ -148,10 +148,10 @@ const OVERFLOW_LINE_THRESHOLD = 20;
                   <a
                     [attr.data-testid]="'hunk-chip-' + chip.side"
                     [attr.href]="'#' + chip.anchorId"
-                    [class.bg-red-50]="chip.side === 'left'"
-                    [class.bg-green-50]="chip.side === 'right'"
-                    [class.border-red-200]="chip.side === 'left'"
-                    [class.border-green-200]="chip.side === 'right'"
+                    [class.bg-removed-bg]="chip.side === 'left'"
+                    [class.bg-added-bg]="chip.side === 'right'"
+                    [class.border-secondary]="chip.side === 'left'"
+                    [class.border-accent]="chip.side === 'right'"
                     class="rounded border px-1"
                   >{{ chip.text }}</a>
                 }
@@ -160,7 +160,7 @@ const OVERFLOW_LINE_THRESHOLD = 20;
           </header>
           @if (rh.overflow) {
             <details data-testid="hunk-overflow" class="mt-1">
-              <summary class="cursor-pointer text-xs text-slate-600">{{ rh.overflowLabel }}</summary>
+              <summary class="cursor-pointer text-xs text-foreground-muted">{{ rh.overflowLabel }}</summary>
               <ng-container *ngTemplateOutlet="bodyTpl; context: { $implicit: rh }" />
             </details>
           } @else {
@@ -171,9 +171,9 @@ const OVERFLOW_LINE_THRESHOLD = 20;
               @if (rh.leftRecords.length > 0) {
                 <div
                   data-testid="hunk-snippets-left"
-                  class="flex flex-col gap-1 rounded border border-red-200 bg-red-50/40 p-2"
+                  class="flex flex-col gap-1 rounded border border-secondary/40 bg-removed-bg p-2"
                 >
-                  <div class="font-mono text-[11px] font-semibold uppercase tracking-wide text-red-700">left</div>
+                  <div class="font-mono text-[11px] font-semibold uppercase tracking-wide text-secondary-strong">left</div>
                   @for (rec of rh.leftRecords; track rec.anchorId) {
                     <div
                       [attr.id]="rec.anchorId"
@@ -193,9 +193,9 @@ const OVERFLOW_LINE_THRESHOLD = 20;
               @if (rh.rightRecords.length > 0) {
                 <div
                   data-testid="hunk-snippets-right"
-                  class="flex flex-col gap-1 rounded border border-green-200 bg-green-50/40 p-2"
+                  class="flex flex-col gap-1 rounded border border-accent/40 bg-added-bg p-2"
                 >
-                  <div class="font-mono text-[11px] font-semibold uppercase tracking-wide text-green-700">right</div>
+                  <div class="font-mono text-[11px] font-semibold uppercase tracking-wide text-accent-strong">right</div>
                   @for (rec of rh.rightRecords; track rec.anchorId) {
                     <div
                       [attr.id]="rec.anchorId"
@@ -221,7 +221,7 @@ const OVERFLOW_LINE_THRESHOLD = 20;
         <div data-testid="hunk-body" class="mt-1 overflow-x-auto font-mono text-xs">
           @for (cluster of rh.clusters; track $index) {
             @if (cluster.pair) {
-              <div data-testid="hunk-pair" class="border-l border-slate-300 pl-1">
+              <div data-testid="hunk-pair" class="border-l border-border pl-1">
                 @for (line of cluster.lines; track $index) {
                   <ng-container
                     *ngTemplateOutlet="lineTpl; context: { $implicit: line, rh: rh }"
@@ -241,12 +241,12 @@ const OVERFLOW_LINE_THRESHOLD = 20;
         @if (line.side === '-') {
           <span
             data-testid="removed-line"
-            class="block w-max min-w-full whitespace-pre rounded bg-red-50 px-1"
+            class="block w-max min-w-full whitespace-pre rounded bg-removed-bg px-1"
           >- {{ formatLineBody(line, rh) }}</span>
         } @else {
           <span
             data-testid="added-line"
-            class="block w-max min-w-full whitespace-pre rounded bg-green-50 px-1"
+            class="block w-max min-w-full whitespace-pre rounded bg-added-bg px-1"
           >+ {{ formatLineBody(line, rh) }}</span>
         }
       </ng-template>
@@ -256,7 +256,7 @@ const OVERFLOW_LINE_THRESHOLD = 20;
       @if (errs?.top) {
         <p
           data-testid="error-top"
-          class="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700"
+          class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
         >
           {{ errs?.top }}
         </p>
@@ -265,7 +265,7 @@ const OVERFLOW_LINE_THRESHOLD = 20;
         @if (errs?.left) {
           <p
             data-testid="error-left"
-            class="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700"
+            class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
           >
             {{ errs?.left }}
           </p>
@@ -273,7 +273,7 @@ const OVERFLOW_LINE_THRESHOLD = 20;
         @if (errs?.right) {
           <p
             data-testid="error-right"
-            class="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700"
+            class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
           >
             {{ errs?.right }}
           </p>

@@ -29,20 +29,20 @@ export type SnippetReadResult = SnippetPayload | SnippetUnavailable;
   template: `
     @if (snippet(); as s) {
       <pre
-        class="overflow-x-auto rounded bg-slate-50 p-2 font-mono text-[11px] leading-snug text-slate-800"
+        class="overflow-x-auto rounded bg-surface-sunken p-2 font-mono text-[11px] leading-snug text-foreground"
       >@for (l of s.lines; track $index) {<span
           data-testid="snippet-line"
           [attr.data-line-number]="s.startLine + $index"
           [attr.data-focal]="s.startLine + $index === s.focalLine ? 'true' : null"
-          [class.bg-yellow-100]="s.startLine + $index === s.focalLine"
+          [class.bg-accent-soft]="s.startLine + $index === s.focalLine"
           class="block w-max min-w-full whitespace-pre"
-          ><span class="mr-2 select-none text-slate-400">{{
+          ><span class="mr-2 select-none text-foreground-faint">{{
           s.startLine + $index
         }}</span>{{ l }}</span>}</pre>
     } @else if (unavailable()) {
       <p
         data-testid="snippet-unavailable"
-        class="text-xs italic text-slate-500"
+        class="text-xs italic text-foreground-faint"
       >(source file unavailable)</p>
     }
   `,
