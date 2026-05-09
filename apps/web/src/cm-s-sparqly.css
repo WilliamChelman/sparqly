@@ -1,0 +1,133 @@
+/* CodeMirror theme: cm-s-sparqly
+ * Maps SPARQL token classes (cm-keyword, cm-variable-3, cm-string, …) to the
+ * sparqly redesign palette and styles the gutter, scrollbars, and selection.
+ * Activated by setting CodeMirror's `theme` option to `sparqly`, which puts
+ * the `cm-s-sparqly` class on the editor wrapper.
+ */
+
+.CodeMirror.cm-s-sparqly {
+  background: var(--bg-elevated);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.cm-s-sparqly .CodeMirror-gutters {
+  background: var(--bg-sunken);
+  border-right: 1px solid var(--line-faint);
+  color: var(--ink-faint);
+}
+
+.cm-s-sparqly .CodeMirror-linenumber {
+  color: var(--ink-faint);
+}
+
+.cm-s-sparqly .CodeMirror-cursor {
+  border-left: 1px solid var(--gold);
+}
+
+.cm-s-sparqly .CodeMirror-selected {
+  background: var(--gold-soft) !important;
+}
+.cm-s-sparqly .CodeMirror-focused .CodeMirror-selected {
+  background: var(--gold-soft) !important;
+}
+:root[data-theme='dark'] .cm-s-sparqly .CodeMirror-selected,
+:root[data-theme='dark'] .cm-s-sparqly .CodeMirror-focused .CodeMirror-selected {
+  background: var(--gold-deep) !important;
+}
+
+.cm-s-sparqly .CodeMirror-activeline-background {
+  background: var(--bg-sunken);
+}
+.cm-s-sparqly .CodeMirror-matchingbracket {
+  color: var(--teal) !important;
+  outline: 1px solid var(--teal-soft);
+}
+.cm-s-sparqly .CodeMirror-nonmatchingbracket {
+  color: var(--error-line) !important;
+}
+
+/* SPARQL token mappings ------------------------------------------------- */
+.cm-s-sparqly .cm-keyword {
+  color: var(--teal);
+  font-weight: 500;
+}
+.cm-s-sparqly .cm-variable-3 {
+  color: var(--gold-deep);
+}
+:root[data-theme='dark'] .cm-s-sparqly .cm-variable-3 {
+  color: var(--gold);
+}
+.cm-s-sparqly .cm-variable,
+.cm-s-sparqly .cm-variable-2 {
+  color: var(--ink);
+}
+.cm-s-sparqly .cm-string,
+.cm-s-sparqly .cm-string-2 {
+  color: var(--teal-deep);
+}
+:root[data-theme='dark'] .cm-s-sparqly .cm-string,
+:root[data-theme='dark'] .cm-s-sparqly .cm-string-2 {
+  color: var(--teal-soft);
+}
+.cm-s-sparqly .cm-atom {
+  color: var(--ink-muted);
+}
+.cm-s-sparqly .cm-meta {
+  color: var(--ink-muted);
+}
+.cm-s-sparqly .cm-number {
+  color: var(--gold-deep);
+}
+:root[data-theme='dark'] .cm-s-sparqly .cm-number {
+  color: var(--gold);
+}
+.cm-s-sparqly .cm-comment {
+  color: var(--ink-faint);
+  font-style: italic;
+}
+.cm-s-sparqly .cm-punctuation,
+.cm-s-sparqly .cm-bracket,
+.cm-s-sparqly .cm-operator {
+  color: var(--ink-faint);
+}
+.cm-s-sparqly .cm-def {
+  color: var(--ink);
+}
+.cm-s-sparqly .cm-tag {
+  color: var(--teal);
+}
+.cm-s-sparqly .cm-attribute {
+  color: var(--gold-deep);
+}
+.cm-s-sparqly .cm-error {
+  color: var(--error-ink);
+  background: var(--error-bg);
+}
+
+/* Scrollbars ------------------------------------------------------------ */
+.cm-s-sparqly .CodeMirror-scrollbar-filler,
+.cm-s-sparqly .CodeMirror-gutter-filler {
+  background: var(--bg-elevated);
+}
+.cm-s-sparqly .CodeMirror-vscrollbar,
+.cm-s-sparqly .CodeMirror-hscrollbar {
+  scrollbar-color: var(--line) var(--bg-sunken);
+  scrollbar-width: thin;
+}
+.cm-s-sparqly .CodeMirror-vscrollbar::-webkit-scrollbar,
+.cm-s-sparqly .CodeMirror-hscrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.cm-s-sparqly .CodeMirror-vscrollbar::-webkit-scrollbar-thumb,
+.cm-s-sparqly .CodeMirror-hscrollbar::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 4px;
+}
+.cm-s-sparqly .CodeMirror-vscrollbar::-webkit-scrollbar-track,
+.cm-s-sparqly .CodeMirror-hscrollbar::-webkit-scrollbar-track {
+  background: var(--bg-sunken);
+}

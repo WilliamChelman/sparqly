@@ -2,11 +2,11 @@ import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   inject,
   OnInit,
   signal,
-  ViewChild,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
@@ -14,8 +14,9 @@ import {
   type DisplayContext,
   type SourceListingEntry,
 } from './config.service';
+import { EditorFrame } from './editor-frame';
+import { detectQueryType } from './query-detection';
 import { SourcesPicker } from './sources-picker';
-import { YasqeEditor } from './yasqe-editor';
 import { YasrViewer } from './yasr-viewer';
 
 function acceptForQueryType(queryType: string | undefined): string | undefined {
@@ -47,7 +48,7 @@ function buildDefaultQuery(context: DisplayContext): string {
   selector: 'app-query-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SourcesPicker, YasqeEditor, YasrViewer],
+  imports: [SourcesPicker, EditorFrame, YasrViewer],
   template: `
     <header class="border-b border-border-muted bg-surface px-4 py-3">
       <h1 class="font-serif text-2xl italic text-foreground">
@@ -69,9 +70,10 @@ function buildDefaultQuery(context: DisplayContext): string {
           [value]="sourceId()"
           (valueChange)="sourceId.set($event)"
         />
-        <app-yasqe-editor
-          #editor
+        <app-editor-frame
+          #frame
           data-testid="editor"
+          name="query"
           [value]="query()"
           (valueChange)="query.set($event)"
         />
@@ -111,8 +113,8 @@ export class QueryPage implements OnInit {
   readonly running = signal<boolean>(false);
   readonly result = signal<unknown | null>(null);
   readonly error = signal<string | null>(null);
+  readonly queryType = computed(() => detectQueryType(this.query()));
   private readonly hasUrlQuery: boolean;
-  @ViewChild('editor') private editor: YasqeEditor | undefined;
 
   constructor() {
     const params = this.route.snapshot.queryParamMap;
@@ -154,7 +156,7 @@ export class QueryPage implements OnInit {
     this.error.set(null);
     this.result.set(null);
     const url = `/api/sparql/${encodeURIComponent(this.sourceId())}`;
-    const accept = acceptForQueryType(this.editor?.getQueryType());
+    const accept = acceptForQueryType(this.queryType());
     const headers: Record<string, string> = {
       'Content-Type': 'application/sparql-query',
     };

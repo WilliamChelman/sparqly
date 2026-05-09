@@ -7,9 +7,9 @@ import {
 import { provideHttpClient } from '@angular/common/http';
 import { provideRouter, Router } from '@angular/router';
 import { of } from 'rxjs';
+import { EditorFrame } from './editor-frame';
 import { QueryPage } from './query-page';
 import { SourcesPicker } from './sources-picker';
-import { YasqeEditor } from './yasqe-editor';
 import { YasrViewer } from './yasr-viewer';
 import {
   ConfigService,
@@ -32,24 +32,17 @@ class SourcesPickerStub {
 }
 
 @Component({
-  selector: 'app-yasqe-editor',
+  selector: 'app-editor-frame',
   standalone: true,
   template: `<textarea
     [value]="value"
     (input)="valueChange.emit($any($event.target).value)"
   ></textarea>`,
 })
-class YasqeEditorStub {
+class EditorFrameStub {
   @Input() value = '';
+  @Input() name = 'query';
   @Output() valueChange = new EventEmitter<string>();
-  queryTypeOverride: string | undefined;
-  getQueryType(): string | undefined {
-    if (this.queryTypeOverride !== undefined) return this.queryTypeOverride;
-    const m = /^\s*(?:#[^\n]*\n|PREFIX\s+\S+\s+<[^>]*>\s*|BASE\s+<[^>]*>\s*)*\s*([A-Z]+)/i.exec(
-      this.value,
-    );
-    return m ? m[1].toUpperCase() : undefined;
-  }
 }
 
 @Component({
@@ -96,8 +89,8 @@ async function setup(
     ],
   })
     .overrideComponent(QueryPage, {
-      remove: { imports: [SourcesPicker, YasqeEditor, YasrViewer] },
-      add: { imports: [SourcesPickerStub, YasqeEditorStub, YasrViewerStub] },
+      remove: { imports: [SourcesPicker, EditorFrame, YasrViewer] },
+      add: { imports: [SourcesPickerStub, EditorFrameStub, YasrViewerStub] },
     })
     .compileComponents();
 

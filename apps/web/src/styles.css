@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import '@triply/yasgui/build/yasgui.min.css';
+@import './cm-s-sparqly.css';
 
 @import '@fontsource-variable/fraunces/index.css';
 @import '@fontsource-variable/fraunces/full-italic.css';
@@ -144,14 +145,13 @@ html {
 
 .yasqe-editor-host .yasqe {
   min-height: 8rem;
-  border: 1px solid var(--line);
-  border-radius: 0.25rem;
   background: var(--bg-elevated);
   color: var(--ink);
   font-family: var(--font-mono);
 }
 
 .yasqe_share,
-.yasqe_sharePopup {
+.yasqe_sharePopup,
+.yasqe_buttons {
   display: none !important;
 }
