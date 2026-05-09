@@ -31,17 +31,17 @@ import { YasqeEditor } from './yasqe-editor';
   imports: [SourcesPicker, DiffResultRenderer, YasqeEditor],
   template: `
     @if (sources() === null) {
-      <main class="p-4 text-sm text-slate-500">loading…</main>
+      <main class="p-4 text-sm text-foreground-faint">loading…</main>
     } @else if ((sources() ?? []).length <= 1) {
-      <main data-testid="empty-state" class="p-4 text-sm text-slate-700">
+      <main data-testid="empty-state" class="p-4 text-sm text-foreground-muted">
         <p>
-          <code class="rounded bg-slate-100 px-1 py-0.5">/diff</code> needs at
+          <code class="rounded bg-surface-sunken px-1 py-0.5 font-mono">/diff</code> needs at
           least two registered sources.
         </p>
-        <p class="text-slate-500">
+        <p class="text-foreground-faint">
           You're running <strong>serve</strong> in single-source mode (or with
           an empty registry); diffing is unavailable. Restart
-          <code class="rounded bg-slate-100 px-1 py-0.5">sparqly serve</code>
+          <code class="rounded bg-surface-sunken px-1 py-0.5 font-mono">sparqly serve</code>
           without a positional/<code>--source</code> flag, against a config
           that declares two or more sources, to enable this page.
         </p>
@@ -64,7 +64,7 @@ import { YasqeEditor } from './yasqe-editor';
             @if (errors()?.left) {
               <p
                 data-testid="error-left"
-                class="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700"
+                class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
               >
                 {{ errors()?.left }}
               </p>
@@ -85,7 +85,7 @@ import { YasqeEditor } from './yasqe-editor';
             @if (errors()?.right) {
               <p
                 data-testid="error-right"
-                class="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700"
+                class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
               >
                 {{ errors()?.right }}
               </p>
@@ -95,13 +95,13 @@ import { YasqeEditor } from './yasqe-editor';
         @if (errors()?.top) {
           <p
             data-testid="error-top"
-            class="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700"
+            class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
           >
             {{ errors()?.top }}
           </p>
         }
-        <details class="rounded border border-slate-200 p-2 text-sm">
-          <summary class="cursor-pointer select-none text-slate-700">
+        <details class="rounded border border-border-muted bg-surface p-2 text-sm">
+          <summary class="cursor-pointer select-none text-foreground-muted">
             Advanced
           </summary>
           <div class="mt-2 flex flex-col gap-2">
@@ -121,7 +121,7 @@ import { YasqeEditor } from './yasqe-editor';
                 type="number"
                 min="0"
                 max="100"
-                class="w-20 rounded border border-slate-300 px-1 py-0.5"
+                class="w-20 rounded border border-border bg-surface px-1 py-0.5 text-foreground"
                 [value]="context()"
                 (input)="setContext($any($event.target).value)"
               />
@@ -132,7 +132,7 @@ import { YasqeEditor } from './yasqe-editor';
           <button
             data-testid="run-diff"
             type="button"
-            class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+            class="rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-accent-strong disabled:opacity-50"
             [disabled]="running()"
             (click)="run()"
           >

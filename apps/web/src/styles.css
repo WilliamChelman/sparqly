@@ -1,10 +1,126 @@
 @import 'tailwindcss';
 @import '@triply/yasgui/build/yasgui.min.css';
 
+@import '@fontsource-variable/fraunces/index.css';
+@import '@fontsource-variable/fraunces/full-italic.css';
+@import '@fontsource-variable/mona-sans/index.css';
+@import '@fontsource-variable/mona-sans/standard-italic.css';
+@import '@fontsource-variable/jetbrains-mono/index.css';
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+:root,
+:root[data-theme='light'] {
+  --bg: #faf6ee;
+  --bg-elevated: #fffcf4;
+  --bg-sunken: #f2ebd9;
+  --bg-frame: #ffffff;
+  --ink: #1b1b2e;
+  --ink-muted: #5a5870;
+  --ink-faint: #9a98ad;
+  --gold: #d4a24c;
+  --gold-soft: #e9c988;
+  --gold-deep: #b0832f;
+  --teal: #2a7f7a;
+  --teal-soft: #6bb1ac;
+  --teal-deep: #1f5f5b;
+  --line: #e2d9c0;
+  --line-faint: #efe7cf;
+  --added-bg: rgba(212, 162, 76, 0.1);
+  --removed-bg: rgba(42, 127, 122, 0.07);
+  --error-bg: #f7e4da;
+  --error-line: #c97a4f;
+  --error-ink: #6b2c12;
+  --shadow-sm-tone:
+    0 1px 0 rgba(27, 27, 46, 0.04), 0 1px 2px rgba(27, 27, 46, 0.05);
+  --shadow-md-tone:
+    0 1px 0 rgba(27, 27, 46, 0.04), 0 6px 24px -8px rgba(27, 27, 46, 0.1);
+  --grain-opacity: 0.035;
+}
+
+:root[data-theme='dark'] {
+  --bg: #0e1230;
+  --bg-elevated: #161a3c;
+  --bg-sunken: #080b22;
+  --bg-frame: #11163a;
+  --ink: #ede9d8;
+  --ink-muted: #9a98b8;
+  --ink-faint: #6a6890;
+  --gold: #f2c66a;
+  --gold-soft: #fbe3a6;
+  --gold-deep: #b98e3e;
+  --teal: #5bb8b0;
+  --teal-soft: #91d6cf;
+  --teal-deep: #2f8782;
+  --line: #2a2e5a;
+  --line-faint: #1e2247;
+  --added-bg: rgba(242, 198, 106, 0.1);
+  --removed-bg: rgba(91, 184, 176, 0.1);
+  --error-bg: #3a1e1a;
+  --error-line: #c97a4f;
+  --error-ink: #f0c8b0;
+  --shadow-sm-tone: 0 1px 0 rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md-tone: 0 1px 0 rgba(0, 0, 0, 0.2), 0 8px 30px -8px rgba(0, 0, 0, 0.5);
+  --grain-opacity: 0.05;
+}
+
+@theme {
+  --color-bg: var(--bg);
+  --color-surface: var(--bg-elevated);
+  --color-surface-sunken: var(--bg-sunken);
+  --color-surface-frame: var(--bg-frame);
+  --color-foreground: var(--ink);
+  --color-foreground-muted: var(--ink-muted);
+  --color-foreground-faint: var(--ink-faint);
+  --color-accent: var(--gold);
+  --color-accent-soft: var(--gold-soft);
+  --color-accent-strong: var(--gold-deep);
+  --color-secondary: var(--teal);
+  --color-secondary-soft: var(--teal-soft);
+  --color-secondary-strong: var(--teal-deep);
+  --color-border: var(--line);
+  --color-border-muted: var(--line-faint);
+  --color-added-bg: var(--added-bg);
+  --color-removed-bg: var(--removed-bg);
+  --color-error-bg: var(--error-bg);
+  --color-error-line: var(--error-line);
+  --color-error: var(--error-ink);
+
+  --font-sans:
+    'Mona Sans Variable', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-serif: 'Fraunces Variable', ui-serif, Georgia, serif;
+  --font-mono:
+    'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --shadow-sm: var(--shadow-sm-tone);
+  --shadow-md: var(--shadow-md-tone);
+}
+
 html,
 body {
   height: 100%;
   margin: 0;
+}
+
+html {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-feature-settings: 'ss01', 'ss02', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition:
+    background-color 0.4s ease,
+    color 0.4s ease;
+}
+
+::selection {
+  background: var(--gold-soft);
+  color: var(--ink);
+}
+:root[data-theme='dark'] ::selection {
+  background: var(--gold-deep);
+  color: var(--ink);
 }
 
 .yasgui-host {
@@ -13,8 +129,11 @@ body {
 
 .yasqe-editor-host .yasqe {
   min-height: 8rem;
-  border: 1px solid rgb(203 213 225);
+  border: 1px solid var(--line);
   border-radius: 0.25rem;
+  background: var(--bg-elevated);
+  color: var(--ink);
+  font-family: var(--font-mono);
 }
 
 .yasqe_share,

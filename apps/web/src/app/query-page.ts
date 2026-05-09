@@ -49,17 +49,19 @@ function buildDefaultQuery(context: DisplayContext): string {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [SourcesPicker, YasqeEditor, YasrViewer],
   template: `
-    <header class="border-b border-slate-200 bg-white px-4 py-3">
-      <h1 class="text-lg font-semibold text-slate-900">sparqly playground</h1>
-      <p class="text-sm text-slate-600">
+    <header class="border-b border-border-muted bg-surface px-4 py-3">
+      <h1 class="font-serif text-2xl italic text-foreground">
+        sparqly playground
+      </h1>
+      <p class="text-sm text-foreground-muted">
         Querying
-        <code class="rounded bg-slate-100 px-1 py-0.5"
+        <code class="rounded bg-surface-sunken px-1 py-0.5 font-mono"
           >/api/sparql/{{ sourceId() || '…' }}</code
         >
       </p>
     </header>
     @if (sources() === null) {
-      <main class="p-4 text-sm text-slate-500">loading…</main>
+      <main class="p-4 text-sm text-foreground-faint">loading…</main>
     } @else {
       <main class="flex flex-col gap-3 p-4">
         <app-sources-picker
@@ -77,7 +79,7 @@ function buildDefaultQuery(context: DisplayContext): string {
           <button
             data-testid="run-query"
             type="button"
-            class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+            class="rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-accent-strong disabled:opacity-50"
             [disabled]="running() || !sourceId()"
             (click)="run()"
           >
@@ -87,7 +89,7 @@ function buildDefaultQuery(context: DisplayContext): string {
         @if (error(); as e) {
           <p
             data-testid="error"
-            class="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700"
+            class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
           >
             {{ e }}
           </p>
