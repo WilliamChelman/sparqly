@@ -9,8 +9,8 @@ import { provideRouter, Router } from '@angular/router';
 import { of } from 'rxjs';
 import { EditorFrame } from './editor-frame';
 import { QueryPage } from './query-page';
+import { ResultPane, type ResultPaneState } from './result-pane';
 import { SourcesPicker } from './sources-picker';
-import { YasrViewer } from './yasr-viewer';
 import {
   ConfigService,
   type ConfigPayload,
@@ -46,15 +46,21 @@ class EditorFrameStub {
 }
 
 @Component({
-  selector: 'app-yasr-viewer',
+  selector: 'app-result-pane',
   standalone: true,
-  template: `<div data-testid="stub-yasr" [attr.data-result]="resultJson()"></div>`,
+  template: `<div
+    data-testid="stub-result-pane"
+    [attr.data-state-kind]="state?.kind ?? ''"
+    [attr.data-state-message]="state && state.kind === 'error' ? state.message : ''"
+    [attr.data-result-kind]="state && state.kind === 'result' ? state.result.kind : ''"
+    [attr.data-result-content-type]="
+      state && state.kind === 'result' ? state.result.contentType : ''
+    "
+  ></div>`,
 })
-class YasrViewerStub {
-  @Input() result: unknown = null;
-  resultJson(): string {
-    return this.result == null ? '' : JSON.stringify(this.result);
-  }
+class ResultPaneStub {
+  @Input() state: ResultPaneState | null = null;
+  @Input() context: DisplayContext = { prefixes: {} };
 }
 
 const TWO: SourceListing = {
@@ -89,8 +95,8 @@ async function setup(
     ],
   })
     .overrideComponent(QueryPage, {
-      remove: { imports: [SourcesPicker, EditorFrame, YasrViewer] },
-      add: { imports: [SourcesPickerStub, EditorFrameStub, YasrViewerStub] },
+      remove: { imports: [SourcesPicker, EditorFrame, ResultPane] },
+      add: { imports: [SourcesPickerStub, EditorFrameStub, ResultPaneStub] },
     })
     .compileComponents();
 
@@ -120,18 +126,18 @@ function pickerStub(fixture: {
   return all[0];
 }
 
-function yasrStub(fixture: {
+function paneStub(fixture: {
   debugElement: import('@angular/core').DebugElement;
-}): YasrViewerStub {
+}): ResultPaneStub {
   const all = Array.from(
     new Set(
       fixture.debugElement
-        .queryAll((n) => n.componentInstance instanceof YasrViewerStub)
-        .map((d) => d.componentInstance as YasrViewerStub),
+        .queryAll((n) => n.componentInstance instanceof ResultPaneStub)
+        .map((d) => d.componentInstance as ResultPaneStub),
     ),
   );
   if (all.length !== 1) {
-    throw new Error(`expected exactly one yasr viewer, got ${all.length}`);
+    throw new Error(`expected exactly one result pane, got ${all.length}`);
   }
   return all[0];
 }
@@ -144,10 +150,33 @@ describe('QueryPage', () => {
     expect(root.querySelectorAll('app-sources-picker').length).toBe(1);
     expect(root.querySelectorAll('textarea').length).toBe(1);
     expect(root.querySelector('button[data-testid=run-query]')).toBeTruthy();
-    expect(root.querySelector('app-yasr-viewer')).toBeTruthy();
+    expect(root.querySelector('app-result-pane')).toBeTruthy();
   });
 
-  it('Run posts a SELECT and forwards the response body and content-type to the YasrViewer', async () => {
+  it('starts with an empty result-pane state before any query has been run', async () => {
+    const { fixture } = await setup(TWO);
+    expect(paneStub(fixture).state?.kind).toBe('empty');
+  });
+
+  it('switches the result-pane state to loading while a request is in flight', async () => {
+    const { fixture, http } = await setup(TWO);
+    pickerStub(fixture).valueChange.emit('a');
+    fixture.detectChanges();
+    (
+      (fixture.nativeElement as HTMLElement).querySelector(
+        'button[data-testid=run-query]',
+      ) as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    expect(paneStub(fixture).state?.kind).toBe('loading');
+    http.expectOne('/api/sparql/a').flush(
+      JSON.stringify({ head: { vars: ['s'] }, results: { bindings: [] } }),
+      { headers: { 'Content-Type': 'application/sparql-results+json' } },
+    );
+    http.verify();
+  });
+
+  it('Run posts a SELECT and feeds the decoded result into the result-pane', async () => {
     const { fixture, http } = await setup(TWO);
     const root = fixture.nativeElement as HTMLElement;
 
@@ -173,15 +202,16 @@ describe('QueryPage', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(yasrStub(fixture).result).toEqual({
-      data: body,
-      contentType: 'application/sparql-results+json',
-      status: 200,
-    });
+    const state = paneStub(fixture).state;
+    expect(state?.kind).toBe('result');
+    if (state?.kind === 'result') {
+      expect(state.result.kind).toBe('select');
+      expect(state.result.contentType).toBe('application/sparql-results+json');
+    }
     http.verify();
   });
 
-  it('Run posts a CONSTRUCT with text/turtle Accept and forwards the turtle body to the YasrViewer', async () => {
+  it('Run posts a CONSTRUCT with text/turtle Accept and feeds a triples result into the result-pane', async () => {
     const { fixture, http } = await setup(TWO);
     const root = fixture.nativeElement as HTMLElement;
 
@@ -202,11 +232,12 @@ describe('QueryPage', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(yasrStub(fixture).result).toEqual({
-      data: turtle,
-      contentType: 'text/turtle',
-      status: 200,
-    });
+    const state = paneStub(fixture).state;
+    expect(state?.kind).toBe('result');
+    if (state?.kind === 'result') {
+      expect(state.result.kind).toBe('triples');
+      expect(state.result.contentType).toBe('text/turtle');
+    }
     http.verify();
   });
 
@@ -300,10 +331,9 @@ describe('QueryPage', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    const err = root.querySelector('[data-testid=error]') as HTMLElement | null;
-    expect(err).toBeTruthy();
-    expect(err?.textContent).toContain('malformed query');
-    expect(yasrStub(fixture).result).toBeNull();
+    const state = paneStub(fixture).state;
+    expect(state?.kind).toBe('error');
+    if (state?.kind === 'error') expect(state.message).toContain('malformed query');
     http.verify();
   });
 

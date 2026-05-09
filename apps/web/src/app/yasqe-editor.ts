@@ -13,14 +13,14 @@ import {
   computed,
   signal,
 } from '@angular/core';
-import Yasgui from '@triply/yasgui';
+import Yasqe from '@triply/yasqe';
 import {
   countPrefixes,
   detectQueryType,
   type QueryType,
 } from './query-detection';
 
-type YasqeInstance = InstanceType<typeof Yasgui.Yasqe>;
+type YasqeInstance = InstanceType<typeof Yasqe>;
 
 @Component({
   selector: 'app-yasqe-editor',
@@ -58,7 +58,6 @@ export class YasqeEditor implements AfterViewInit, OnDestroy {
   @Output() valueChange = new EventEmitter<string>();
 
   ngAfterViewInit(): void {
-    const Yasqe = Yasgui.Yasqe;
     this.instance = new Yasqe(this.host.nativeElement, {
       showQueryButton: false,
       resizeable: false,
