@@ -75,4 +75,24 @@ describe('App routing', () => {
     );
     expect(header?.querySelector('app-theme-toggle')).toBeTruthy();
   });
+
+  it('renders the constellation logomark inside the brand link', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const brand = (fixture.nativeElement as HTMLElement).querySelector(
+      'header a[routerLink="/"], header a[href="/"]',
+    );
+    expect(brand?.querySelector('app-logomark')).toBeTruthy();
+  });
+
+  it('renders the header-drift ambient animation', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const header = (fixture.nativeElement as HTMLElement).querySelector(
+      'header',
+    );
+    expect(header?.querySelector('app-header-drift')).toBeTruthy();
+  });
 });
