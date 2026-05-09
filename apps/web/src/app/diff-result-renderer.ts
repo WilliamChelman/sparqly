@@ -150,8 +150,8 @@ const OVERFLOW_LINE_THRESHOLD = 20;
                     [attr.href]="'#' + chip.anchorId"
                     [class.bg-removed-bg]="chip.side === 'left'"
                     [class.bg-added-bg]="chip.side === 'right'"
-                    [class.border-secondary]="chip.side === 'left'"
-                    [class.border-accent]="chip.side === 'right'"
+                    [class.border-removed-line]="chip.side === 'left'"
+                    [class.border-added-line]="chip.side === 'right'"
                     class="rounded border px-1"
                   >{{ chip.text }}</a>
                 }
@@ -171,9 +171,9 @@ const OVERFLOW_LINE_THRESHOLD = 20;
               @if (rh.leftRecords.length > 0) {
                 <div
                   data-testid="hunk-snippets-left"
-                  class="flex flex-col gap-1 rounded border border-secondary/40 bg-removed-bg p-2"
+                  class="flex flex-col gap-1 rounded border border-removed-line bg-removed-bg p-2"
                 >
-                  <div class="font-mono text-[11px] font-semibold uppercase tracking-wide text-secondary-strong">left</div>
+                  <div class="font-mono text-[11px] font-semibold uppercase tracking-wide text-removed">left</div>
                   @for (rec of rh.leftRecords; track rec.anchorId) {
                     <div
                       [attr.id]="rec.anchorId"
@@ -193,9 +193,9 @@ const OVERFLOW_LINE_THRESHOLD = 20;
               @if (rh.rightRecords.length > 0) {
                 <div
                   data-testid="hunk-snippets-right"
-                  class="flex flex-col gap-1 rounded border border-accent/40 bg-added-bg p-2"
+                  class="flex flex-col gap-1 rounded border border-added-line bg-added-bg p-2"
                 >
-                  <div class="font-mono text-[11px] font-semibold uppercase tracking-wide text-accent-strong">right</div>
+                  <div class="font-mono text-[11px] font-semibold uppercase tracking-wide text-added">right</div>
                   @for (rec of rh.rightRecords; track rec.anchorId) {
                     <div
                       [attr.id]="rec.anchorId"

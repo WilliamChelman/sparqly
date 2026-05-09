@@ -46,7 +46,6 @@ describe('ThemeService', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
     delete (window as unknown as { matchMedia?: unknown }).matchMedia;
   });
 
@@ -100,8 +99,10 @@ describe('ThemeService', () => {
     const mql = installMatchMediaMock(true);
     const controller = TestBed.inject(ThemeService);
     expect(controller.resolved()).toBe('dark');
+    expect(doc.documentElement.getAttribute('data-theme')).toBe('dark');
     mql.fire(false);
     expect(controller.resolved()).toBe('light');
+    expect(doc.documentElement.getAttribute('data-theme')).toBe('light');
   });
 
   it("resolved equals the explicit mode when mode is 'light' or 'dark'", () => {

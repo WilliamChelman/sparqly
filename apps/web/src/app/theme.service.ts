@@ -26,18 +26,18 @@ export class ThemeService {
   });
 
   constructor() {
-    const initial = readStoredMode();
-    this.modeSignal.set(initial);
-    this.doc.documentElement.setAttribute('data-theme', initial);
-
     const win = this.doc.defaultView ?? window;
     const mql = win?.matchMedia?.(DARK_QUERY);
     if (mql) {
       this.systemPrefersDark.set(mql.matches);
       mql.addEventListener('change', (ev) => {
         this.systemPrefersDark.set(ev.matches);
+        this.applyResolved();
       });
     }
+
+    this.modeSignal.set(readStoredMode());
+    this.applyResolved();
 
     win?.addEventListener('storage', (ev: StorageEvent) => {
       if (ev.key !== STORAGE_KEY) return;
@@ -46,18 +46,22 @@ export class ThemeService {
           ? ev.newValue
           : 'system';
       this.modeSignal.set(next);
-      this.doc.documentElement.setAttribute('data-theme', next);
+      this.applyResolved();
     });
   }
 
   set(mode: ThemeMode): void {
     this.modeSignal.set(mode);
-    this.doc.documentElement.setAttribute('data-theme', mode);
+    this.applyResolved();
     if (mode === 'system') {
       localStorage.removeItem(STORAGE_KEY);
     } else {
       localStorage.setItem(STORAGE_KEY, mode);
     }
+  }
+
+  private applyResolved(): void {
+    this.doc.documentElement.setAttribute('data-theme', this.resolved());
   }
 }
 
