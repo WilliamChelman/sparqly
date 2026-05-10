@@ -85,14 +85,4 @@ describe('AppComponent routing', () => {
     );
     expect(brand?.querySelector('app-logomark')).toBeTruthy();
   });
-
-  it('renders the header-drift ambient animation', async () => {
-    const fixture = TestBed.createComponent(AppComponent);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    const header = (fixture.nativeElement as HTMLElement).querySelector(
-      'header',
-    );
-    expect(header?.querySelector('app-header-drift')).toBeTruthy();
-  });
 });

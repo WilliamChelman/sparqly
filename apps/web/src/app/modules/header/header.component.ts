@@ -1,6 +1,5 @@
 import { Component } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import { HeaderDriftComponent } from './components/header-drift.component';
 import { LogomarkComponent } from './components/logomark.component';
 import { ThemeToggleComponent } from './components/theme-toggle.component';
 
@@ -10,19 +9,13 @@ import { ThemeToggleComponent } from './components/theme-toggle.component';
   imports: [
     RouterLink,
     RouterLinkActive,
-    HeaderDriftComponent,
     LogomarkComponent,
     ThemeToggleComponent,
   ],
   template: `
     <header
-      class="relative flex items-center gap-6 overflow-hidden border-b border-border-muted bg-surface/80 px-6 py-3 backdrop-blur"
+      class="relative flex items-center gap-6 border-b border-border-muted bg-surface/80 px-6 py-3 backdrop-blur"
     >
-      <div
-        class="pointer-events-none absolute inset-0 opacity-55 dark:opacity-85"
-      >
-        <app-header-drift />
-      </div>
       <a
         routerLink="/"
         class="group relative z-[1] flex items-center gap-3 text-foreground no-underline"
