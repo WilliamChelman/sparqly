@@ -4,12 +4,10 @@ import { Logger } from '@nestjs/common';
 import { z } from 'zod';
 import {
   formatRdf,
-  loadRdf,
   parseRdfString,
-  parseSourceSpec,
   type FormatSerialization,
-  type SourceSpecInput,
-} from 'core';
+} from 'common';
+import { loadRdf, parseSourceSpec, type SourceSpecInput } from 'core';
 import { configureLogger } from '../logging';
 import { writeOutputToFile } from '../output';
 import type { FieldDescriptor } from '../runner/field';

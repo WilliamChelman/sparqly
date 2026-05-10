@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { Logger } from '@nestjs/common';
 import { type Store } from 'n3';
 import { z } from 'zod';
+import { shortenNQuadLine } from 'common';
 import {
   composeHtmlDiff,
   detectSelectShape,
@@ -21,7 +22,6 @@ import {
   resolveAnonymousView,
   resolveSource,
   selectTarget,
-  shortenNQuadLine,
   tabularDiff,
   withAutoSourceAnnotation,
   type AnnotationPredicateIris,

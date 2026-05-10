@@ -1,8 +1,9 @@
 import { DataFactory, Parser } from 'n3';
 import { canonize } from 'rdf-canonize';
 import { describe, expect, it } from 'vitest';
-import { formatRdf, shortenNQuadLine } from './formatter';
+import { formatRdf } from './formatter';
 import { parseRdfString } from './parse-rdf-string';
+import { shortenNQuadLine } from './shorten-nquad-line';
 import { ttl } from './test/turtle';
 
 const { namedNode, quad } = DataFactory;

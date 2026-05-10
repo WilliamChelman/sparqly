@@ -5,8 +5,6 @@ export * from './lib/diff';
 export * from './lib/group-rdf-diff-by-entity';
 export * from './lib/grouped-diff-formatter';
 export * from './lib/immutability';
-export * from './lib/formatter';
-export * from './lib/parse-rdf-string';
 export * from './lib/parse-sparql-prefixes';
 export * from './lib/source-spec';
 export * from './lib/transform-spec';

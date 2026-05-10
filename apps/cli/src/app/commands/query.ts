@@ -1,9 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { Logger } from '@nestjs/common';
 import { z } from 'zod';
+import { formatRdf, parseRdfString } from 'common';
 import {
-  formatRdf,
-  parseRdfString,
   parseSourceSpecs,
   parseSparqlPrefixes,
   QueryEngine,

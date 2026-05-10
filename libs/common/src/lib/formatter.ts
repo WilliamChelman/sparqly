@@ -1,15 +1,5 @@
 import { DataFactory, Writer, type Quad, type Term } from 'n3';
-import {
-  RDF_NS,
-  RDF_TYPE,
-  XSD_STRING,
-  bestPrefixEntryFor,
-  shortenNQuadLine,
-  type ShortenNQuadLineConfig,
-} from 'common';
-
-export { shortenNQuadLine };
-export type { ShortenNQuadLineConfig };
+import { RDF_NS, RDF_TYPE, XSD_STRING, bestPrefixEntryFor } from './shorten-nquad-line';
 
 export type FormatSerialization = 'turtle' | 'trig';
 
