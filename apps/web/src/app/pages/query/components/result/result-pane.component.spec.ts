@@ -48,6 +48,20 @@ const TRIPLE_RESULT: DecodedResult = {
   contentType: 'text/turtle',
 };
 
+const TRIG_RESULT: DecodedResult = {
+  kind: 'triples',
+  triples: [
+    {
+      subject: { termType: 'NamedNode', value: 'http://example.org/a' },
+      predicate: { termType: 'NamedNode', value: 'http://example.org/p' },
+      object: { termType: 'NamedNode', value: 'http://example.org/o' },
+      graph: { termType: 'NamedNode', value: 'http://example.org/g' },
+    },
+  ],
+  raw: '<http://example.org/g> {\n<http://example.org/a> <http://example.org/p> <http://example.org/o>\n}\n',
+  contentType: 'application/trig',
+};
+
 function setup(state: ResultPaneState) {
   const fixture = TestBed.createComponent(Host);
   fixture.componentInstance.state = state;
@@ -117,6 +131,100 @@ describe('ResultPane tabs', () => {
     fixture.detectChanges();
     expect($(fixture, '[data-testid="result-raw"]')).toBeTruthy();
     expect($(fixture, '[data-testid="result-table-select"]')).toBeFalsy();
+  });
+});
+
+describe('ResultPane turtle/trig tab', () => {
+  it('shows a turtle tab between table and raw for a default-graph triple result', () => {
+    const fixture = setup({ kind: 'result', result: TRIPLE_RESULT });
+    const tabs = $$(fixture, '[data-testid^="tab-"]');
+    const ids = tabs.map((t) => t.getAttribute('data-testid'));
+    expect(ids).toEqual(['tab-table', 'tab-turtle', 'tab-raw', 'tab-download']);
+    expect(
+      $(fixture, '[data-testid="tab-turtle"]')?.textContent?.trim(),
+    ).toBe('turtle');
+  });
+
+  it('labels the tab `trig` when any quad carries a named graph', () => {
+    const fixture = setup({ kind: 'result', result: TRIG_RESULT });
+    const tabs = $$(fixture, '[data-testid^="tab-"]');
+    const ids = tabs.map((t) => t.getAttribute('data-testid'));
+    expect(ids).toEqual(['tab-table', 'tab-trig', 'tab-raw', 'tab-download']);
+    expect(
+      $(fixture, '[data-testid="tab-trig"]')?.textContent?.trim(),
+    ).toBe('trig');
+  });
+
+  it('hides the turtle/trig tab for SELECT results', () => {
+    const fixture = setup({ kind: 'result', result: SELECT_RESULT });
+    expect($(fixture, '[data-testid="tab-turtle"]')).toBeFalsy();
+    expect($(fixture, '[data-testid="tab-trig"]')).toBeFalsy();
+  });
+
+  it('hides the turtle/trig tab for ASK results', () => {
+    const fixture = setup({ kind: 'result', result: ASK_RESULT });
+    expect($(fixture, '[data-testid="tab-turtle"]')).toBeFalsy();
+    expect($(fixture, '[data-testid="tab-trig"]')).toBeFalsy();
+  });
+
+  it('renders the formatted body when the turtle tab is active', () => {
+    const fixture = setup({ kind: 'result', result: TRIPLE_RESULT });
+    ($(fixture, '[data-testid="tab-turtle"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const body = $(fixture, '[data-testid="result-formatted-body"]');
+    expect(body).toBeTruthy();
+    expect(body?.textContent).toContain('<http://example.org/a>');
+    expect(body?.textContent).toContain('<http://example.org/p>');
+    expect(body?.textContent).toContain('<http://example.org/o>');
+  });
+
+  it('renders the formatted body for a TriG result', () => {
+    const fixture = setup({ kind: 'result', result: TRIG_RESULT });
+    ($(fixture, '[data-testid="tab-trig"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const body = $(fixture, '[data-testid="result-formatted-body"]');
+    expect(body).toBeTruthy();
+    expect(body?.textContent).toContain('<http://example.org/g>');
+    expect(body?.textContent).toContain('<http://example.org/a>');
+  });
+});
+
+describe('ResultPane formatted-body downloads', () => {
+  it('serves the formatted body for the Turtle download on default-graph triples', () => {
+    const fixture = setup({ kind: 'result', result: TRIPLE_RESULT });
+    ($(fixture, '[data-testid="tab-download"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const turtle = $(fixture, '[data-testid="download-turtle"]') as HTMLAnchorElement;
+    expect(turtle.getAttribute('download')).toBe('result.ttl');
+    expect(turtle.textContent).toContain('Turtle');
+    const href = turtle.getAttribute('href') ?? '';
+    expect(href.startsWith('data:text/turtle')).toBe(true);
+    const decoded = decodeURIComponent(href.replace(/^data:[^,]+,/, ''));
+    // Body is the formatRdf output, not the raw wire body.
+    expect(decoded).toContain('<http://example.org/a>');
+    expect(decoded).toContain('<http://example.org/p>');
+    expect(decoded).toContain('<http://example.org/o>');
+  });
+
+  it('flips Turtle to TriG for named-graph results', () => {
+    const fixture = setup({ kind: 'result', result: TRIG_RESULT });
+    ($(fixture, '[data-testid="tab-download"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const trig = $(fixture, '[data-testid="download-turtle"]') as HTMLAnchorElement;
+    expect(trig.getAttribute('download')).toBe('result.trig');
+    expect(trig.textContent).toContain('TriG');
+    const href = trig.getAttribute('href') ?? '';
+    expect(href.startsWith('data:application/trig')).toBe(true);
+  });
+
+  it('keeps the N-Quads download entry untouched', () => {
+    const fixture = setup({ kind: 'result', result: TRIPLE_RESULT });
+    ($(fixture, '[data-testid="tab-download"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const nq = $(fixture, '[data-testid="download-nquads"]') as HTMLAnchorElement;
+    expect(nq.getAttribute('download')).toBe('result.nq');
+    const href = nq.getAttribute('href') ?? '';
+    expect(href.startsWith('data:application/n-quads')).toBe(true);
   });
 });
 
