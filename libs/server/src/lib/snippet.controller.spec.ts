@@ -61,13 +61,56 @@ describe('GET /api/source-snippet', () => {
     const json = (await resp.json()) as {
       kind: string;
       startLine: number;
-      focalLine: number;
+      focalStart: number;
+      focalEnd: number;
       lines: string[];
     };
     expect(json.kind).toBe('snippet');
-    expect(json.focalLine).toBe(3);
+    expect(json.focalStart).toBe(3);
+    expect(json.focalEnd).toBe(3);
     expect(json.startLine).toBe(2);
     expect(json.lines).toEqual(['', 'ex:a ex:p ex:b .', 'ex:a ex:q ex:c .']);
+  });
+
+  it('returns a multi-line focal range when `endLine` query param is provided', async () => {
+    const fileUri = pathToFileURL(dataPath).href;
+    const params = new URLSearchParams({
+      file: fileUri,
+      line: '3',
+      endLine: '5',
+      snippetContext: '0',
+    });
+    const resp = await fetch(`${baseUrl}?${params.toString()}`);
+
+    expect(resp.status).toBe(200);
+    const json = (await resp.json()) as {
+      kind: string;
+      startLine: number;
+      focalStart: number;
+      focalEnd: number;
+      lines: string[];
+    };
+    expect(json.kind).toBe('snippet');
+    expect(json.focalStart).toBe(3);
+    expect(json.focalEnd).toBe(5);
+    expect(json.startLine).toBe(3);
+    expect(json.lines).toEqual([
+      'ex:a ex:p ex:b .',
+      'ex:a ex:q ex:c .',
+      'ex:a ex:r ex:d .',
+    ]);
+  });
+
+  it('returns 400 when `endLine` < `line`', async () => {
+    const fileUri = pathToFileURL(dataPath).href;
+    const params = new URLSearchParams({
+      file: fileUri,
+      line: '4',
+      endLine: '2',
+      snippetContext: '0',
+    });
+    const resp = await fetch(`${baseUrl}?${params.toString()}`);
+    expect(resp.status).toBe(400);
   });
 
   it('returns 403 for a file outside the allow-list', async () => {

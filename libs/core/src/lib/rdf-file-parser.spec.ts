@@ -50,6 +50,80 @@ describe('parseRdfFile', () => {
     expect(linesByPredicate['http://example.org/p3']).toBe(5);
   });
 
+  it('emits distinct lines per object in a comma-separated object list', async () => {
+    const file = join(dir, 'comma.ttl');
+    await writeFile(
+      file,
+      dedent`
+        @prefix ex: <http://example.org/> .
+
+        ex:a ex:email "one@example.com",
+                      "two@example.com",
+                      "three@example.com" .
+      ` + '\n',
+    );
+    const { records } = await parseRdfFile(file);
+    expect(records).toHaveLength(3);
+    const linesByObject = Object.fromEntries(
+      records.map((r) => [r.quad.object.value, r.line]),
+    );
+    expect(linesByObject['one@example.com']).toBe(3);
+    expect(linesByObject['two@example.com']).toBe(4);
+    expect(linesByObject['three@example.com']).toBe(5);
+  });
+
+  it('emits distinct lines per item in an RDF collection list', async () => {
+    const file = join(dir, 'list.ttl');
+    await writeFile(
+      file,
+      dedent`
+        @prefix ex: <http://example.org/> .
+
+        ex:a ex:items (
+          ex:one
+          ex:two
+          ex:three
+        ) .
+      ` + '\n',
+    );
+    const { records } = await parseRdfFile(file);
+    // List expansion produces 7 quads: 3 rdf:first + 3 rdf:rest + 1 ex:items.
+    const firstQuads = records.filter(
+      (r) =>
+        r.quad.predicate.value ===
+        'http://www.w3.org/1999/02/22-rdf-syntax-ns#first',
+    );
+    expect(firstQuads).toHaveLength(3);
+    const linesByItem = Object.fromEntries(
+      firstQuads.map((r) => [r.quad.object.value, r.line]),
+    );
+    expect(linesByItem['http://example.org/one']).toBe(4);
+    expect(linesByItem['http://example.org/two']).toBe(5);
+    expect(linesByItem['http://example.org/three']).toBe(6);
+  });
+
+  it('does not attribute any quad to the line of a list closing paren', async () => {
+    const file = join(dir, 'list-close-paren.ttl');
+    await writeFile(
+      file,
+      dedent`
+        @prefix ex: <http://example.org/> .
+
+        ex:a ex:items (
+          ex:one
+          ex:two
+        )
+        .
+      ` + '\n',
+    );
+    const { records } = await parseRdfFile(file);
+    // Closing paren is on line 6. It is pure syntax, not a triple location, so
+    // no record — neither the rdf:rest -> rdf:nil terminator nor the parent
+    // ex:items triple — should carry line 6.
+    const linesAt6 = records.filter((r) => r.line === 6);
+    expect(linesAt6).toEqual([]);
+  });
+
   it('emits per-line records for N-Triples files', async () => {
     const file = join(dir, 'a.nt');
     await writeFile(
@@ -163,6 +237,107 @@ describe('parseRdfFile', () => {
     const file = join(dir, 'a.unknown');
     await writeFile(file, 'irrelevant');
     await expect(parseRdfFile(file)).rejects.toThrow(/unsupported file extension/i);
+  });
+
+  it('emits `endLine = startLine + N - 1` for a triple-quoted literal that spans N source lines', async () => {
+    const file = join(dir, 'multiline-literal.ttl');
+    await writeFile(
+      file,
+      dedent`
+        @prefix ex: <http://example.org/> .
+
+        ex:a ex:select """SELECT *
+        WHERE {
+          ?s ?p ?o
+        }""" .
+      ` + '\n',
+    );
+    const { records } = await parseRdfFile(file);
+    expect(records).toHaveLength(1);
+    // Opening """ is on line 3, closing """ is on line 6.
+    expect(records[0].line).toBe(3);
+    expect(records[0].endLine).toBe(6);
+  });
+
+  it('leaves `endLine` undefined for a single-line literal that uses a `\\n` escape', async () => {
+    const file = join(dir, 'escape-literal.ttl');
+    await writeFile(
+      file,
+      '@prefix ex: <http://example.org/> .\n\nex:a ex:p "foo\\nbar" .\n',
+    );
+    const { records } = await parseRdfFile(file);
+    expect(records).toHaveLength(1);
+    expect(records[0].line).toBe(3);
+    expect(records[0].endLine).toBeUndefined();
+  });
+
+  it('records `endLine` at the closing `)` line for the parent triple of a multi-line RDF list', async () => {
+    const file = join(dir, 'multi-line-list.ttl');
+    await writeFile(
+      file,
+      dedent`
+        @prefix ex: <http://example.org/> .
+
+        ex:a ex:items (
+          ex:one
+          ex:two
+          ex:three
+        ) .
+      ` + '\n',
+    );
+    const { records } = await parseRdfFile(file);
+    // Locate the parent triple (predicate = ex:items).
+    const parent = records.find(
+      (r) => r.quad.predicate.value === 'http://example.org/items',
+    );
+    expect(parent).toBeDefined();
+    // `(` is on line 3, `)` is on line 7.
+    expect(parent?.line).toBe(3);
+    expect(parent?.endLine).toBe(7);
+    // Inner rdf:first records should not carry endLine.
+    const firstQuads = records.filter(
+      (r) =>
+        r.quad.predicate.value ===
+        'http://www.w3.org/1999/02/22-rdf-syntax-ns#first',
+    );
+    for (const q of firstQuads) expect(q.endLine).toBeUndefined();
+  });
+
+  it('records `endLine` at the closing `]` line for the parent triple of a multi-line inline blank node', async () => {
+    const file = join(dir, 'multi-line-bnode.ttl');
+    await writeFile(
+      file,
+      dedent`
+        @prefix ex: <http://example.org/> .
+
+        ex:a ex:property [
+          ex:p1 ex:o1 ;
+          ex:p2 ex:o2
+        ] .
+      ` + '\n',
+    );
+    const { records } = await parseRdfFile(file);
+    const parent = records.find(
+      (r) => r.quad.predicate.value === 'http://example.org/property',
+    );
+    expect(parent).toBeDefined();
+    // `[` is on line 3, `]` is on line 6.
+    expect(parent?.line).toBe(3);
+    expect(parent?.endLine).toBe(6);
+  });
+
+  it('leaves `endLine` undefined for a single-line RDF list', async () => {
+    const file = join(dir, 'single-line-list.ttl');
+    await writeFile(
+      file,
+      '@prefix ex: <http://example.org/> .\nex:a ex:items ( ex:one ex:two ) .\n',
+    );
+    const { records } = await parseRdfFile(file);
+    const parent = records.find(
+      (r) => r.quad.predicate.value === 'http://example.org/items',
+    );
+    expect(parent).toBeDefined();
+    expect(parent?.endLine).toBeUndefined();
   });
 
   it('streams large N-Quads files preserving line numbers across chunk boundaries', async () => {

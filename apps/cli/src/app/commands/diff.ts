@@ -517,13 +517,18 @@ export const diffSpec: CommandSpec<DiffConfig> = {
  */
 export function collectSnippetKeysForHunkedDiff(
   hunked: { changed: readonly Hunk[]; removed: readonly Hunk[]; added: readonly Hunk[] },
-): Map<string, { file: string; line: number }> {
-  const seen = new Map<string, { file: string; line: number }>();
+): Map<string, { file: string; startLine: number; endLine: number }> {
+  const seen = new Map<string, { file: string; startLine: number; endLine: number }>();
   const collect = (records: readonly SourceRecord[]): void => {
     for (const r of records) {
       if (r.line === undefined) continue;
-      const key = `${r.file}:${r.line}`;
-      if (!seen.has(key)) seen.set(key, { file: r.file, line: r.line });
+      const startLine = r.line;
+      const endLine = r.endLine ?? r.line;
+      const key =
+        startLine === endLine
+          ? `${r.file}:${startLine}`
+          : `${r.file}:${startLine}-${endLine}`;
+      if (!seen.has(key)) seen.set(key, { file: r.file, startLine, endLine });
     }
   };
   for (const h of [...hunked.changed, ...hunked.removed, ...hunked.added]) {
@@ -539,9 +544,9 @@ async function fetchSnippetsForHunkedDiff(
 ): Promise<HtmlDiffSnippets> {
   const seen = collectSnippetKeysForHunkedDiff(hunked);
   const entries = await Promise.all(
-    [...seen.entries()].map(async ([key, { file, line }]) => {
+    [...seen.entries()].map(async ([key, { file, startLine, endLine }]) => {
       const abs = fileURLToPath(file);
-      return [key, await readSourceSnippet(abs, line, context)] as const;
+      return [key, await readSourceSnippet(abs, startLine, endLine, context)] as const;
     }),
   );
   return new Map<string, SnippetReadResult>(entries);

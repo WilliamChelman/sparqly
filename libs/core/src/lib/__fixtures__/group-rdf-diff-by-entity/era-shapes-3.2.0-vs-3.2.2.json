@@ -723,9 +723,31 @@
     {
       "anchor": "http://data.europa.eu/949/shapes/Creator",
       "state": "changed",
-      "removed": 3,
-      "added": 4,
+      "removed": 2,
+      "added": 2,
       "lines": [
+        {
+          "side": "-",
+          "subjectPath": "http://data.europa.eu/949/shapes/Creator",
+          "predicate": "http://www.w3.org/ns/shacl#in",
+          "object": "( <http://publications.europa.eu/resource/authority/corporate-body/ERA> <https://www.wikidata.org/entity/450896602> )",
+          "nquad": "<http://data.europa.eu/949/shapes/Creator> <http://www.w3.org/ns/shacl#in> ( <http://publications.europa.eu/resource/authority/corporate-body/ERA> <https://www.wikidata.org/entity/450896602> ) .",
+          "listItems": [
+            "<http://publications.europa.eu/resource/authority/corporate-body/ERA>",
+            "<https://www.wikidata.org/entity/450896602>"
+          ]
+        },
+        {
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/Creator",
+          "predicate": "http://www.w3.org/ns/shacl#in",
+          "object": "( <http://publications.europa.eu/resource/authority/corporate-body/ERA> <https://www.wikidata.org/entity/450896602> )",
+          "nquad": "<http://data.europa.eu/949/shapes/Creator> <http://www.w3.org/ns/shacl#in> ( <http://publications.europa.eu/resource/authority/corporate-body/ERA> <https://www.wikidata.org/entity/450896602> ) .",
+          "listItems": [
+            "<http://publications.europa.eu/resource/authority/corporate-body/ERA>",
+            "<https://www.wikidata.org/entity/450896602>"
+          ]
+        },
         {
           "side": "-",
           "subjectPath": "http://data.europa.eu/949/shapes/Creator",
@@ -739,91 +761,6 @@
           "predicate": "http://www.w3.org/ns/shacl#message",
           "object": "\"dct:creator: An Activity may have at most one creator that must be an IRI. This error may be due to having more than one value or having a value that is not an IRI.\"@en",
           "nquad": "<http://data.europa.eu/949/shapes/Creator> <http://www.w3.org/ns/shacl#message> \"dct:creator: An Activity may have at most one creator that must be an IRI. This error may be due to having more than one value or having a value that is not an IRI.\"@en ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/Creator\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-114",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n18",
-          "nquad": "_:c14n4 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n18 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-114",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/Creator\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-114/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-115",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "<https://www.wikidata.org/entity/450896602>",
-          "nquad": "_:c14n18 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <https://www.wikidata.org/entity/450896602> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-114",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-115",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/Creator\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-114/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-115",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
-          "nquad": "_:c14n18 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-114",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-115",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/Creator\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-60",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n19",
-          "nquad": "_:c14n4 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n19 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-60",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/Creator\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-60/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-61",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "<https://www.wikidata.org/entity/450896602>",
-          "nquad": "_:c14n19 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <https://www.wikidata.org/entity/450896602> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-60",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-61",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
         }
       ],
       "sourceRecords": {
@@ -896,249 +833,31 @@
     {
       "anchor": "http://data.europa.eu/949/shapes/DrivingCabs",
       "state": "changed",
-      "removed": 7,
-      "added": 7,
+      "removed": 1,
+      "added": 1,
       "lines": [
         {
           "side": "-",
           "subjectPath": "http://data.europa.eu/949/shapes/DrivingCabs",
           "predicate": "http://www.w3.org/ns/shacl#in",
-          "object": "_:c14n25",
-          "nquad": "<http://data.europa.eu/949/shapes/DrivingCabs> <http://www.w3.org/ns/shacl#in> _:c14n25 ."
+          "object": "( \"0\"^^<http://www.w3.org/2001/XMLSchema#integer> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> \"2\"^^<http://www.w3.org/2001/XMLSchema#integer> )",
+          "nquad": "<http://data.europa.eu/949/shapes/DrivingCabs> <http://www.w3.org/ns/shacl#in> ( \"0\"^^<http://www.w3.org/2001/XMLSchema#integer> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> \"2\"^^<http://www.w3.org/2001/XMLSchema#integer> ) .",
+          "listItems": [
+            "\"0\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+            "\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+            "\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>"
+          ]
         },
         {
           "side": "+",
           "subjectPath": "http://data.europa.eu/949/shapes/DrivingCabs",
           "predicate": "http://www.w3.org/ns/shacl#in",
-          "object": "_:c14n23",
-          "nquad": "<http://data.europa.eu/949/shapes/DrivingCabs> <http://www.w3.org/ns/shacl#in> _:c14n23 ."
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/DrivingCabs\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-0",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "\"0\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "_:c14n25 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"0\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-0",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/DrivingCabs\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-0",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n59",
-          "nquad": "_:c14n25 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n59 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-0",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/DrivingCabs\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-0/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-1",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "_:c14n59 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-0",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-1",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/DrivingCabs\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-0/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-1",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n28",
-          "nquad": "_:c14n59 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n28 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-0",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-1",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/DrivingCabs\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-0/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-1/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-2",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "_:c14n28 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"2\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-0",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-1",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            },
-            {
-              "identityValue": "_:n3-2",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/DrivingCabs\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-0/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-1/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-2",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
-          "nquad": "_:c14n28 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-0",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-1",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            },
-            {
-              "identityValue": "_:n3-2",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/DrivingCabs\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-62",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "\"0\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "_:c14n23 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"0\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-62",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/DrivingCabs\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-62",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n50",
-          "nquad": "_:c14n23 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n50 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-62",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/DrivingCabs\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-62/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-63",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "_:c14n50 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-62",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-63",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/DrivingCabs\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-62/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-63",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n26",
-          "nquad": "_:c14n50 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n26 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-62",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-63",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/DrivingCabs\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-62/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-63/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-64",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "_:c14n26 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"2\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-62",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-63",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            },
-            {
-              "identityValue": "_:n3-64",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/DrivingCabs\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-62/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-63/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-64",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
-          "nquad": "_:c14n26 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-62",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-63",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            },
-            {
-              "identityValue": "_:n3-64",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
+          "object": "( \"0\"^^<http://www.w3.org/2001/XMLSchema#integer> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> \"2\"^^<http://www.w3.org/2001/XMLSchema#integer> )",
+          "nquad": "<http://data.europa.eu/949/shapes/DrivingCabs> <http://www.w3.org/ns/shacl#in> ( \"0\"^^<http://www.w3.org/2001/XMLSchema#integer> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> \"2\"^^<http://www.w3.org/2001/XMLSchema#integer> ) .",
+          "listItems": [
+            "\"0\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+            "\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+            "\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>"
           ]
         }
       ],
@@ -1373,7 +1092,7 @@
     {
       "anchor": "http://data.europa.eu/949/shapes/EndLocation",
       "state": "changed",
-      "removed": 4,
+      "removed": 3,
       "added": 1,
       "lines": [
         {
@@ -1387,21 +1106,11 @@
           "side": "-",
           "subjectPath": "http://data.europa.eu/949/shapes/EndLocation",
           "predicate": "http://www.w3.org/ns/shacl#or",
-          "object": "_:c14n22",
-          "nquad": "<http://data.europa.eu/949/shapes/EndLocation> <http://www.w3.org/ns/shacl#or> _:c14n22 ."
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/EndLocation\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-38",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n39",
-          "nquad": "_:c14n22 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n39 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-38",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
+          "object": "( _:n3-39 _:n3-41 )",
+          "nquad": "<http://data.europa.eu/949/shapes/EndLocation> <http://www.w3.org/ns/shacl#or> ( _:n3-39 _:n3-41 ) .",
+          "listItems": [
+            "_:n3-39",
+            "_:n3-41"
           ]
         },
         {
@@ -1728,336 +1437,33 @@
     {
       "anchor": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab",
       "state": "changed",
-      "removed": 9,
-      "added": 8,
+      "removed": 1,
+      "added": 1,
       "lines": [
         {
           "side": "-",
           "subjectPath": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab",
           "predicate": "http://www.w3.org/ns/shacl#in",
-          "object": "_:c14n15",
-          "nquad": "<http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab> <http://www.w3.org/ns/shacl#in> _:c14n15 ."
+          "object": "( \"0\"^^<http://www.w3.org/2001/XMLSchema#integer> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> \"2\"^^<http://www.w3.org/2001/XMLSchema#integer> \"3\"^^<http://www.w3.org/2001/XMLSchema#integer> )",
+          "nquad": "<http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab> <http://www.w3.org/ns/shacl#in> ( \"0\"^^<http://www.w3.org/2001/XMLSchema#integer> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> \"2\"^^<http://www.w3.org/2001/XMLSchema#integer> \"3\"^^<http://www.w3.org/2001/XMLSchema#integer> ) .",
+          "listItems": [
+            "\"0\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+            "\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+            "\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+            "\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>"
+          ]
         },
         {
           "side": "+",
           "subjectPath": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab",
           "predicate": "http://www.w3.org/ns/shacl#in",
-          "object": "_:c14n14",
-          "nquad": "<http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab> <http://www.w3.org/ns/shacl#in> _:c14n14 ."
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-3",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "\"0\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "_:c14n15 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"0\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-3",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-3",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n58",
-          "nquad": "_:c14n15 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n58 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-3",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-3/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-4",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "_:c14n58 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-3",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-4",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-3/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-4",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n32",
-          "nquad": "_:c14n58 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n32 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-3",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-4",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-3/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-4/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-5",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "_:c14n32 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"2\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-3",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-4",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            },
-            {
-              "identityValue": "_:n3-5",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-3/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-4/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-5",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n20",
-          "nquad": "_:c14n32 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n20 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-3",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-4",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            },
-            {
-              "identityValue": "_:n3-5",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-3/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-4/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-5/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-6",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "_:c14n20 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"3\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-3",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-4",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            },
-            {
-              "identityValue": "_:n3-5",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            },
-            {
-              "identityValue": "_:n3-6",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-3/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-4/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-5/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-6",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
-          "nquad": "_:c14n20 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-3",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-4",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            },
-            {
-              "identityValue": "_:n3-5",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            },
-            {
-              "identityValue": "_:n3-6",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-65",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "\"0\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "_:c14n14 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"0\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-65",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-65",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n51",
-          "nquad": "_:c14n14 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n51 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-65",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-65/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-66",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "_:c14n51 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-65",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-66",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-65/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-66",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n30",
-          "nquad": "_:c14n51 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n30 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-65",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-66",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-65/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-66/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-67",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "_:c14n30 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"2\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-65",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-66",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            },
-            {
-              "identityValue": "_:n3-67",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-65/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-66/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-67",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n19",
-          "nquad": "_:c14n30 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n19 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-65",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-66",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            },
-            {
-              "identityValue": "_:n3-67",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-65/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-66/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-67/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-68",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>",
-          "nquad": "_:c14n19 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"3\"^^<http://www.w3.org/2001/XMLSchema#integer> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-65",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-66",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            },
-            {
-              "identityValue": "_:n3-67",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            },
-            {
-              "identityValue": "_:n3-68",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
+          "object": "( \"0\"^^<http://www.w3.org/2001/XMLSchema#integer> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> \"2\"^^<http://www.w3.org/2001/XMLSchema#integer> \"3\"^^<http://www.w3.org/2001/XMLSchema#integer> )",
+          "nquad": "<http://data.europa.eu/949/shapes/GsmRSetsInDrivingCab> <http://www.w3.org/ns/shacl#in> ( \"0\"^^<http://www.w3.org/2001/XMLSchema#integer> \"1\"^^<http://www.w3.org/2001/XMLSchema#integer> \"2\"^^<http://www.w3.org/2001/XMLSchema#integer> \"3\"^^<http://www.w3.org/2001/XMLSchema#integer> ) .",
+          "listItems": [
+            "\"0\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+            "\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+            "\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>",
+            "\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>"
           ]
         }
       ],
@@ -2334,77 +1740,29 @@
     {
       "anchor": "http://data.europa.eu/949/shapes/HasLrsCoordinate",
       "state": "changed",
-      "removed": 3,
-      "added": 3,
+      "removed": 1,
+      "added": 1,
       "lines": [
         {
           "side": "-",
           "subjectPath": "http://data.europa.eu/949/shapes/HasLrsCoordinate",
           "predicate": "http://www.w3.org/ns/shacl#path",
-          "object": "_:c14n12",
-          "nquad": "<http://data.europa.eu/949/shapes/HasLrsCoordinate> <http://www.w3.org/ns/shacl#path> _:c14n12 ."
+          "object": "( <http://data.europa.eu/949/hasLrsCoordinate> <http://data.europa.eu/949/hasLRS> )",
+          "nquad": "<http://data.europa.eu/949/shapes/HasLrsCoordinate> <http://www.w3.org/ns/shacl#path> ( <http://data.europa.eu/949/hasLrsCoordinate> <http://data.europa.eu/949/hasLRS> ) .",
+          "listItems": [
+            "<http://data.europa.eu/949/hasLrsCoordinate>",
+            "<http://data.europa.eu/949/hasLRS>"
+          ]
         },
         {
           "side": "+",
           "subjectPath": "http://data.europa.eu/949/shapes/HasLrsCoordinate",
           "predicate": "http://www.w3.org/ns/shacl#path",
-          "object": "_:c14n11",
-          "nquad": "<http://data.europa.eu/949/shapes/HasLrsCoordinate> <http://www.w3.org/ns/shacl#path> _:c14n11 ."
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/HasLrsCoordinate\u0000http://www.w3.org/ns/shacl#path|bnode=_:n3-11",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "<http://data.europa.eu/949/hasLrsCoordinate>",
-          "nquad": "_:c14n12 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <http://data.europa.eu/949/hasLrsCoordinate> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-11",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#path"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/HasLrsCoordinate\u0000http://www.w3.org/ns/shacl#path|bnode=_:n3-11",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n8",
-          "nquad": "_:c14n12 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n8 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-11",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#path"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/HasLrsCoordinate\u0000http://www.w3.org/ns/shacl#path|bnode=_:n3-73",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "<http://data.europa.eu/949/hasLrsCoordinate>",
-          "nquad": "_:c14n11 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <http://data.europa.eu/949/hasLrsCoordinate> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-73",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#path"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/HasLrsCoordinate\u0000http://www.w3.org/ns/shacl#path|bnode=_:n3-73",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n8",
-          "nquad": "_:c14n11 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n8 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-73",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#path"
-            }
+          "object": "( <http://data.europa.eu/949/hasLrsCoordinate> <http://data.europa.eu/949/hasLRS> )",
+          "nquad": "<http://data.europa.eu/949/shapes/HasLrsCoordinate> <http://www.w3.org/ns/shacl#path> ( <http://data.europa.eu/949/hasLrsCoordinate> <http://data.europa.eu/949/hasLRS> ) .",
+          "listItems": [
+            "<http://data.europa.eu/949/hasLrsCoordinate>",
+            "<http://data.europa.eu/949/hasLRS>"
           ]
         }
       ],
@@ -2594,8 +1952,8 @@
     {
       "anchor": "http://data.europa.eu/949/shapes/HasPartSoL",
       "state": "changed",
-      "removed": 8,
-      "added": 8,
+      "removed": 4,
+      "added": 4,
       "lines": [
         {
           "side": "-",
@@ -2629,7 +1987,7 @@
           "side": "-",
           "subjectPath": "http://data.europa.eu/949/shapes/HasPartSoL\u0000http://www.w3.org/ns/shacl#path|bnode=_:n3-27",
           "predicate": "http://www.w3.org/ns/shacl#alternativePath",
-          "object": "_:c14n21",
+          "object": "( <http://data.europa.eu/949/hasPart> _:n3-30 )",
           "nquad": "_:c14n30 <http://www.w3.org/ns/shacl#alternativePath> _:c14n21 .",
           "bnodePath": [
             {
@@ -2637,99 +1995,17 @@
               "identityIsBlank": true,
               "parentPredicate": "http://www.w3.org/ns/shacl#path"
             }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/HasPartSoL\u0000http://www.w3.org/ns/shacl#path|bnode=_:n3-27/http://www.w3.org/ns/shacl#alternativePath|bnode=_:n3-28",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "<http://data.europa.eu/949/hasPart>",
-          "nquad": "_:c14n21 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <http://data.europa.eu/949/hasPart> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-27",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#path"
-            },
-            {
-              "identityValue": "_:n3-28",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#alternativePath"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/HasPartSoL\u0000http://www.w3.org/ns/shacl#path|bnode=_:n3-27/http://www.w3.org/ns/shacl#alternativePath|bnode=_:n3-28",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n57",
-          "nquad": "_:c14n21 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n57 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-27",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#path"
-            },
-            {
-              "identityValue": "_:n3-28",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#alternativePath"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/HasPartSoL\u0000http://www.w3.org/ns/shacl#path|bnode=_:n3-27/http://www.w3.org/ns/shacl#alternativePath|bnode=_:n3-28/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-29",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n5",
-          "nquad": "_:c14n57 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n5 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-27",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#path"
-            },
-            {
-              "identityValue": "_:n3-28",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#alternativePath"
-            },
-            {
-              "identityValue": "_:n3-29",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/HasPartSoL\u0000http://www.w3.org/ns/shacl#path|bnode=_:n3-27/http://www.w3.org/ns/shacl#alternativePath|bnode=_:n3-28/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-29",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
-          "nquad": "_:c14n57 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-27",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#path"
-            },
-            {
-              "identityValue": "_:n3-28",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#alternativePath"
-            },
-            {
-              "identityValue": "_:n3-29",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
+          ],
+          "listItems": [
+            "<http://data.europa.eu/949/hasPart>",
+            "_:n3-30"
           ]
         },
         {
           "side": "+",
           "subjectPath": "http://data.europa.eu/949/shapes/HasPartSoL\u0000http://www.w3.org/ns/shacl#path|bnode=_:n3-89",
           "predicate": "http://www.w3.org/ns/shacl#alternativePath",
-          "object": "_:c14n20",
+          "object": "( <http://data.europa.eu/949/hasPart> _:n3-92 )",
           "nquad": "_:c14n27 <http://www.w3.org/ns/shacl#alternativePath> _:c14n20 .",
           "bnodePath": [
             {
@@ -2737,92 +2013,10 @@
               "identityIsBlank": true,
               "parentPredicate": "http://www.w3.org/ns/shacl#path"
             }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/HasPartSoL\u0000http://www.w3.org/ns/shacl#path|bnode=_:n3-89/http://www.w3.org/ns/shacl#alternativePath|bnode=_:n3-90",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "<http://data.europa.eu/949/hasPart>",
-          "nquad": "_:c14n20 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <http://data.europa.eu/949/hasPart> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-89",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#path"
-            },
-            {
-              "identityValue": "_:n3-90",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#alternativePath"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/HasPartSoL\u0000http://www.w3.org/ns/shacl#path|bnode=_:n3-89/http://www.w3.org/ns/shacl#alternativePath|bnode=_:n3-90",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n46",
-          "nquad": "_:c14n20 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n46 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-89",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#path"
-            },
-            {
-              "identityValue": "_:n3-90",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#alternativePath"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/HasPartSoL\u0000http://www.w3.org/ns/shacl#path|bnode=_:n3-89/http://www.w3.org/ns/shacl#alternativePath|bnode=_:n3-90/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-91",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n5",
-          "nquad": "_:c14n46 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n5 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-89",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#path"
-            },
-            {
-              "identityValue": "_:n3-90",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#alternativePath"
-            },
-            {
-              "identityValue": "_:n3-91",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/HasPartSoL\u0000http://www.w3.org/ns/shacl#path|bnode=_:n3-89/http://www.w3.org/ns/shacl#alternativePath|bnode=_:n3-90/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-91",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
-          "nquad": "_:c14n46 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-89",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#path"
-            },
-            {
-              "identityValue": "_:n3-90",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#alternativePath"
-            },
-            {
-              "identityValue": "_:n3-91",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
+          ],
+          "listItems": [
+            "<http://data.europa.eu/949/hasPart>",
+            "_:n3-92"
           ]
         },
         {
@@ -3568,7 +2762,7 @@
     {
       "anchor": "http://data.europa.eu/949/shapes/MinimumHorizontalRadius",
       "state": "changed",
-      "removed": 9,
+      "removed": 5,
       "added": 0,
       "lines": [
         {
@@ -3603,73 +2797,11 @@
           "side": "-",
           "subjectPath": "http://data.europa.eu/949/shapes/MinimumHorizontalRadius",
           "predicate": "http://www.w3.org/ns/shacl#or",
-          "object": "_:c14n29",
-          "nquad": "<http://data.europa.eu/949/shapes/MinimumHorizontalRadius> <http://www.w3.org/ns/shacl#or> _:c14n29 ."
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/MinimumHorizontalRadius\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-7",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n0",
-          "nquad": "_:c14n29 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n0 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-7",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/MinimumHorizontalRadius\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-7",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n54",
-          "nquad": "_:c14n29 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n54 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-7",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/MinimumHorizontalRadius\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-7/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-9",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n1",
-          "nquad": "_:c14n54 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n1 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-7",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-9",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/MinimumHorizontalRadius\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-7/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-9",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
-          "nquad": "_:c14n54 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-7",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-9",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
+          "object": "( _:n3-8 _:n3-10 )",
+          "nquad": "<http://data.europa.eu/949/shapes/MinimumHorizontalRadius> <http://www.w3.org/ns/shacl#or> ( _:n3-8 _:n3-10 ) .",
+          "listItems": [
+            "_:n3-8",
+            "_:n3-10"
           ]
         }
       ],
@@ -3723,35 +2855,29 @@
     {
       "anchor": "http://data.europa.eu/949/shapes/NotApplicable",
       "state": "changed",
-      "removed": 5,
-      "added": 3,
+      "removed": 3,
+      "added": 2,
       "lines": [
         {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotApplicable\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-110",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n35",
-          "nquad": "_:c14n7 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n35 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-110",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
+          "side": "-",
+          "subjectPath": "http://data.europa.eu/949/shapes/NotApplicable",
+          "predicate": "http://www.w3.org/ns/shacl#or",
+          "object": "( _:n3-57 _:n3-59 )",
+          "nquad": "<http://data.europa.eu/949/shapes/NotApplicable> <http://www.w3.org/ns/shacl#or> ( _:n3-57 _:n3-59 ) .",
+          "listItems": [
+            "_:n3-57",
+            "_:n3-59"
           ]
         },
         {
           "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotApplicable\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-110",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n41",
-          "nquad": "_:c14n7 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n41 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-110",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
+          "subjectPath": "http://data.europa.eu/949/shapes/NotApplicable",
+          "predicate": "http://www.w3.org/ns/shacl#or",
+          "object": "( _:n3-111 _:n3-113 )",
+          "nquad": "<http://data.europa.eu/949/shapes/NotApplicable> <http://www.w3.org/ns/shacl#or> ( _:n3-111 _:n3-113 ) .",
+          "listItems": [
+            "_:n3-111",
+            "_:n3-113"
           ]
         },
         {
@@ -3780,34 +2906,6 @@
         },
         {
           "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotApplicable\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-56",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n37",
-          "nquad": "_:c14n7 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n37 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-56",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotApplicable\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-56",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n47",
-          "nquad": "_:c14n7 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n47 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-56",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "-",
           "subjectPath": "http://data.europa.eu/949/shapes/NotApplicable\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-56/http://www.w3.org/1999/02/22-rdf-syntax-ns#first|bnode=_:n3-57",
           "predicate": "http://www.w3.org/ns/shacl#class",
           "object": "<http://www.w3.org/2002/07/owl#ObjectProperty>",
@@ -3822,25 +2920,6 @@
               "identityValue": "_:n3-57",
               "identityIsBlank": true,
               "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotApplicable\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-56/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-58",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n46",
-          "nquad": "_:c14n47 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n46 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-56",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-58",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
             }
           ]
         },
@@ -3878,73 +2957,29 @@
     {
       "anchor": "http://data.europa.eu/949/shapes/NotApplicableProperty",
       "state": "changed",
-      "removed": 5,
-      "added": 3,
+      "removed": 2,
+      "added": 2,
       "lines": [
         {
           "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotApplicableProperty\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-19",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n35",
-          "nquad": "_:c14n16 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n35 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-19",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
+          "subjectPath": "http://data.europa.eu/949/shapes/NotApplicableProperty",
+          "predicate": "http://www.w3.org/ns/shacl#or",
+          "object": "( _:n3-20 _:n3-22 )",
+          "nquad": "<http://data.europa.eu/949/shapes/NotApplicableProperty> <http://www.w3.org/ns/shacl#or> ( _:n3-20 _:n3-22 ) .",
+          "listItems": [
+            "_:n3-20",
+            "_:n3-22"
           ]
         },
         {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotApplicableProperty\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-19",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n51",
-          "nquad": "_:c14n16 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n51 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-19",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotApplicableProperty\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-19/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-21",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n50",
-          "nquad": "_:c14n51 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n50 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-19",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-21",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotApplicableProperty\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-19/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-21",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
-          "nquad": "_:c14n51 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-19",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-21",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/NotApplicableProperty",
+          "predicate": "http://www.w3.org/ns/shacl#or",
+          "object": "( _:n3-82 _:n3-84 )",
+          "nquad": "<http://data.europa.eu/949/shapes/NotApplicableProperty> <http://www.w3.org/ns/shacl#or> ( _:n3-82 _:n3-84 ) .",
+          "listItems": [
+            "_:n3-82",
+            "_:n3-84"
           ]
         },
         {
@@ -3968,34 +3003,6 @@
               "identityValue": "_:n3-22",
               "identityIsBlank": true,
               "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotApplicableProperty\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-81",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n31",
-          "nquad": "_:c14n16 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n31 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-81",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotApplicableProperty\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-81",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n45",
-          "nquad": "_:c14n16 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n45 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-81",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
             }
           ]
         },
@@ -4028,35 +3035,29 @@
     {
       "anchor": "http://data.europa.eu/949/shapes/NotYetAvailable",
       "state": "changed",
-      "removed": 5,
-      "added": 3,
+      "removed": 2,
+      "added": 2,
       "lines": [
         {
           "side": "-",
           "subjectPath": "http://data.europa.eu/949/shapes/NotYetAvailable",
           "predicate": "http://www.w3.org/ns/shacl#or",
-          "object": "_:c14n24",
-          "nquad": "<http://data.europa.eu/949/shapes/NotYetAvailable> <http://www.w3.org/ns/shacl#or> _:c14n24 ."
+          "object": "( _:n3-53 _:n3-55 )",
+          "nquad": "<http://data.europa.eu/949/shapes/NotYetAvailable> <http://www.w3.org/ns/shacl#or> ( _:n3-53 _:n3-55 ) .",
+          "listItems": [
+            "_:n3-53",
+            "_:n3-55"
+          ]
         },
         {
           "side": "+",
           "subjectPath": "http://data.europa.eu/949/shapes/NotYetAvailable",
           "predicate": "http://www.w3.org/ns/shacl#or",
-          "object": "_:c14n22",
-          "nquad": "<http://data.europa.eu/949/shapes/NotYetAvailable> <http://www.w3.org/ns/shacl#or> _:c14n22 ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotYetAvailable\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-106",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n33",
-          "nquad": "_:c14n22 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n33 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-106",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
+          "object": "( _:n3-107 _:n3-109 )",
+          "nquad": "<http://data.europa.eu/949/shapes/NotYetAvailable> <http://www.w3.org/ns/shacl#or> ( _:n3-107 _:n3-109 ) .",
+          "listItems": [
+            "_:n3-107",
+            "_:n3-109"
           ]
         },
         {
@@ -4080,53 +3081,6 @@
               "identityValue": "_:n3-109",
               "identityIsBlank": true,
               "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotYetAvailable\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-52",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n33",
-          "nquad": "_:c14n24 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n33 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-52",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotYetAvailable\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-52",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n49",
-          "nquad": "_:c14n24 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n49 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-52",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotYetAvailable\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-52/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-54",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n48",
-          "nquad": "_:c14n49 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n48 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-52",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-54",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
             }
           ]
         },
@@ -4164,115 +3118,29 @@
     {
       "anchor": "http://data.europa.eu/949/shapes/NotYetAvailableProperty",
       "state": "changed",
-      "removed": 3,
-      "added": 6,
+      "removed": 1,
+      "added": 2,
       "lines": [
         {
           "side": "-",
           "subjectPath": "http://data.europa.eu/949/shapes/NotYetAvailableProperty",
           "predicate": "http://www.w3.org/ns/shacl#or",
-          "object": "_:c14n11",
-          "nquad": "<http://data.europa.eu/949/shapes/NotYetAvailableProperty> <http://www.w3.org/ns/shacl#or> _:c14n11 ."
+          "object": "( _:n3-16 _:n3-18 )",
+          "nquad": "<http://data.europa.eu/949/shapes/NotYetAvailableProperty> <http://www.w3.org/ns/shacl#or> ( _:n3-16 _:n3-18 ) .",
+          "listItems": [
+            "_:n3-16",
+            "_:n3-18"
+          ]
         },
         {
           "side": "+",
           "subjectPath": "http://data.europa.eu/949/shapes/NotYetAvailableProperty",
           "predicate": "http://www.w3.org/ns/shacl#or",
-          "object": "_:c14n10",
-          "nquad": "<http://data.europa.eu/949/shapes/NotYetAvailableProperty> <http://www.w3.org/ns/shacl#or> _:c14n10 ."
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotYetAvailableProperty\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-15",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n34",
-          "nquad": "_:c14n11 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n34 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-15",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotYetAvailableProperty\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-15",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n45",
-          "nquad": "_:c14n11 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n45 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-15",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotYetAvailableProperty\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-77",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n34",
-          "nquad": "_:c14n10 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n34 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-77",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotYetAvailableProperty\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-77",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n37",
-          "nquad": "_:c14n10 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n37 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-77",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotYetAvailableProperty\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-77/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-79",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n36",
-          "nquad": "_:c14n37 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n36 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-77",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-79",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/NotYetAvailableProperty\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-77/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-79",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
-          "nquad": "_:c14n37 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-77",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-79",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
+          "object": "( _:n3-78 _:n3-80 )",
+          "nquad": "<http://data.europa.eu/949/shapes/NotYetAvailableProperty> <http://www.w3.org/ns/shacl#or> ( _:n3-78 _:n3-80 ) .",
+          "listItems": [
+            "_:n3-78",
+            "_:n3-80"
           ]
         },
         {
@@ -4343,49 +3211,29 @@
     {
       "anchor": "http://data.europa.eu/949/shapes/OfParameter",
       "state": "changed",
-      "removed": 7,
-      "added": 7,
+      "removed": 3,
+      "added": 3,
       "lines": [
         {
           "side": "-",
           "subjectPath": "http://data.europa.eu/949/shapes/OfParameter",
           "predicate": "http://www.w3.org/ns/shacl#or",
-          "object": "_:c14n31",
-          "nquad": "<http://data.europa.eu/949/shapes/OfParameter> <http://www.w3.org/ns/shacl#or> _:c14n31 ."
+          "object": "( _:n3-24 _:n3-26 )",
+          "nquad": "<http://data.europa.eu/949/shapes/OfParameter> <http://www.w3.org/ns/shacl#or> ( _:n3-24 _:n3-26 ) .",
+          "listItems": [
+            "_:n3-24",
+            "_:n3-26"
+          ]
         },
         {
           "side": "+",
           "subjectPath": "http://data.europa.eu/949/shapes/OfParameter",
           "predicate": "http://www.w3.org/ns/shacl#or",
-          "object": "_:c14n29",
-          "nquad": "<http://data.europa.eu/949/shapes/OfParameter> <http://www.w3.org/ns/shacl#or> _:c14n29 ."
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/OfParameter\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-23",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n36",
-          "nquad": "_:c14n31 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n36 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-23",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/OfParameter\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-23",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n53",
-          "nquad": "_:c14n31 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n53 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-23",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
+          "object": "( _:n3-86 _:n3-88 )",
+          "nquad": "<http://data.europa.eu/949/shapes/OfParameter> <http://www.w3.org/ns/shacl#or> ( _:n3-86 _:n3-88 ) .",
+          "listItems": [
+            "_:n3-86",
+            "_:n3-88"
           ]
         },
         {
@@ -4404,44 +3252,6 @@
               "identityValue": "_:n3-24",
               "identityIsBlank": true,
               "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/OfParameter\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-23/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-25",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n52",
-          "nquad": "_:c14n53 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n52 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-23",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-25",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/OfParameter\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-23/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-25",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
-          "nquad": "_:c14n53 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-23",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-25",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
             }
           ]
         },
@@ -4471,34 +3281,6 @@
         },
         {
           "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/OfParameter\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-85",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n32",
-          "nquad": "_:c14n29 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n32 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-85",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/OfParameter\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-85",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n39",
-          "nquad": "_:c14n29 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n39 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-85",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "+",
           "subjectPath": "http://data.europa.eu/949/shapes/OfParameter\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-85/http://www.w3.org/1999/02/22-rdf-syntax-ns#first|bnode=_:n3-86",
           "predicate": "http://www.w3.org/ns/shacl#class",
           "object": "<http://www.w3.org/2002/07/owl#ObjectProperty>",
@@ -4513,44 +3295,6 @@
               "identityValue": "_:n3-86",
               "identityIsBlank": true,
               "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/OfParameter\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-85/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-87",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n38",
-          "nquad": "_:c14n39 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n38 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-85",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-87",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/OfParameter\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-85/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-87",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
-          "nquad": "_:c14n39 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-85",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-87",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
             }
           ]
         },
@@ -4696,111 +3440,29 @@
     {
       "anchor": "http://data.europa.eu/949/shapes/PhaseInfoDistanceType",
       "state": "changed",
-      "removed": 3,
-      "added": 3,
+      "removed": 1,
+      "added": 1,
       "lines": [
         {
           "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/PhaseInfoDistanceType\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-32",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n23",
-          "nquad": "_:c14n17 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n23 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-32",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/PhaseInfoDistanceType\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-32/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-33",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "\"MAX\"",
-          "nquad": "_:c14n23 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"MAX\" .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-32",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-33",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/PhaseInfoDistanceType\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-32/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-33",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
-          "nquad": "_:c14n23 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-32",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-33",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
+          "subjectPath": "http://data.europa.eu/949/shapes/PhaseInfoDistanceType",
+          "predicate": "http://www.w3.org/ns/shacl#in",
+          "object": "( \"MIN\" \"MAX\" )",
+          "nquad": "<http://data.europa.eu/949/shapes/PhaseInfoDistanceType> <http://www.w3.org/ns/shacl#in> ( \"MIN\" \"MAX\" ) .",
+          "listItems": [
+            "\"MIN\"",
+            "\"MAX\""
           ]
         },
         {
           "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/PhaseInfoDistanceType\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-94",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n21",
-          "nquad": "_:c14n17 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n21 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-94",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/PhaseInfoDistanceType\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-94/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-95",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "\"MAX\"",
-          "nquad": "_:c14n21 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"MAX\" .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-94",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-95",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/PhaseInfoDistanceType\u0000http://www.w3.org/ns/shacl#in|bnode=_:n3-94/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-95",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
-          "nquad": "_:c14n21 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-94",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#in"
-            },
-            {
-              "identityValue": "_:n3-95",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
+          "subjectPath": "http://data.europa.eu/949/shapes/PhaseInfoDistanceType",
+          "predicate": "http://www.w3.org/ns/shacl#in",
+          "object": "( \"MIN\" \"MAX\" )",
+          "nquad": "<http://data.europa.eu/949/shapes/PhaseInfoDistanceType> <http://www.w3.org/ns/shacl#in> ( \"MIN\" \"MAX\" ) .",
+          "listItems": [
+            "\"MIN\"",
+            "\"MAX\""
           ]
         }
       ],
@@ -5233,7 +3895,7 @@
     {
       "anchor": "http://data.europa.eu/949/shapes/StartLocation",
       "state": "changed",
-      "removed": 5,
+      "removed": 3,
       "added": 1,
       "lines": [
         {
@@ -5247,35 +3909,11 @@
           "side": "-",
           "subjectPath": "http://data.europa.eu/949/shapes/StartLocation",
           "predicate": "http://www.w3.org/ns/shacl#or",
-          "object": "_:c14n18",
-          "nquad": "<http://data.europa.eu/949/shapes/StartLocation> <http://www.w3.org/ns/shacl#or> _:c14n18 ."
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/StartLocation\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-34",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n38",
-          "nquad": "_:c14n18 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n38 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-34",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/StartLocation\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-34",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n41",
-          "nquad": "_:c14n18 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n41 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-34",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
+          "object": "( _:n3-35 _:n3-37 )",
+          "nquad": "<http://data.europa.eu/949/shapes/StartLocation> <http://www.w3.org/ns/shacl#or> ( _:n3-35 _:n3-37 ) .",
+          "listItems": [
+            "_:n3-35",
+            "_:n3-37"
           ]
         },
         {
@@ -6010,35 +4648,29 @@
     {
       "anchor": "http://data.europa.eu/949/shapes/VehicleTypesCompatibleTrafficLoad",
       "state": "changed",
-      "removed": 6,
-      "added": 5,
+      "removed": 3,
+      "added": 3,
       "lines": [
         {
           "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/VehicleTypesCompatibleTrafficLoad\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-42",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n60",
-          "nquad": "_:c14n3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n60 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-42",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
+          "subjectPath": "http://data.europa.eu/949/shapes/VehicleTypesCompatibleTrafficLoad",
+          "predicate": "http://www.w3.org/ns/shacl#or",
+          "object": "( _:n3-43 _:n3-45 )",
+          "nquad": "<http://data.europa.eu/949/shapes/VehicleTypesCompatibleTrafficLoad> <http://www.w3.org/ns/shacl#or> ( _:n3-43 _:n3-45 ) .",
+          "listItems": [
+            "_:n3-43",
+            "_:n3-45"
           ]
         },
         {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/VehicleTypesCompatibleTrafficLoad\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-42",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n55",
-          "nquad": "_:c14n3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n55 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-42",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
+          "side": "+",
+          "subjectPath": "http://data.europa.eu/949/shapes/VehicleTypesCompatibleTrafficLoad",
+          "predicate": "http://www.w3.org/ns/shacl#or",
+          "object": "( _:n3-97 _:n3-99 )",
+          "nquad": "<http://data.europa.eu/949/shapes/VehicleTypesCompatibleTrafficLoad> <http://www.w3.org/ns/shacl#or> ( _:n3-97 _:n3-99 ) .",
+          "listItems": [
+            "_:n3-97",
+            "_:n3-99"
           ]
         },
         {
@@ -6057,44 +4689,6 @@
               "identityValue": "_:n3-43",
               "identityIsBlank": true,
               "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/VehicleTypesCompatibleTrafficLoad\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-42/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-44",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n13",
-          "nquad": "_:c14n55 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n13 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-42",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-44",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/VehicleTypesCompatibleTrafficLoad\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-42/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-44",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
-          "nquad": "_:c14n55 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-42",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-44",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
             }
           ]
         },
@@ -6124,34 +4718,6 @@
         },
         {
           "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/VehicleTypesCompatibleTrafficLoad\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-96",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n52",
-          "nquad": "_:c14n3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n52 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-96",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/VehicleTypesCompatibleTrafficLoad\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-96",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n47",
-          "nquad": "_:c14n3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n47 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-96",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "+",
           "subjectPath": "http://data.europa.eu/949/shapes/VehicleTypesCompatibleTrafficLoad\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-96/http://www.w3.org/1999/02/22-rdf-syntax-ns#first|bnode=_:n3-97",
           "predicate": "http://www.w3.org/ns/shacl#class",
           "object": "<http://data.europa.eu/949/Document>",
@@ -6166,25 +4732,6 @@
               "identityValue": "_:n3-97",
               "identityIsBlank": true,
               "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/VehicleTypesCompatibleTrafficLoad\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-96/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-98",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n12",
-          "nquad": "_:c14n47 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n12 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-96",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-98",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
             }
           ]
         },
@@ -6222,35 +4769,29 @@
     {
       "anchor": "http://data.europa.eu/949/shapes/VehiclesCompatibleTrafficLoad",
       "state": "changed",
-      "removed": 5,
-      "added": 4,
+      "removed": 2,
+      "added": 2,
       "lines": [
         {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/VehiclesCompatibleTrafficLoad\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-100",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n53",
-          "nquad": "_:c14n6 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n53 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-100",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
+          "side": "-",
+          "subjectPath": "http://data.europa.eu/949/shapes/VehiclesCompatibleTrafficLoad",
+          "predicate": "http://www.w3.org/ns/shacl#or",
+          "object": "( _:n3-47 _:n3-49 )",
+          "nquad": "<http://data.europa.eu/949/shapes/VehiclesCompatibleTrafficLoad> <http://www.w3.org/ns/shacl#or> ( _:n3-47 _:n3-49 ) .",
+          "listItems": [
+            "_:n3-47",
+            "_:n3-49"
           ]
         },
         {
           "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/VehiclesCompatibleTrafficLoad\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-100",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n49",
-          "nquad": "_:c14n6 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n49 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-100",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
+          "subjectPath": "http://data.europa.eu/949/shapes/VehiclesCompatibleTrafficLoad",
+          "predicate": "http://www.w3.org/ns/shacl#or",
+          "object": "( _:n3-101 _:n3-103 )",
+          "nquad": "<http://data.europa.eu/949/shapes/VehiclesCompatibleTrafficLoad> <http://www.w3.org/ns/shacl#or> ( _:n3-101 _:n3-103 ) .",
+          "listItems": [
+            "_:n3-101",
+            "_:n3-103"
           ]
         },
         {
@@ -6273,53 +4814,6 @@
           ]
         },
         {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/shapes/VehiclesCompatibleTrafficLoad\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-100/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-102",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n2",
-          "nquad": "_:c14n49 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n2 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-100",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-102",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/VehiclesCompatibleTrafficLoad\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-46",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n61",
-          "nquad": "_:c14n6 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n61 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-46",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/VehiclesCompatibleTrafficLoad\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-46",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n56",
-          "nquad": "_:c14n6 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n56 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-46",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
           "side": "-",
           "subjectPath": "http://data.europa.eu/949/shapes/VehiclesCompatibleTrafficLoad\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-46/http://www.w3.org/1999/02/22-rdf-syntax-ns#first|bnode=_:n3-47",
           "predicate": "http://www.w3.org/ns/shacl#class",
@@ -6335,44 +4829,6 @@
               "identityValue": "_:n3-47",
               "identityIsBlank": true,
               "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/VehiclesCompatibleTrafficLoad\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-46/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-48",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n2",
-          "nquad": "_:c14n56 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n2 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-46",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-48",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "-",
-          "subjectPath": "http://data.europa.eu/949/shapes/VehiclesCompatibleTrafficLoad\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-46/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-48",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
-          "nquad": "_:c14n56 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-46",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-48",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
             }
           ]
         }
@@ -6685,7 +5141,7 @@
       "anchor": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
       "state": "added",
       "removed": 0,
-      "added": 14,
+      "added": 10,
       "lines": [
         {
           "side": "+",
@@ -6740,8 +5196,12 @@
           "side": "+",
           "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius",
           "predicate": "http://www.w3.org/ns/shacl#or",
-          "object": "_:c14n28",
-          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://www.w3.org/ns/shacl#or> _:c14n28 ."
+          "object": "( _:n3-70 _:n3-72 )",
+          "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://www.w3.org/ns/shacl#or> ( _:n3-70 _:n3-72 ) .",
+          "listItems": [
+            "_:n3-70",
+            "_:n3-72"
+          ]
         },
         {
           "side": "+",
@@ -6756,72 +5216,6 @@
           "predicate": "http://www.w3.org/ns/shacl#severity",
           "object": "<http://www.w3.org/ns/shacl#Violation>",
           "nquad": "<http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius> <http://www.w3.org/ns/shacl#severity> <http://www.w3.org/ns/shacl#Violation> ."
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-69",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n0",
-          "nquad": "_:c14n28 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n0 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-69",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-69",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "_:c14n48",
-          "nquad": "_:c14n28 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n48 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-69",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-69/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-71",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#first",
-          "object": "_:c14n1",
-          "nquad": "_:c14n48 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n1 .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-69",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-71",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
-        },
-        {
-          "side": "+",
-          "subjectPath": "http://data.europa.eu/949/eratv/shapes/MinimumHorizontalRadius\u0000http://www.w3.org/ns/shacl#or|bnode=_:n3-69/http://www.w3.org/1999/02/22-rdf-syntax-ns#rest|bnode=_:n3-71",
-          "predicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest",
-          "object": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>",
-          "nquad": "_:c14n48 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
-          "bnodePath": [
-            {
-              "identityValue": "_:n3-69",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/ns/shacl#or"
-            },
-            {
-              "identityValue": "_:n3-71",
-              "identityIsBlank": true,
-              "parentPredicate": "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest"
-            }
-          ]
         }
       ],
       "sourceRecords": {

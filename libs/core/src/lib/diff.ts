@@ -52,6 +52,12 @@ export interface SourceRecord {
    * (omitted for formats whose parsers do not surface line numbers).
    */
   line?: number;
+  /**
+   * 1-based last source line of the predicate-object pair when the object
+   * spans multiple lines (triple-quoted literal, multi-line `( … )` list,
+   * multi-line `[ … ]` blank node). Absent for single-line records.
+   */
+  endLine?: number;
 }
 
 export interface DiffSideStore {
@@ -141,6 +147,7 @@ function extractSourceRecordMap(
   const sourcePredicate = predicates.source;
   const filePredicate = predicates.file;
   const linePredicate = predicates.line;
+  const endLinePredicate = predicates.endLine;
 
   for (const annotation of store.getQuads(null, null, null, null)) {
     if ((annotation.subject.termType as string) !== 'Quad') continue;
@@ -163,8 +170,16 @@ function extractSourceRecordMap(
       null,
     );
     const lineRaw = lineQuads[0]?.object.value;
-    const record: SourceRecord =
-      lineRaw === undefined ? { file } : { file, line: Number(lineRaw) };
+    const endLineQuads = store.getQuads(
+      recordNode,
+      { termType: 'NamedNode', value: endLinePredicate } as Term,
+      null,
+      null,
+    );
+    const endLineRaw = endLineQuads[0]?.object.value;
+    const record: SourceRecord = { file };
+    if (lineRaw !== undefined) record.line = Number(lineRaw);
+    if (endLineRaw !== undefined) record.endLine = Number(endLineRaw);
 
     // Bucket the record under every asserted quad whose s/p/o matches the
     // quoted triple, in any graph (the annotation does not record graph).

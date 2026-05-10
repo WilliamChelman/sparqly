@@ -18,9 +18,14 @@ const SNIPPET_QUERY_SCHEMA = z
   .object({
     file: z.string().min(1),
     line: z.coerce.number().int().positive(),
+    endLine: z.coerce.number().int().positive().optional(),
     snippetContext: z.coerce.number().int().nonnegative(),
   })
-  .strict();
+  .strict()
+  .refine((q) => q.endLine === undefined || q.endLine >= q.line, {
+    message: '`endLine` must be >= `line`',
+    path: ['endLine'],
+  });
 
 interface ResLike {
   status(code: number): ResLike;
@@ -71,6 +76,7 @@ export class SnippetController {
     const result: SnippetReadResult = await readSourceSnippet(
       absPath,
       parsed.data.line,
+      parsed.data.endLine ?? parsed.data.line,
       parsed.data.snippetContext,
     );
 

@@ -1,8 +1,11 @@
+import { resolve } from 'node:path';
 import { Parser, Store } from 'n3';
 import { describe, expect, it } from 'vitest';
 import { diffCanonicalStatements, diffStores } from './diff';
 import type { RdfDiffWithSourcesResult } from './diff';
 import { groupRdfDiffByEntity } from './group-rdf-diff-by-entity';
+import type { Hunk } from './group-rdf-diff-by-entity';
+import { parseRdfFile } from './rdf-file-parser';
 
 const ex = (iri: string): string => `http://example.org/${iri}`;
 const t = (iri: string): string => `<${ex(iri)}>`;
@@ -26,15 +29,16 @@ function emptyResult(
   };
 }
 
+interface RecordShape { file: string; line?: number; endLine?: number; }
 function withSourceRecords(
   base: RdfDiffWithSourcesResult,
   recs: {
-    left?: ReadonlyArray<readonly [string, ReadonlyArray<{ file: string; line?: number }>]>;
-    right?: ReadonlyArray<readonly [string, ReadonlyArray<{ file: string; line?: number }>]>;
+    left?: ReadonlyArray<readonly [string, ReadonlyArray<RecordShape>]>;
+    right?: ReadonlyArray<readonly [string, ReadonlyArray<RecordShape>]>;
   },
 ): RdfDiffWithSourcesResult {
-  const left = new Map<string, { file: string; line?: number }[]>();
-  const right = new Map<string, { file: string; line?: number }[]>();
+  const left = new Map<string, RecordShape[]>();
+  const right = new Map<string, RecordShape[]>();
   for (const [k, v] of recs.left ?? []) left.set(k, v.map((r) => ({ ...r })));
   for (const [k, v] of recs.right ?? []) right.set(k, v.map((r) => ({ ...r })));
   return { ...base, sourceRecords: { left, right } };
@@ -119,6 +123,31 @@ describe('groupRdfDiffByEntity — named-entity anchoring', () => {
     expect(hunked.changed[0].sourceRecords.right).toEqual([
       { file: 'file:///x/b.ttl', line: 3 },
       { file: 'file:///x/b.ttl', line: 9 },
+    ]);
+  });
+
+  it('propagates `endLine` on per-hunk source records (multi-line object span)', () => {
+    // Stand-in for a triple-quoted multi-line literal: the asserted quad
+    // carries an annotation record whose file is set, line=11 (opening
+    // quote), endLine=16 (closing quote line).
+    const left = [triple('a', 'p', 'b1')];
+    const right = [triple('a', 'p', 'b2')];
+    const base = emptyResult(left, right);
+    const diff = withSourceRecords(base, {
+      right: [
+        [
+          triple('a', 'p', 'b2'),
+          [{ file: 'file:///x/a.ttl', line: 11, endLine: 16 }],
+        ],
+      ],
+    });
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: storeOf(left.join('\n') + '\n') },
+      right: { store: storeOf(right.join('\n') + '\n') },
+    });
+    expect(hunked.changed[0].sourceRecords.right).toEqual([
+      { file: 'file:///x/a.ttl', line: 11, endLine: 16 },
     ]);
   });
 
@@ -445,6 +474,132 @@ describe('groupRdfDiffByEntity — orphan bnode trees (no named parent on either
     expect(hunk.added).toBe(0);
     expect(hunk.lines).toHaveLength(2);
     expect(hunk.lines.every((l) => l.side === '-')).toBe(true);
+  });
+});
+
+describe('groupRdfDiffByEntity — RDF list compaction', () => {
+  const RDF_FIRST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#first';
+  const RDF_REST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#rest';
+  const RDF_NIL = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#nil';
+  const EX = 'http://example.org/';
+
+  it('collapses a changed rdf:list under a named anchor into one `-`/`+` line per side carrying serialized list items', async () => {
+    // ex:a ex:friends ( ex:Bob ex:Carl )       -- left
+    // ex:a ex:friends ( ex:Bob ex:Carl ex:Donald ) -- right
+    const leftNquads =
+      `<${EX}a> <${EX}friends> _:l1 .\n` +
+      `_:l1 <${RDF_FIRST}> <${EX}Bob> .\n` +
+      `_:l1 <${RDF_REST}> _:l2 .\n` +
+      `_:l2 <${RDF_FIRST}> <${EX}Carl> .\n` +
+      `_:l2 <${RDF_REST}> <${RDF_NIL}> .\n`;
+    const rightNquads =
+      `<${EX}a> <${EX}friends> _:r1 .\n` +
+      `_:r1 <${RDF_FIRST}> <${EX}Bob> .\n` +
+      `_:r1 <${RDF_REST}> _:r2 .\n` +
+      `_:r2 <${RDF_FIRST}> <${EX}Carl> .\n` +
+      `_:r2 <${RDF_REST}> _:r3 .\n` +
+      `_:r3 <${RDF_FIRST}> <${EX}Donald> .\n` +
+      `_:r3 <${RDF_REST}> <${RDF_NIL}> .\n`;
+    const leftStore = storeOf(leftNquads);
+    const rightStore = storeOf(rightNquads);
+    const diff = await diffStores(
+      { store: leftStore },
+      { store: rightStore },
+    );
+
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    expect(hunked.changed).toHaveLength(1);
+    const hunk = hunked.changed[0];
+    expect(hunk.anchor).toBe(`${EX}a`);
+
+    // No raw list-spine triples should remain in the hunk lines after
+    // compaction — they are absorbed into the synthetic compact line.
+    expect(hunk.lines.some((l) => l.predicate === RDF_FIRST)).toBe(false);
+    expect(hunk.lines.some((l) => l.predicate === RDF_REST)).toBe(false);
+
+    const friends = hunk.lines.filter((l) => l.predicate === `${EX}friends`);
+    expect(friends).toHaveLength(2);
+
+    const minus = friends.find((l) => l.side === '-');
+    const plus = friends.find((l) => l.side === '+');
+    expect(minus?.listItems).toEqual([`<${EX}Bob>`, `<${EX}Carl>`]);
+    expect(plus?.listItems).toEqual([
+      `<${EX}Bob>`,
+      `<${EX}Carl>`,
+      `<${EX}Donald>`,
+    ]);
+  });
+});
+
+describe('groupRdfDiffByEntity — RDF list compaction edge cases', () => {
+  const RDF_FIRST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#first';
+  const RDF_REST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#rest';
+  const EX = 'http://example.org/';
+
+  it('compacts a list whose parent triple is identical between sides (only the spine differs) by fabricating a single compact line per side', async () => {
+    // Mirrors the diff-01.ttl vs diff-02.ttl friends scenario: both sides
+    // share <Alice> <friends> ( Bob, Carl ... ) where the head bnode
+    // canonicalizes to the SAME label on both sides under RDFC-1.0 because
+    // both lists share the same prefix (Bob, Carl, ...). The parent triple
+    // is therefore not in the diff — only spine `<rdf:rest>` triples are.
+    // Compaction must still synthesize one compact line per side, NOT use a
+    // spine triple as its entry point (which would yield `rdf:rest ( ... )`).
+    const leftPath = resolve(__dirname, '../../../../test/data/diffs/diff-01.ttl');
+    const rightPath = resolve(__dirname, '../../../../test/data/diffs/diff-02.ttl');
+    const left = await parseRdfFile(leftPath);
+    const right = await parseRdfFile(rightPath);
+    const leftStore = new Store();
+    leftStore.addQuads(left.records.map((r) => r.quad));
+    const rightStore = new Store();
+    rightStore.addQuads(right.records.map((r) => r.quad));
+    const diff = await diffStores(
+      { store: leftStore },
+      { store: rightStore },
+    );
+
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    // No compact line may carry rdf:first or rdf:rest as its predicate —
+    // that always indicates a spine triple was misused as the compaction entry.
+    for (const hunk of [...hunked.changed, ...hunked.removed, ...hunked.added]) {
+      for (const line of hunk.lines) {
+        if (line.listItems !== undefined) {
+          expect(line.predicate).not.toBe(RDF_FIRST);
+          expect(line.predicate).not.toBe(RDF_REST);
+        }
+      }
+    }
+
+    // And no raw spine triple should leak through after compaction.
+    for (const hunk of [...hunked.changed, ...hunked.removed, ...hunked.added]) {
+      expect(hunk.lines.some((l) => l.predicate === RDF_FIRST)).toBe(false);
+      expect(hunk.lines.some((l) => l.predicate === RDF_REST)).toBe(false);
+    }
+
+    // The Alice hunk should expose one `-` and one `+` friends compact line.
+    const alice = hunked.changed.find((h) => h.anchor === `${EX}Alice`);
+    expect(alice).toBeDefined();
+    const friends = (alice as Hunk).lines.filter(
+      (l) => l.predicate === `${EX}friends`,
+    );
+    expect(friends).toHaveLength(2);
+    const minus = friends.find((l) => l.side === '-');
+    const plus = friends.find((l) => l.side === '+');
+    expect(minus?.listItems).toEqual([`<${EX}Bob>`, `<${EX}Carl>`]);
+    expect(plus?.listItems).toEqual([
+      `<${EX}Bob>`,
+      `<${EX}Carl>`,
+      `<${EX}Donald>`,
+    ]);
   });
 });
 

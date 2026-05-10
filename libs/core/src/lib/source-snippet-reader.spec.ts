@@ -30,12 +30,30 @@ describe('readSourceSnippet', () => {
       'L1\nL2\nL3\nL4\nL5\nL6\nL7\nL8\nL9\n',
     );
 
-    const out = await readSourceSnippet(path, 5, 2);
+    const out = await readSourceSnippet(path, 5, 5, 2);
 
     expect(out).toEqual({
       kind: 'snippet',
       startLine: 3,
-      focalLine: 5,
+      focalStart: 5,
+      focalEnd: 5,
+      lines: ['L3', 'L4', 'L5', 'L6', 'L7'],
+    });
+  });
+
+  it('returns the window [focalStart - context, focalEnd + context] for a multi-line focal range', async () => {
+    const path = await fixture(
+      'a.ttl',
+      'L1\nL2\nL3\nL4\nL5\nL6\nL7\nL8\nL9\n',
+    );
+
+    const out = await readSourceSnippet(path, 4, 6, 1);
+
+    expect(out).toEqual({
+      kind: 'snippet',
+      startLine: 3,
+      focalStart: 4,
+      focalEnd: 6,
       lines: ['L3', 'L4', 'L5', 'L6', 'L7'],
     });
   });
@@ -43,12 +61,13 @@ describe('readSourceSnippet', () => {
   it('truncates the top window when the focal line is at the top of the file', async () => {
     const path = await fixture('a.ttl', 'L1\nL2\nL3\nL4\nL5\n');
 
-    const out = await readSourceSnippet(path, 1, 3);
+    const out = await readSourceSnippet(path, 1, 1, 3);
 
     expect(out).toEqual({
       kind: 'snippet',
       startLine: 1,
-      focalLine: 1,
+      focalStart: 1,
+      focalEnd: 1,
       lines: ['L1', 'L2', 'L3', 'L4'],
     });
   });
@@ -56,12 +75,13 @@ describe('readSourceSnippet', () => {
   it('truncates the bottom window when the focal line is at the bottom of the file', async () => {
     const path = await fixture('a.ttl', 'L1\nL2\nL3\nL4\nL5\n');
 
-    const out = await readSourceSnippet(path, 5, 3);
+    const out = await readSourceSnippet(path, 5, 5, 3);
 
     expect(out).toEqual({
       kind: 'snippet',
       startLine: 2,
-      focalLine: 5,
+      focalStart: 5,
+      focalEnd: 5,
       lines: ['L2', 'L3', 'L4', 'L5'],
     });
   });
@@ -69,12 +89,13 @@ describe('readSourceSnippet', () => {
   it('truncates both ends when the requested context exceeds the file length', async () => {
     const path = await fixture('a.ttl', 'L1\nL2\nL3\n');
 
-    const out = await readSourceSnippet(path, 2, 10);
+    const out = await readSourceSnippet(path, 2, 2, 10);
 
     expect(out).toEqual({
       kind: 'snippet',
       startLine: 1,
-      focalLine: 2,
+      focalStart: 2,
+      focalEnd: 2,
       lines: ['L1', 'L2', 'L3'],
     });
   });
@@ -82,12 +103,13 @@ describe('readSourceSnippet', () => {
   it('returns context=0 → focal line only', async () => {
     const path = await fixture('a.ttl', 'L1\nL2\nL3\n');
 
-    const out = await readSourceSnippet(path, 2, 0);
+    const out = await readSourceSnippet(path, 2, 2, 0);
 
     expect(out).toEqual({
       kind: 'snippet',
       startLine: 2,
-      focalLine: 2,
+      focalStart: 2,
+      focalEnd: 2,
       lines: ['L2'],
     });
   });
@@ -95,7 +117,7 @@ describe('readSourceSnippet', () => {
   it('reports `empty` for a zero-byte file', async () => {
     const path = await fixture('empty.ttl', '');
 
-    const out = await readSourceSnippet(path, 1, 3);
+    const out = await readSourceSnippet(path, 1, 1, 3);
 
     expect(out).toEqual({ kind: 'unavailable', reason: 'empty' });
   });
@@ -103,7 +125,7 @@ describe('readSourceSnippet', () => {
   it('reports `beyond-eof` when the focal line is past the last line', async () => {
     const path = await fixture('a.ttl', 'L1\nL2\nL3\n');
 
-    const out = await readSourceSnippet(path, 99, 3);
+    const out = await readSourceSnippet(path, 99, 99, 3);
 
     expect(out).toEqual({ kind: 'unavailable', reason: 'beyond-eof' });
   });
@@ -112,6 +134,7 @@ describe('readSourceSnippet', () => {
     const out = await readSourceSnippet(
       join(scratch, 'nope.ttl'),
       1,
+      1,
       3,
     );
 
@@ -119,7 +142,7 @@ describe('readSourceSnippet', () => {
   });
 
   it('reports `not-a-file` when the path is a directory', async () => {
-    const out = await readSourceSnippet(scratch, 1, 3);
+    const out = await readSourceSnippet(scratch, 1, 1, 3);
 
     expect(out).toEqual({ kind: 'unavailable', reason: 'not-a-file' });
   });
@@ -133,12 +156,13 @@ describe('readSourceSnippet', () => {
       }
     }
 
-    const out = await readSnippetFromLines(countingLines(), 5, 2);
+    const out = await readSnippetFromLines(countingLines(), 5, 5, 2);
 
     expect(out).toEqual({
       kind: 'snippet',
       startLine: 3,
-      focalLine: 5,
+      focalStart: 5,
+      focalEnd: 5,
       lines: ['L3', 'L4', 'L5', 'L6', 'L7'],
     });
     // Stopped at line 7 — never pulled line 8 or beyond.
@@ -151,12 +175,13 @@ describe('readSourceSnippet', () => {
       'こんにちは\n世界\n🌍 emoji line\n',
     );
 
-    const out = await readSourceSnippet(path, 2, 1);
+    const out = await readSourceSnippet(path, 2, 2, 1);
 
     expect(out).toEqual({
       kind: 'snippet',
       startLine: 1,
-      focalLine: 2,
+      focalStart: 2,
+      focalEnd: 2,
       lines: ['こんにちは', '世界', '🌍 emoji line'],
     });
   });

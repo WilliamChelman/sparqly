@@ -84,25 +84,33 @@ function renderHunk(
 
 interface DedupedRecord {
   file: string;
-  line: number;
+  startLine: number;
+  endLine: number;
   anchorId: string;
 }
 
 function dedupeRecordsByFileLine(hunk: Hunk): DedupedRecord[] {
-  const seen = new Set<string>();
-  const out: DedupedRecord[] = [];
+  const ranges: DedupedRecord[] = [];
   for (const r of [...hunk.sourceRecords.left, ...hunk.sourceRecords.right]) {
     if (r.line === undefined) continue;
-    const key = `${r.file}:${r.line}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({
+    ranges.push({
       file: r.file,
-      line: r.line,
+      startLine: r.line,
+      endLine: r.endLine ?? r.line,
       anchorId: `${basename(r.file)}-L${r.line}`,
     });
   }
-  return out;
+  return ranges.filter((b, i) =>
+    !ranges.some(
+      (a, j) =>
+        i !== j &&
+        a.file === b.file &&
+        a.startLine <= b.startLine &&
+        a.endLine >= b.endLine &&
+        // Tie-break: when ranges are identical, keep the first occurrence.
+        !(a.startLine === b.startLine && a.endLine === b.endLine && j > i),
+    ),
+  );
 }
 
 function renderHunkSnippets(hunk: Hunk, snippets: HtmlDiffSnippets): string {
@@ -116,10 +124,14 @@ function renderSnippetBlock(
   rec: DedupedRecord,
   snippets: HtmlDiffSnippets,
 ): string {
-  const entry = snippets.get(`${rec.file}:${rec.line}`);
+  const entry = snippets.get(snippetKey(rec.file, rec.startLine, rec.endLine));
+  const label =
+    rec.startLine === rec.endLine
+      ? `${basename(rec.file)}:${rec.startLine}`
+      : `${basename(rec.file)}:${rec.startLine}-${rec.endLine}`;
   const header =
     `<div class="snippet-header" id="${escapeAttr(rec.anchorId)}">` +
-    `<a href="${escapeAttr(rec.file)}">${escapeHtml(`${basename(rec.file)}:${rec.line}`)}</a>` +
+    `<a href="${escapeAttr(rec.file)}">${escapeHtml(label)}</a>` +
     '</div>\n';
   if (entry === undefined || entry.kind === 'unavailable') {
     return (
@@ -127,17 +139,21 @@ function renderSnippetBlock(
       '<div class="snippet-note">(source file unavailable)</div>\n'
     );
   }
-  return header + renderSnippetPre(entry.startLine, entry.focalLine, entry.lines);
+  return (
+    header +
+    renderSnippetPre(entry.startLine, entry.focalStart, entry.focalEnd, entry.lines)
+  );
 }
 
 function renderSnippetPre(
   startLine: number,
-  focalLine: number,
+  focalStart: number,
+  focalEnd: number,
   lines: readonly string[],
 ): string {
   const rows = lines.map((src, i) => {
     const lineNo = startLine + i;
-    const isFocal = lineNo === focalLine;
+    const isFocal = lineNo >= focalStart && lineNo <= focalEnd;
     const cls = isFocal ? 'line focal' : 'line';
     const style = isFocal ? ' style="background:#fff7c2"' : '';
     return (
@@ -147,11 +163,19 @@ function renderSnippetPre(
       `</span>`
     );
   });
+  const dataFocal =
+    focalStart === focalEnd ? `${focalStart}` : `${focalStart}-${focalEnd}`;
   return (
-    `<pre class="snippet" data-focal="${focalLine}"><code>` +
+    `<pre class="snippet" data-focal="${dataFocal}"><code>` +
     rows.join('\n') +
     `</code></pre>\n`
   );
+}
+
+export function snippetKey(file: string, startLine: number, endLine: number): string {
+  return startLine === endLine
+    ? `${file}:${startLine}`
+    : `${file}:${startLine}-${endLine}`;
 }
 
 const OVERFLOW_LINE_THRESHOLD = 20;
