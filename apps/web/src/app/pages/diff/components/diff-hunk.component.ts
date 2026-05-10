@@ -90,14 +90,14 @@ interface RenderedChip {
         </div>
       }
       @if (leftRecords().length > 0 || rightRecords().length > 0) {
-        <div class="mt-2.5 flex flex-col gap-3">
-          @if (leftRecords().length > 0) {
+        <div class="mt-2.5 flex flex-row flex-wrap gap-3">
+          <div
+            class="flex min-w-0 flex-1 basis-[280px] flex-col gap-1.5 rounded-md border border-removed-line bg-removed-bg p-2.5"
+          >
             <div
-              class="flex flex-col gap-1.5 rounded-md border border-removed-line bg-removed-bg p-2.5"
-            >
-              <div
-                class="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-removed"
-              >left</div>
+              class="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-removed"
+            >left</div>
+            @if (leftRecords().length > 0) {
               @for (rec of leftRecords(); track rec.anchorIds[0]) {
                 <div data-testid="hunk-snippet">
                   @for (aid of rec.anchorIds; track aid) {
@@ -111,15 +111,20 @@ interface RenderedChip {
                   />
                 </div>
               }
-            </div>
-          }
-          @if (rightRecords().length > 0) {
+            } @else {
+              <p
+                data-testid="hunk-snippet-placeholder-left"
+                class="m-0 font-serif text-xs italic text-foreground-faint"
+              >(absent on left)</p>
+            }
+          </div>
+          <div
+            class="flex min-w-0 flex-1 basis-[280px] flex-col gap-1.5 rounded-md border border-added-line bg-added-bg p-2.5"
+          >
             <div
-              class="flex flex-col gap-1.5 rounded-md border border-added-line bg-added-bg p-2.5"
-            >
-              <div
-                class="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-added"
-              >right</div>
+              class="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-added"
+            >right</div>
+            @if (rightRecords().length > 0) {
               @for (rec of rightRecords(); track rec.anchorIds[0]) {
                 <div data-testid="hunk-snippet">
                   @for (aid of rec.anchorIds; track aid) {
@@ -133,8 +138,13 @@ interface RenderedChip {
                   />
                 </div>
               }
-            </div>
-          }
+            } @else {
+              <p
+                data-testid="hunk-snippet-placeholder-right"
+                class="m-0 font-serif text-xs italic text-foreground-faint"
+              >(absent on right)</p>
+            }
+          </div>
         </div>
       }
     </article>
