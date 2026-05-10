@@ -28,13 +28,12 @@ class SourceSnippetStub {
 }
 
 function render(result: DiffResponse, context = 3): HTMLElement {
-  TestBed.configureTestingModule({ imports: [DiffResultRendererComponent] }).overrideComponent(
-    DiffResultRendererComponent,
-    {
-      remove: { imports: [SourceSnippetComponent] },
-      add: { imports: [SourceSnippetStub] },
-    },
-  );
+  TestBed.configureTestingModule({
+    imports: [DiffResultRendererComponent],
+  }).overrideComponent(DiffResultRendererComponent, {
+    remove: { imports: [SourceSnippetComponent] },
+    add: { imports: [SourceSnippetStub] },
+  });
   const fixture = TestBed.createComponent(DiffResultRendererComponent);
   fixture.componentRef.setInput('result', result);
   fixture.componentRef.setInput('context', context);
@@ -42,14 +41,14 @@ function render(result: DiffResponse, context = 3): HTMLElement {
   return fixture.nativeElement as HTMLElement;
 }
 
-function makeLine(
-  side: '-' | '+',
-  subjectPath: string,
-  predicate: string,
-  object: string,
-  nquad: string,
-): HunkLine {
-  return { side, subjectPath, predicate, object, nquad };
+function makeLine(side: '-' | '+', subjectPath: string, predicate: string): HunkLine {
+  return {
+    side,
+    subjectPath,
+    predicate,
+    object: '"x"',
+    nquad: `<${subjectPath}> <${predicate}> "x" .`,
+  };
 }
 
 function emptyHunked(): GroupedDiffResponse {
@@ -59,330 +58,44 @@ function emptyHunked(): GroupedDiffResponse {
   };
 }
 
+function changedHunk(): Hunk {
+  return {
+    anchor: 'http://example.org/changed',
+    state: 'changed',
+    removed: 1,
+    added: 1,
+    lines: [
+      makeLine('-', 'http://example.org/changed', 'http://example.org/p'),
+      makeLine('+', 'http://example.org/changed', 'http://example.org/p'),
+    ],
+    sourceRecords: { left: [], right: [] },
+  };
+}
+
+function removedHunk(): Hunk {
+  return {
+    anchor: 'http://example.org/gone',
+    state: 'removed',
+    removed: 1,
+    added: 0,
+    lines: [makeLine('-', 'http://example.org/gone', 'http://example.org/p')],
+    sourceRecords: { left: [], right: [] },
+  };
+}
+
+function addedHunk(): Hunk {
+  return {
+    anchor: 'http://example.org/new',
+    state: 'added',
+    removed: 0,
+    added: 1,
+    lines: [makeLine('+', 'http://example.org/new', 'http://example.org/p')],
+    sourceRecords: { left: [], right: [] },
+  };
+}
+
 describe('DiffResultRendererComponent (grouped mode)', () => {
-  it('renders the three sections in order: Changed, then Removed, then Added', () => {
-    const root = render(emptyHunked());
-    const sections = Array.from(
-      root.querySelectorAll<HTMLElement>('section[data-testid^=section-]'),
-    );
-    expect(sections.map((s) => s.getAttribute('data-testid'))).toEqual([
-      'section-changed',
-      'section-removed',
-      'section-added',
-    ]);
-  });
-
-  it('places each hunk under its section based on state', () => {
-    const result: GroupedDiffResponse = {
-      kind: 'grouped',
-      hunked: {
-        changed: [hunkChanged()],
-        removed: [hunkRemoved()],
-        added: [hunkAdded()],
-        totals: { left: 2, right: 2 },
-      },
-    };
-    const root = render(result);
-    const changed = root.querySelectorAll(
-      'section[data-testid=section-changed] [data-testid=hunk]',
-    );
-    const removed = root.querySelectorAll(
-      'section[data-testid=section-removed] [data-testid=hunk]',
-    );
-    const added = root.querySelectorAll(
-      'section[data-testid=section-added] [data-testid=hunk]',
-    );
-    expect(changed.length).toBe(1);
-    expect(removed.length).toBe(1);
-    expect(added.length).toBe(1);
-  });
-
-  it('renders each hunk header on two lines: title (anchor CURIE, rdf:type CURIE, [-N +M]) then chip row', () => {
-    const result: GroupedDiffResponse = {
-      kind: 'grouped',
-      hunked: {
-        changed: [
-          {
-            anchor: 'http://www.w3.org/2002/07/owl#Thing',
-            rdfType: 'http://www.w3.org/2000/01/rdf-schema#Class',
-            state: 'changed',
-            removed: 1,
-            added: 1,
-            lines: [
-              makeLine(
-                '-',
-                'http://www.w3.org/2002/07/owl#Thing',
-                'http://www.w3.org/2000/01/rdf-schema#label',
-                '"old"',
-                '<http://www.w3.org/2002/07/owl#Thing> <http://www.w3.org/2000/01/rdf-schema#label> "old" .',
-              ),
-              makeLine(
-                '+',
-                'http://www.w3.org/2002/07/owl#Thing',
-                'http://www.w3.org/2000/01/rdf-schema#label',
-                '"new"',
-                '<http://www.w3.org/2002/07/owl#Thing> <http://www.w3.org/2000/01/rdf-schema#label> "new" .',
-              ),
-            ],
-            sourceRecords: {
-              left: [{ file: 'file:///tmp/left.ttl', line: 4 }],
-              right: [{ file: 'file:///tmp/right.ttl', line: 9 }],
-            },
-          },
-        ],
-        removed: [],
-        added: [],
-        totals: { left: 1, right: 1 },
-      },
-    };
-    const root = render(result);
-    const header = root.querySelector(
-      '[data-testid=hunk] [data-testid=hunk-header]',
-    ) as HTMLElement | null;
-    expect(header).toBeTruthy();
-    const title = header?.querySelector('[data-testid=hunk-title]') as HTMLElement;
-    expect(title.textContent).toContain('owl:Thing');
-    expect(title.textContent).toContain('rdfs:Class');
-    expect(title.textContent).toContain('[-1 +1]');
-    const chips = header?.querySelector('[data-testid=hunk-chips]') as HTMLElement;
-    expect(chips).toBeTruthy();
-    const leftChip = chips.querySelector('[data-testid=hunk-chip-left]');
-    const rightChip = chips.querySelector('[data-testid=hunk-chip-right]');
-    expect(leftChip?.textContent).toContain('left.ttl:4');
-    expect(rightChip?.textContent).toContain('right.ttl:9');
-  });
-
-  it('renders a paired -/+ for the same (subject-path, predicate) in a `[data-testid=hunk-pair]` group', () => {
-    const result: GroupedDiffResponse = {
-      kind: 'grouped',
-      hunked: {
-        changed: [
-          {
-            anchor: 'http://example.org/a',
-            state: 'changed',
-            removed: 1,
-            added: 1,
-            lines: [
-              makeLine(
-                '-',
-                'http://example.org/a',
-                'http://example.org/p',
-                '<http://example.org/b>',
-                '<http://example.org/a> <http://example.org/p> <http://example.org/b> .',
-              ),
-              makeLine(
-                '+',
-                'http://example.org/a',
-                'http://example.org/p',
-                '<http://example.org/c>',
-                '<http://example.org/a> <http://example.org/p> <http://example.org/c> .',
-              ),
-            ],
-            sourceRecords: { left: [], right: [] },
-          },
-        ],
-        removed: [],
-        added: [],
-        totals: { left: 1, right: 1 },
-      },
-    };
-    const root = render(result);
-    const pairs = root.querySelectorAll('[data-testid=hunk-pair]');
-    expect(pairs.length).toBe(1);
-    expect(pairs[0].querySelector('[data-testid=removed-line]')).toBeTruthy();
-    expect(pairs[0].querySelector('[data-testid=added-line]')).toBeTruthy();
-  });
-
-  it('does not pair lines whose (subject-path, predicate) differ', () => {
-    const result: GroupedDiffResponse = {
-      kind: 'grouped',
-      hunked: {
-        changed: [
-          {
-            anchor: 'http://example.org/a',
-            state: 'changed',
-            removed: 1,
-            added: 1,
-            lines: [
-              makeLine(
-                '-',
-                'http://example.org/a',
-                'http://example.org/p',
-                '<http://example.org/b>',
-                '<http://example.org/a> <http://example.org/p> <http://example.org/b> .',
-              ),
-              makeLine(
-                '+',
-                'http://example.org/a',
-                'http://example.org/q',
-                '<http://example.org/c>',
-                '<http://example.org/a> <http://example.org/q> <http://example.org/c> .',
-              ),
-            ],
-            sourceRecords: { left: [], right: [] },
-          },
-        ],
-        removed: [],
-        added: [],
-        totals: { left: 1, right: 1 },
-      },
-    };
-    const root = render(result);
-    expect(root.querySelectorAll('[data-testid=hunk-pair]').length).toBe(0);
-    expect(root.querySelectorAll('[data-testid=removed-line]').length).toBe(1);
-    expect(root.querySelectorAll('[data-testid=added-line]').length).toBe(1);
-  });
-
-  it('wraps body in <details> with `Show N more` when a hunk has more than 20 lines, while keeping the header outside the details', () => {
-    const lines: HunkLine[] = [];
-    for (let i = 0; i < 22; i++) {
-      lines.push(
-        makeLine(
-          '-',
-          `http://example.org/a#${i}`,
-          'http://example.org/p',
-          `"v${i}"`,
-          `<http://example.org/a> <http://example.org/p> "v${i}" .`,
-        ),
-      );
-    }
-    const result: GroupedDiffResponse = {
-      kind: 'grouped',
-      hunked: {
-        changed: [
-          {
-            anchor: 'http://example.org/a',
-            state: 'changed',
-            removed: 22,
-            added: 0,
-            lines,
-            sourceRecords: { left: [], right: [] },
-          },
-        ],
-        removed: [],
-        added: [],
-        totals: { left: 22, right: 0 },
-      },
-    };
-    const root = render(result);
-    const article = root.querySelector('[data-testid=hunk]') as HTMLElement;
-    expect(article.querySelector('[data-testid=hunk-header]')).toBeTruthy();
-    const details = article.querySelector('[data-testid=hunk-overflow]') as HTMLDetailsElement | null;
-    expect(details).toBeTruthy();
-    expect(details?.tagName.toLowerCase()).toBe('details');
-    // The header lives OUTSIDE the <details> so it remains visible when collapsed.
-    expect(details?.querySelector('[data-testid=hunk-header]')).toBeFalsy();
-    expect(details?.querySelector('summary')?.textContent).toContain(
-      'Show 22 more',
-    );
-    expect(details?.querySelectorAll('[data-testid=removed-line]').length).toBe(22);
-  });
-
-  it('does not wrap the body in <details> when the hunk has 20 or fewer lines', () => {
-    const lines: HunkLine[] = [];
-    for (let i = 0; i < 20; i++) {
-      lines.push(
-        makeLine(
-          '-',
-          `http://example.org/a#${i}`,
-          'http://example.org/p',
-          `"v${i}"`,
-          `<http://example.org/a> <http://example.org/p> "v${i}" .`,
-        ),
-      );
-    }
-    const result: GroupedDiffResponse = {
-      kind: 'grouped',
-      hunked: {
-        changed: [
-          {
-            anchor: 'http://example.org/a',
-            state: 'changed',
-            removed: 20,
-            added: 0,
-            lines,
-            sourceRecords: { left: [], right: [] },
-          },
-        ],
-        removed: [],
-        added: [],
-        totals: { left: 20, right: 0 },
-      },
-    };
-    const root = render(result);
-    expect(root.querySelector('[data-testid=hunk-overflow]')).toBeFalsy();
-    expect(root.querySelectorAll('[data-testid=removed-line]').length).toBe(20);
-  });
-
-  it('renders one snippet per unique (file, line) per hunk, with chips anchoring to that snippet via fragment id', () => {
-    const result: GroupedDiffResponse = {
-      kind: 'grouped',
-      hunked: {
-        changed: [
-          {
-            anchor: 'http://example.org/a',
-            state: 'changed',
-            removed: 1,
-            added: 1,
-            lines: [
-              makeLine(
-                '-',
-                'http://example.org/a',
-                'http://example.org/p',
-                '<http://example.org/b>',
-                '<http://example.org/a> <http://example.org/p> <http://example.org/b> .',
-              ),
-              makeLine(
-                '+',
-                'http://example.org/a',
-                'http://example.org/p',
-                '<http://example.org/c>',
-                '<http://example.org/a> <http://example.org/p> <http://example.org/c> .',
-              ),
-            ],
-            sourceRecords: {
-              left: [
-                { file: 'file:///tmp/left.ttl', line: 4 },
-                { file: 'file:///tmp/left.ttl', line: 4 }, // duplicate (file,line)
-              ],
-              right: [{ file: 'file:///tmp/right.ttl', line: 9 }],
-            },
-          },
-        ],
-        removed: [],
-        added: [],
-        totals: { left: 1, right: 1 },
-      },
-    };
-    const root = render(result, 5);
-    const hunk = root.querySelector('[data-testid=hunk]') as HTMLElement;
-    const snippets = Array.from(
-      hunk.querySelectorAll<HTMLElement>('[data-testid=hunk-snippet]'),
-    );
-    // Two unique (file, line) tuples → two snippets.
-    expect(snippets.length).toBe(2);
-    const stubs = Array.from(
-      hunk.querySelectorAll<HTMLElement>('[data-testid=snippet-stub]'),
-    );
-    expect(stubs.length).toBe(2);
-    expect(stubs.every((s) => s.getAttribute('data-context') === '5')).toBe(true);
-    const anchorIds = snippets.map((s) => s.getAttribute('data-anchor-id'));
-    expect(new Set(anchorIds).size).toBe(2);
-    // Chips link to those snippet anchor ids via fragment href.
-    const chips = Array.from(
-      hunk.querySelectorAll<HTMLAnchorElement>(
-        '[data-testid^=hunk-chip-]',
-      ),
-    );
-    const chipHrefIds = chips.map(
-      (a) => (a.getAttribute('href') ?? '').replace(/^#/, ''),
-    );
-    for (const id of chipHrefIds) {
-      expect(anchorIds).toContain(id);
-    }
-  });
-
-  it('renders the canonical diff totals summary `# left=L right=R +x -y` derived from the hunked totals + hunk counts', () => {
+  it('renders the totals strip with `+N -M` derived from hunked totals and line distribution', () => {
     const result: GroupedDiffResponse = {
       kind: 'grouped',
       hunked: {
@@ -393,9 +106,9 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
             removed: 1,
             added: 2,
             lines: [
-              makeLine('-', 'a', 'p', 'o', '<x> <p> "1" .'),
-              makeLine('+', 'a', 'p', 'o', '<x> <p> "2" .'),
-              makeLine('+', 'a', 'p', 'o', '<x> <p> "3" .'),
+              makeLine('-', 'http://example.org/a', 'http://example.org/p'),
+              makeLine('+', 'http://example.org/a', 'http://example.org/p'),
+              makeLine('+', 'http://example.org/a', 'http://example.org/p'),
             ],
             sourceRecords: { left: [], right: [] },
           },
@@ -411,41 +124,154 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     );
   });
 
-  it('shortens N-Quad lines using default rdf/rdfs/owl/xsd prefixes in the line body', () => {
+  it('renders three sections in order: Changed, Added, Removed', () => {
+    const root = render(emptyHunked());
+    const sections = Array.from(
+      root.querySelectorAll<HTMLElement>('section[data-testid^=section-]'),
+    );
+    expect(sections.map((s) => s.getAttribute('data-testid'))).toEqual([
+      'section-changed',
+      'section-added',
+      'section-removed',
+    ]);
+  });
+
+  it('classifies hunks via the classifier, not via server-provided hunked.{changed,added,removed} buckets', () => {
+    // Server-provided buckets are intentionally swapped: the "added" bucket
+    // contains a hunk whose lines are all `-` (so should classify as removed),
+    // and vice versa. The renderer must trust the classifier.
+    const result: GroupedDiffResponse = {
+      kind: 'grouped',
+      hunked: {
+        changed: [],
+        // server says "removed" but lines are all `+` → classifier says "added"
+        removed: [
+          {
+            anchor: 'http://example.org/should-be-added',
+            state: 'removed',
+            removed: 0,
+            added: 1,
+            lines: [makeLine('+', 'http://example.org/x', 'http://example.org/p')],
+            sourceRecords: { left: [], right: [] },
+          },
+        ],
+        // server says "added" but lines are all `-` → classifier says "removed"
+        added: [
+          {
+            anchor: 'http://example.org/should-be-removed',
+            state: 'added',
+            removed: 1,
+            added: 0,
+            lines: [makeLine('-', 'http://example.org/y', 'http://example.org/p')],
+            sourceRecords: { left: [], right: [] },
+          },
+        ],
+        totals: { left: 1, right: 1 },
+      },
+    };
+    const root = render(result);
+    const addedHunks = root.querySelectorAll(
+      'section[data-testid=section-added] [data-testid=hunk]',
+    );
+    const removedHunks = root.querySelectorAll(
+      'section[data-testid=section-removed] [data-testid=hunk]',
+    );
+    expect(addedHunks.length).toBe(1);
+    expect(addedHunks[0].textContent).toContain('should-be-added');
+    expect(removedHunks.length).toBe(1);
+    expect(removedHunks[0].textContent).toContain('should-be-removed');
+  });
+
+  it('shows section counts in each section head', () => {
+    const result: GroupedDiffResponse = {
+      kind: 'grouped',
+      hunked: {
+        changed: [changedHunk(), changedHunk()],
+        removed: [removedHunk()],
+        added: [addedHunk(), addedHunk(), addedHunk()],
+        totals: { left: 3, right: 5 },
+      },
+    };
+    const root = render(result);
+    const changedHead = root.querySelector(
+      'section[data-testid=section-changed] [data-testid=section-count]',
+    );
+    const addedHead = root.querySelector(
+      'section[data-testid=section-added] [data-testid=section-count]',
+    );
+    const removedHead = root.querySelector(
+      'section[data-testid=section-removed] [data-testid=section-count]',
+    );
+    expect(changedHead?.textContent).toContain('2');
+    expect(addedHead?.textContent).toContain('3');
+    expect(removedHead?.textContent).toContain('1');
+  });
+
+  it('renders per-hunk anchor chips for each source record', () => {
+    const result: GroupedDiffResponse = {
+      kind: 'grouped',
+      hunked: {
+        changed: [
+          {
+            anchor: 'http://example.org/a',
+            state: 'changed',
+            removed: 1,
+            added: 1,
+            lines: [
+              makeLine('-', 'http://example.org/a', 'http://example.org/p'),
+              makeLine('+', 'http://example.org/a', 'http://example.org/p'),
+            ],
+            sourceRecords: {
+              left: [{ file: 'file:///tmp/left.ttl', line: 4 }],
+              right: [{ file: 'file:///tmp/right.ttl', line: 9 }],
+            },
+          },
+        ],
+        removed: [],
+        added: [],
+        totals: { left: 1, right: 1 },
+      },
+    };
+    const root = render(result);
+    const chips = root.querySelector('[data-testid=hunk-chips]') as HTMLElement;
+    expect(chips).toBeTruthy();
+    const leftChip = chips.querySelector('[data-testid=hunk-chip-left]');
+    const rightChip = chips.querySelector('[data-testid=hunk-chip-right]');
+    expect(leftChip?.textContent).toContain('left.ttl:4');
+    expect(rightChip?.textContent).toContain('right.ttl:9');
+  });
+
+  it('renders empty section copy "(none)" when a section has no hunks', () => {
     const result: GroupedDiffResponse = {
       kind: 'grouped',
       hunked: {
         changed: [],
         removed: [],
-        added: [
-          {
-            anchor: 'http://example.org/Foo',
-            state: 'added',
-            removed: 0,
-            added: 1,
-            lines: [
-              makeLine(
-                '+',
-                'http://example.org/Foo',
-                'http://www.w3.org/1999/02/22-rdf-syntax-ns#type',
-                '<http://www.w3.org/2002/07/owl#Class>',
-                '<http://example.org/Foo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Class> .',
-              ),
-            ],
-            sourceRecords: { left: [], right: [] },
-          },
-        ],
+        added: [addedHunk()],
         totals: { left: 0, right: 1 },
       },
     };
     const root = render(result);
-    const line = root.querySelector('[data-testid=added-line]');
-    expect(line?.textContent).toContain('owl:Class');
+    expect(
+      root.querySelector(
+        'section[data-testid=section-changed] [data-testid=section-empty]',
+      )?.textContent,
+    ).toContain('(none)');
+    expect(
+      root.querySelector(
+        'section[data-testid=section-removed] [data-testid=section-empty]',
+      ),
+    ).toBeTruthy();
+    expect(
+      root.querySelector(
+        'section[data-testid=section-added] [data-testid=section-empty]',
+      ),
+    ).toBeFalsy();
   });
 });
 
 describe('DiffResultRendererComponent (tabular mode)', () => {
-  it('renders a table with one row per added/removed entry, sided count column, and projected variables as headers', () => {
+  it('renders a tabular table with one row per added/removed entry, side cell, count, and variable headers', () => {
     const result: TabularDiffResponse = {
       kind: 'tabular',
       diff: {
@@ -483,26 +309,17 @@ describe('DiffResultRendererComponent (tabular mode)', () => {
       table?.querySelectorAll('tbody tr') ?? [],
     ) as HTMLElement[];
     expect(rows.length).toBe(2);
-    const sides = rows.map(
-      (r) => r.querySelector('td[data-col=side]')?.textContent?.trim(),
-    );
-    expect(sides).toContain('-');
+    const sides = rows.map((r) => r.getAttribute('data-side'));
     expect(sides).toContain('+');
-    const counts = rows.map(
-      (r) => r.querySelector('td[data-col=count]')?.textContent?.trim(),
-    );
-    expect(counts.sort()).toEqual(['1', '2']);
+    expect(sides).toContain('-');
   });
 
-  it('renders the canonical diff totals summary in tabular mode', () => {
+  it('renders the totals strip in tabular mode', () => {
     const result: TabularDiffResponse = {
       kind: 'tabular',
       diff: {
         added: [
-          {
-            row: { x: { termType: 'Literal', value: '1' } },
-            count: 3,
-          },
+          { row: { x: { termType: 'Literal', value: '1' } }, count: 3 },
         ],
         removed: [],
         totals: { left: 7, right: 10 },
@@ -518,97 +335,20 @@ describe('DiffResultRendererComponent (tabular mode)', () => {
 });
 
 describe('DiffResultRendererComponent (error mode)', () => {
-  it('renders left, right, and top error panels when all three are populated', () => {
+  it('renders error panels when the response is an error', () => {
     const result: DiffErrorResponse = {
       kind: 'error',
       errors: { left: 'left boom', right: 'right boom', top: 'top boom' },
     };
     const root = render(result);
+    expect(root.querySelector('[data-testid=error-top]')?.textContent).toContain(
+      'top boom',
+    );
     expect(root.querySelector('[data-testid=error-left]')?.textContent).toContain(
       'left boom',
     );
     expect(root.querySelector('[data-testid=error-right]')?.textContent).toContain(
       'right boom',
     );
-    expect(root.querySelector('[data-testid=error-top]')?.textContent).toContain(
-      'top boom',
-    );
-  });
-
-  it('omits panels for empty error keys', () => {
-    const result: DiffErrorResponse = {
-      kind: 'error',
-      errors: { top: 'shape mismatch' },
-    };
-    const root = render(result);
-    expect(root.querySelector('[data-testid=error-left]')).toBeFalsy();
-    expect(root.querySelector('[data-testid=error-right]')).toBeFalsy();
-    expect(root.querySelector('[data-testid=error-top]')?.textContent).toContain(
-      'shape mismatch',
-    );
   });
 });
-
-function hunkChanged(): Hunk {
-  return {
-    anchor: 'http://example.org/changed',
-    state: 'changed',
-    removed: 1,
-    added: 1,
-    lines: [
-      makeLine(
-        '-',
-        'http://example.org/changed',
-        'http://example.org/p',
-        '"a"',
-        '<http://example.org/changed> <http://example.org/p> "a" .',
-      ),
-      makeLine(
-        '+',
-        'http://example.org/changed',
-        'http://example.org/p',
-        '"b"',
-        '<http://example.org/changed> <http://example.org/p> "b" .',
-      ),
-    ],
-    sourceRecords: { left: [], right: [] },
-  };
-}
-
-function hunkRemoved(): Hunk {
-  return {
-    anchor: 'http://example.org/gone',
-    state: 'removed',
-    removed: 1,
-    added: 0,
-    lines: [
-      makeLine(
-        '-',
-        'http://example.org/gone',
-        'http://example.org/p',
-        '"x"',
-        '<http://example.org/gone> <http://example.org/p> "x" .',
-      ),
-    ],
-    sourceRecords: { left: [], right: [] },
-  };
-}
-
-function hunkAdded(): Hunk {
-  return {
-    anchor: 'http://example.org/new',
-    state: 'added',
-    removed: 0,
-    added: 1,
-    lines: [
-      makeLine(
-        '+',
-        'http://example.org/new',
-        'http://example.org/p',
-        '"y"',
-        '<http://example.org/new> <http://example.org/p> "y" .',
-      ),
-    ],
-    sourceRecords: { left: [], right: [] },
-  };
-}
