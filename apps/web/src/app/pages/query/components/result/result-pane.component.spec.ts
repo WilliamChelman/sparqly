@@ -62,6 +62,43 @@ const TRIG_RESULT: DecodedResult = {
   contentType: 'application/trig',
 };
 
+const SELECT_SPO_RESULT: DecodedResult = {
+  kind: 'select',
+  variables: ['s', 'p', 'o'],
+  bindings: [
+    {
+      s: { termType: 'NamedNode', value: 'http://example.org/a' },
+      p: { termType: 'NamedNode', value: 'http://example.org/p' },
+      o: { termType: 'NamedNode', value: 'http://example.org/o' },
+    },
+  ],
+  raw: '{"head":{"vars":["s","p","o"]},"results":{"bindings":[{"s":{"type":"uri","value":"http://example.org/a"},"p":{"type":"uri","value":"http://example.org/p"},"o":{"type":"uri","value":"http://example.org/o"}}]}}',
+  contentType: 'application/sparql-results+json',
+};
+
+const SELECT_SPOG_RESULT: DecodedResult = {
+  kind: 'select',
+  variables: ['s', 'p', 'o', 'g'],
+  bindings: [
+    {
+      s: { termType: 'NamedNode', value: 'http://example.org/a' },
+      p: { termType: 'NamedNode', value: 'http://example.org/p' },
+      o: { termType: 'NamedNode', value: 'http://example.org/o' },
+      g: { termType: 'NamedNode', value: 'http://example.org/g' },
+    },
+  ],
+  raw: '{"head":{"vars":["s","p","o","g"]},"results":{"bindings":[{"s":{"type":"uri","value":"http://example.org/a"},"p":{"type":"uri","value":"http://example.org/p"},"o":{"type":"uri","value":"http://example.org/o"},"g":{"type":"uri","value":"http://example.org/g"}}]}}',
+  contentType: 'application/sparql-results+json',
+};
+
+const SELECT_SPO_EMPTY_RESULT: DecodedResult = {
+  kind: 'select',
+  variables: ['s', 'p', 'o'],
+  bindings: [],
+  raw: '{"head":{"vars":["s","p","o"]},"results":{"bindings":[]}}',
+  contentType: 'application/sparql-results+json',
+};
+
 function setup(state: ResultPaneState) {
   const fixture = TestBed.createComponent(Host);
   fixture.componentInstance.state = state;
@@ -225,6 +262,85 @@ describe('ResultPane formatted-body downloads', () => {
     expect(nq.getAttribute('download')).toBe('result.nq');
     const href = nq.getAttribute('href') ?? '';
     expect(href.startsWith('data:application/n-quads')).toBe(true);
+  });
+});
+
+describe('ResultPane SELECT-spo turtle/trig tab', () => {
+  it('shows a turtle tab for a SELECT projecting {s,p,o}', () => {
+    const fixture = setup({ kind: 'result', result: SELECT_SPO_RESULT });
+    const tabs = $$(fixture, '[data-testid^="tab-"]');
+    const ids = tabs.map((t) => t.getAttribute('data-testid'));
+    expect(ids).toEqual(['tab-table', 'tab-turtle', 'tab-raw', 'tab-download']);
+  });
+
+  it('labels the tab `trig` when SELECT-spog rows carry named graphs', () => {
+    const fixture = setup({ kind: 'result', result: SELECT_SPOG_RESULT });
+    const tabs = $$(fixture, '[data-testid^="tab-"]');
+    const ids = tabs.map((t) => t.getAttribute('data-testid'));
+    expect(ids).toEqual(['tab-table', 'tab-trig', 'tab-raw', 'tab-download']);
+  });
+
+  it('hides the turtle tab for a non-spo SELECT result', () => {
+    const fixture = setup({ kind: 'result', result: SELECT_RESULT });
+    expect($(fixture, '[data-testid="tab-turtle"]')).toBeFalsy();
+    expect($(fixture, '[data-testid="tab-trig"]')).toBeFalsy();
+  });
+
+  it('hides the turtle tab for an empty-bindings SELECT-spo result', () => {
+    const fixture = setup({ kind: 'result', result: SELECT_SPO_EMPTY_RESULT });
+    expect($(fixture, '[data-testid="tab-turtle"]')).toBeFalsy();
+    expect($(fixture, '[data-testid="tab-trig"]')).toBeFalsy();
+  });
+
+  it('renders the formatted body when the SELECT-spo turtle tab is active', () => {
+    const fixture = setup({ kind: 'result', result: SELECT_SPO_RESULT });
+    ($(fixture, '[data-testid="tab-turtle"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const body = $(fixture, '[data-testid="result-formatted-body"]');
+    expect(body).toBeTruthy();
+    expect(body?.textContent).toContain('<http://example.org/a>');
+    expect(body?.textContent).toContain('<http://example.org/p>');
+    expect(body?.textContent).toContain('<http://example.org/o>');
+  });
+
+  it('exposes a Turtle download alongside csv/tsv/json for SELECT-spo', () => {
+    const fixture = setup({ kind: 'result', result: SELECT_SPO_RESULT });
+    ($(fixture, '[data-testid="tab-download"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const links = $$(fixture, '[data-testid^="download-"]');
+    const ids = links.map((l) => l.getAttribute('data-testid')).sort();
+    expect(ids).toEqual([
+      'download-csv',
+      'download-json',
+      'download-tsv',
+      'download-turtle',
+    ]);
+    const turtle = $(fixture, '[data-testid="download-turtle"]') as HTMLAnchorElement;
+    expect(turtle.getAttribute('download')).toBe('result.ttl');
+    const href = turtle.getAttribute('href') ?? '';
+    expect(href.startsWith('data:text/turtle')).toBe(true);
+    const decoded = decodeURIComponent(href.replace(/^data:[^,]+,/, ''));
+    expect(decoded).toContain('<http://example.org/a>');
+  });
+
+  it('flips the Turtle entry to TriG for SELECT-spog with named graphs', () => {
+    const fixture = setup({ kind: 'result', result: SELECT_SPOG_RESULT });
+    ($(fixture, '[data-testid="tab-download"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const trig = $(fixture, '[data-testid="download-turtle"]') as HTMLAnchorElement;
+    expect(trig.getAttribute('download')).toBe('result.trig');
+    expect(trig.textContent).toContain('TriG');
+    const href = trig.getAttribute('href') ?? '';
+    expect(href.startsWith('data:application/trig')).toBe(true);
+  });
+
+  it('keeps the SELECT download set unchanged for non-spo SELECT results', () => {
+    const fixture = setup({ kind: 'result', result: SELECT_RESULT });
+    ($(fixture, '[data-testid="tab-download"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const links = $$(fixture, '[data-testid^="download-"]');
+    const ids = links.map((l) => l.getAttribute('data-testid')).sort();
+    expect(ids).toEqual(['download-csv', 'download-json', 'download-tsv']);
   });
 });
 

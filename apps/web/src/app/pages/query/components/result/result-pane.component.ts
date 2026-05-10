@@ -15,10 +15,12 @@ import type {
   TripleResult,
 } from '@app/core';
 import { parseRdfString, type FormatSerialization } from 'common';
+import { DataFactory, type Quad } from 'n3';
 import {
   resultToFormatted,
   type FormattedResult,
 } from '../../utils/result-to-formatted';
+import { reifySelectSpo } from '../../utils/select-spo-reifier';
 import { exportBindingsCsv } from '../../utils/csv-exporter';
 import { ErrorConstellationComponent } from './error-constellation.component';
 import { FormattedResultComponent } from './formatted-result.component';
@@ -185,6 +187,10 @@ export class ResultPaneComponent {
   // Memo of formatted bodies keyed on DecodedResult identity. WeakMap entries
   // drop with the result, so a new query naturally discards the prior memo.
   private readonly _formatCache = new WeakMap<DecodedResult, FormattedResult>();
+  private readonly _reifiedCache = new WeakMap<
+    SelectResult,
+    ReadonlyArray<Triple>
+  >();
 
   readonly currentResult = computed<DecodedResult | null>(() => {
     const s = this.state();
@@ -193,24 +199,50 @@ export class ResultPaneComponent {
 
   readonly serialization = computed<FormatSerialization | null>(() => {
     const r = this.currentResult();
-    if (!r || r.kind !== 'triples') return null;
-    return r.triples.some((t) => t.graph) ? 'trig' : 'turtle';
+    if (!r) return null;
+    if (r.kind === 'triples') {
+      return r.triples.some((t) => t.graph) ? 'trig' : 'turtle';
+    }
+    if (r.kind === 'select') {
+      const reified = this.reifiedSelect(r);
+      if (!reified || reified.length === 0) return null;
+      return reified.some((t) => t.graph) ? 'trig' : 'turtle';
+    }
+    return null;
   });
 
   readonly formatted = computed<FormattedResult | null>(() => {
     const r = this.currentResult();
     const tab = this._activeTab();
-    if (!r || r.kind !== 'triples') return null;
+    if (!r) return null;
     if (tab !== 'turtle' && tab !== 'download') return null;
     let cached = this._formatCache.get(r);
     if (!cached) {
       const ctx = this.context();
-      const parsed = parseRdfString(r.raw);
-      cached = resultToFormatted(parsed.quads, parsed.prefixes, parsed.base, ctx);
+      if (r.kind === 'triples') {
+        const parsed = parseRdfString(r.raw);
+        cached = resultToFormatted(parsed.quads, parsed.prefixes, parsed.base, ctx);
+      } else if (r.kind === 'select') {
+        const reified = this.reifiedSelect(r);
+        if (!reified || reified.length === 0) return null;
+        const quads = reified.map(tripleToQuad);
+        cached = resultToFormatted(quads, {}, undefined, ctx);
+      } else {
+        return null;
+      }
       this._formatCache.set(r, cached);
     }
     return cached;
   });
+
+  private reifiedSelect(r: SelectResult): ReadonlyArray<Triple> | null {
+    const cached = this._reifiedCache.get(r);
+    if (cached) return cached;
+    const reified = reifySelectSpo(r);
+    if (reified === null) return null;
+    this._reifiedCache.set(r, reified);
+    return reified;
+  }
 
   readonly tabs = computed<
     ReadonlyArray<{ id: Tab; testId: string; label: string }>
@@ -250,7 +282,15 @@ export class ResultPaneComponent {
   readonly downloadOptions = computed<DownloadOption[]>(() => {
     const r = this.currentResult();
     if (!r) return [];
-    if (r.kind === 'select') return selectDownloads(r);
+    if (r.kind === 'select') {
+      const base = selectDownloads(r);
+      const reified = this.reifiedSelect(r);
+      if (reified && reified.length > 0) {
+        const formatted = this.formatted();
+        if (formatted) base.push(formattedDownload(formatted));
+      }
+      return base;
+    }
     if (r.kind === 'ask') return askDownloads(r);
     if (r.kind === 'triples') return tripleDownloads(r, this.formatted());
     return [];
@@ -327,20 +367,12 @@ function tripleDownloads(
   r: TripleResult,
   formatted: FormattedResult | null,
 ): DownloadOption[] {
-  const isTrig = formatted?.serialization === 'trig';
-  const formattedBody = formatted?.body ?? '';
   const nquads =
     r.contentType === 'application/n-quads'
       ? r.raw
       : serializeNquads(r.triples);
   return [
-    {
-      id: 'turtle',
-      label: isTrig ? 'TriG' : 'Turtle',
-      filename: isTrig ? 'result.trig' : 'result.ttl',
-      mediaType: isTrig ? 'application/trig' : 'text/turtle',
-      body: formattedBody,
-    },
+    formattedDownload(formatted),
     {
       id: 'nquads',
       label: 'N-Quads',
@@ -349,6 +381,42 @@ function tripleDownloads(
       body: nquads,
     },
   ];
+}
+
+function formattedDownload(formatted: FormattedResult | null): DownloadOption {
+  const isTrig = formatted?.serialization === 'trig';
+  return {
+    id: 'turtle',
+    label: isTrig ? 'TriG' : 'Turtle',
+    filename: isTrig ? 'result.trig' : 'result.ttl',
+    mediaType: isTrig ? 'application/trig' : 'text/turtle',
+    body: formatted?.body ?? '',
+  };
+}
+
+function tripleToQuad(t: Triple): Quad {
+  const { namedNode, blankNode, literal, defaultGraph, quad } = DataFactory;
+  const subject =
+    t.subject.termType === 'NamedNode'
+      ? namedNode(t.subject.value)
+      : blankNode(t.subject.value);
+  const predicate = namedNode(t.predicate.value);
+  const object =
+    t.object.termType === 'NamedNode'
+      ? namedNode(t.object.value)
+      : t.object.termType === 'BlankNode'
+        ? blankNode(t.object.value)
+        : t.object.datatype
+          ? literal(t.object.value, namedNode(t.object.datatype.value))
+          : t.object.language
+            ? literal(t.object.value, t.object.language)
+            : literal(t.object.value);
+  const graph = t.graph
+    ? t.graph.termType === 'NamedNode'
+      ? namedNode(t.graph.value)
+      : blankNode(t.graph.value)
+    : defaultGraph();
+  return quad(subject, predicate, object, graph);
 }
 
 function reserializeSelectAsJson(r: SelectResult): string {
