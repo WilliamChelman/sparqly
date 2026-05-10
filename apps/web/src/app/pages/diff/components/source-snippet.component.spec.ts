@@ -157,6 +157,41 @@ describe('SourceSnippetComponent', () => {
     http.verify();
   });
 
+  it('lays out content lines so the focal highlight extends across the full scrollable width', () => {
+    // The <pre> is overflow-x-auto, so when content is wider than the
+    // viewport a horizontal scrollbar appears. Each line span must take
+    // at least the visible width AND grow to its content width — otherwise
+    // the focal highlight stops at the original viewport edge and looks
+    // truncated when the user scrolls right.
+    const { http } = setup();
+    const fixture = render({
+      file: 'file:///tmp/x.ttl',
+      focalStart: 4,
+      context: 1,
+    });
+    const req = http.expectOne(
+      (r) => r.url.split('?')[0] === '/api/source-snippet',
+    );
+    req.flush({
+      kind: 'snippet',
+      startLine: 3,
+      focalStart: 4,
+      focalEnd: 4,
+      lines: ['L3', 'L4 ' + 'x'.repeat(500), 'L5'],
+    });
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    const rows = Array.from(
+      root.querySelectorAll('pre [data-testid=snippet-line]'),
+    ) as HTMLElement[];
+    for (const row of rows) {
+      expect(row.classList.contains('w-max')).toBe(true);
+      expect(row.classList.contains('min-w-full')).toBe(true);
+    }
+    http.verify();
+  });
+
   it('renders "(source file unavailable)" when the payload is unavailable', () => {
     const { http } = setup();
     const fixture = render({

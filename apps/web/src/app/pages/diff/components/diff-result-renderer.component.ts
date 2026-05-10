@@ -18,20 +18,16 @@ import type {
   TabularTerm,
 } from '../services/diff.service';
 import { classifyHunk, type HunkClass } from '../utils/hunk-classifier';
+import {
+  collectSnippetRanges,
+  type SnippetRange,
+} from '../utils/source-snippet-ranges';
 import { SourceSnippetComponent } from './source-snippet.component';
 
 interface RenderedChip {
   side: 'left' | 'right';
   text: string;
   anchorId: string;
-}
-
-interface DedupedRecord {
-  file: string;
-  focalStart: number;
-  focalEnd: number;
-  anchorId: string;
-  side: 'left' | 'right';
 }
 
 interface RenderedHunk {
@@ -42,8 +38,8 @@ interface RenderedHunk {
   countsLabel: string;
   lines: ReadonlyArray<HunkLine>;
   chips: ReadonlyArray<RenderedChip>;
-  leftRecords: ReadonlyArray<DedupedRecord>;
-  rightRecords: ReadonlyArray<DedupedRecord>;
+  leftRecords: ReadonlyArray<SnippetRange>;
+  rightRecords: ReadonlyArray<SnippetRange>;
 }
 
 @Component({
@@ -235,11 +231,11 @@ interface RenderedHunk {
                   <div
                     class="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-removed"
                   >left</div>
-                  @for (rec of rh.leftRecords; track rec.anchorId) {
-                    <div
-                      [attr.id]="rec.anchorId"
-                      data-testid="hunk-snippet"
-                    >
+                  @for (rec of rh.leftRecords; track rec.anchorIds[0]) {
+                    <div data-testid="hunk-snippet">
+                      @for (aid of rec.anchorIds; track aid) {
+                        <span [attr.id]="aid"></span>
+                      }
                       <app-source-snippet
                         [file]="rec.file"
                         [focalStart]="rec.focalStart"
@@ -257,11 +253,11 @@ interface RenderedHunk {
                   <div
                     class="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-added"
                   >right</div>
-                  @for (rec of rh.rightRecords; track rec.anchorId) {
-                    <div
-                      [attr.id]="rec.anchorId"
-                      data-testid="hunk-snippet"
-                    >
+                  @for (rec of rh.rightRecords; track rec.anchorIds[0]) {
+                    <div data-testid="hunk-snippet">
+                      @for (aid of rec.anchorIds; track aid) {
+                        <span [attr.id]="aid"></span>
+                      }
                       <app-source-snippet
                         [file]="rec.file"
                         [focalStart]="rec.focalStart"
@@ -460,9 +456,9 @@ export class DiffResultRendererComponent {
         ? curieOrIri(hunk.rdfType, prefixEntries, base)
         : null;
     const countsLabel = `[-${hunk.removed} +${hunk.added}]`;
-    const records = dedupeRecordsByFileLine(hunk);
-    const leftRecords = records.filter((r) => r.side === 'left');
-    const rightRecords = records.filter((r) => r.side === 'right');
+    const ranges = collectSnippetRanges(hunk, this.context());
+    const leftRecords = ranges.filter((r) => r.side === 'left');
+    const rightRecords = ranges.filter((r) => r.side === 'right');
     const chips = renderChips(hunk);
     return {
       hunk,
@@ -486,41 +482,6 @@ function summaryLine(
   return `left=${totals.left} right=${totals.right} +${added} -${removed}`;
 }
 
-function dedupeRecordsByFileLine(hunk: Hunk): DedupedRecord[] {
-  const sided: ReadonlyArray<readonly [SourceRecord, 'left' | 'right']> = [
-    ...hunk.sourceRecords.left.map((r) => [r, 'left'] as const),
-    ...hunk.sourceRecords.right.map((r) => [r, 'right'] as const),
-  ];
-  const ranges: DedupedRecord[] = [];
-  for (const [r, side] of sided) {
-    if (r.line === undefined) continue;
-    ranges.push({
-      file: r.file,
-      focalStart: r.line,
-      focalEnd: r.endLine ?? r.line,
-      anchorId: anchorIdFor(r.file, r.line),
-      side,
-    });
-  }
-  // Drop B if some A on the same (file, side) strictly encloses or equals B
-  // (and is kept itself by tie-break on identical ranges).
-  return ranges.filter((b, i) =>
-    !ranges.some(
-      (a, j) =>
-        i !== j &&
-        a.file === b.file &&
-        a.side === b.side &&
-        a.focalStart <= b.focalStart &&
-        a.focalEnd >= b.focalEnd &&
-        !(
-          a.focalStart === b.focalStart &&
-          a.focalEnd === b.focalEnd &&
-          j > i
-        ),
-    ),
-  );
-}
-
 function renderChips(hunk: Hunk): ReadonlyArray<RenderedChip> {
   const out: RenderedChip[] = [];
   for (const r of hunk.sourceRecords.left) out.push(chipFor(r, 'left'));
@@ -533,10 +494,6 @@ function chipFor(record: SourceRecord, side: 'left' | 'right'): RenderedChip {
   const anchorId = record.line === undefined ? base : `${base}-L${record.line}`;
   const text = record.line === undefined ? base : `${base}:${record.line}`;
   return { side, text, anchorId };
-}
-
-function anchorIdFor(file: string, line: number): string {
-  return `${baseName(file)}-L${line}`;
 }
 
 function baseName(path: string): string {

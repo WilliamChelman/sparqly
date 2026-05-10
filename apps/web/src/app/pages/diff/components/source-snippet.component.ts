@@ -76,8 +76,8 @@ export type SnippetReadResult = SnippetPayload | SnippetUnavailable;
               [attr.data-focal]="isFocal(s, $index) ? 'true' : null"
               [class]="
                 isFocal(s, $index)
-                  ? 'block my-line-focus'
-                  : 'block'
+                  ? 'block w-max min-w-full my-line-focus'
+                  : 'block w-max min-w-full'
               "
               >{{ l }}</span
             >}</pre
