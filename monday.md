@@ -1,0 +1,8 @@
+- matt pocock skills + setup (already ran)
+- talk about /grill-me (unibiquitous cool skill)
+- showcase /grill-me-with-doc (not too deep, answer yes to everything)
+  - see created PRD on github (it can be local .md file)
+- showcase to-issues (not to the end) -> show existing issues
+- showcase a /tdd run
+- green field vs. brown field (monkey see, monkey do)
+- something cool: semantic diff of 2 .ttl files

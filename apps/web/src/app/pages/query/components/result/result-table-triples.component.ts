@@ -17,15 +17,15 @@ import { TermCellComponent } from './term-cell.component';
     <div
       data-testid="result-table-triples"
       [attr.data-row-count]="rowCount()"
-      class="results-table"
+      class="w-full font-mono text-xs"
     >
       <div
         data-testid="triples-header"
         data-sticky="true"
-        class="results-table-head"
+        class="sticky top-0 z-[1] grid border-b border-border bg-surface-sunken font-sans text-[10px] uppercase tracking-[0.14em] text-foreground-faint [&>div]:px-3.5 [&>div]:py-2"
         style="grid-template-columns: 48px minmax(140px, 1fr) minmax(140px, 1fr) minmax(140px, 1fr)"
       >
-        <div data-testid="triples-header-cell" class="results-table-rownum">#</div>
+        <div data-testid="triples-header-cell" class="select-none text-right text-foreground-faint">#</div>
         <div data-testid="triples-header-cell">subject</div>
         <div data-testid="triples-header-cell">predicate</div>
         <div data-testid="triples-header-cell">object</div>
@@ -44,10 +44,10 @@ import { TermCellComponent } from './term-cell.component';
           <div
             *cdkVirtualFor="let t of triples(); trackBy: trackByIndex; let i = index"
             data-testid="triples-row"
-            class="results-table-row"
+            class="grid border-b border-border-muted transition-colors duration-[120ms] hover:bg-row-hover [&>div]:overflow-hidden [&>div]:text-ellipsis [&>div]:whitespace-nowrap [&>div]:px-3.5 [&>div]:py-2"
             style="grid-template-columns: 48px minmax(140px, 1fr) minmax(140px, 1fr) minmax(140px, 1fr)"
           >
-            <div class="results-table-rownum">{{ i + 1 }}</div>
+            <div class="select-none text-right text-foreground-faint">{{ i + 1 }}</div>
             <div>
               <app-term-cell [term]="t.subject" [context]="context()" />
             </div>

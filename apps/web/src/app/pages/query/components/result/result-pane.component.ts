@@ -15,11 +15,9 @@ import type {
   TripleResult,
 } from '@app/core';
 import { exportBindingsCsv } from '../../utils/csv-exporter';
-import {
-  ErrorConstellationComponent,
-  HeroIllustrationComponent,
-  LoadingConstellationComponent,
-} from './result-illustrations.component';
+import { ErrorConstellationComponent } from './error-constellation.component';
+import { HeroIllustrationComponent } from './hero-illustration.component';
+import { LoadingConstellationComponent } from './loading-constellation.component';
 import { ResultAskComponent } from './result-ask.component';
 import { ResultRawComponent } from './result-raw.component';
 import { ResultTableSelectComponent } from './result-table-select.component';
@@ -88,34 +86,25 @@ interface DownloadOption {
         </div>
       }
       @case ('result') {
-        <div class="result-shell">
-          <div class="result-shell__head">
-            <nav role="tablist" class="result-shell__tabs">
-              <button
-                data-testid="tab-table"
-                role="tab"
-                type="button"
-                [attr.aria-selected]="activeTab() === 'table'"
-                (click)="setTab('table')"
-              >table</button>
-              <button
-                data-testid="tab-raw"
-                role="tab"
-                type="button"
-                [attr.aria-selected]="activeTab() === 'raw'"
-                (click)="setTab('raw')"
-              >raw</button>
-              <button
-                data-testid="tab-download"
-                role="tab"
-                type="button"
-                [attr.aria-selected]="activeTab() === 'download'"
-                (click)="setTab('download')"
-              >download</button>
+        <div class="overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
+          <div
+            class="flex items-center justify-between gap-4 border-b border-border-muted bg-surface-sunken px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground-faint"
+          >
+            <nav role="tablist" class="flex gap-3.5">
+              @for (t of tabs; track t.id) {
+                <button
+                  [attr.data-testid]="'tab-' + t.id"
+                  role="tab"
+                  type="button"
+                  [attr.aria-selected]="activeTab() === t.id"
+                  (click)="setTab(t.id)"
+                  class="cursor-pointer border-b border-transparent bg-transparent px-0 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint transition-colors duration-[180ms] hover:text-foreground-muted aria-selected:border-accent aria-selected:text-foreground"
+                >{{ t.label }}</button>
+              }
             </nav>
-            <span class="meta">{{ headerMeta() }}</span>
+            <span class="text-foreground-muted">{{ headerMeta() }}</span>
           </div>
-          <div class="result-shell__body">
+          <div>
             @switch (activeTab()) {
               @case ('table') {
                 @let r = currentResult();
@@ -173,6 +162,12 @@ interface DownloadOption {
 export class ResultPaneComponent {
   readonly state = input.required<ResultPaneState>();
   readonly context = input<DisplayContext>({ prefixes: {} });
+
+  protected readonly tabs: ReadonlyArray<{ id: Tab; label: string }> = [
+    { id: 'table', label: 'table' },
+    { id: 'raw', label: 'raw' },
+    { id: 'download', label: 'download' },
+  ];
 
   private readonly _activeTab = signal<Tab>('table');
   readonly activeTab = this._activeTab.asReadonly();

@@ -1,9 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import {
-  ErrorConstellationComponent,
-  HeroIllustrationComponent,
-  LoadingConstellationComponent,
-} from './result-illustrations.component';
+import { LoadingConstellationComponent } from './loading-constellation.component';
 
 type MqlListener = (ev: MediaQueryListEvent) => void;
 
@@ -39,16 +35,6 @@ afterEach(() => {
   delete (window as unknown as { matchMedia?: unknown }).matchMedia;
 });
 
-describe('HeroIllustration', () => {
-  it('renders an SVG', () => {
-    installMatchMediaMock(false);
-    const fixture = TestBed.createComponent(HeroIllustrationComponent);
-    fixture.detectChanges();
-    const svg = (fixture.nativeElement as HTMLElement).querySelector('svg');
-    expect(svg).toBeTruthy();
-  });
-});
-
 describe('LoadingConstellation', () => {
   it('marks itself spinning when motion is allowed', () => {
     installMatchMediaMock(false);
@@ -80,15 +66,5 @@ describe('LoadingConstellation', () => {
       'svg [data-testid="loading-constellation"]',
     );
     expect(group?.getAttribute('data-motion')).toBe('still');
-  });
-});
-
-describe('ErrorConstellation', () => {
-  it('renders an SVG', () => {
-    installMatchMediaMock(false);
-    const fixture = TestBed.createComponent(ErrorConstellationComponent);
-    fixture.detectChanges();
-    const svg = (fixture.nativeElement as HTMLElement).querySelector('svg');
-    expect(svg).toBeTruthy();
   });
 });

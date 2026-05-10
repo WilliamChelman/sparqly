@@ -46,3 +46,4 @@
 - quick queries (default select with or withou ?g, filled with prefixes from config) + saved queries that make sense
 - new source kind: remote file
 - i18n
+- diff could be side-by-side in some cases (same ?s and ?p ?)

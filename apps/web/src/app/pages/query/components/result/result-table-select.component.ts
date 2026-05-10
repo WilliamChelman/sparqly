@@ -17,17 +17,17 @@ import { TermCellComponent } from './term-cell.component';
     <div
       data-testid="result-table-select"
       [attr.data-row-count]="rowCount()"
-      class="results-table"
+      class="w-full font-mono text-xs"
     >
       <div
         data-testid="select-header"
         data-sticky="true"
-        class="results-table-head"
+        class="sticky top-0 z-[1] grid border-b border-border bg-surface-sunken font-sans text-[10px] uppercase tracking-[0.14em] text-foreground-faint [&>div]:px-3.5 [&>div]:py-2"
         [style.gridTemplateColumns]="gridTemplateColumns()"
       >
         <div
           data-testid="select-header-cell"
-          class="results-table-rownum"
+          class="select-none text-right text-foreground-faint"
         >#</div>
         @for (v of variables(); track v) {
           <div data-testid="select-header-cell">?{{ v }}</div>
@@ -47,10 +47,10 @@ import { TermCellComponent } from './term-cell.component';
           <div
             *cdkVirtualFor="let row of bindings(); trackBy: trackByIndex; let i = index"
             data-testid="select-row"
-            class="results-table-row"
+            class="grid border-b border-border-muted transition-colors duration-[120ms] hover:bg-row-hover [&>div]:overflow-hidden [&>div]:text-ellipsis [&>div]:whitespace-nowrap [&>div]:px-3.5 [&>div]:py-2"
             [style.gridTemplateColumns]="gridTemplateColumns()"
           >
-            <div class="results-table-rownum">{{ i + 1 }}</div>
+            <div class="select-none text-right text-foreground-faint">{{ i + 1 }}</div>
             @for (v of variables(); track v) {
               <div>
                 <app-term-cell [term]="cellTerm(row, v)" [context]="context()" />
