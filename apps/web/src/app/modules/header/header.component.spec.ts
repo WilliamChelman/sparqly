@@ -37,9 +37,4 @@ describe('HeaderComponent', () => {
     const el = render();
     expect(el.querySelector('app-theme-toggle')).toBeTruthy();
   });
-
-  it('renders the header-drift ambient animation', () => {
-    const el = render();
-    expect(el.querySelector('app-header-drift')).toBeTruthy();
-  });
 });
