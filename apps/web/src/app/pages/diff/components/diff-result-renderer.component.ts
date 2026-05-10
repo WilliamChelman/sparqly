@@ -6,14 +6,16 @@ import type {
   Hunk,
   TabularDiffResponse,
 } from '../services/diff.service';
-import { classifyHunk } from '../utils/hunk-classifier';
+import { classifyHunk, type HunkClass } from '../utils/hunk-classifier';
 import { DiffErrorViewComponent } from './diff-error-view.component';
-import {
-  DiffHunkSectionComponent,
-  type ClassifiedHunk,
-} from './diff-hunk-section.component';
+import { DiffHunkComponent } from './diff-hunk.component';
 import { DiffTabularTableComponent } from './diff-tabular-table.component';
 import { DiffTotalsComponent } from './diff-totals.component';
+
+interface ClassifiedHunk {
+  readonly hunk: Hunk;
+  readonly cls: HunkClass;
+}
 
 @Component({
   selector: 'app-diff-result-renderer',
@@ -21,7 +23,7 @@ import { DiffTotalsComponent } from './diff-totals.component';
   imports: [
     DiffTotalsComponent,
     DiffTabularTableComponent,
-    DiffHunkSectionComponent,
+    DiffHunkComponent,
     DiffErrorViewComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -33,27 +35,22 @@ import { DiffTotalsComponent } from './diff-totals.component';
       <app-diff-tabular-table [result]="t" [displayContext]="displayContext()" />
     }
     @if (groupedView()) {
-      <app-diff-hunk-section
-        testid="section-changed"
-        title="Changed"
-        [hunks]="changedHunks()"
-        [context]="context()"
-        [displayContext]="displayContext()"
-      />
-      <app-diff-hunk-section
-        testid="section-added"
-        title="Added"
-        [hunks]="addedHunks()"
-        [context]="context()"
-        [displayContext]="displayContext()"
-      />
-      <app-diff-hunk-section
-        testid="section-removed"
-        title="Removed"
-        [hunks]="removedHunks()"
-        [context]="context()"
-        [displayContext]="displayContext()"
-      />
+      <div data-testid="hunk-list" class="mt-2 flex flex-col">
+        @if (classifiedHunks().length === 0) {
+          <p
+            data-testid="hunk-list-empty"
+            class="my-2 font-serif text-sm italic text-foreground-faint"
+          >(no changes)</p>
+        }
+        @for (rh of classifiedHunks(); track rh.hunk.anchor) {
+          <app-diff-hunk
+            [hunk]="rh.hunk"
+            [cls]="rh.cls"
+            [context]="context()"
+            [displayContext]="displayContext()"
+          />
+        }
+      </div>
     }
     @if (errorView(); as errs) {
       <app-diff-error-view [errors]="errs" />
@@ -80,22 +77,12 @@ export class DiffResultRendererComponent {
     return r.kind === 'tabular' ? r : null;
   });
 
-  private readonly classifiedHunks = computed<ReadonlyArray<ClassifiedHunk>>(() => {
+  readonly classifiedHunks = computed<ReadonlyArray<ClassifiedHunk>>(() => {
     const g = this.groupedView();
     if (g === null) return [];
     const all: Hunk[] = [...g.hunked.changed, ...g.hunked.added, ...g.hunked.removed];
     return all.map((hunk) => ({ hunk, cls: classifyHunk(hunk) }));
   });
-
-  readonly changedHunks = computed<ReadonlyArray<ClassifiedHunk>>(() =>
-    this.classifiedHunks().filter((rh) => rh.cls === 'changed'),
-  );
-  readonly addedHunks = computed<ReadonlyArray<ClassifiedHunk>>(() =>
-    this.classifiedHunks().filter((rh) => rh.cls === 'added'),
-  );
-  readonly removedHunks = computed<ReadonlyArray<ClassifiedHunk>>(() =>
-    this.classifiedHunks().filter((rh) => rh.cls === 'removed'),
-  );
 
   readonly totalsLine = computed<string | null>(() => {
     const r = this.result();
