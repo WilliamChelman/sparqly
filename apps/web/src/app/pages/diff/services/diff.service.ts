@@ -18,6 +18,7 @@ export interface DiffErrorResponse {
 export interface SourceRecord {
   file: string;
   line?: number;
+  endLine?: number;
 }
 
 export interface BnodePathStep {
@@ -34,6 +35,7 @@ export interface HunkLine {
   object: string;
   nquad: string;
   bnodePath?: BnodePathStep[];
+  listItems?: ReadonlyArray<string>;
 }
 
 export interface Hunk {

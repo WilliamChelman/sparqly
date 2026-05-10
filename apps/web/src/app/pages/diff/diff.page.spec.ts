@@ -24,13 +24,15 @@ import {
   template: `<div
     data-testid="snippet-stub"
     [attr.data-file]="file"
-    [attr.data-line]="line"
+    [attr.data-focal-start]="focalStart"
+    [attr.data-focal-end]="focalEnd"
     [attr.data-context]="context"
   ></div>`,
 })
 class SourceSnippetStub {
   @Input() file = '';
-  @Input() line = 0;
+  @Input() focalStart = 0;
+  @Input() focalEnd = 0;
   @Input() context = 0;
 }
 

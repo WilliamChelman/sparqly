@@ -28,7 +28,8 @@ interface RenderedChip {
 
 interface DedupedRecord {
   file: string;
-  line: number;
+  focalStart: number;
+  focalEnd: number;
   anchorId: string;
   side: 'left' | 'right';
 }
@@ -241,7 +242,8 @@ interface RenderedHunk {
                     >
                       <app-source-snippet
                         [file]="rec.file"
-                        [line]="rec.line"
+                        [focalStart]="rec.focalStart"
+                        [focalEnd]="rec.focalEnd"
                         [context]="context()"
                       />
                     </div>
@@ -262,7 +264,8 @@ interface RenderedHunk {
                     >
                       <app-source-snippet
                         [file]="rec.file"
-                        [line]="rec.line"
+                        [focalStart]="rec.focalStart"
+                        [focalEnd]="rec.focalEnd"
                         [context]="context()"
                       />
                     </div>
@@ -429,6 +432,14 @@ export class DiffResultRendererComponent {
   formatLineBody(line: HunkLine, rh: RenderedHunk): string {
     const prefixes = this.effectivePrefixes();
     const base = this.effectiveBase();
+    if (line.listItems !== undefined) {
+      const prefixEntries = Object.entries(prefixes);
+      const predicate = curieOrIri(line.predicate, prefixEntries, base);
+      const items = line.listItems.map((item) =>
+        shortenObjectTerm(item, prefixEntries, base),
+      );
+      return `${predicate} ( ${items.join(' ')} )`;
+    }
     const shortened = shortenNQuadLine(line.nquad, { prefixes, base });
     const prefix = `${rh.anchorDisplay} `;
     return shortened.startsWith(prefix)
@@ -476,25 +487,38 @@ function summaryLine(
 }
 
 function dedupeRecordsByFileLine(hunk: Hunk): DedupedRecord[] {
-  const seen = new Set<string>();
-  const out: DedupedRecord[] = [];
   const sided: ReadonlyArray<readonly [SourceRecord, 'left' | 'right']> = [
     ...hunk.sourceRecords.left.map((r) => [r, 'left'] as const),
     ...hunk.sourceRecords.right.map((r) => [r, 'right'] as const),
   ];
+  const ranges: DedupedRecord[] = [];
   for (const [r, side] of sided) {
     if (r.line === undefined) continue;
-    const key = `${r.file}:${r.line}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({
+    ranges.push({
       file: r.file,
-      line: r.line,
+      focalStart: r.line,
+      focalEnd: r.endLine ?? r.line,
       anchorId: anchorIdFor(r.file, r.line),
       side,
     });
   }
-  return out;
+  // Drop B if some A on the same (file, side) strictly encloses or equals B
+  // (and is kept itself by tie-break on identical ranges).
+  return ranges.filter((b, i) =>
+    !ranges.some(
+      (a, j) =>
+        i !== j &&
+        a.file === b.file &&
+        a.side === b.side &&
+        a.focalStart <= b.focalStart &&
+        a.focalEnd >= b.focalEnd &&
+        !(
+          a.focalStart === b.focalStart &&
+          a.focalEnd === b.focalEnd &&
+          j > i
+        ),
+    ),
+  );
 }
 
 function renderChips(hunk: Hunk): ReadonlyArray<RenderedChip> {
@@ -518,6 +542,28 @@ function anchorIdFor(file: string, line: number): string {
 function baseName(path: string): string {
   const i = path.lastIndexOf('/');
   return i < 0 ? path : path.slice(i + 1);
+}
+
+/**
+ * Shorten a serialized object term (as produced by `serializeObject` in
+ * group-rdf-diff-by-entity): `<iri>` → CURIE, literals get their datatype
+ * IRI shortened, bnodes pass through.
+ */
+function shortenObjectTerm(
+  term: string,
+  entries: ReadonlyArray<[string, string]>,
+  base: string | undefined,
+): string {
+  if (term.startsWith('<') && term.endsWith('>')) {
+    return curieOrIri(term.slice(1, -1), entries, base);
+  }
+  const dtMatch = /\^\^<([^>]+)>$/.exec(term);
+  if (dtMatch) {
+    const dtIri = dtMatch[1];
+    const lex = term.slice(0, dtMatch.index);
+    return `${lex}^^${curieOrIri(dtIri, entries, base)}`;
+  }
+  return term;
 }
 
 function curieOrIri(

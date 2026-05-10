@@ -8,18 +8,21 @@ export interface AnnotationPredicateIris {
   source: string;
   file: string;
   line: string;
+  endLine: string;
 }
 
 export const DEFAULT_ANNOTATION_PREDICATE_IRIS: AnnotationPredicateIris = {
   source: 'urn:sparqly:source',
   file: 'urn:sparqly:file',
   line: 'urn:sparqly:line',
+  endLine: 'urn:sparqly:endLine',
 };
 
 export interface BuildSourceRecordInput {
   asserted: Quad;
   filePath: string;
   line?: number;
+  endLine?: number;
   predicates: AnnotationPredicateIris;
 }
 
@@ -37,6 +40,11 @@ export function buildSourceRecord(input: BuildSourceRecordInput): Quad[] {
   if (input.line !== undefined) {
     out.push(
       quad(record, namedNode(input.predicates.line), literal(String(input.line), XSD_INTEGER)),
+    );
+  }
+  if (input.endLine !== undefined) {
+    out.push(
+      quad(record, namedNode(input.predicates.endLine), literal(String(input.endLine), XSD_INTEGER)),
     );
   }
   return out;

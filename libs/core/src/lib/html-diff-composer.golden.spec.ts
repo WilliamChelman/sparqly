@@ -93,11 +93,11 @@ describe('composeHtmlDiff — golden fixtures', () => {
     const snippets = new Map<string, SnippetReadResult>([
       [
         'file:///cwd/a.ttl:7',
-        { kind: 'snippet', startLine: 5, focalLine: 7, lines: ['L5', 'L6', 'L7', 'L8', 'L9'] },
+        { kind: 'snippet', startLine: 5, focalStart: 7, focalEnd: 7, lines: ['L5', 'L6', 'L7', 'L8', 'L9'] },
       ],
       [
         'file:///cwd/b.ttl:3',
-        { kind: 'snippet', startLine: 1, focalLine: 3, lines: ['L1', 'L2', 'L3', 'L4', 'L5'] },
+        { kind: 'snippet', startLine: 1, focalStart: 3, focalEnd: 3, lines: ['L1', 'L2', 'L3', 'L4', 'L5'] },
       ],
     ]);
     const out = composeHtmlDiff(hunked, snippets, {

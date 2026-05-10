@@ -17,13 +17,15 @@ import type {
   template: `<div
     data-testid="snippet-stub"
     [attr.data-file]="file"
-    [attr.data-line]="line"
+    [attr.data-focal-start]="focalStart"
+    [attr.data-focal-end]="focalEnd"
     [attr.data-context]="context"
   ></div>`,
 })
 class SourceSnippetStub {
   @Input() file = '';
-  @Input() line = 0;
+  @Input() focalStart = 0;
+  @Input() focalEnd = 0;
   @Input() context = 0;
 }
 
@@ -239,6 +241,152 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     const rightChip = chips.querySelector('[data-testid=hunk-chip-right]');
     expect(leftChip?.textContent).toContain('left.ttl:4');
     expect(rightChip?.textContent).toContain('right.ttl:9');
+  });
+
+  it('renders compact `predicate ( item1 item2 )` for hunk lines that carry listItems, shortening item IRIs via the active prefixes', () => {
+    const result: GroupedDiffResponse = {
+      kind: 'grouped',
+      hunked: {
+        changed: [
+          {
+            anchor: 'http://example.org/Alice',
+            state: 'changed',
+            removed: 1,
+            added: 1,
+            lines: [
+              {
+                side: '-',
+                subjectPath: 'http://example.org/Alice',
+                predicate: 'http://example.org/friends',
+                object: '( <http://example.org/Bob> <http://example.org/Carl> )',
+                nquad:
+                  '<http://example.org/Alice> <http://example.org/friends> ( <http://example.org/Bob> <http://example.org/Carl> ) .',
+                listItems: [
+                  '<http://example.org/Bob>',
+                  '<http://example.org/Carl>',
+                ],
+              },
+              {
+                side: '+',
+                subjectPath: 'http://example.org/Alice',
+                predicate: 'http://example.org/friends',
+                object:
+                  '( <http://example.org/Bob> <http://example.org/Carl> <http://example.org/Donald> )',
+                nquad:
+                  '<http://example.org/Alice> <http://example.org/friends> ( <http://example.org/Bob> <http://example.org/Carl> <http://example.org/Donald> ) .',
+                listItems: [
+                  '<http://example.org/Bob>',
+                  '<http://example.org/Carl>',
+                  '<http://example.org/Donald>',
+                ],
+              },
+            ],
+            sourceRecords: { left: [], right: [] },
+          },
+        ],
+        removed: [],
+        added: [],
+        totals: { left: 0, right: 0 },
+      },
+    };
+
+    TestBed.configureTestingModule({
+      imports: [DiffResultRendererComponent],
+    }).overrideComponent(DiffResultRendererComponent, {
+      remove: { imports: [SourceSnippetComponent] },
+      add: { imports: [SourceSnippetStub] },
+    });
+    const fixture = TestBed.createComponent(DiffResultRendererComponent);
+    fixture.componentRef.setInput('result', result);
+    fixture.componentRef.setInput('displayContext', {
+      prefixes: { ex: 'http://example.org/' },
+    });
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+
+    const minus = root.querySelector('[data-testid=removed-line]')?.textContent ?? '';
+    const plus = root.querySelector('[data-testid=added-line]')?.textContent ?? '';
+    expect(minus).toContain('ex:friends ( ex:Bob ex:Carl )');
+    expect(plus).toContain('ex:friends ( ex:Bob ex:Carl ex:Donald )');
+    // The raw bnode object form must NOT leak through.
+    expect(minus).not.toContain('_:');
+    expect(plus).not.toContain('_:');
+  });
+
+  it('absorbs records whose [start..end] range is fully enclosed by a sibling parent range on the same side', () => {
+    // Parent range L11..L16 (e.g. a multi-line `( … )` list) on the left.
+    // Inner per-item rdf:first records L12..L12, L13..L13, L14..L14 should
+    // collapse into the parent — only one snippet renders for that side.
+    const result: GroupedDiffResponse = {
+      kind: 'grouped',
+      hunked: {
+        changed: [
+          {
+            anchor: 'http://example.org/a',
+            state: 'changed',
+            removed: 1,
+            added: 1,
+            lines: [
+              makeLine('-', 'http://example.org/a', 'http://example.org/p'),
+              makeLine('+', 'http://example.org/a', 'http://example.org/p'),
+            ],
+            sourceRecords: {
+              left: [
+                { file: 'file:///tmp/a.ttl', line: 11, endLine: 16 },
+                { file: 'file:///tmp/a.ttl', line: 12 },
+                { file: 'file:///tmp/a.ttl', line: 13 },
+                { file: 'file:///tmp/a.ttl', line: 14 },
+              ],
+              right: [],
+            },
+          },
+        ],
+        removed: [],
+        added: [],
+        totals: { left: 4, right: 0 },
+      },
+    };
+    const root = render(result);
+    const stubs = Array.from(
+      root.querySelectorAll('[data-testid=snippet-stub]'),
+    ) as HTMLElement[];
+    expect(stubs.length).toBe(1);
+    expect(stubs[0].getAttribute('data-focal-start')).toBe('11');
+    expect(stubs[0].getAttribute('data-focal-end')).toBe('16');
+  });
+
+  it('renders a snippet with focalStart=focalEnd for single-line records', () => {
+    const result: GroupedDiffResponse = {
+      kind: 'grouped',
+      hunked: {
+        changed: [
+          {
+            anchor: 'http://example.org/a',
+            state: 'changed',
+            removed: 1,
+            added: 1,
+            lines: [
+              makeLine('-', 'http://example.org/a', 'http://example.org/p'),
+              makeLine('+', 'http://example.org/a', 'http://example.org/p'),
+            ],
+            sourceRecords: {
+              left: [{ file: 'file:///tmp/a.ttl', line: 7 }],
+              right: [],
+            },
+          },
+        ],
+        removed: [],
+        added: [],
+        totals: { left: 1, right: 0 },
+      },
+    };
+    const root = render(result);
+    const stub = root.querySelector(
+      '[data-testid=snippet-stub]',
+    ) as HTMLElement | null;
+    expect(stub).toBeTruthy();
+    expect(stub?.getAttribute('data-focal-start')).toBe('7');
+    expect(stub?.getAttribute('data-focal-end')).toBe('7');
   });
 
   it('renders empty section copy "(none)" when a section has no hunks', () => {

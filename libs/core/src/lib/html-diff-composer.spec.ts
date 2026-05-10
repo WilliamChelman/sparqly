@@ -246,7 +246,8 @@ describe('composeHtmlDiff', () => {
         {
           kind: 'snippet' as const,
           startLine: 6,
-          focalLine: 7,
+          focalStart: 7,
+          focalEnd: 7,
           lines: ['L6', 'L7', 'L8'],
         },
       ],
@@ -255,7 +256,8 @@ describe('composeHtmlDiff', () => {
         {
           kind: 'snippet' as const,
           startLine: 2,
-          focalLine: 3,
+          focalStart: 3,
+          focalEnd: 3,
           lines: ['L2', 'L3', 'L4'],
         },
       ],

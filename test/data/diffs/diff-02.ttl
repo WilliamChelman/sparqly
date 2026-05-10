@@ -1,0 +1,20 @@
+prefix ex: <http://example.org/> 
+
+ex:Alice a ex:Person ; 
+  ex:name "Alice" ;
+  ex:ageNextYear 31 ;
+  ex:email "alice@example.be", 
+           "alice@example.ch" ;
+  ex:friends (ex:Bob ex:Carl ex:Donald) ;
+  ex:family (
+    ex:Alexander 
+    ex:Alex
+    ex:Arboricia
+  ) ;
+.
+
+ex:Carl a ex:Person ; 
+  ex:name "Carl" ;
+  ex:age 33 ;
+  ex:email "carl@example.com";
+. 

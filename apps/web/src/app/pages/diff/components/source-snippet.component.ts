@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http'
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   inject,
   input,
   OnInit,
@@ -11,7 +12,8 @@ import {
 export interface SnippetPayload {
   kind: 'snippet';
   startLine: number;
-  focalLine: number;
+  focalStart: number;
+  focalEnd: number;
   lines: string[];
 }
 
@@ -50,7 +52,7 @@ export type SnippetReadResult = SnippetPayload | SnippetUnavailable;
           <span
             data-testid="snippet-file"
             class="text-[11px] tracking-normal normal-case break-all text-foreground-muted"
-            >{{ file() }}:{{ s.focalLine }}</span
+            >{{ file() }}:{{ focalLabel(s) }}</span
           >
         </div>
         <div class="flex font-mono text-[11.5px] leading-[1.55]">
@@ -59,7 +61,7 @@ export type SnippetReadResult = SnippetPayload | SnippetUnavailable;
             data-testid="snippet-gutter"
             >@for (l of s.lines; track $index) {<span
               [class]="
-                s.startLine + $index === s.focalLine
+                isFocal(s, $index)
                   ? 'block font-semibold text-accent-strong dark:text-accent'
                   : 'block'
               "
@@ -71,10 +73,10 @@ export type SnippetReadResult = SnippetPayload | SnippetUnavailable;
             >@for (l of s.lines; track $index) {<span
               data-testid="snippet-line"
               [attr.data-line-number]="s.startLine + $index"
-              [attr.data-focal]="s.startLine + $index === s.focalLine ? 'true' : null"
+              [attr.data-focal]="isFocal(s, $index) ? 'true' : null"
               [class]="
-                s.startLine + $index === s.focalLine
-                  ? 'inline-block w-full my-line-focus'
+                isFocal(s, $index)
+                  ? 'block my-line-focus'
                   : 'block'
               "
               >{{ l }}</span
@@ -96,17 +98,23 @@ export class SourceSnippetComponent implements OnInit {
   private readonly http = inject(HttpClient);
 
   readonly file = input.required<string>();
-  readonly line = input.required<number>();
+  readonly focalStart = input.required<number>();
+  readonly focalEnd = input.required<number>();
   readonly context = input.required<number>();
 
   readonly snippet = signal<SnippetPayload | null>(null);
   readonly unavailable = signal<boolean>(false);
 
+  readonly isMultiLineFocal = computed(() => this.focalEnd() > this.focalStart());
+
   ngOnInit(): void {
-    const params = new HttpParams()
+    let params = new HttpParams()
       .set('file', this.file())
-      .set('line', String(this.line()))
+      .set('line', String(this.focalStart()))
       .set('snippetContext', String(this.context()));
+    if (this.isMultiLineFocal()) {
+      params = params.set('endLine', String(this.focalEnd()));
+    }
     this.http
       .get<SnippetReadResult>('/api/source-snippet', { params })
       .subscribe({
@@ -116,5 +124,16 @@ export class SourceSnippetComponent implements OnInit {
         },
         error: (_err: HttpErrorResponse) => this.unavailable.set(true),
       });
+  }
+
+  isFocal(s: SnippetPayload, index: number): boolean {
+    const lineNo = s.startLine + index;
+    return lineNo >= s.focalStart && lineNo <= s.focalEnd;
+  }
+
+  focalLabel(s: SnippetPayload): string {
+    return s.focalStart === s.focalEnd
+      ? String(s.focalStart)
+      : `${s.focalStart}-${s.focalEnd}`;
   }
 }

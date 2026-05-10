@@ -145,6 +145,7 @@ describe('ANNOTATE_SOURCE_TRANSFORM registry definition', () => {
       source: 'urn:sparqly:source',
       file: 'urn:sparqly:file',
       line: 'urn:sparqly:line',
+      endLine: 'urn:sparqly:endLine',
     });
   });
 });

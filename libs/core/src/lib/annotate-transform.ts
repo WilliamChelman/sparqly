@@ -13,7 +13,7 @@ import type {
 } from './transform-spec';
 
 const KEY = 'annotateSource';
-const KNOWN_KEYS = new Set(['source', 'file', 'line']);
+const KNOWN_KEYS = new Set(['source', 'file', 'line', 'endLine']);
 
 export function parseAnnotateTransform(raw: unknown): TransformApply {
   const predicates = parseAnnotateSpec(raw);
@@ -73,7 +73,8 @@ function isPredicateIris(value: unknown): value is AnnotationPredicateIris {
   return (
     typeof v['source'] === 'string' &&
     typeof v['file'] === 'string' &&
-    typeof v['line'] === 'string'
+    typeof v['line'] === 'string' &&
+    typeof v['endLine'] === 'string'
   );
 }
 
@@ -83,14 +84,14 @@ function parseAnnotateSpec(raw: unknown): AnnotationPredicateIris {
   }
   if (typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error(
-      `\`${KEY}\` must be omitted, \`null\`, or an object \`{ source?, file?, line? }\``,
+      `\`${KEY}\` must be omitted, \`null\`, or an object \`{ source?, file?, line?, endLine? }\``,
     );
   }
   const obj = raw as Record<string, unknown>;
   for (const key of Object.keys(obj)) {
     if (!KNOWN_KEYS.has(key)) {
       throw new Error(
-        `\`${KEY}\`: unknown key "${key}" (known: source, file, line)`,
+        `\`${KEY}\`: unknown key "${key}" (known: source, file, line, endLine)`,
       );
     }
   }
@@ -98,12 +99,13 @@ function parseAnnotateSpec(raw: unknown): AnnotationPredicateIris {
     source: pickIri(obj, 'source') ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.source,
     file: pickIri(obj, 'file') ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.file,
     line: pickIri(obj, 'line') ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.line,
+    endLine: pickIri(obj, 'endLine') ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.endLine,
   };
 }
 
 function pickIri(
   obj: Record<string, unknown>,
-  key: 'source' | 'file' | 'line',
+  key: 'source' | 'file' | 'line' | 'endLine',
 ): string | undefined {
   const v = obj[key];
   if (v === undefined) return undefined;
@@ -134,6 +136,7 @@ function applyAnnotate(
         asserted: record.quad,
         filePath: file,
         line: record.line,
+        endLine: record.endLine,
         predicates,
       });
       for (const q of recordQuads) out.addQuad(q);

@@ -6,6 +6,10 @@ sources:
   - id: era-shapes-head
     glob: ./data/era-shapes.ttl
     default: true
+  - id: diff-01
+    glob: ./data/diffs/diff-01.ttl
+  - id: diff-02
+    glob: ./data/diffs/diff-02.ttl
   - id: fedlex
     endpoint: https://fedlex.data.admin.ch/sparqlendpoint
 
