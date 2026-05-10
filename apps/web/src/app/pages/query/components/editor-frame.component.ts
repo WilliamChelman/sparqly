@@ -29,9 +29,10 @@ import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
           <span class="my-meta">{{ prefixLabel() }}</span>
         </span>
       </div>
-      <div class="my-body bg-surface">
+      <div class="my-body flex resize-y flex-col overflow-hidden bg-surface h-80 min-h-32">
         <app-yasqe-editor
           #editor
+          class="flex-1 min-h-0"
           [value]="value"
           (valueChange)="valueChange.emit($event)"
         />

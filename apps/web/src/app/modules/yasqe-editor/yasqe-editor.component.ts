@@ -30,8 +30,14 @@ type YasqeInstance = InstanceType<typeof Yasqe>;
   template: `<div #host class="yasqe-editor-host"></div>`,
   styles: [
     `
-      .yasqe-editor-host .yasqe {
+      :host {
+        display: block;
         min-height: 8rem;
+      }
+      .yasqe-editor-host {
+        height: 100%;
+      }
+      .yasqe-editor-host .yasqe {
         background: var(--bg-elevated);
         color: var(--ink);
         font-family: var(--font-mono);
@@ -49,6 +55,7 @@ export class YasqeEditorComponent implements AfterViewInit, OnDestroy {
   private host!: ElementRef<HTMLDivElement>;
 
   private instance: YasqeInstance | undefined;
+  private resizeObserver: ResizeObserver | undefined;
   private readonly valueSignal = signal('');
 
   readonly queryType: Signal<QueryType | undefined> = computed(() =>
@@ -91,9 +98,25 @@ export class YasqeEditorComponent implements AfterViewInit, OnDestroy {
         this.valueChange.emit(v);
       }
     });
+    const syncSize = () => {
+      const height = this.host.nativeElement.clientHeight;
+      if (height <= 0) return;
+      const cm = this.instance as unknown as {
+        setSize?: (w: number | string | null, h: number | string | null) => void;
+        refresh?: () => void;
+      };
+      cm.setSize?.(null, height);
+      cm.refresh?.();
+    };
+    syncSize();
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(syncSize);
+      this.resizeObserver.observe(this.host.nativeElement);
+    }
   }
 
   ngOnDestroy(): void {
+    this.resizeObserver?.disconnect();
     this.instance?.destroy();
   }
 }

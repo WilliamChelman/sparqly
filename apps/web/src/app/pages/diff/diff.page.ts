@@ -57,11 +57,14 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
               [value]="leftId()"
               (valueChange)="leftId.set($event)"
             />
-            <app-yasqe-editor
-              data-testid="editor-left"
-              [value]="leftQuery()"
-              (valueChange)="leftQuery.set($event)"
-            />
+            <div class="flex h-80 min-h-32 resize-y flex-col overflow-hidden rounded-lg border border-border bg-surface">
+              <app-yasqe-editor
+                class="min-h-0 flex-1"
+                data-testid="editor-left"
+                [value]="leftQuery()"
+                (valueChange)="leftQuery.set($event)"
+              />
+            </div>
 
             @if (errors()?.left) {
               <p
@@ -78,11 +81,14 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
               [value]="rightId()"
               (valueChange)="rightId.set($event)"
             />
-            <app-yasqe-editor
-              data-testid="editor-right"
-              [value]="rightQuery()"
-              (valueChange)="rightQuery.set($event)"
-            />
+            <div class="flex h-80 min-h-32 resize-y flex-col overflow-hidden rounded-lg border border-border bg-surface">
+              <app-yasqe-editor
+                class="min-h-0 flex-1"
+                data-testid="editor-right"
+                [value]="rightQuery()"
+                (valueChange)="rightQuery.set($event)"
+              />
+            </div>
 
             @if (errors()?.right) {
               <p
