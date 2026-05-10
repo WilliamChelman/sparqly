@@ -5,7 +5,6 @@ export interface SnippetRange {
   side: 'left' | 'right';
   focalStart: number;
   focalEnd: number;
-  anchorIds: ReadonlyArray<string>;
 }
 
 export function collectSnippetRanges(
@@ -48,7 +47,6 @@ function mergeNearby(ranges: SnippetRange[], context: number): SnippetRange[] {
       out[out.length - 1] = {
         ...prev,
         focalEnd: Math.max(prev.focalEnd, r.focalEnd),
-        anchorIds: [...prev.anchorIds, ...r.anchorIds],
       };
       continue;
     }
@@ -86,15 +84,5 @@ function toRange(
     side,
     focalStart: record.line,
     focalEnd: record.endLine ?? record.line,
-    anchorIds: [anchorIdFor(record.file, record.line)],
   };
-}
-
-function anchorIdFor(file: string, line: number): string {
-  return `${baseName(file)}-L${line}`;
-}
-
-function baseName(path: string): string {
-  const i = path.lastIndexOf('/');
-  return i < 0 ? path : path.slice(i + 1);
 }
