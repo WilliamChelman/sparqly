@@ -246,6 +246,9 @@ importers:
 
   libs/common:
     dependencies:
+      dedent:
+        specifier: ^1.7.2
+        version: 1.7.2(babel-plugin-macros@3.1.0)
       n3:
         specifier: ^2.0.3
         version: 2.0.3
