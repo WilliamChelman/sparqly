@@ -1,3 +1,26 @@
+## [0.18.0](https://github.com/WilliamChelman/sparqly/compare/v0.17.2...v0.18.0) (2026-05-10)
+
+### Features
+
+* **core,web:** multi-line object support for diff hunks ([a913cd9](https://github.com/WilliamChelman/sparqly/commit/a913cd92d298af610a076be51b2824b98631b65d))
+* **webapp:** add result-to-formatted converter for query page ([#180](https://github.com/WilliamChelman/sparqly/issues/180)) ([36188d3](https://github.com/WilliamChelman/sparqly/commit/36188d3fb49b6d7d3f6fe83dc37f73af1974169d))
+* **webapp:** add turtle/trig tab and unify formatted download ([#181](https://github.com/WilliamChelman/sparqly/issues/181)) ([88039d2](https://github.com/WilliamChelman/sparqly/commit/88039d25ad87a762d7aa69adc494e8c1cfaf1db0))
+* **webapp:** reify SELECT-spo into the turtle/trig tab and download ([#182](https://github.com/WilliamChelman/sparqly/issues/182)) ([1aa29cf](https://github.com/WilliamChelman/sparqly/commit/1aa29cfc0dbef4085aec848a0540c44f3c06c7a4))
+* **webapp:** resizable sparql editor ([7d17202](https://github.com/WilliamChelman/sparqly/commit/7d172024d72d4beac5600ea7c3215ecde600779b))
+* **web:** constellation logomark and ambient header drift ([e5e9ecd](https://github.com/WilliamChelman/sparqly/commit/e5e9ecd81a03a711ea0bb5a35ba7dc19be681539)), closes [#168](https://github.com/WilliamChelman/sparqly/issues/168)
+* **web:** editor frame and cm-s-sparqly CodeMirror theme ([#170](https://github.com/WilliamChelman/sparqly/issues/170)) ([573159e](https://github.com/WilliamChelman/sparqly/commit/573159e48392a493eb8d8269eeefed37494137c2))
+* **web:** lay diff-hunk left/right snippets side by side ([112bf2a](https://github.com/WilliamChelman/sparqly/commit/112bf2af86e20f0213844a1a089021ef8db06498))
+* **web:** merge adjacent diff source snippets and fix focal-highlight scroll width ([d732087](https://github.com/WilliamChelman/sparqly/commit/d732087b43c0b8dfb0444e281e75200c4f1825b5))
+* **web:** rebuild source picker on @angular/cdk/listbox ([#169](https://github.com/WilliamChelman/sparqly/issues/169)) ([cfee4f5](https://github.com/WilliamChelman/sparqly/commit/cfee4f5bb6ee89043ce6f226f9de16335d0589c1))
+* **web:** section diff result by classified hunks ([#173](https://github.com/WilliamChelman/sparqly/issues/173)) ([12300b4](https://github.com/WilliamChelman/sparqly/commit/12300b47e004a196c7768c421bd287c15bfb55fd))
+* **web:** typed result pipeline replacing YASR ([#171](https://github.com/WilliamChelman/sparqly/issues/171)) ([29a387d](https://github.com/WilliamChelman/sparqly/commit/29a387dcd7d50af561040fcbdf968452e3367276))
+* **web:** visual foundations — tokens, fonts, theme toggle ([1f90180](https://github.com/WilliamChelman/sparqly/commit/1f90180edb7894b595415a7086b9ca236160e7d6))
+
+### Bug Fixes
+
+* **web,cli-e2e:** restore editor-frame test markers and align snippet spec ([3883980](https://github.com/WilliamChelman/sparqly/commit/3883980013066329ab9dea5bfabeacaeea435522))
+* **web:** theme FOUC, accent contrast, red/green diff palette ([000f503](https://github.com/WilliamChelman/sparqly/commit/000f503b8593757d73c577ee7ed852d55728dc7a))
+
 ## [0.17.2](https://github.com/WilliamChelman/sparqly/compare/v0.17.1...v0.17.2) (2026-05-08)
 
 ### Bug Fixes
