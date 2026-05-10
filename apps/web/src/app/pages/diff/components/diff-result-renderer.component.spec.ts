@@ -132,22 +132,35 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     );
   });
 
-  it('renders three sections in order: Changed, Added, Removed', () => {
-    const root = render(emptyHunked());
-    const sections = Array.from(
-      root.querySelectorAll<HTMLElement>('section[data-testid^=section-]'),
-    );
-    expect(sections.map((s) => s.getAttribute('data-testid'))).toEqual([
-      'section-changed',
-      'section-added',
-      'section-removed',
-    ]);
+  it('renders all hunks in a single flat list with no section wrappers', () => {
+    const result: GroupedDiffResponse = {
+      kind: 'grouped',
+      hunked: {
+        changed: [changedHunk()],
+        added: [addedHunk()],
+        removed: [removedHunk()],
+        totals: { left: 2, right: 2 },
+      },
+    };
+    const root = render(result);
+
+    // No section wrappers anywhere in the rendered tree.
+    expect(
+      root.querySelectorAll('[data-testid^=section-]').length,
+    ).toBe(0);
+
+    // All three hunks are rendered as direct children of one flat list.
+    const list = root.querySelector('[data-testid=hunk-list]');
+    expect(list).toBeTruthy();
+    const hunks = list?.querySelectorAll('[data-testid=hunk]') ?? [];
+    expect(hunks.length).toBe(3);
   });
 
-  it('classifies hunks via the classifier, not via server-provided hunked.{changed,added,removed} buckets', () => {
+  it('tags each hunk with the classifier-derived state, not the server-provided bucket', () => {
     // Server-provided buckets are intentionally swapped: the "added" bucket
     // contains a hunk whose lines are all `-` (so should classify as removed),
-    // and vice versa. The renderer must trust the classifier.
+    // and vice versa. The renderer must trust the classifier when stamping
+    // each hunk's data-state.
     const result: GroupedDiffResponse = {
       kind: 'grouped',
       hunked: {
@@ -178,41 +191,17 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
       },
     };
     const root = render(result);
-    const addedHunks = root.querySelectorAll(
-      'section[data-testid=section-added] [data-testid=hunk]',
+    const hunks = Array.from(
+      root.querySelectorAll<HTMLElement>('[data-testid=hunk-list] [data-testid=hunk]'),
     );
-    const removedHunks = root.querySelectorAll(
-      'section[data-testid=section-removed] [data-testid=hunk]',
+    const byAnchor = new Map(
+      hunks.map((h) => [h.textContent ?? '', h.getAttribute('data-state')]),
     );
-    expect(addedHunks.length).toBe(1);
-    expect(addedHunks[0].textContent).toContain('should-be-added');
-    expect(removedHunks.length).toBe(1);
-    expect(removedHunks[0].textContent).toContain('should-be-removed');
-  });
-
-  it('shows section counts in each section head', () => {
-    const result: GroupedDiffResponse = {
-      kind: 'grouped',
-      hunked: {
-        changed: [changedHunk(), changedHunk()],
-        removed: [removedHunk()],
-        added: [addedHunk(), addedHunk(), addedHunk()],
-        totals: { left: 3, right: 5 },
-      },
-    };
-    const root = render(result);
-    const changedHead = root.querySelector(
-      'section[data-testid=section-changed] [data-testid=section-count]',
-    );
-    const addedHead = root.querySelector(
-      'section[data-testid=section-added] [data-testid=section-count]',
-    );
-    const removedHead = root.querySelector(
-      'section[data-testid=section-removed] [data-testid=section-count]',
-    );
-    expect(changedHead?.textContent).toContain('2');
-    expect(addedHead?.textContent).toContain('3');
-    expect(removedHead?.textContent).toContain('1');
+    const addedEl = hunks.find((h) => h.textContent?.includes('should-be-added'));
+    const removedEl = hunks.find((h) => h.textContent?.includes('should-be-removed'));
+    expect(addedEl?.getAttribute('data-state')).toBe('added');
+    expect(removedEl?.getAttribute('data-state')).toBe('removed');
+    expect(byAnchor.size).toBe(2);
   });
 
   it('renders per-hunk anchor chips for each source record', () => {
@@ -473,8 +462,13 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     expect(stub?.getAttribute('data-focal-end')).toBe('7');
   });
 
-  it('renders empty section copy "(none)" when a section has no hunks', () => {
-    const result: GroupedDiffResponse = {
+  it('renders an empty placeholder when the grouped result has no hunks', () => {
+    const root = render(emptyHunked());
+    expect(root.querySelector('[data-testid=hunk-list-empty]')).toBeTruthy();
+  });
+
+  it('omits the empty placeholder when at least one hunk is present', () => {
+    const populated: GroupedDiffResponse = {
       kind: 'grouped',
       hunked: {
         changed: [],
@@ -483,22 +477,11 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
         totals: { left: 0, right: 1 },
       },
     };
-    const root = render(result);
+    const root = render(populated);
+    expect(root.querySelector('[data-testid=hunk-list-empty]')).toBeFalsy();
     expect(
-      root.querySelector(
-        'section[data-testid=section-changed] [data-testid=section-empty]',
-      )?.textContent,
-    ).toContain('(none)');
-    expect(
-      root.querySelector(
-        'section[data-testid=section-removed] [data-testid=section-empty]',
-      ),
-    ).toBeTruthy();
-    expect(
-      root.querySelector(
-        'section[data-testid=section-added] [data-testid=section-empty]',
-      ),
-    ).toBeFalsy();
+      root.querySelectorAll('[data-testid=hunk-list] [data-testid=hunk]').length,
+    ).toBe(1);
   });
 });
 
