@@ -14,8 +14,14 @@ import type {
   Triple,
   TripleResult,
 } from '@app/core';
+import { parseRdfString, type FormatSerialization } from 'common';
+import {
+  resultToFormatted,
+  type FormattedResult,
+} from '../../utils/result-to-formatted';
 import { exportBindingsCsv } from '../../utils/csv-exporter';
 import { ErrorConstellationComponent } from './error-constellation.component';
+import { FormattedResultComponent } from './formatted-result.component';
 import { HeroIllustrationComponent } from './hero-illustration.component';
 import { LoadingConstellationComponent } from './loading-constellation.component';
 import { ResultAskComponent } from './result-ask.component';
@@ -30,7 +36,7 @@ export type ResultPaneState =
   | { kind: 'error'; message: string }
   | { kind: 'result'; result: DecodedResult };
 
-type Tab = 'table' | 'raw' | 'download';
+type Tab = 'table' | 'turtle' | 'raw' | 'download';
 
 interface DownloadOption {
   id: string;
@@ -45,6 +51,7 @@ interface DownloadOption {
   standalone: true,
   imports: [
     ErrorConstellationComponent,
+    FormattedResultComponent,
     HeroIllustrationComponent,
     LoadingConstellationComponent,
     ResultAskComponent,
@@ -91,9 +98,9 @@ interface DownloadOption {
             class="flex items-center justify-between gap-4 border-b border-border-muted bg-surface-sunken px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground-faint"
           >
             <nav role="tablist" class="flex gap-3.5">
-              @for (t of tabs; track t.id) {
+              @for (t of tabs(); track t.id) {
                 <button
-                  [attr.data-testid]="'tab-' + t.id"
+                  [attr.data-testid]="'tab-' + t.testId"
                   role="tab"
                   type="button"
                   [attr.aria-selected]="activeTab() === t.id"
@@ -125,6 +132,15 @@ interface DownloadOption {
                 }
                 @if (r?.kind === 'raw') {
                   <app-result-raw [text]="r!.raw" [contentType]="r!.contentType" />
+                }
+              }
+              @case ('turtle') {
+                @let f = formatted();
+                @if (f) {
+                  <app-formatted-result
+                    [body]="f.body"
+                    [serialization]="f.serialization"
+                  />
                 }
               }
               @case ('raw') {
@@ -163,18 +179,52 @@ export class ResultPaneComponent {
   readonly state = input.required<ResultPaneState>();
   readonly context = input<DisplayContext>({ prefixes: {} });
 
-  protected readonly tabs: ReadonlyArray<{ id: Tab; label: string }> = [
-    { id: 'table', label: 'table' },
-    { id: 'raw', label: 'raw' },
-    { id: 'download', label: 'download' },
-  ];
-
   private readonly _activeTab = signal<Tab>('table');
   readonly activeTab = this._activeTab.asReadonly();
+
+  // Memo of formatted bodies keyed on DecodedResult identity. WeakMap entries
+  // drop with the result, so a new query naturally discards the prior memo.
+  private readonly _formatCache = new WeakMap<DecodedResult, FormattedResult>();
 
   readonly currentResult = computed<DecodedResult | null>(() => {
     const s = this.state();
     return s.kind === 'result' ? s.result : null;
+  });
+
+  readonly serialization = computed<FormatSerialization | null>(() => {
+    const r = this.currentResult();
+    if (!r || r.kind !== 'triples') return null;
+    return r.triples.some((t) => t.graph) ? 'trig' : 'turtle';
+  });
+
+  readonly formatted = computed<FormattedResult | null>(() => {
+    const r = this.currentResult();
+    const tab = this._activeTab();
+    if (!r || r.kind !== 'triples') return null;
+    if (tab !== 'turtle' && tab !== 'download') return null;
+    let cached = this._formatCache.get(r);
+    if (!cached) {
+      const ctx = this.context();
+      const parsed = parseRdfString(r.raw);
+      cached = resultToFormatted(parsed.quads, parsed.prefixes, parsed.base, ctx);
+      this._formatCache.set(r, cached);
+    }
+    return cached;
+  });
+
+  readonly tabs = computed<
+    ReadonlyArray<{ id: Tab; testId: string; label: string }>
+  >(() => {
+    const out: { id: Tab; testId: string; label: string }[] = [
+      { id: 'table', testId: 'table', label: 'table' },
+    ];
+    const ser = this.serialization();
+    if (ser) {
+      out.push({ id: 'turtle', testId: ser, label: ser });
+    }
+    out.push({ id: 'raw', testId: 'raw', label: 'raw' });
+    out.push({ id: 'download', testId: 'download', label: 'download' });
+    return out;
   });
 
   readonly errorMessage = computed(() => {
@@ -202,7 +252,7 @@ export class ResultPaneComponent {
     if (!r) return [];
     if (r.kind === 'select') return selectDownloads(r);
     if (r.kind === 'ask') return askDownloads(r);
-    if (r.kind === 'triples') return tripleDownloads(r);
+    if (r.kind === 'triples') return tripleDownloads(r, this.formatted());
     return [];
   });
 
@@ -273,9 +323,12 @@ function askDownloads(r: AskResult): DownloadOption[] {
   ];
 }
 
-function tripleDownloads(r: TripleResult): DownloadOption[] {
-  const turtle =
-    r.contentType === 'text/turtle' ? r.raw : serializeNquads(r.triples);
+function tripleDownloads(
+  r: TripleResult,
+  formatted: FormattedResult | null,
+): DownloadOption[] {
+  const isTrig = formatted?.serialization === 'trig';
+  const formattedBody = formatted?.body ?? '';
   const nquads =
     r.contentType === 'application/n-quads'
       ? r.raw
@@ -283,10 +336,10 @@ function tripleDownloads(r: TripleResult): DownloadOption[] {
   return [
     {
       id: 'turtle',
-      label: 'Turtle',
-      filename: 'result.ttl',
-      mediaType: 'text/turtle',
-      body: turtle,
+      label: isTrig ? 'TriG' : 'Turtle',
+      filename: isTrig ? 'result.trig' : 'result.ttl',
+      mediaType: isTrig ? 'application/trig' : 'text/turtle',
+      body: formattedBody,
     },
     {
       id: 'nquads',
