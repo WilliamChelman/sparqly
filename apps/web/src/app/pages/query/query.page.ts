@@ -1,4 +1,8 @@
-import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
+import {
+  HttpClient,
+  HttpErrorResponse,
+  HttpHeaders,
+} from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -45,7 +49,7 @@ function buildDefaultQuery(context: DisplayContext): string {
     lines.push(`PREFIX ${prefix}: <${iri}>`);
   }
   if (lines.length > 0) lines.push('');
-  return lines.join('\n') + DEFAULT_BODY;
+  return lines.join('\n') + '\n' + DEFAULT_BODY;
 }
 
 @Component({
