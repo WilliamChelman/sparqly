@@ -204,40 +204,6 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     expect(byAnchor.size).toBe(2);
   });
 
-  it('renders per-hunk anchor chips for each source record', () => {
-    const result: GroupedDiffResponse = {
-      kind: 'grouped',
-      hunked: {
-        changed: [
-          {
-            anchor: 'http://example.org/a',
-            state: 'changed',
-            removed: 1,
-            added: 1,
-            lines: [
-              makeLine('-', 'http://example.org/a', 'http://example.org/p'),
-              makeLine('+', 'http://example.org/a', 'http://example.org/p'),
-            ],
-            sourceRecords: {
-              left: [{ file: 'file:///tmp/left.ttl', line: 4 }],
-              right: [{ file: 'file:///tmp/right.ttl', line: 9 }],
-            },
-          },
-        ],
-        removed: [],
-        added: [],
-        totals: { left: 1, right: 1 },
-      },
-    };
-    const root = render(result);
-    const chips = root.querySelector('[data-testid=hunk-chips]') as HTMLElement;
-    expect(chips).toBeTruthy();
-    const leftChip = chips.querySelector('[data-testid=hunk-chip-left]');
-    const rightChip = chips.querySelector('[data-testid=hunk-chip-right]');
-    expect(leftChip?.textContent).toContain('left.ttl:4');
-    expect(rightChip?.textContent).toContain('right.ttl:9');
-  });
-
   it('renders a right-side placeholder when a hunk has only left source records', () => {
     const result: GroupedDiffResponse = {
       kind: 'grouped',
@@ -435,11 +401,10 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     expect(stubs[0].getAttribute('data-focal-end')).toBe('16');
   });
 
-  it('merges adjacent same-side source records into one snippet whose anchor markers cover every original line', () => {
+  it('merges adjacent same-side source records into one snippet covering every original line', () => {
     // Three single-line left records on lines 17, 18, 19 with the default
     // context=3: their snippet windows would already overlap, so the
-    // renderer collapses them into one source-snippet block while
-    // keeping per-line anchor markers so chips still navigate.
+    // renderer collapses them into one source-snippet block.
     const result: GroupedDiffResponse = {
       kind: 'grouped',
       hunked: {
@@ -475,9 +440,6 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     expect(stubs.length).toBe(1);
     expect(stubs[0].getAttribute('data-focal-start')).toBe('17');
     expect(stubs[0].getAttribute('data-focal-end')).toBe('19');
-    expect(root.querySelector('#a\\.ttl-L17')).toBeTruthy();
-    expect(root.querySelector('#a\\.ttl-L18')).toBeTruthy();
-    expect(root.querySelector('#a\\.ttl-L19')).toBeTruthy();
   });
 
   it('keeps non-adjacent same-side source records as separate snippets when their gap exceeds the context window', () => {

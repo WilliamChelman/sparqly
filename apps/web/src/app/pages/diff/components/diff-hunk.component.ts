@@ -7,7 +7,7 @@ import {
 } from '@angular/core';
 import { DEFAULT_PREFIXES, shortenNQuadLine } from 'common';
 import type { DisplayContext } from '@app/core';
-import type { Hunk, HunkLine, SourceRecord } from '../services/diff.service';
+import type { Hunk, HunkLine } from '../services/diff.service';
 import type { HunkClass } from '../utils/hunk-classifier';
 import {
   collectSnippetRanges,
@@ -16,31 +16,11 @@ import {
 import { curieOrIri, shortenObjectTerm } from '../utils/term-display';
 import { SourceSnippetComponent } from './source-snippet.component';
 
-interface RenderedChip {
-  readonly side: 'left' | 'right';
-  readonly text: string;
-  readonly anchorId: string;
-}
-
 @Component({
   selector: 'app-diff-hunk',
   standalone: true,
   imports: [SourceSnippetComponent, NgClass],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  styles: [
-    `
-      .my-hunk-chip-left::before {
-        content: '−';
-        color: var(--teal);
-        margin-right: 6px;
-      }
-      .my-hunk-chip-right::before {
-        content: '+';
-        color: var(--gold);
-        margin-right: 6px;
-      }
-    `,
-  ],
   template: `
     <article
       data-testid="hunk"
@@ -76,19 +56,6 @@ interface RenderedChip {
           }
         }
       </div>
-      @if (chips().length > 0) {
-        <div data-testid="hunk-chips" class="mt-2 flex flex-wrap gap-1.5">
-          @for (chip of chips(); track $index) {
-            <a
-              class="rounded-full border border-border bg-surface px-2 py-[3px] font-mono text-[10px] text-foreground-muted no-underline transition-colors hover:border-foreground-faint hover:text-foreground"
-              [class.my-hunk-chip-left]="chip.side === 'left'"
-              [class.my-hunk-chip-right]="chip.side === 'right'"
-              [attr.data-testid]="'hunk-chip-' + chip.side"
-              [attr.href]="'#' + chip.anchorId"
-            >{{ chip.text }}</a>
-          }
-        </div>
-      }
       @if (leftRecords().length > 0 || rightRecords().length > 0) {
         <div class="mt-2.5 flex flex-row flex-wrap gap-3">
           <div
@@ -98,11 +65,8 @@ interface RenderedChip {
               class="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-removed"
             >left</div>
             @if (leftRecords().length > 0) {
-              @for (rec of leftRecords(); track rec.anchorIds[0]) {
+              @for (rec of leftRecords(); track rec.focalStart) {
                 <div data-testid="hunk-snippet">
-                  @for (aid of rec.anchorIds; track aid) {
-                    <span [attr.id]="aid"></span>
-                  }
                   <app-source-snippet
                     [file]="rec.file"
                     [focalStart]="rec.focalStart"
@@ -125,11 +89,8 @@ interface RenderedChip {
               class="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-added"
             >right</div>
             @if (rightRecords().length > 0) {
-              @for (rec of rightRecords(); track rec.anchorIds[0]) {
+              @for (rec of rightRecords(); track rec.focalStart) {
                 <div data-testid="hunk-snippet">
-                  @for (aid of rec.anchorIds; track aid) {
-                    <span [attr.id]="aid"></span>
-                  }
                   <app-source-snippet
                     [file]="rec.file"
                     [focalStart]="rec.focalStart"
@@ -195,14 +156,6 @@ export class DiffHunkComponent {
     this.ranges().filter((r) => r.side === 'right'),
   );
 
-  readonly chips = computed<ReadonlyArray<RenderedChip>>(() => {
-    const h = this.hunk();
-    const out: RenderedChip[] = [];
-    for (const r of h.sourceRecords.left) out.push(chipFor(r, 'left'));
-    for (const r of h.sourceRecords.right) out.push(chipFor(r, 'right'));
-    return out;
-  });
-
   readonly stateClasses = computed<Record<string, boolean>>(() => {
     const c = this.cls();
     return {
@@ -233,16 +186,4 @@ export class DiffHunkComponent {
       ? shortened.slice(prefix.length)
       : shortened;
   }
-}
-
-function chipFor(record: SourceRecord, side: 'left' | 'right'): RenderedChip {
-  const base = baseName(record.file);
-  const anchorId = record.line === undefined ? base : `${base}-L${record.line}`;
-  const text = record.line === undefined ? base : `${base}:${record.line}`;
-  return { side, text, anchorId };
-}
-
-function baseName(path: string): string {
-  const i = path.lastIndexOf('/');
-  return i < 0 ? path : path.slice(i + 1);
 }

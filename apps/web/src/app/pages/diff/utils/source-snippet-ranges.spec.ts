@@ -22,7 +22,7 @@ describe('collectSnippetRanges', () => {
     expect(collectSnippetRanges(hunkWith(), 3)).toEqual([]);
   });
 
-  it('emits one range per single-line source record, with file-line anchor id', () => {
+  it('emits one range per single-line source record', () => {
     const ranges = collectSnippetRanges(
       hunkWith({ left: [{ file: 'file:///tmp/a.ttl', line: 7 }] }),
       3,
@@ -33,12 +33,11 @@ describe('collectSnippetRanges', () => {
         side: 'left',
         focalStart: 7,
         focalEnd: 7,
-        anchorIds: ['a.ttl-L7'],
       },
     ]);
   });
 
-  it('merges two adjacent same-side records into one range carrying both anchor ids', () => {
+  it('merges two adjacent same-side records into one range', () => {
     const ranges = collectSnippetRanges(
       hunkWith({
         left: [
@@ -54,7 +53,6 @@ describe('collectSnippetRanges', () => {
         side: 'left',
         focalStart: 17,
         focalEnd: 18,
-        anchorIds: ['a.ttl-L17', 'a.ttl-L18'],
       },
     ]);
   });
@@ -123,7 +121,7 @@ describe('collectSnippetRanges', () => {
     expect(ranges[0].focalEnd).toBe(25);
   });
 
-  it('chains contiguous records into one range, preserving anchor ids in source order', () => {
+  it('chains contiguous records into one range covering every line', () => {
     const ranges = collectSnippetRanges(
       hunkWith({
         left: [
@@ -137,7 +135,6 @@ describe('collectSnippetRanges', () => {
     expect(ranges).toHaveLength(1);
     expect(ranges[0].focalStart).toBe(17);
     expect(ranges[0].focalEnd).toBe(19);
-    expect(ranges[0].anchorIds).toEqual(['a.ttl-L17', 'a.ttl-L18', 'a.ttl-L19']);
   });
 
   it('drops a record whose [start..end] range is fully enclosed by another on the same file+side', () => {
@@ -158,7 +155,6 @@ describe('collectSnippetRanges', () => {
         side: 'left',
         focalStart: 11,
         focalEnd: 16,
-        anchorIds: ['a.ttl-L11'],
       },
     ]);
   });
