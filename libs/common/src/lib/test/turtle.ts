@@ -1,5 +1,5 @@
 import dedent from 'dedent';
-import { parseRdfString, type ParsedRdfString } from 'common';
+import { parseRdfString, type ParsedRdfString } from '../parse-rdf-string';
 
 export function ttl(
   strings: TemplateStringsArray,

@@ -1,7 +1,7 @@
 import { Parser, type Quad, type Store, type Term } from 'n3';
+import { shortenNQuadLine } from 'common';
 import { canonicalizeStore } from './canonicalize';
 import { formatHumanSourceComment } from './format-human-source-comment';
-import { shortenNQuadLine } from './formatter';
 import {
   formatGroupedRdfDiff,
   type FormatGroupedRdfDiffOptions,
