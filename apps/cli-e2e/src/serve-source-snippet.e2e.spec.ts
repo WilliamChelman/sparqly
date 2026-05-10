@@ -67,12 +67,14 @@ describe('sparqly serve — GET /api/source-snippet (issue #145)', () => {
     expect(resp.headers.get('content-type')).toMatch(/application\/json/);
     const json = (await resp.json()) as {
       kind: string;
-      focalLine: number;
+      focalStart: number;
+      focalEnd: number;
       startLine: number;
       lines: string[];
     };
     expect(json.kind).toBe('snippet');
-    expect(json.focalLine).toBe(3);
+    expect(json.focalStart).toBe(3);
+    expect(json.focalEnd).toBe(3);
     expect(json.startLine).toBe(2);
     expect(json.lines).toEqual(['', 'ex:a ex:p ex:b .', 'ex:a ex:q ex:c .']);
   });

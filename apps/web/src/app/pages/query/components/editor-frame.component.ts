@@ -18,18 +18,18 @@ import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
   template: `
     <div class="overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
       <div
-        class="flex items-center justify-between border-b border-border-muted bg-surface-sunken px-3.5 py-2"
+        class="my-head flex items-center justify-between border-b border-border-muted bg-surface-sunken px-3.5 py-2"
       >
         <span
-          class="font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint"
+          class="my-name font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint"
           >{{ name }}</span
         >
         <span class="flex gap-3.5 font-mono text-[10px] text-foreground-faint">
-          <span class="font-medium text-secondary">{{ kindLabel() }}</span>
-          <span>{{ prefixLabel() }}</span>
+          <span class="my-kind font-medium text-secondary">{{ kindLabel() }}</span>
+          <span class="my-meta">{{ prefixLabel() }}</span>
         </span>
       </div>
-      <div class="bg-surface">
+      <div class="my-body bg-surface">
         <app-yasqe-editor
           #editor
           [value]="value"
