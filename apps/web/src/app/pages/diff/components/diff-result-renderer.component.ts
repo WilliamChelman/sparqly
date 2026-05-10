@@ -1,4 +1,4 @@
-import { NgTemplateOutlet } from '@angular/common';
+import { NgClass, NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -58,13 +58,38 @@ const OVERFLOW_LINE_THRESHOLD = 20;
 @Component({
   selector: 'app-diff-result-renderer',
   standalone: true,
-  imports: [SourceSnippetComponent, NgTemplateOutlet],
+  imports: [SourceSnippetComponent, NgTemplateOutlet, NgClass],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [
+    `
+      .my-hunk-chip-left::before {
+        content: '−';
+        color: var(--teal);
+        margin-right: 6px;
+      }
+      .my-hunk-chip-right::before {
+        content: '+';
+        color: var(--gold);
+        margin-right: 6px;
+      }
+
+      .my-hunk-overflow > summary::-webkit-details-marker {
+        display: none;
+      }
+      .my-hunk-overflow > summary::before {
+        content: '▸ ';
+        color: var(--ink-faint);
+      }
+      .my-hunk-overflow[open] > summary::before {
+        content: '▾ ';
+      }
+    `,
+  ],
   template: `
     @if (totalsLine(); as line) {
       <p
         data-testid="diff-totals"
-        class="font-mono text-xs text-foreground-muted"
+        class="flex items-center gap-3.5 rounded-lg border border-border-muted bg-surface-sunken px-[18px] py-3 font-mono text-xs text-foreground-muted"
       >
         # {{ line }}
       </p>
@@ -72,29 +97,34 @@ const OVERFLOW_LINE_THRESHOLD = 20;
     @if (tabularView(); as t) {
       <table
         data-testid="tabular-diff"
-        class="w-full border-collapse text-xs"
+        class="w-full border-collapse bg-surface font-mono text-xs [&_td]:border-b [&_td]:border-border-muted [&_td]:px-3 [&_td]:py-[7px] [&_td]:text-left [&_th]:border-b [&_th]:border-border-muted [&_th]:px-3 [&_th]:py-[7px] [&_th]:text-left [&_thead_th]:bg-surface-sunken [&_thead_th]:font-sans [&_thead_th]:text-[10px] [&_thead_th]:uppercase [&_thead_th]:tracking-[0.14em] [&_thead_th]:text-foreground-faint"
       >
         <thead>
-          <tr class="border-b border-border text-left">
-            <th class="px-2 py-1 font-semibold">side</th>
-            <th class="px-2 py-1 font-semibold">count</th>
+          <tr>
+            <th data-col="side" class="w-[26px] text-center">side</th>
+            <th data-col="count">count</th>
             @for (v of t.variables; track v) {
-              <th class="px-2 py-1 font-semibold">{{ v }}</th>
+              <th>{{ v }}</th>
             }
           </tr>
         </thead>
         <tbody>
           @for (e of tabularRows(t); track $index) {
-            <tr class="border-b border-border-muted">
+            <tr
+              [class.bg-added-bg]="e.side === '+'"
+              [class.bg-removed-bg]="e.side === '-'"
+            >
               <td
                 data-col="side"
-                class="px-2 py-1 font-mono"
-                [class.bg-removed-bg]="e.side === '-'"
-                [class.bg-added-bg]="e.side === '+'"
+                class="w-[26px] text-center font-semibold"
+                [class.text-accent-strong]="e.side === '+'"
+                [class.dark:text-accent]="e.side === '+'"
+                [class.text-secondary-strong]="e.side === '-'"
+                [class.dark:text-secondary]="e.side === '-'"
               >{{ e.side }}</td>
-              <td data-col="count" class="px-2 py-1 font-mono">{{ e.entry.count }}</td>
+              <td data-col="count">{{ e.entry.count }}</td>
               @for (v of t.variables; track v) {
-                <td class="px-2 py-1 font-mono">{{ termText(e.entry.row[v]) }}</td>
+                <td>{{ termText(e.entry.row[v]) }}</td>
               }
             </tr>
           }
@@ -102,84 +132,128 @@ const OVERFLOW_LINE_THRESHOLD = 20;
       </table>
     }
     @if (groupedView(); as g) {
-      <section data-testid="section-changed">
-        <h2 class="font-serif text-base italic text-foreground">Changed</h2>
-        @if (changedHunks().length === 0) {
-          <p data-testid="section-empty-changed" class="text-xs italic text-foreground-faint">(none)</p>
-        }
-        @for (rh of changedHunks(); track rh.hunk.anchor) {
-          <ng-container *ngTemplateOutlet="hunkTpl; context: { $implicit: rh, section: 'changed' }" />
-        }
-      </section>
-      <section data-testid="section-removed">
-        <h2 class="font-serif text-base italic text-foreground">Removed</h2>
-        @if (removedHunks().length === 0) {
-          <p data-testid="section-empty-removed" class="text-xs italic text-foreground-faint">(none)</p>
-        }
-        @for (rh of removedHunks(); track rh.hunk.anchor) {
-          <ng-container *ngTemplateOutlet="hunkTpl; context: { $implicit: rh, section: 'removed' }" />
-        }
-      </section>
-      <section data-testid="section-added">
-        <h2 class="font-serif text-base italic text-foreground">Added</h2>
-        @if (addedHunks().length === 0) {
-          <p data-testid="section-empty-added" class="text-xs italic text-foreground-faint">(none)</p>
-        }
-        @for (rh of addedHunks(); track rh.hunk.anchor) {
-          <ng-container *ngTemplateOutlet="hunkTpl; context: { $implicit: rh, section: 'added' }" />
-        }
-      </section>
+      <ng-container
+        *ngTemplateOutlet="
+          sectionTpl;
+          context: {
+            testid: 'section-changed',
+            emptyTestid: 'section-empty-changed',
+            title: 'Changed',
+            hunks: changedHunks(),
+            countLabel: changedCountLabel(),
+          }
+        "
+      />
+      <ng-container
+        *ngTemplateOutlet="
+          sectionTpl;
+          context: {
+            testid: 'section-removed',
+            emptyTestid: 'section-empty-removed',
+            title: 'Removed',
+            hunks: removedHunks(),
+            countLabel: removedCountLabel(),
+          }
+        "
+      />
+      <ng-container
+        *ngTemplateOutlet="
+          sectionTpl;
+          context: {
+            testid: 'section-added',
+            emptyTestid: 'section-empty-added',
+            title: 'Added',
+            hunks: addedHunks(),
+            countLabel: addedCountLabel(),
+          }
+        "
+      />
 
-      <ng-template #hunkTpl let-rh let-section="section">
+      <ng-template
+        #sectionTpl
+        let-testid="testid"
+        let-emptyTestid="emptyTestid"
+        let-title="title"
+        let-hunks="hunks"
+        let-countLabel="countLabel"
+      >
+        <section [attr.data-testid]="testid" class="mt-2">
+          <div
+            class="mb-2 flex items-baseline justify-between border-b border-dashed border-border-muted pb-2 pt-4"
+          >
+            <h2
+              class="m-0 font-serif text-lg font-medium italic text-foreground [font-variation-settings:'opsz'_36]"
+            >{{ title }}</h2>
+            <span
+              class="font-mono text-[11px] uppercase tracking-[0.12em] text-foreground-faint"
+              >{{ countLabel }}</span
+            >
+          </div>
+          @if (hunks.length === 0) {
+            <p
+              [attr.data-testid]="emptyTestid"
+              class="my-2 font-serif text-sm italic text-foreground-faint"
+            >(none)</p>
+          }
+          @for (rh of hunks; track rh.hunk.anchor) {
+            <ng-container *ngTemplateOutlet="hunkTpl; context: { $implicit: rh }" />
+          }
+        </section>
+      </ng-template>
+
+      <ng-template #hunkTpl let-rh>
         <article
           data-testid="hunk"
-          [attr.data-state]="rh.hunk.state"
-          [attr.data-section]="section"
-          [attr.data-orphan]="rh.hunk.orphan ? 'true' : null"
-          class="my-2 border-l-2 border-border pl-2"
+          class="relative my-3 rounded-r-md border-l-2 py-3.5 pl-[22px] pr-4"
+          [ngClass]="hunkStateClasses(rh.hunk.state)"
         >
-          <header data-testid="hunk-header" class="flex flex-col gap-1">
-            <div data-testid="hunk-title" class="break-all font-mono text-xs font-semibold">
+          <header data-testid="hunk-header" class="mb-2 flex flex-col gap-1.5">
+            <div
+              data-testid="hunk-title"
+              class="flex flex-wrap items-center gap-2.5 break-all font-mono text-xs font-semibold text-foreground"
+            >
               {{ rh.anchorDisplay }}@if (rh.rdfTypeDisplay) {  ({{ rh.rdfTypeDisplay }}) }@if (rh.hunk.orphan) {  (orphan) }@if (rh.stateLabel) {  ({{ rh.stateLabel }}) }  {{ rh.countsLabel }}
             </div>
             @if (rh.chips.length > 0) {
-              <div data-testid="hunk-chips" class="flex flex-wrap gap-1 font-mono text-[11px]">
+              <div data-testid="hunk-chips" class="flex flex-wrap gap-1.5">
                 @for (chip of rh.chips; track $index) {
                   <a
+                    class="rounded-full border border-border bg-surface px-2 py-[3px] font-mono text-[10px] text-foreground-muted no-underline transition-colors hover:border-foreground-faint hover:text-foreground"
+                    [class.my-hunk-chip-left]="chip.side === 'left'"
+                    [class.my-hunk-chip-right]="chip.side === 'right'"
                     [attr.data-testid]="'hunk-chip-' + chip.side"
                     [attr.href]="'#' + chip.anchorId"
-                    [class.bg-removed-bg]="chip.side === 'left'"
-                    [class.bg-added-bg]="chip.side === 'right'"
-                    [class.border-removed-line]="chip.side === 'left'"
-                    [class.border-added-line]="chip.side === 'right'"
-                    class="rounded border px-1"
                   >{{ chip.text }}</a>
                 }
               </div>
             }
           </header>
           @if (rh.overflow) {
-            <details data-testid="hunk-overflow" class="mt-1">
-              <summary class="cursor-pointer text-xs text-foreground-muted">{{ rh.overflowLabel }}</summary>
+            <details data-testid="hunk-overflow" class="my-hunk-overflow mt-1">
+              <summary class="cursor-pointer list-none font-mono text-[11px] text-foreground-muted">{{ rh.overflowLabel }}</summary>
               <ng-container *ngTemplateOutlet="bodyTpl; context: { $implicit: rh }" />
             </details>
           } @else {
             <ng-container *ngTemplateOutlet="bodyTpl; context: { $implicit: rh }" />
           }
           @if (rh.records.length > 0) {
-            <div data-testid="hunk-snippets" class="mt-1 flex flex-col gap-3">
+            <div
+              data-testid="hunk-snippets"
+              class="mt-2.5 flex flex-col gap-3"
+            >
               @if (rh.leftRecords.length > 0) {
                 <div
                   data-testid="hunk-snippets-left"
-                  class="flex flex-col gap-1 rounded border border-removed-line bg-removed-bg p-2"
+                  class="flex flex-col gap-1.5 rounded-md border border-removed-line bg-removed-bg p-2.5"
                 >
-                  <div class="font-mono text-[11px] font-semibold uppercase tracking-wide text-removed">left</div>
+                  <div
+                    class="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-removed"
+                  >left</div>
                   @for (rec of rh.leftRecords; track rec.anchorId) {
                     <div
                       [attr.id]="rec.anchorId"
-                      [attr.data-testid]="'hunk-snippet'"
+                      data-testid="hunk-snippet"
                       [attr.data-anchor-id]="rec.anchorId"
-                      [attr.data-side]="'left'"
                     >
                       <app-source-snippet
                         [file]="rec.file"
@@ -193,15 +267,16 @@ const OVERFLOW_LINE_THRESHOLD = 20;
               @if (rh.rightRecords.length > 0) {
                 <div
                   data-testid="hunk-snippets-right"
-                  class="flex flex-col gap-1 rounded border border-added-line bg-added-bg p-2"
+                  class="flex flex-col gap-1.5 rounded-md border border-added-line bg-added-bg p-2.5"
                 >
-                  <div class="font-mono text-[11px] font-semibold uppercase tracking-wide text-added">right</div>
+                  <div
+                    class="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-added"
+                  >right</div>
                   @for (rec of rh.rightRecords; track rec.anchorId) {
                     <div
                       [attr.id]="rec.anchorId"
-                      [attr.data-testid]="'hunk-snippet'"
+                      data-testid="hunk-snippet"
                       [attr.data-anchor-id]="rec.anchorId"
-                      [attr.data-side]="'right'"
                     >
                       <app-source-snippet
                         [file]="rec.file"
@@ -218,10 +293,16 @@ const OVERFLOW_LINE_THRESHOLD = 20;
       </ng-template>
 
       <ng-template #bodyTpl let-rh>
-        <div data-testid="hunk-body" class="mt-1 overflow-x-auto font-mono text-xs">
+        <div
+          data-testid="hunk-body"
+          class="overflow-x-auto font-mono text-xs leading-[1.45]"
+        >
           @for (cluster of rh.clusters; track $index) {
             @if (cluster.pair) {
-              <div data-testid="hunk-pair" class="border-l border-border pl-1">
+              <div
+                data-testid="hunk-pair"
+                class="my-0.5 border-l border-border-muted pl-1"
+              >
                 @for (line of cluster.lines; track $index) {
                   <ng-container
                     *ngTemplateOutlet="lineTpl; context: { $implicit: line, rh: rh }"
@@ -241,12 +322,12 @@ const OVERFLOW_LINE_THRESHOLD = 20;
         @if (line.side === '-') {
           <span
             data-testid="removed-line"
-            class="block w-max min-w-full whitespace-pre rounded bg-removed-bg px-1"
+            class="block w-max min-w-full rounded-[3px] bg-removed-bg px-1.5 py-px whitespace-pre text-foreground"
           >- {{ formatLineBody(line, rh) }}</span>
         } @else {
           <span
             data-testid="added-line"
-            class="block w-max min-w-full whitespace-pre rounded bg-added-bg px-1"
+            class="block w-max min-w-full rounded-[3px] bg-added-bg px-1.5 py-px whitespace-pre text-foreground"
           >+ {{ formatLineBody(line, rh) }}</span>
         }
       </ng-template>
@@ -256,7 +337,7 @@ const OVERFLOW_LINE_THRESHOLD = 20;
       @if (errs?.top) {
         <p
           data-testid="error-top"
-          class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
+          class="flex items-start gap-2.5 rounded-lg border border-error-line bg-error-bg px-3.5 py-3 font-mono text-xs text-error"
         >
           {{ errs?.top }}
         </p>
@@ -265,7 +346,7 @@ const OVERFLOW_LINE_THRESHOLD = 20;
         @if (errs?.left) {
           <p
             data-testid="error-left"
-            class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
+            class="flex items-start gap-2.5 rounded-lg border border-error-line bg-error-bg px-3.5 py-3 font-mono text-xs text-error"
           >
             {{ errs?.left }}
           </p>
@@ -273,7 +354,7 @@ const OVERFLOW_LINE_THRESHOLD = 20;
         @if (errs?.right) {
           <p
             data-testid="error-right"
-            class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
+            class="flex items-start gap-2.5 rounded-lg border border-error-line bg-error-bg px-3.5 py-3 font-mono text-xs text-error"
           >
             {{ errs?.right }}
           </p>
@@ -326,6 +407,16 @@ export class DiffResultRendererComponent {
     return g === null ? [] : g.hunked.added.map((h) => this.renderHunk(h));
   });
 
+  readonly changedCountLabel = computed<string>(() =>
+    countLabel(this.changedHunks().length),
+  );
+  readonly removedCountLabel = computed<string>(() =>
+    countLabel(this.removedHunks().length),
+  );
+  readonly addedCountLabel = computed<string>(() =>
+    countLabel(this.addedHunks().length),
+  );
+
   readonly totalsLine = computed<string | null>(() => {
     const r = this.result();
     if (r.kind === 'grouped') {
@@ -343,6 +434,16 @@ export class DiffResultRendererComponent {
     }
     return null;
   });
+
+  hunkStateClasses(state: Hunk['state']): Record<string, boolean> {
+    return {
+      'border-l-accent': state === 'changed' || state === 'added',
+      'border-l-secondary': state === 'removed',
+      'bg-accent-soft/10': state === 'changed',
+      'bg-added-bg': state === 'added',
+      'bg-removed-bg': state === 'removed',
+    };
+  }
 
   tabularRows(
     t: TabularDiffResponse,
@@ -422,6 +523,11 @@ export class DiffResultRendererComponent {
       chips,
     };
   }
+}
+
+function countLabel(n: number): string {
+  if (n === 0) return '(none)';
+  return `${n} hunk${n === 1 ? '' : 's'}`;
 }
 
 function summaryLine(

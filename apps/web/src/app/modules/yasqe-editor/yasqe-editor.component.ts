@@ -28,6 +28,21 @@ type YasqeInstance = InstanceType<typeof Yasqe>;
   changeDetection: ChangeDetectionStrategy.OnPush,
   encapsulation: ViewEncapsulation.None,
   template: `<div #host class="yasqe-editor-host"></div>`,
+  styles: [
+    `
+      .yasqe-editor-host .yasqe {
+        min-height: 8rem;
+        background: var(--bg-elevated);
+        color: var(--ink);
+        font-family: var(--font-mono);
+      }
+      .yasqe_share,
+      .yasqe_sharePopup,
+      .yasqe_buttons {
+        display: none !important;
+      }
+    `,
+  ],
 })
 export class YasqeEditorComponent implements AfterViewInit, OnDestroy {
   @ViewChild('host', { static: true })

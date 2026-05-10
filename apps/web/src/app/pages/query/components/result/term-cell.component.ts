@@ -20,38 +20,35 @@ import { renderTerm, type TermDisplay } from './term-renderer';
     >
       @switch (d?.kind) {
         @case ('prefixed-iri') {
-          <span class="term-prefix">{{ asPrefixed(d).prefix }}</span
-          ><span class="term-iri-punct">:</span
-          ><span class="term-iri-local">{{ asPrefixed(d).local }}</span>
+          <span class="text-secondary dark:text-secondary-soft">{{ asPrefixed(d).prefix }}</span
+          ><span class="text-foreground-faint">:</span
+          >{{ asPrefixed(d).local }}
         }
         @case ('base-iri') {
-          <span class="term-iri-punct">&lt;</span
-          ><span class="term-iri-local">{{ asBase(d).local }}</span
-          ><span class="term-iri-punct">&gt;</span>
+          <span class="text-foreground-faint">&lt;</span
+          >{{ asBase(d).local }}<span class="text-foreground-faint">&gt;</span>
         }
         @case ('absolute-iri') {
-          <span class="term-iri-absolute">&lt;{{ asAbsolute(d).iri }}&gt;</span>
+          <span class="text-secondary-strong dark:text-secondary">&lt;{{ asAbsolute(d).iri }}&gt;</span>
         }
         @case ('plain-literal') {
-          <span class="term-literal">"{{ asPlain(d).lexical }}"</span>
+          "{{ asPlain(d).lexical }}"
         }
         @case ('language-literal') {
-          <span class="term-literal">"{{ asLang(d).lexical }}"</span
-          ><span class="term-literal-tag">&#64;{{ asLang(d).language }}</span>
+          "{{ asLang(d).lexical }}"<span class="text-foreground-faint">&#64;{{ asLang(d).language }}</span>
         }
         @case ('typed-literal') {
-          <span class="term-literal">"{{ asTyped(d).lexical }}"</span
-          ><span class="term-literal-tag">^^</span
+          "{{ asTyped(d).lexical }}"<span class="text-foreground-faint">^^</span
           ><app-term-cell
             [term]="iriPlaceholderTerm(asTyped(d).datatype)"
             [context]="context()"
           />
         }
         @case ('number') {
-          <span class="term-number">{{ asNumber(d).lexical }}</span>
+          <span class="font-medium text-accent-strong dark:text-accent">{{ asNumber(d).lexical }}</span>
         }
         @case ('blank') {
-          <span class="term-blank">{{ asBlank(d).label }}</span>
+          <span class="italic text-foreground-muted">{{ asBlank(d).label }}</span>
         }
       }
     </span>

@@ -10,123 +10,37 @@ import {
   Output,
   signal,
 } from '@angular/core';
-import {
-  ConfigService,
-  type SourceListingEntry,
-} from '@app/core';
+import { ConfigService, type SourceListingEntry } from '@app/core';
 
 @Component({
   selector: 'app-sources-picker',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CdkListboxModule],
-  styles: [
-    `
-      :host {
-        position: relative;
-        display: inline-block;
-      }
-
-      .my-picker {
-        display: inline-flex;
-        align-items: center;
-        gap: 10px;
-        padding: 8px 14px 8px 12px;
-        background: var(--bg-elevated);
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        font-size: 13px;
-        color: var(--ink);
-        cursor: pointer;
-        box-shadow: var(--shadow-sm);
-        transition:
-          border-color 0.2s,
-          box-shadow 0.2s,
-          transform 0.1s;
-      }
-      .my-picker:hover {
-        border-color: var(--ink-faint);
-      }
-      .my-picker:active {
-        transform: translateY(0.5px);
-      }
-      .my-picker:focus-visible {
-        outline: 2px solid var(--gold);
-        outline-offset: 2px;
-      }
-
-      .my-label {
-        font-family: var(--font-mono);
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: 0.14em;
-        color: var(--ink-faint);
-      }
-      .my-divider {
-        width: 1px;
-        height: 14px;
-        background: var(--line);
-      }
-      .my-value {
-        font-family: var(--font-sans);
-        font-weight: 500;
-      }
-      .my-chevron {
-        width: 10px;
-        height: 10px;
-        color: var(--ink-muted);
-        transition: transform 0.2s;
-      }
-      .my-picker.my-is-open .my-chevron {
-        transform: rotate(180deg);
-      }
-
-      .my-menu {
-        position: absolute;
-        top: calc(100% + 6px);
-        left: 0;
-        z-index: 10;
-        margin: 0;
-        padding: 6px;
-        list-style: none;
-        min-width: 100%;
-        border: 1px solid var(--line);
-        background: var(--bg-elevated);
-        border-radius: 8px;
-        box-shadow: var(--shadow-md);
-      }
-      .my-option {
-        padding: 6px 10px;
-        border-radius: 6px;
-        font-family: var(--font-sans);
-        font-size: 13px;
-        color: var(--ink-muted);
-        cursor: pointer;
-      }
-      .my-option:hover,
-      .my-option.cdk-option-active,
-      .my-option[aria-selected='true'] {
-        background: var(--bg-sunken);
-        color: var(--ink);
-      }
-    `,
-  ],
+  host: { class: 'relative inline-block' },
   template: `
     @if (sources() === null) {
       <span class="text-sm text-foreground-faint">loading sources…</span>
     } @else {
       <button
         type="button"
-        class="my-picker"
-        [class.my-is-open]="open()"
+        class="inline-flex cursor-pointer items-center gap-2.5 rounded-lg border border-border bg-surface py-2 pl-3 pr-3.5 text-[13px] text-foreground shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:border-foreground-faint active:translate-y-[0.5px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         [attr.aria-haspopup]="'listbox'"
         [attr.aria-expanded]="open()"
         (click)="toggle()"
       >
-        <span class="my-label">{{ label }}</span>
-        <span class="my-divider" aria-hidden="true"></span>
-        <span class="my-value">{{ triggerLabel() }}</span>
-        <svg class="my-chevron" viewBox="0 0 10 10" aria-hidden="true">
+        <span
+          class="font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint"
+          >{{ label }}</span
+        >
+        <span class="h-3.5 w-px bg-border" aria-hidden="true"></span>
+        <span class="font-sans font-medium">{{ triggerLabel() }}</span>
+        <svg
+          class="h-2.5 w-2.5 text-foreground-muted transition-transform duration-200"
+          [class.rotate-180]="open()"
+          viewBox="0 0 10 10"
+          aria-hidden="true"
+        >
           <path
             d="M2 4 L5 7 L8 4"
             stroke="currentColor"
@@ -140,7 +54,7 @@ import {
       @if (open()) {
         <ul
           cdkListbox
-          class="my-menu"
+          class="absolute left-0 top-[calc(100%+6px)] z-10 m-0 min-w-full list-none rounded-lg border border-border bg-surface p-1.5 shadow-md"
           [tabindex]="0"
           [cdkListboxValue]="[selectedId()]"
           (cdkListboxValueChange)="onPick($event.value)"
@@ -150,7 +64,7 @@ import {
             <li
               [cdkOption]="s.id"
               [attr.data-source-id]="s.id"
-              class="my-option"
+              class="cursor-pointer rounded-md px-2.5 py-1.5 font-sans text-[13px] text-foreground-muted hover:bg-surface-sunken hover:text-foreground aria-selected:bg-surface-sunken aria-selected:text-foreground [&.cdk-option-active]:bg-surface-sunken [&.cdk-option-active]:text-foreground"
             >
               {{ s.label }}
             </li>
