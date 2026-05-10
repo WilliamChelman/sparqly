@@ -355,6 +355,86 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     expect(stubs[0].getAttribute('data-focal-end')).toBe('16');
   });
 
+  it('merges adjacent same-side source records into one snippet whose anchor markers cover every original line', () => {
+    // Three single-line left records on lines 17, 18, 19 with the default
+    // context=3: their snippet windows would already overlap, so the
+    // renderer collapses them into one source-snippet block while
+    // keeping per-line anchor markers so chips still navigate.
+    const result: GroupedDiffResponse = {
+      kind: 'grouped',
+      hunked: {
+        changed: [
+          {
+            anchor: 'http://example.org/a',
+            state: 'changed',
+            removed: 1,
+            added: 1,
+            lines: [
+              makeLine('-', 'http://example.org/a', 'http://example.org/p'),
+              makeLine('+', 'http://example.org/a', 'http://example.org/p'),
+            ],
+            sourceRecords: {
+              left: [
+                { file: 'file:///tmp/a.ttl', line: 17 },
+                { file: 'file:///tmp/a.ttl', line: 18 },
+                { file: 'file:///tmp/a.ttl', line: 19 },
+              ],
+              right: [],
+            },
+          },
+        ],
+        removed: [],
+        added: [],
+        totals: { left: 3, right: 0 },
+      },
+    };
+    const root = render(result);
+    const stubs = Array.from(
+      root.querySelectorAll('[data-testid=snippet-stub]'),
+    ) as HTMLElement[];
+    expect(stubs.length).toBe(1);
+    expect(stubs[0].getAttribute('data-focal-start')).toBe('17');
+    expect(stubs[0].getAttribute('data-focal-end')).toBe('19');
+    expect(root.querySelector('#a\\.ttl-L17')).toBeTruthy();
+    expect(root.querySelector('#a\\.ttl-L18')).toBeTruthy();
+    expect(root.querySelector('#a\\.ttl-L19')).toBeTruthy();
+  });
+
+  it('keeps non-adjacent same-side source records as separate snippets when their gap exceeds the context window', () => {
+    const result: GroupedDiffResponse = {
+      kind: 'grouped',
+      hunked: {
+        changed: [
+          {
+            anchor: 'http://example.org/a',
+            state: 'changed',
+            removed: 1,
+            added: 1,
+            lines: [
+              makeLine('-', 'http://example.org/a', 'http://example.org/p'),
+              makeLine('+', 'http://example.org/a', 'http://example.org/p'),
+            ],
+            sourceRecords: {
+              left: [
+                { file: 'file:///tmp/a.ttl', line: 17 },
+                { file: 'file:///tmp/a.ttl', line: 22 },
+              ],
+              right: [],
+            },
+          },
+        ],
+        removed: [],
+        added: [],
+        totals: { left: 2, right: 0 },
+      },
+    };
+    const root = render(result, /* context */ 3);
+    const stubs = Array.from(
+      root.querySelectorAll('[data-testid=snippet-stub]'),
+    ) as HTMLElement[];
+    expect(stubs.length).toBe(2);
+  });
+
   it('renders a snippet with focalStart=focalEnd for single-line records', () => {
     const result: GroupedDiffResponse = {
       kind: 'grouped',

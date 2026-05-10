@@ -1,0 +1,165 @@
+import { collectSnippetRanges } from './source-snippet-ranges';
+import type { Hunk, SourceRecord } from '../services/diff.service';
+
+function hunkWith(
+  records: { left?: SourceRecord[]; right?: SourceRecord[] } = {},
+): Hunk {
+  return {
+    anchor: 'http://example.org/s',
+    state: 'changed',
+    removed: 0,
+    added: 0,
+    lines: [],
+    sourceRecords: {
+      left: records.left ?? [],
+      right: records.right ?? [],
+    },
+  };
+}
+
+describe('collectSnippetRanges', () => {
+  it('returns [] for a hunk with no source records', () => {
+    expect(collectSnippetRanges(hunkWith(), 3)).toEqual([]);
+  });
+
+  it('emits one range per single-line source record, with file-line anchor id', () => {
+    const ranges = collectSnippetRanges(
+      hunkWith({ left: [{ file: 'file:///tmp/a.ttl', line: 7 }] }),
+      3,
+    );
+    expect(ranges).toEqual([
+      {
+        file: 'file:///tmp/a.ttl',
+        side: 'left',
+        focalStart: 7,
+        focalEnd: 7,
+        anchorIds: ['a.ttl-L7'],
+      },
+    ]);
+  });
+
+  it('merges two adjacent same-side records into one range carrying both anchor ids', () => {
+    const ranges = collectSnippetRanges(
+      hunkWith({
+        left: [
+          { file: 'file:///tmp/a.ttl', line: 17 },
+          { file: 'file:///tmp/a.ttl', line: 18 },
+        ],
+      }),
+      3,
+    );
+    expect(ranges).toEqual([
+      {
+        file: 'file:///tmp/a.ttl',
+        side: 'left',
+        focalStart: 17,
+        focalEnd: 18,
+        anchorIds: ['a.ttl-L17', 'a.ttl-L18'],
+      },
+    ]);
+  });
+
+  it('keeps two same-side records separate when their gap exceeds the context window', () => {
+    // gap = 22 - 17 - 1 = 4 lines; with context=3, the windows would NOT visually touch.
+    const ranges = collectSnippetRanges(
+      hunkWith({
+        left: [
+          { file: 'file:///tmp/a.ttl', line: 17 },
+          { file: 'file:///tmp/a.ttl', line: 22 },
+        ],
+      }),
+      3,
+    );
+    expect(ranges).toHaveLength(2);
+    expect(ranges.map((r) => [r.focalStart, r.focalEnd])).toEqual([
+      [17, 17],
+      [22, 22],
+    ]);
+  });
+
+  it('does not merge adjacent-line records that live in different files', () => {
+    const ranges = collectSnippetRanges(
+      hunkWith({
+        left: [
+          { file: 'file:///tmp/a.ttl', line: 17 },
+          { file: 'file:///tmp/b.ttl', line: 18 },
+        ],
+      }),
+      3,
+    );
+    expect(ranges).toHaveLength(2);
+    expect(new Set(ranges.map((r) => r.file))).toEqual(
+      new Set(['file:///tmp/a.ttl', 'file:///tmp/b.ttl']),
+    );
+  });
+
+  it('does not merge adjacent-line records that live on different sides', () => {
+    const ranges = collectSnippetRanges(
+      hunkWith({
+        left: [{ file: 'file:///tmp/a.ttl', line: 17 }],
+        right: [{ file: 'file:///tmp/a.ttl', line: 18 }],
+      }),
+      3,
+    );
+    expect(ranges).toHaveLength(2);
+    expect(new Set(ranges.map((r) => r.side))).toEqual(
+      new Set(['left', 'right']),
+    );
+  });
+
+  it('measures gap from focalEnd, so multi-line ranges 17-19 + 23-25 merge under context=3', () => {
+    // gap = 23 - 19 - 1 = 3 lines; with context=3, the windows touch.
+    const ranges = collectSnippetRanges(
+      hunkWith({
+        left: [
+          { file: 'file:///tmp/a.ttl', line: 17, endLine: 19 },
+          { file: 'file:///tmp/a.ttl', line: 23, endLine: 25 },
+        ],
+      }),
+      3,
+    );
+    expect(ranges).toHaveLength(1);
+    expect(ranges[0].focalStart).toBe(17);
+    expect(ranges[0].focalEnd).toBe(25);
+  });
+
+  it('chains contiguous records into one range, preserving anchor ids in source order', () => {
+    const ranges = collectSnippetRanges(
+      hunkWith({
+        left: [
+          { file: 'file:///tmp/a.ttl', line: 17 },
+          { file: 'file:///tmp/a.ttl', line: 18 },
+          { file: 'file:///tmp/a.ttl', line: 19 },
+        ],
+      }),
+      1,
+    );
+    expect(ranges).toHaveLength(1);
+    expect(ranges[0].focalStart).toBe(17);
+    expect(ranges[0].focalEnd).toBe(19);
+    expect(ranges[0].anchorIds).toEqual(['a.ttl-L17', 'a.ttl-L18', 'a.ttl-L19']);
+  });
+
+  it('drops a record whose [start..end] range is fully enclosed by another on the same file+side', () => {
+    const ranges = collectSnippetRanges(
+      hunkWith({
+        left: [
+          { file: 'file:///tmp/a.ttl', line: 11, endLine: 16 },
+          { file: 'file:///tmp/a.ttl', line: 12 },
+          { file: 'file:///tmp/a.ttl', line: 13 },
+          { file: 'file:///tmp/a.ttl', line: 14 },
+        ],
+      }),
+      0,
+    );
+    expect(ranges).toEqual([
+      {
+        file: 'file:///tmp/a.ttl',
+        side: 'left',
+        focalStart: 11,
+        focalEnd: 16,
+        anchorIds: ['a.ttl-L11'],
+      },
+    ]);
+  });
+});
