@@ -238,6 +238,93 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     expect(rightChip?.textContent).toContain('right.ttl:9');
   });
 
+  it('renders a right-side placeholder when a hunk has only left source records', () => {
+    const result: GroupedDiffResponse = {
+      kind: 'grouped',
+      hunked: {
+        removed: [
+          {
+            anchor: 'http://example.org/gone',
+            state: 'removed',
+            removed: 1,
+            added: 0,
+            lines: [makeLine('-', 'http://example.org/gone', 'http://example.org/p')],
+            sourceRecords: {
+              left: [{ file: 'file:///tmp/left.ttl', line: 5 }],
+              right: [],
+            },
+          },
+        ],
+        changed: [],
+        added: [],
+        totals: { left: 1, right: 0 },
+      },
+    };
+    const root = render(result);
+    expect(root.querySelector('[data-testid=hunk-snippet-placeholder-right]')).toBeTruthy();
+    expect(root.querySelector('[data-testid=hunk-snippet-placeholder-left]')).toBeFalsy();
+    // The actual left snippet still renders.
+    expect(root.querySelectorAll('[data-testid=snippet-stub]').length).toBe(1);
+  });
+
+  it('renders a left-side placeholder when a hunk has only right source records', () => {
+    const result: GroupedDiffResponse = {
+      kind: 'grouped',
+      hunked: {
+        added: [
+          {
+            anchor: 'http://example.org/new',
+            state: 'added',
+            removed: 0,
+            added: 1,
+            lines: [makeLine('+', 'http://example.org/new', 'http://example.org/p')],
+            sourceRecords: {
+              left: [],
+              right: [{ file: 'file:///tmp/right.ttl', line: 9 }],
+            },
+          },
+        ],
+        changed: [],
+        removed: [],
+        totals: { left: 0, right: 1 },
+      },
+    };
+    const root = render(result);
+    expect(root.querySelector('[data-testid=hunk-snippet-placeholder-left]')).toBeTruthy();
+    expect(root.querySelector('[data-testid=hunk-snippet-placeholder-right]')).toBeFalsy();
+    expect(root.querySelectorAll('[data-testid=snippet-stub]').length).toBe(1);
+  });
+
+  it('renders no placeholders when both sides have source records', () => {
+    const result: GroupedDiffResponse = {
+      kind: 'grouped',
+      hunked: {
+        changed: [
+          {
+            anchor: 'http://example.org/a',
+            state: 'changed',
+            removed: 1,
+            added: 1,
+            lines: [
+              makeLine('-', 'http://example.org/a', 'http://example.org/p'),
+              makeLine('+', 'http://example.org/a', 'http://example.org/p'),
+            ],
+            sourceRecords: {
+              left: [{ file: 'file:///tmp/left.ttl', line: 4 }],
+              right: [{ file: 'file:///tmp/right.ttl', line: 9 }],
+            },
+          },
+        ],
+        removed: [],
+        added: [],
+        totals: { left: 1, right: 1 },
+      },
+    };
+    const root = render(result);
+    expect(root.querySelector('[data-testid=hunk-snippet-placeholder-left]')).toBeFalsy();
+    expect(root.querySelector('[data-testid=hunk-snippet-placeholder-right]')).toBeFalsy();
+  });
+
   it('renders compact `predicate ( item1 item2 )` for hunk lines that carry listItems, shortening item IRIs via the active prefixes', () => {
     const result: GroupedDiffResponse = {
       kind: 'grouped',
