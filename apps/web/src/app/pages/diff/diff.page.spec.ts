@@ -5,7 +5,7 @@ import { of, Subject } from 'rxjs';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
 import { DiffPage } from './diff.page';
-import { DiffResultRendererComponent } from './components/diff-result-renderer.component';
+import { DiffHunkComponent } from './components/diff-hunk.component';
 import { SourceSnippetComponent } from './components/source-snippet.component';
 import {
   ConfigService,
@@ -121,7 +121,7 @@ async function setup(listing: SourceListing, initialUrl = '/diff') {
       remove: { imports: [SourcesPickerComponent, YasqeEditorComponent] },
       add: { imports: [SourcesPickerStub, YasqeEditorStub] },
     })
-    .overrideComponent(DiffResultRendererComponent, {
+    .overrideComponent(DiffHunkComponent, {
       remove: { imports: [SourceSnippetComponent] },
       add: { imports: [SourceSnippetStub] },
     })

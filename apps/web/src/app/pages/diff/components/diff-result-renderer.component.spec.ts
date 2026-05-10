@@ -1,5 +1,6 @@
 import { Component, Input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { DiffHunkComponent } from './diff-hunk.component';
 import { DiffResultRendererComponent } from './diff-result-renderer.component';
 import { SourceSnippetComponent } from './source-snippet.component';
 import type {
@@ -29,13 +30,18 @@ class SourceSnippetStub {
   @Input() context = 0;
 }
 
-function render(result: DiffResponse, context = 3): HTMLElement {
-  TestBed.configureTestingModule({
-    imports: [DiffResultRendererComponent],
-  }).overrideComponent(DiffResultRendererComponent, {
+function stubSnippetComponent(): void {
+  TestBed.overrideComponent(DiffHunkComponent, {
     remove: { imports: [SourceSnippetComponent] },
     add: { imports: [SourceSnippetStub] },
   });
+}
+
+function render(result: DiffResponse, context = 3): HTMLElement {
+  TestBed.configureTestingModule({
+    imports: [DiffResultRendererComponent],
+  });
+  stubSnippetComponent();
   const fixture = TestBed.createComponent(DiffResultRendererComponent);
   fixture.componentRef.setInput('result', result);
   fixture.componentRef.setInput('context', context);
@@ -292,10 +298,8 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
 
     TestBed.configureTestingModule({
       imports: [DiffResultRendererComponent],
-    }).overrideComponent(DiffResultRendererComponent, {
-      remove: { imports: [SourceSnippetComponent] },
-      add: { imports: [SourceSnippetStub] },
     });
+    stubSnippetComponent();
     const fixture = TestBed.createComponent(DiffResultRendererComponent);
     fixture.componentRef.setInput('result', result);
     fixture.componentRef.setInput('displayContext', {
