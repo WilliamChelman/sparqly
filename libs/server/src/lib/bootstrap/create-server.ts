@@ -18,10 +18,10 @@ import {
   resolveSource,
   type SourceSpecInput,
 } from 'core';
-import { DEFAULT_DESCRIBE_CONFIG, type DescribeConfig } from './describe.service';
+import { DEFAULT_DESCRIBE_CONFIG, type DescribeConfig } from '../describe';
 import { EngineMap } from './engine-map';
 import { ServerModule } from './server.module';
-import { SnippetAllowList } from './snippet-allow-list';
+import { SnippetAllowList } from '../snippet';
 import type {
   SourceListingEntry,
   SparqlContext,

@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 import { DescribeService, type DescribeResult } from './describe.service';
-import { SPARQL_DESCRIBE_SERVICE } from './tokens';
+import { SPARQL_DESCRIBE_SERVICE } from '../bootstrap';
 
 const DESCRIBE_REQUEST_SCHEMA = z
   .object({

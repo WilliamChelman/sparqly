@@ -12,7 +12,7 @@ import {
 import { z } from 'zod';
 import { readSourceSnippet, type SnippetReadResult } from 'core';
 import { SnippetAllowList } from './snippet-allow-list';
-import { SPARQL_SNIPPET_ALLOW_LIST } from './tokens';
+import { SPARQL_SNIPPET_ALLOW_LIST } from '../bootstrap';
 
 const SNIPPET_QUERY_SCHEMA = z
   .object({

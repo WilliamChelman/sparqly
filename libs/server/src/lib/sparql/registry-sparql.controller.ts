@@ -14,13 +14,13 @@ import {
   Res,
 } from '@nestjs/common';
 import type { SparqlFormat } from 'core';
-import { EngineMap } from './engine-map';
 import {
+  EngineMap,
   SPARQL_CONFIG,
   SPARQL_DEFAULT_ID,
   SPARQL_ENGINE_MAP,
   type SparqlServerConfig,
-} from './tokens';
+} from '../bootstrap';
 
 const SPARQL_QUERY_CT = 'application/sparql-query';
 const FORM_CT = 'application/x-www-form-urlencoded';
