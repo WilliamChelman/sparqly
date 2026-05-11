@@ -1,5 +1,5 @@
-export * from './lib/query-engine';
-export * from './lib/rdf-loader';
+export * from './lib/engine/query-engine';
+export * from './lib/engine/rdf-loader';
 export * from './lib/canonical/canonicalize';
 export * from './lib/diff';
 export * from './lib/group-rdf-diff-by-entity';

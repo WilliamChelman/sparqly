@@ -1,7 +1,7 @@
 import { Store } from 'n3';
 import { describe, expect, it } from 'vitest';
 import { QueryEngine } from './query-engine';
-import { ttl } from './test/turtle';
+import { ttl } from '../test/turtle';
 
 function exampleStore(): Store {
   const { quads } = ttl`

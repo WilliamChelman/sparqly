@@ -4,7 +4,7 @@ import {
   GRAPH_NAME_TRANSFORM,
   parseGraphNameTransform,
 } from './graph-name-transform';
-import type { RdfRecord } from './rdf-file-parser';
+import type { RdfRecord } from './engine';
 
 const { namedNode, defaultGraph, quad } = DataFactory;
 

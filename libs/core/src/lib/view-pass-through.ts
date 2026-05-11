@@ -3,7 +3,7 @@ import { DataFactory, Store, type Quad } from 'n3';
 import {
   buildEndpointContext,
   describeEndpointError,
-} from './endpoint-http';
+} from './engine';
 import type { ParsedEndpointSource } from './source-spec';
 
 export interface ResolveViewPassThroughOptions {

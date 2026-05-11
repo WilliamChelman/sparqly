@@ -1,6 +1,6 @@
 import { Store } from 'n3';
 import { parseGraphNameTransform } from './graph-name-transform';
-import { loadRdf, type GraphMode, type LoadResult } from './rdf-loader';
+import { loadRdf, type GraphMode, type LoadResult } from './engine';
 import {
   type ParsedEndpointSource,
   type ParsedGlobSource,

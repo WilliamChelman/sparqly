@@ -1,5 +1,5 @@
 import { DataFactory, Store, type DefaultGraph, type NamedNode, type Quad } from 'n3';
-import { GRAPH_MODES, type GraphMode } from './rdf-loader';
+import { GRAPH_MODES, type GraphMode } from './engine';
 import type {
   TransformApply,
   TransformContext,

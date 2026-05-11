@@ -5,7 +5,7 @@ import type { Term } from 'n3';
 import {
   buildEndpointContext,
   describeEndpointError,
-} from './endpoint-http';
+} from './engine';
 import { resolveSource } from './resolve-source';
 import { detectSelectShape } from './select-shape-detector';
 import {

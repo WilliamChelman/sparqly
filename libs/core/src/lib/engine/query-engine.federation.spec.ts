@@ -3,7 +3,7 @@ import { QueryEngine } from './query-engine';
 import {
   startFakeSparqlEndpoint,
   type FakeSparqlEndpoint,
-} from './test/fake-sparql-endpoint';
+} from '../test/fake-sparql-endpoint';
 
 const SPARQL_JSON_TWO_BINDINGS = JSON.stringify({
   head: { vars: ['s', 'p', 'o'] },
