@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createServer, type CreatedServer } from './create-server';
+import { createServer, type CreatedServer } from '../bootstrap';
 
 const SAMPLE_A = '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n';
 const SAMPLE_B = '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .\n';

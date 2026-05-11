@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Logger } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createServer, type CreatedServer } from './create-server';
+import { createServer, type CreatedServer } from '../bootstrap';
 
 const SAMPLE_TTL = [
   '@prefix ex: <http://example.org/> .',

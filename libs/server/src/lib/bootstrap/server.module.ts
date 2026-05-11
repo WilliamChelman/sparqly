@@ -1,14 +1,15 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import type { ParsedSource } from 'core';
-import { ConfigController } from './config.controller';
-import { DescribeController } from './describe.controller';
-import { DescribeService, type DescribeConfig } from './describe.service';
-import { DiffController } from './diff.controller';
-import { DiffService } from './diff.service';
+import { ConfigController } from '../config';
+import {
+  DescribeController,
+  DescribeService,
+  type DescribeConfig,
+} from '../describe';
+import { DiffController, DiffService } from '../diff';
 import type { EngineMap } from './engine-map';
-import { RegistrySparqlController } from './registry-sparql.controller';
-import { SnippetAllowList } from './snippet-allow-list';
-import { SnippetController } from './snippet.controller';
+import { RegistrySparqlController } from '../sparql';
+import { SnippetAllowList, SnippetController } from '../snippet';
 import {
   SPARQL_CONFIG,
   SPARQL_CONTEXT,

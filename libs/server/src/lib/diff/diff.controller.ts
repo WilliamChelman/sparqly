@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 import { DiffService, type DiffResponse } from './diff.service';
-import { SPARQL_DIFF_SERVICE } from './tokens';
+import { SPARQL_DIFF_SERVICE } from '../bootstrap';
 
 const DIFF_REQUEST_SCHEMA = z
   .object({

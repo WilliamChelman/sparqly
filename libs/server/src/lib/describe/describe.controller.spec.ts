@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createServer, type CreatedServer } from './create-server';
+import { createServer, type CreatedServer } from '../bootstrap';
 import { DescribeController } from './describe.controller';
 import type {
   DescribeResponse,

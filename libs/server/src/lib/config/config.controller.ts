@@ -1,12 +1,12 @@
 import { Controller, Get, Inject } from '@nestjs/common';
-import type { DescribeConfig } from './describe.service';
+import type { DescribeConfig } from '../describe';
 import {
   SPARQL_CONTEXT,
   SPARQL_DESCRIBE_CONFIG,
   SPARQL_REGISTRY_LISTING,
   type SourceListingEntry,
   type SparqlContext,
-} from './tokens';
+} from '../bootstrap';
 
 @Controller('config')
 export class ConfigController {
