@@ -7,7 +7,7 @@ import {
   parseSourceSpecs,
   type ParsedSource,
   type ParsedViewSource,
-} from './sources';
+} from '../sources';
 import {
   clearCacheDir,
   invalidate,

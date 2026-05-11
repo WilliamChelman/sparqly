@@ -5,17 +5,17 @@ import type { Term } from 'n3';
 import {
   buildEndpointContext,
   describeEndpointError,
-} from './engine';
-import { resolveSource } from './sources';
-import { detectSelectShape } from './select-shape-detector';
+} from '../engine';
+import { resolveSource } from '../sources';
+import { detectSelectShape } from '../select-shape-detector';
 import {
   parseSourceSpec,
   parseSourceSpecs,
   type ParsedEndpointSource,
   type ParsedSource,
   type SourceSpecInput,
-} from './sources';
-import type { TabularRow } from './tabular-row-key';
+} from '../sources';
+import type { TabularRow } from '../tabular-row-key';
 import { validateViewQuery } from './view-query-validate';
 
 export interface AnonymousSelectBindingsInput {

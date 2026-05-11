@@ -6,7 +6,7 @@ import { resolveAnonymousSelectBindings } from './resolve-anonymous-select-bindi
 import {
   startFakeSparqlEndpoint,
   type FakeSparqlEndpoint,
-} from './test/fake-sparql-endpoint';
+} from '../test/fake-sparql-endpoint';
 
 describe('resolveAnonymousSelectBindings', () => {
   let dataDir: string;

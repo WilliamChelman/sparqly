@@ -2,13 +2,13 @@ import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import { DataFactory, Store, type Quad } from 'n3';
-import { loadRdf } from './engine';
-import { applyTransformPipeline } from './sources';
+import { loadRdf } from '../engine';
+import { applyTransformPipeline } from '../sources';
 import {
   type ParsedEndpointSource,
   type ParsedSource,
   type ParsedViewSource,
-} from './sources';
+} from '../sources';
 import {
   lookup as cacheLookup,
   storeView as cacheStore,

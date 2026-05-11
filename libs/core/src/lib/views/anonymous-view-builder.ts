@@ -4,7 +4,7 @@ import {
   type ParsedSource,
   type ParsedViewSource,
   type SourceSpecInput,
-} from './sources';
+} from '../sources';
 import { resolveView } from './view-resolver';
 
 export interface AnonymousViewInput {

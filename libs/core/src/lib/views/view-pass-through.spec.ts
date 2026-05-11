@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   parseSourceSpecs,
   type ParsedEndpointSource,
-} from './sources';
+} from '../sources';
 import {
   startFakeSparqlEndpoint,
   type FakeSparqlEndpoint,
-} from './test/fake-sparql-endpoint';
+} from '../test/fake-sparql-endpoint';
 import { resolveViewPassThrough } from './view-pass-through';
 
 const SPARQL_JSON_TWO_BINDINGS = JSON.stringify({
