@@ -578,6 +578,43 @@ describe('DiffResultRendererComponent (tabular mode)', () => {
     expect(sides).toContain('-');
   });
 
+  it('attaches a "describe this" affordance to NamedNode cells but not to literals', () => {
+    const result: TabularDiffResponse = {
+      kind: 'tabular',
+      diff: {
+        added: [
+          {
+            row: {
+              s: { termType: 'NamedNode', value: 'http://example.org/a' },
+              o: { termType: 'Literal', value: 'A' },
+            },
+            count: 1,
+          },
+        ],
+        removed: [
+          {
+            row: {
+              s: { termType: 'NamedNode', value: 'http://example.org/b' },
+              o: { termType: 'Literal', value: 'B' },
+            },
+            count: 1,
+          },
+        ],
+        totals: { left: 1, right: 1 },
+      },
+      totals: { left: 1, right: 1 },
+      variables: ['s', 'o'],
+    };
+    const root = render(result);
+    const links = Array.from(
+      root.querySelectorAll<HTMLAnchorElement>('a[data-testid="describe-this"]'),
+    ).map((a) => a.getAttribute('href'));
+    expect(links).toEqual([
+      `/describe?iri=${encodeURIComponent('http://example.org/a')}`,
+      `/describe?iri=${encodeURIComponent('http://example.org/b')}`,
+    ]);
+  });
+
   it('renders the totals strip in tabular mode', () => {
     const result: TabularDiffResponse = {
       kind: 'tabular',
