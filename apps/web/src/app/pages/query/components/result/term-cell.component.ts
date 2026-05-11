@@ -5,7 +5,7 @@ import {
   input,
 } from '@angular/core';
 import type { DisplayContext, Term } from '@app/core';
-import { DescribeLinkComponent } from '@app/modules/describe-link';
+import { CopyIriComponent, DescribeLinkComponent } from '@app/modules/describe-link';
 import { renderTerm, type TermDisplay } from './term-renderer';
 
 const IRI_KINDS = new Set<TermDisplay['kind']>([
@@ -17,7 +17,7 @@ const IRI_KINDS = new Set<TermDisplay['kind']>([
 @Component({
   selector: 'app-term-cell',
   standalone: true,
-  imports: [DescribeLinkComponent],
+  imports: [DescribeLinkComponent, CopyIriComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let d = display();
@@ -62,12 +62,14 @@ const IRI_KINDS = new Set<TermDisplay['kind']>([
     </span>
     @if (describableIri(); as iri) {
       <app-describe-link [iri]="iri" />
+      <app-copy-iri [iri]="iri" />
     }
   `,
 })
 export class TermCellComponent {
   readonly term = input<Term | null>(null);
   readonly context = input<DisplayContext>({ prefixes: {} });
+  readonly linkable = input<boolean>(true);
 
   readonly display = computed<TermDisplay | null>(() => {
     const t = this.term();
@@ -76,6 +78,7 @@ export class TermCellComponent {
   });
 
   readonly describableIri = computed<string | null>(() => {
+    if (!this.linkable()) return null;
     const d = this.display();
     if (d != null && IRI_KINDS.has(d.kind)) {
       return (d as Extract<TermDisplay, { iri: string }>).iri;

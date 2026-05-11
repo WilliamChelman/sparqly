@@ -121,6 +121,7 @@ const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
               <app-quad-table
                 [quadsText]="resp.quads"
                 [seed]="submittedSeed()"
+                [context]="displayContext()"
               />
             }
             @case ('turtle') {
@@ -153,7 +154,7 @@ export class DescribePage implements OnInit {
   private selectedSources: string[] | null = null;
   readonly initialSources = signal<string[] | undefined>(undefined);
   private prefixes: Record<string, string> = {};
-  private readonly displayContext = signal<DisplayContext>({ prefixes: {} });
+  readonly displayContext = signal<DisplayContext>({ prefixes: {} });
 
   private readonly _activeTab = signal<DescribeTab>('table');
   readonly activeTab = this._activeTab.asReadonly();

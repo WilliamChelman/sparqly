@@ -28,6 +28,7 @@ import { MultiSourcesPickerComponent } from '@app/modules/multi-sources-picker';
 class QuadTableStub {
   @Input() quadsText = '';
   @Input() seed = '';
+  @Input() context: unknown = { prefixes: {} };
 }
 
 @Component({
