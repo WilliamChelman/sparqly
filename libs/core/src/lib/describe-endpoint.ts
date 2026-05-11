@@ -5,7 +5,7 @@ import {
   DEFAULT_ENDPOINT_TIMEOUT_MS,
   collectInjectedHeaders,
   describeEndpointError,
-} from './endpoint-http';
+} from './engine';
 import type { ParsedEndpointSource } from './source-spec';
 
 /** Blank-node-chain depth fetched per remote CONSTRUCT round trip. */

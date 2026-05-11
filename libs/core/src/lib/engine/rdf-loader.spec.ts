@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadRdf } from './rdf-loader';
 import { QueryEngine } from './query-engine';
 
-const FIXTURES_DIR = resolve(__dirname, '../../../../test/data/formats');
+const FIXTURES_DIR = resolve(__dirname, '../../../../../test/data/formats');
 
 describe('loadRdf', () => {
   let dir: string;

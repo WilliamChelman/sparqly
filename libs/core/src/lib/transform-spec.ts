@@ -1,5 +1,5 @@
 import type { Store } from 'n3';
-import type { RdfRecord } from './rdf-file-parser';
+import type { RdfRecord } from './engine';
 
 /**
  * Side-channel data threaded through the pipeline alongside the Store.

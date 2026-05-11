@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { diffStores } from './diff';
 import { groupRdfDiffByEntity, type HunkedRdfDiff } from './group-rdf-diff-by-entity';
-import { loadRdf } from './rdf-loader';
+import { loadRdf } from './engine';
 
 const UPDATE = process.env['UPDATE_GOLDENS'] === '1';
 const FIXTURES = join(__dirname, '__fixtures__', 'group-rdf-diff-by-entity');

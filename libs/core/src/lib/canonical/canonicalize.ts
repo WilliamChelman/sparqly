@@ -1,7 +1,7 @@
 import { canonize } from 'rdf-canonize';
 import type { Store } from 'n3';
 import { parseGraphNameTransform } from '../graph-name-transform';
-import { loadRdf, type GraphMode } from '../rdf-loader';
+import { loadRdf, type GraphMode } from '../engine';
 import {
   DEFAULT_ANNOTATION_PREDICATE_IRIS,
   type AnnotationPredicateIris,

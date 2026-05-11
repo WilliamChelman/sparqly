@@ -5,7 +5,7 @@ import { diffCanonicalStatements, diffStores } from './diff';
 import type { RdfDiffWithSourcesResult } from './diff';
 import { groupRdfDiffByEntity } from './group-rdf-diff-by-entity';
 import type { Hunk } from './group-rdf-diff-by-entity';
-import { parseRdfFile } from './rdf-file-parser';
+import { parseRdfFile } from './engine';
 
 const ex = (iri: string): string => `http://example.org/${iri}`;
 const t = (iri: string): string => `<${ex(iri)}>`;

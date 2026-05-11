@@ -4,7 +4,7 @@ import {
   buildEndpointContext,
   describeEndpointError,
 } from './endpoint-http';
-import type { ParsedEndpointSource } from './source-spec';
+import type { ParsedEndpointSource } from '../source-spec';
 
 export async function loadEndpointToStore(
   source: ParsedEndpointSource,
