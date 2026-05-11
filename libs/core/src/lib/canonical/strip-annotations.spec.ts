@@ -1,6 +1,6 @@
 import { DataFactory, Store } from 'n3';
 import { describe, expect, it } from 'vitest';
-import { buildSourceRecord, DEFAULT_ANNOTATION_PREDICATE_IRIS } from './source-record-builder';
+import { buildSourceRecord, DEFAULT_ANNOTATION_PREDICATE_IRIS } from '../source-record-builder';
 import { stripAnnotations } from './strip-annotations';
 
 const { namedNode, quad, literal } = DataFactory;

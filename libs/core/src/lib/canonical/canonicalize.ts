@@ -1,15 +1,15 @@
 import { canonize } from 'rdf-canonize';
 import type { Store } from 'n3';
-import { parseGraphNameTransform } from './graph-name-transform';
-import { loadRdf, type GraphMode } from './rdf-loader';
+import { parseGraphNameTransform } from '../graph-name-transform';
+import { loadRdf, type GraphMode } from '../rdf-loader';
 import {
   DEFAULT_ANNOTATION_PREDICATE_IRIS,
   type AnnotationPredicateIris,
-} from './source-record-builder';
+} from '../source-record-builder';
 import { stripAnnotations } from './strip-annotations';
-import { applyTransformPipeline } from './transform-pipeline';
-import type { ParsedTransform } from './transform-spec';
-import { extractAnnotationPredicates } from './annotate-transform';
+import { applyTransformPipeline } from '../transform-pipeline';
+import type { ParsedTransform } from '../transform-spec';
+import { extractAnnotationPredicates } from '../annotate-transform';
 
 export interface CanonicalizeOptions {
   sources: string | string[];
