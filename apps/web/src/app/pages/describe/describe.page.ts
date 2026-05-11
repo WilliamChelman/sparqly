@@ -1,13 +1,24 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   inject,
   OnInit,
   signal,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MultiSourcesPickerComponent } from '@app/modules/multi-sources-picker';
-import { ConfigService } from '@app/core';
+import { ConfigService, type DisplayContext } from '@app/core';
+import { FormattedResultComponent } from '@app/pages/query/components/result/formatted-result.component';
+import {
+  resultToFormatted,
+  type FormattedResult,
+} from '@app/pages/query/utils/result-to-formatted';
+import {
+  describeProvenance,
+  parseDescribeWire,
+  type FormatSerialization,
+} from 'common';
 import { QuadTableComponent } from './components/quad-table.component';
 import { SourceErrorsComponent } from './components/source-errors.component';
 import { describeIriExpand } from './utils/describe-iri-expand';
@@ -16,11 +27,21 @@ import {
   type DescribeResponse,
 } from './services/describe.service';
 
+type DescribeTab = 'table' | 'turtle';
+
+// Mirrors QuadTableComponent's default — the describe page does not override it.
+const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
+
 @Component({
   selector: 'app-describe-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [QuadTableComponent, MultiSourcesPickerComponent, SourceErrorsComponent],
+  imports: [
+    QuadTableComponent,
+    FormattedResultComponent,
+    MultiSourcesPickerComponent,
+    SourceErrorsComponent,
+  ],
   template: `
     <header class="border-b border-border-muted bg-surface px-4 py-3">
       <h1 class="font-serif text-2xl italic text-foreground">describe</h1>
@@ -72,7 +93,46 @@ import {
           <p class="text-sm text-foreground-muted">
             <span data-testid="describe-total">{{ resp.total }}</span> quad(s).
           </p>
-          <app-quad-table [quadsText]="resp.quads" [seed]="submittedSeed()" />
+          <nav
+            role="tablist"
+            class="flex gap-3.5 border-b border-border-muted font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint"
+          >
+            <button
+              data-testid="tab-table"
+              role="tab"
+              type="button"
+              [attr.aria-selected]="activeTab() === 'table'"
+              (click)="setTab('table')"
+              class="cursor-pointer border-b border-transparent bg-transparent px-0 py-1 transition-colors duration-[180ms] hover:text-foreground-muted aria-selected:border-accent aria-selected:text-foreground"
+            >table</button>
+            @if (serialization(); as ser) {
+              <button
+                [attr.data-testid]="'tab-' + ser"
+                role="tab"
+                type="button"
+                [attr.aria-selected]="activeTab() === 'turtle'"
+                (click)="setTab('turtle')"
+                class="cursor-pointer border-b border-transparent bg-transparent px-0 py-1 transition-colors duration-[180ms] hover:text-foreground-muted aria-selected:border-accent aria-selected:text-foreground"
+              >{{ ser }}</button>
+            }
+          </nav>
+          @switch (activeTab()) {
+            @case ('table') {
+              <app-quad-table
+                [quadsText]="resp.quads"
+                [seed]="submittedSeed()"
+              />
+            }
+            @case ('turtle') {
+              @let f = formatted();
+              @if (f) {
+                <app-formatted-result
+                  [body]="f.body"
+                  [serialization]="f.serialization"
+                />
+              }
+            }
+          }
         </section>
       }
     </main>
@@ -93,6 +153,23 @@ export class DescribePage implements OnInit {
   private selectedSources: string[] | null = null;
   readonly initialSources = signal<string[] | undefined>(undefined);
   private prefixes: Record<string, string> = {};
+  private readonly displayContext = signal<DisplayContext>({ prefixes: {} });
+
+  private readonly _activeTab = signal<DescribeTab>('table');
+  readonly activeTab = this._activeTab.asReadonly();
+
+  readonly formatted = computed<FormattedResult | null>(() => {
+    const resp = this.response();
+    if (!resp || resp.quads.trim().length === 0) return null;
+    const all = parseDescribeWire(resp.quads);
+    const { quads } = describeProvenance.strip(all, FROM_SOURCE_PREDICATE);
+    if (quads.length === 0) return null;
+    return resultToFormatted(quads, {}, undefined, this.displayContext());
+  });
+
+  readonly serialization = computed<FormatSerialization | null>(
+    () => this.formatted()?.serialization ?? null,
+  );
 
   constructor() {
     const iri = this.route.snapshot.queryParamMap.get('iri');
@@ -111,6 +188,7 @@ export class DescribePage implements OnInit {
   ngOnInit(): void {
     this.configService.config().subscribe((config) => {
       this.prefixes = config.context.prefixes;
+      this.displayContext.set(config.context);
       // A URL carrying ?iri is a bookmark — rehydrate and run immediately.
       if (this.seed().trim().length > 0) this.run();
     });
@@ -125,6 +203,10 @@ export class DescribePage implements OnInit {
     this.selectedSources = value;
   }
 
+  setTab(tab: DescribeTab): void {
+    this._activeTab.set(tab);
+  }
+
   run(): void {
     const expanded = describeIriExpand(this.seed(), this.prefixes);
     if (!expanded.ok) {
@@ -136,6 +218,7 @@ export class DescribePage implements OnInit {
     this.submittedSeed.set(iri);
     this.running.set(true);
     this.response.set(null);
+    this._activeTab.set('table');
     const queryParams: Record<string, string | null> = { iri };
     if (this.selectedSources !== null) {
       queryParams['sources'] = this.selectedSources.join(',');
