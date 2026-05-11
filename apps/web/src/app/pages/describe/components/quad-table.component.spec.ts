@@ -1,17 +1,19 @@
 import { TestBed } from '@angular/core/testing';
 import { DataFactory } from 'n3';
 import { describeProvenance, serializeDescribeWire } from 'common';
+import type { DisplayContext } from '@app/core';
 import { QuadTableComponent } from './quad-table.component';
 
 const { namedNode, blankNode, literal, quad } = DataFactory;
 
 const FROM_SOURCE = 'urn:sparqly:fromSource';
 
-function setup(quadsText: string, seed = '') {
+function setup(quadsText: string, seed = '', context?: DisplayContext) {
   TestBed.configureTestingModule({});
   const fixture = TestBed.createComponent(QuadTableComponent);
   fixture.componentRef.setInput('quadsText', quadsText);
   fixture.componentRef.setInput('seed', seed);
+  if (context !== undefined) fixture.componentRef.setInput('context', context);
   fixture.detectChanges();
   return { fixture, root: fixture.nativeElement as HTMLElement };
 }
@@ -99,6 +101,22 @@ describe('QuadTableComponent', () => {
     const { root } = setup(serializeDescribeWire([q]), 'http://example.org/alice');
     // s, p, o get a link — the named graph does not.
     expect(root.querySelectorAll('a[data-testid="describe-this"]').length).toBe(3);
+  });
+
+  it('compacts IRIs using the display context prefixes', () => {
+    const q = quad(
+      namedNode('http://example.org/alice'),
+      namedNode('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'),
+      namedNode('http://example.org/Person'),
+    );
+    const { root } = setup(serializeDescribeWire([q]), 'http://example.org/alice', {
+      prefixes: { ex: 'http://example.org/' },
+    });
+    const cells = Array.from(
+      root.querySelectorAll<HTMLElement>('[data-testid="term-cell"]'),
+    ).map((el) => el.textContent?.replace(/\s+/g, ''));
+    // ex:alice / rdf:type (rdf is a default prefix) / ex:Person
+    expect(cells).toEqual(['ex:alice', 'rdf:type', 'ex:Person']);
   });
 
   it('does not attach the affordance to bnodes or literals', () => {

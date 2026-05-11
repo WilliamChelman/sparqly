@@ -1,16 +1,15 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import type { Quad, Term } from 'n3';
 import { describeProvenance, parseDescribeWire } from 'common';
-import { DescribeLinkComponent } from '@app/modules/describe-link';
+import type { DisplayContext, Term as CoreTerm } from '@app/core';
+import { TermCellComponent } from '@app/pages/query/components/result/term-cell.component';
 
 interface DisplayRow {
-  s: string;
-  sIri: string | null;
-  p: string;
-  pIri: string | null;
-  o: string;
-  oIri: string | null;
-  g: string;
+  s: CoreTerm;
+  p: CoreTerm;
+  o: CoreTerm;
+  // Only present for named/blank graphs — the default graph renders as nothing.
+  g: CoreTerm | null;
   origins: string[];
 }
 
@@ -22,16 +21,15 @@ interface DisplayGroup {
 
 const DEFAULT_FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
 
-function termLabel(term: Term): string {
-  if (term.termType === 'NamedNode') return term.value;
-  if (term.termType === 'BlankNode') return `_:${term.value}`;
-  if (term.termType === 'Literal') return `"${term.value}"`;
-  if (term.termType === 'DefaultGraph') return '';
-  return term.value;
+// Wire terms are always NamedNode/BlankNode/Literal; n3's broader type only
+// matters for SPARQL Variables, which never appear in describe results.
+function asCoreTerm(t: Term): CoreTerm {
+  return t as unknown as CoreTerm;
 }
 
-function iriOf(term: Term): string | null {
-  return term.termType === 'NamedNode' ? term.value : null;
+function subjectKey(term: Term): string {
+  if (term.termType === 'BlankNode') return `_:${term.value}`;
+  return term.value;
 }
 
 function quadKey(q: Quad): string {
@@ -48,7 +46,7 @@ function termKey(t: Term): string {
 @Component({
   selector: 'app-quad-table',
   standalone: true,
-  imports: [DescribeLinkComponent],
+  imports: [TermCellComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (groups().length === 0) {
@@ -76,13 +74,20 @@ function termKey(t: Term): string {
                 [attr.data-group-subject]="group.subject"
                 [attr.data-is-seed-group]="group.isSeed ? 'true' : 'false'"
               >
-                <td class="border border-border-muted px-2 py-1"
-                  >{{ row.s }}@if (row.sIri; as iri) {<app-describe-link [iri]="iri" />}</td>
-                <td class="border border-border-muted px-2 py-1"
-                  >{{ row.p }}@if (row.pIri; as iri) {<app-describe-link [iri]="iri" />}</td>
-                <td class="border border-border-muted px-2 py-1"
-                  >{{ row.o }}@if (row.oIri; as iri) {<app-describe-link [iri]="iri" />}</td>
-                <td class="border border-border-muted px-2 py-1">{{ row.g }}</td>
+                <td class="border border-border-muted px-2 py-1">
+                  <app-term-cell [term]="row.s" [context]="context()" />
+                </td>
+                <td class="border border-border-muted px-2 py-1">
+                  <app-term-cell [term]="row.p" [context]="context()" />
+                </td>
+                <td class="border border-border-muted px-2 py-1">
+                  <app-term-cell [term]="row.o" [context]="context()" />
+                </td>
+                <td class="border border-border-muted px-2 py-1">
+                  @if (row.g; as g) {
+                    <app-term-cell [term]="g" [context]="context()" [linkable]="false" />
+                  }
+                </td>
                 <td class="border border-border-muted px-2 py-1">
                   @for (origin of row.origins; track origin) {
                     <span
@@ -103,6 +108,7 @@ export class QuadTableComponent {
   readonly quadsText = input<string>('');
   readonly seed = input<string>('');
   readonly fromSourcePredicate = input<string>(DEFAULT_FROM_SOURCE_PREDICATE);
+  readonly context = input<DisplayContext>({ prefixes: {} });
 
   readonly groups = computed<DisplayGroup[]>(() => {
     const text = this.quadsText();
@@ -112,20 +118,17 @@ export class QuadTableComponent {
     const { quads, originsByQuad } = describeProvenance.strip(all, predicate);
     const bySubject = new Map<string, DisplayRow[]>();
     for (const q of quads) {
-      const s = termLabel(q.subject);
+      const key = subjectKey(q.subject);
       const row: DisplayRow = {
-        s,
-        sIri: iriOf(q.subject),
-        p: termLabel(q.predicate),
-        pIri: iriOf(q.predicate),
-        o: termLabel(q.object),
-        oIri: iriOf(q.object),
-        g: termLabel(q.graph),
+        s: asCoreTerm(q.subject),
+        p: asCoreTerm(q.predicate),
+        o: asCoreTerm(q.object),
+        g: q.graph.termType === 'DefaultGraph' ? null : asCoreTerm(q.graph),
         origins: originsByQuad.get(quadKey(q)) ?? [],
       };
-      const list = bySubject.get(s);
+      const list = bySubject.get(key);
       if (list) list.push(row);
-      else bySubject.set(s, [row]);
+      else bySubject.set(key, [row]);
     }
     const groups: DisplayGroup[] = [...bySubject.entries()].map(
       ([subject, rows]) => ({

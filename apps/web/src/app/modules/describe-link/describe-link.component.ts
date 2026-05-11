@@ -17,7 +17,7 @@ import {
       rel="noopener noreferrer"
       title="Describe this IRI"
       aria-label="Describe this IRI"
-      class="ml-1 select-none align-baseline text-[0.85em] text-foreground-faint no-underline transition-colors hover:text-accent"
+      class="ml-1 inline-flex items-center align-middle text-[1.05em] leading-none text-foreground-faint no-underline transition-colors hover:text-accent"
       >⌖</a
     >
   `,
