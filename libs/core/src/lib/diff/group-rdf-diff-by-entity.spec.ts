@@ -5,7 +5,7 @@ import { diffCanonicalStatements, diffStores } from './diff';
 import type { RdfDiffWithSourcesResult } from './diff';
 import { groupRdfDiffByEntity } from './group-rdf-diff-by-entity';
 import type { Hunk } from './group-rdf-diff-by-entity';
-import { parseRdfFile } from './engine';
+import { parseRdfFile } from '../engine';
 
 const ex = (iri: string): string => `http://example.org/${iri}`;
 const t = (iri: string): string => `<${ex(iri)}>`;
@@ -549,8 +549,8 @@ describe('groupRdfDiffByEntity — RDF list compaction edge cases', () => {
     // is therefore not in the diff — only spine `<rdf:rest>` triples are.
     // Compaction must still synthesize one compact line per side, NOT use a
     // spine triple as its entry point (which would yield `rdf:rest ( ... )`).
-    const leftPath = resolve(__dirname, '../../../../test/data/diffs/diff-01.ttl');
-    const rightPath = resolve(__dirname, '../../../../test/data/diffs/diff-02.ttl');
+    const leftPath = resolve(__dirname, '../../../../../test/data/diffs/diff-01.ttl');
+    const rightPath = resolve(__dirname, '../../../../../test/data/diffs/diff-02.ttl');
     const left = await parseRdfFile(leftPath);
     const right = await parseRdfFile(rightPath);
     const leftStore = new Store();

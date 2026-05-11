@@ -1,17 +1,17 @@
 import { Parser, type Quad, type Store, type Term } from 'n3';
 import { shortenNQuadLine } from 'common';
-import { canonicalizeStore } from './canonical/canonicalize';
+import { canonicalizeStore } from '../canonical';
 import { formatHumanSourceComment } from './format-human-source-comment';
 import {
   formatGroupedRdfDiff,
   type FormatGroupedRdfDiffOptions,
 } from './grouped-diff-formatter';
 import type { HunkedRdfDiff } from './group-rdf-diff-by-entity';
-import { displaySourcePath } from './sources';
+import { displaySourcePath } from '../sources';
 import {
   DEFAULT_ANNOTATION_PREDICATE_IRIS,
   type AnnotationPredicateIris,
-} from './sources';
+} from '../sources';
 
 export type RdfDiffFormat =
   | 'human'

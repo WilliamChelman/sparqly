@@ -7,7 +7,7 @@ import {
   describeEndpointError,
 } from '../engine';
 import { resolveSource } from '../sources';
-import { detectSelectShape } from '../select-shape-detector';
+import { detectSelectShape } from '../diff';
 import {
   parseSourceSpec,
   parseSourceSpecs,
@@ -15,7 +15,7 @@ import {
   type ParsedSource,
   type SourceSpecInput,
 } from '../sources';
-import type { TabularRow } from '../tabular-row-key';
+import type { TabularRow } from '../diff';
 import { validateViewQuery } from './view-query-validate';
 
 export interface AnonymousSelectBindingsInput {
