@@ -34,6 +34,8 @@ sparqly serve "data/**/*.ttl" --port=3000
 # UI at http://localhost:3000, SPARQL endpoint at /api/sparql
 ```
 
+`serve` exposes every non-`reference` source at `/api/sparql/<id>` (plus `/api/diff`, `/api/describe`, `/api/source-snippet`, `/api/config`, and the playground). Pass a positional glob/URL or `--source @id` to scope the served set to one entry. It's a single-user development tool — not hardened for concurrent users.
+
 Detect drift between a curated source and its split parts. `hash --compare-with` exits 1 on mismatch; `diff` then shows exactly which triples drifted:
 
 ```sh
