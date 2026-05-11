@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { describeProvenance, serializeDescribeWire } from 'common';
 import {
+  describeEndpoint,
   describeStore,
   relabelBnodes,
   resolveSource,
   type ParsedSource,
 } from 'core';
-import { DataFactory, type Quad, type Term } from 'n3';
+import { DataFactory, type NamedNode, type Quad, type Term } from 'n3';
 
 export const DEFAULT_DESCRIBE_CONFIG: DescribeConfig = {
   perSourceSoftLimit: 10000,
@@ -89,20 +90,7 @@ export class DescribeService {
     for (const target of selected) {
       const id = target.id ?? 'source';
       try {
-        const resolved = await resolveSource(target, {
-          registry: this.registry,
-        });
-        if (resolved.mode !== 'materialized') {
-          // Only glob sources are dispatched in this slice; resolveSource of a
-          // declared glob will always be materialized. Anything else is a guard.
-          runs.push({ id, quads: [], truncated: false });
-          continue;
-        }
-        const raw = describeStore({
-          store: resolved.store,
-          seed,
-          perSourceLimit,
-        });
+        const raw = await this.describeOne(target, id, seed, perSourceLimit);
         const relabelled = relabelBnodes(raw.quads, id);
         runs.push({ id, quads: relabelled, truncated: raw.truncated });
       } catch (err) {
@@ -174,6 +162,45 @@ export class DescribeService {
     return { status, response };
   }
 
+  /**
+   * Per-source dispatch (ADR-0015, issue #189). `glob` resolves to a
+   * materialized store and runs {@link describeStore}; `endpoint` runs
+   * {@link describeEndpoint} over the wire. `empty` and `reference` sources
+   * have no describable graph of their own — they reject with guidance, which
+   * `runDescribe` surfaces as a per-source error rather than a global failure.
+   */
+  private async describeOne(
+    target: ParsedSource,
+    id: string,
+    seed: NamedNode,
+    perSourceLimit: number,
+  ): Promise<{ quads: Quad[]; truncated: boolean }> {
+    if (target.kind === 'endpoint') {
+      return describeEndpoint({ endpoint: target, seed, perSourceLimit });
+    }
+    if (target.kind === 'empty') {
+      throw new Error(
+        `source '${id}' is an empty source with no data of its own; ` +
+          'to describe over it, describe a view that scopes this empty ' +
+          "source's `SERVICE` composition",
+      );
+    }
+    if (target.kind === 'reference') {
+      throw new Error(
+        `source '${id}' is a \`reference\` alias to '${target.ref}'; ` +
+          'describe that source directly',
+      );
+    }
+    const resolved = await resolveSource(target, { registry: this.registry });
+    if (resolved.mode !== 'materialized') {
+      // A declared glob always resolves to a materialized store; anything else
+      // here is a guard against an unexpected resolver outcome.
+      return { quads: [], truncated: false };
+    }
+    const raw = describeStore({ store: resolved.store, seed, perSourceLimit });
+    return { quads: raw.quads, truncated: raw.truncated };
+  }
+
   private selectSources(
     requested: ReadonlyArray<string> | undefined,
   ): ParsedSource[] {
@@ -194,9 +221,15 @@ export class DescribeService {
 }
 
 function isSupportedKind(src: ParsedSource): boolean {
-  // This slice only dispatches glob sources; endpoint/view come in later
-  // slices. empty/reference are intentionally excluded by ADR-0015.
-  return src.kind === 'glob';
+  // `glob` and `endpoint` produce a describable graph; `empty` and `reference`
+  // are surfaced so the caller gets an explanatory per-source error rather than
+  // a silent omission. `view` dispatch is a separate slice (issue #184).
+  return (
+    src.kind === 'glob' ||
+    src.kind === 'endpoint' ||
+    src.kind === 'empty' ||
+    src.kind === 'reference'
+  );
 }
 
 function countMembership(

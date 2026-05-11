@@ -1,9 +1,10 @@
+import { createServer, type Server } from 'node:http';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseDescribeWire } from 'common';
-import { parseSourceSpecs } from 'core';
+import { parseSourceSpecs, type ParsedSource } from 'core';
 import type { Quad } from 'n3';
 import {
   DescribeService,
@@ -58,6 +59,28 @@ async function makeRegistry(): Promise<RegistryPaths> {
 
 function parseNQuads(text: string): Quad[] {
   return parseDescribeWire(text);
+}
+
+/** A throwaway HTTP SPARQL endpoint that returns `body` for every request. */
+async function startStubEndpoint(
+  body: string,
+): Promise<{ url: string; close: () => Promise<void> }> {
+  const server: Server = createServer((req, res) => {
+    req.resume();
+    req.on('end', () => {
+      res.writeHead(200, { 'Content-Type': 'application/n-triples' });
+      res.end(body);
+    });
+  });
+  await new Promise<void>((resolve) =>
+    server.listen(0, '127.0.0.1', () => resolve()),
+  );
+  const addr = server.address();
+  const port = typeof addr === 'object' && addr ? addr.port : 0;
+  return {
+    url: `http://127.0.0.1:${port}/sparql`,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
 }
 
 describe('DescribeService — multi-source aggregation', () => {
@@ -312,6 +335,65 @@ describe('DescribeService — multi-source aggregation', () => {
           q.predicate.value === custom,
       );
       expect(annotated.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('endpoint / empty / reference dispatch', () => {
+    it('dispatches an endpoint source through describeEndpoint', async () => {
+      const ep = await startStubEndpoint(
+        '<http://example.org/alice> <http://example.org/knows> <http://example.org/bob> .\n',
+      );
+      try {
+        const registry = parseSourceSpecs([{ id: 'remote', endpoint: ep.url }]);
+        const out = await describeResponse(new DescribeService(registry), {
+          iri: 'http://example.org/alice',
+        });
+        expect(out.perSource.remote.error).toBeUndefined();
+        expect(out.perSource.remote.count).toBe(1);
+        expect(out.total).toBe(1);
+      } finally {
+        await ep.close();
+      }
+    });
+
+    it('surfaces an unreachable endpoint as a per-source error while a sibling glob still contributes', async () => {
+      const registry = parseSourceSpecs([
+        { id: 'alpha', glob: paths.alphaTtl },
+        { id: 'remote', endpoint: 'http://127.0.0.1:1/sparql' },
+      ]);
+      const result = await new DescribeService(registry).runDescribe({
+        iri: 'http://example.org/alice',
+      });
+      expect(result.status).toBe('ok');
+      expect(result.response.perSource.alpha.count).toBeGreaterThan(0);
+      expect(result.response.perSource.remote.error).toBeTruthy();
+    });
+
+    it('rejects an empty source with guidance pointing at a scoping view', async () => {
+      const registry = parseSourceSpecs([
+        { id: 'alpha', glob: paths.alphaTtl },
+        { id: 'placeholder', empty: true },
+      ]);
+      const out = await describeResponse(new DescribeService(registry), {
+        iri: 'http://example.org/alice',
+      });
+      expect(out.perSource.placeholder.count).toBe(0);
+      expect(out.perSource.placeholder.error).toMatch(/empty source/i);
+      expect(out.perSource.placeholder.error).toMatch(/view/i);
+      // The sibling glob is unaffected.
+      expect(out.perSource.alpha.count).toBeGreaterThan(0);
+    });
+
+    it('rejects a reference (alias) source with a per-source error', async () => {
+      const registry: ParsedSource[] = [
+        { kind: 'glob', glob: paths.alphaTtl, id: 'alpha' },
+        { kind: 'reference', ref: 'alpha', id: 'aliasy' },
+      ];
+      const out = await describeResponse(new DescribeService(registry), {
+        iri: 'http://example.org/alice',
+      });
+      expect(out.perSource.aliasy.error).toMatch(/reference/i);
+      expect(out.perSource.alpha.count).toBeGreaterThan(0);
     });
   });
 });

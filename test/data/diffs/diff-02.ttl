@@ -18,3 +18,9 @@ ex:Carl a ex:Person ;
   ex:age 33 ;
   ex:email "carl@example.com";
 . 
+
+ex:Moved a ex:Thing ;
+  ex:name "Jean Valjean" ;
+  ex:placeOfBirth "Brussels" ;
+  ex:placeOfDeath "Somewhere I don't know" ;
+.

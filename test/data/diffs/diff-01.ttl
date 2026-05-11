@@ -1,5 +1,10 @@
 prefix ex: <http://example.org/> 
 
+ex:Moved a ex:Thing ;
+  ex:name "Jean Valjean" ;
+  ex:placeOfBirth "Paris" ;
+.
+
 ex:Alice a ex:Person ; 
   ex:name "Alice" ;
   ex:age 30 ;
