@@ -207,6 +207,45 @@ describe('DescribeService — multi-source aggregation', () => {
     expect(annotations).toHaveLength(0);
   });
 
+  it('still applies the per-source bnode rewrite when `withProvenance: false` (collision avoidance is provenance-independent)', async () => {
+    // Same fixture as the "keeps bnode-containing quads distinct" test: both
+    // sources carry `_:b1`. With provenance off the wire has no annotations,
+    // but the merged set must still see the two `_:b1`s as distinct bnodes.
+    const dir = await mkdtemp(join(tmpdir(), 'sparqly-describe-bn-noprov-'));
+    const a = join(dir, 'a.ttl');
+    const b = join(dir, 'b.ttl');
+    await writeFile(
+      a,
+      '@prefix ex: <http://example.org/> . ex:alice ex:has _:b1 . _:b1 ex:tag "A" .\n',
+    );
+    await writeFile(
+      b,
+      '@prefix ex: <http://example.org/> . ex:alice ex:has _:b1 . _:b1 ex:tag "B" .\n',
+    );
+    const registry = parseSourceSpecs([
+      { id: 'a', glob: a },
+      { id: 'b', glob: b },
+    ]);
+    const localSvc = new DescribeService(registry);
+
+    const out = await describeResponse(localSvc, {
+      iri: 'http://example.org/alice',
+      withProvenance: false,
+    });
+    expect(out.total).toBe(4);
+    expect(out.perSource.a.count).toBe(2);
+    expect(out.perSource.b.count).toBe(2);
+    const wire = parseNQuads(out.quads);
+    expect(
+      wire.some(
+        (q) =>
+          (q.subject.termType as string) === 'Quad' &&
+          q.predicate.value === FROM_SOURCE,
+      ),
+    ).toBe(false);
+    await rm(dir, { recursive: true, force: true });
+  });
+
   it("uses a request-supplied `fromSourcePredicate` instead of the default", async () => {
     const custom = 'http://my/from';
     const out = await describeResponse(svc, {
