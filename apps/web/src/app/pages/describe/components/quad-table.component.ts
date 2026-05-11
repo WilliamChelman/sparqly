@@ -1,11 +1,15 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import type { Quad, Term } from 'n3';
 import { describeProvenance, parseDescribeWire } from 'common';
+import { DescribeLinkComponent } from '@app/modules/describe-link';
 
 interface DisplayRow {
   s: string;
+  sIri: string | null;
   p: string;
+  pIri: string | null;
   o: string;
+  oIri: string | null;
   g: string;
   origins: string[];
 }
@@ -26,6 +30,10 @@ function termLabel(term: Term): string {
   return term.value;
 }
 
+function iriOf(term: Term): string | null {
+  return term.termType === 'NamedNode' ? term.value : null;
+}
+
 function quadKey(q: Quad): string {
   return `${termKey(q.subject)} ${termKey(q.predicate)} ${termKey(q.object)} ${termKey(q.graph)}`;
 }
@@ -40,6 +48,7 @@ function termKey(t: Term): string {
 @Component({
   selector: 'app-quad-table',
   standalone: true,
+  imports: [DescribeLinkComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (groups().length === 0) {
@@ -67,9 +76,12 @@ function termKey(t: Term): string {
                 [attr.data-group-subject]="group.subject"
                 [attr.data-is-seed-group]="group.isSeed ? 'true' : 'false'"
               >
-                <td class="border border-border-muted px-2 py-1">{{ row.s }}</td>
-                <td class="border border-border-muted px-2 py-1">{{ row.p }}</td>
-                <td class="border border-border-muted px-2 py-1">{{ row.o }}</td>
+                <td class="border border-border-muted px-2 py-1"
+                  >{{ row.s }}@if (row.sIri; as iri) {<app-describe-link [iri]="iri" />}</td>
+                <td class="border border-border-muted px-2 py-1"
+                  >{{ row.p }}@if (row.pIri; as iri) {<app-describe-link [iri]="iri" />}</td>
+                <td class="border border-border-muted px-2 py-1"
+                  >{{ row.o }}@if (row.oIri; as iri) {<app-describe-link [iri]="iri" />}</td>
                 <td class="border border-border-muted px-2 py-1">{{ row.g }}</td>
                 <td class="border border-border-muted px-2 py-1">
                   @for (origin of row.origins; track origin) {
@@ -103,8 +115,11 @@ export class QuadTableComponent {
       const s = termLabel(q.subject);
       const row: DisplayRow = {
         s,
+        sIri: iriOf(q.subject),
         p: termLabel(q.predicate),
+        pIri: iriOf(q.predicate),
         o: termLabel(q.object),
+        oIri: iriOf(q.object),
         g: termLabel(q.graph),
         origins: originsByQuad.get(quadKey(q)) ?? [],
       };

@@ -106,4 +106,42 @@ describe('TermCellComponent', () => {
     expect(cell?.getAttribute('data-kind')).toBe('unbound');
     expect(cell?.textContent?.trim()).toBe('');
   });
+
+  it('attaches a "describe this" affordance to a named IRI, linking to the expanded form', () => {
+    const el = setup(
+      { termType: 'NamedNode', value: 'http://example.org/Foo' },
+      { prefixes: { ex: 'http://example.org/' } },
+    );
+    const link = el.querySelector<HTMLAnchorElement>('a[data-testid="describe-this"]');
+    expect(link).toBeTruthy();
+    expect(link?.getAttribute('href')).toBe(
+      `/describe?iri=${encodeURIComponent('http://example.org/Foo')}`,
+    );
+  });
+
+  it('attaches the affordance to absolute and base-relative IRIs too', () => {
+    const abs = setup({ termType: 'NamedNode', value: 'http://other.example/x' });
+    expect(abs.querySelector('a[data-testid="describe-this"]')).toBeTruthy();
+    const base = setup(
+      { termType: 'NamedNode', value: 'http://example.org/Foo' },
+      { prefixes: {}, base: 'http://example.org/' },
+    );
+    expect(
+      base
+        .querySelector<HTMLAnchorElement>('a[data-testid="describe-this"]')
+        ?.getAttribute('href'),
+    ).toBe(`/describe?iri=${encodeURIComponent('http://example.org/Foo')}`);
+  });
+
+  it('does not attach the affordance to blank nodes', () => {
+    const el = setup({ termType: 'BlankNode', value: 'b0' });
+    expect(el.querySelector('[data-testid="describe-this"]')).toBeNull();
+  });
+
+  it('does not attach the affordance to literals', () => {
+    const plain = setup({ termType: 'Literal', value: 'hello' });
+    expect(plain.querySelector('[data-testid="describe-this"]')).toBeNull();
+    const lang = setup({ termType: 'Literal', value: 'bonjour', language: 'fr' });
+    expect(lang.querySelector('[data-testid="describe-this"]')).toBeNull();
+  });
 });

@@ -5,11 +5,19 @@ import {
   input,
 } from '@angular/core';
 import type { DisplayContext, Term } from '@app/core';
+import { DescribeLinkComponent } from '@app/modules/describe-link';
 import { renderTerm, type TermDisplay } from './term-renderer';
+
+const IRI_KINDS = new Set<TermDisplay['kind']>([
+  'prefixed-iri',
+  'base-iri',
+  'absolute-iri',
+]);
 
 @Component({
   selector: 'app-term-cell',
   standalone: true,
+  imports: [DescribeLinkComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let d = display();
@@ -52,6 +60,9 @@ import { renderTerm, type TermDisplay } from './term-renderer';
         }
       }
     </span>
+    @if (describableIri(); as iri) {
+      <app-describe-link [iri]="iri" />
+    }
   `,
 })
 export class TermCellComponent {
@@ -62,6 +73,14 @@ export class TermCellComponent {
     const t = this.term();
     if (t == null) return null;
     return renderTerm(t, this.context());
+  });
+
+  readonly describableIri = computed<string | null>(() => {
+    const d = this.display();
+    if (d != null && IRI_KINDS.has(d.kind)) {
+      return (d as Extract<TermDisplay, { iri: string }>).iri;
+    }
+    return null;
   });
 
   asPrefixed(d: TermDisplay | null) {

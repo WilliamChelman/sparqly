@@ -44,6 +44,12 @@ import { ThemeToggleComponent } from './components/theme-toggle.component';
           class="rounded-full px-3 py-1.5 text-foreground-faint transition-colors hover:text-foreground"
           >Diff</a
         >
+        <a
+          routerLink="/describe"
+          routerLinkActive="bg-bg text-foreground shadow-sm"
+          class="rounded-full px-3 py-1.5 text-foreground-faint transition-colors hover:text-foreground"
+          >Describe</a
+        >
       </nav>
       <div class="relative z-[1] ml-auto">
         <app-theme-toggle />

@@ -16,13 +16,14 @@ describe('HeaderComponent', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
-  it('exposes nav links to / and /diff', () => {
+  it('exposes nav links to /, /diff and /describe', () => {
     const el = render();
     const hrefs = Array.from(el.querySelectorAll('nav a')).map((a) =>
       a.getAttribute('href'),
     );
     expect(hrefs).toContain('/');
     expect(hrefs).toContain('/diff');
+    expect(hrefs).toContain('/describe');
   });
 
   it('renders the constellation logomark inside the brand link', () => {

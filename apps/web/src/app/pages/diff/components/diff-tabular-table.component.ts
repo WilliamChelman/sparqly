@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { DEFAULT_PREFIXES } from 'common';
 import type { DisplayContext } from '@app/core';
+import { DescribeLinkComponent } from '@app/modules/describe-link';
 import type {
   TabularDiffEntry,
   TabularDiffResponse,
@@ -16,6 +17,7 @@ interface TabularRow {
 @Component({
   selector: 'app-diff-tabular-table',
   standalone: true,
+  imports: [DescribeLinkComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div
@@ -50,7 +52,9 @@ interface TabularRow {
               >{{ e.side === '+' ? '✦' : '✧' }}</td>
               <td>{{ e.entry.count }}</td>
               @for (v of result().variables; track v) {
-                <td>{{ termText(e.entry.row[v]) }}</td>
+                @let term = e.entry.row[v];
+                <td
+                  >{{ termText(term) }}@if (iriOf(term); as iri) {<app-describe-link [iri]="iri" />}</td>
               }
             </tr>
           }
@@ -74,6 +78,10 @@ export class DiffTabularTableComponent {
     () =>
       Object.entries({ ...DEFAULT_PREFIXES, ...this.displayContext().prefixes }),
   );
+
+  iriOf(term: TabularTerm | undefined): string | null {
+    return term?.termType === 'NamedNode' ? term.value : null;
+  }
 
   termText(term: TabularTerm | undefined): string {
     if (!term) return '';
