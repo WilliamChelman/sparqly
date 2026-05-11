@@ -78,6 +78,30 @@ describe('POST /api/describe — tracer-bullet (single glob source)', () => {
     expect(json.quads).toContain('http://example.org/age');
   });
 
+  it('injects `urn:sparqly:fromSource` provenance annotations by default (withProvenance defaults to true)', async () => {
+    const resp = await postJson({ iri: 'http://example.org/alice' });
+    expect(resp.status).toBe(200);
+    const json = (await resp.json()) as { quads: string };
+    expect(json.quads).toContain('urn:sparqly:fromSource');
+  });
+
+  it('omits `urn:sparqly:fromSource` annotations from the wire when `withProvenance: false`, leaving total/count unchanged', async () => {
+    const resp = await postJson({
+      iri: 'http://example.org/alice',
+      withProvenance: false,
+    });
+    expect(resp.status).toBe(200);
+    const json = (await resp.json()) as {
+      quads: string;
+      total: number;
+      perSource: Record<string, { count: number }>;
+    };
+    expect(json.quads).not.toContain('urn:sparqly:fromSource');
+    // Same merged quad set as the provenance-on case (2 alice-subject + 1 alice-object).
+    expect(json.total).toBe(3);
+    expect(json.perSource.alpha.count).toBe(3);
+  });
+
   it('returns 200 with total=0 and an empty N-Quads body when the seed is absent', async () => {
     const resp = await postJson({ iri: 'http://example.org/ghost' });
     expect(resp.status).toBe(200);
