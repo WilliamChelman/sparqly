@@ -35,10 +35,11 @@ export interface WatcherChain {
 }
 
 export function buildWatcherChain(
-  registry: ReadonlyArray<ParsedSource>,
+  servedRegistry: ReadonlyArray<ParsedSource>,
+  resolutionRegistry: ReadonlyArray<ParsedSource> = servedRegistry,
 ): WatcherChain {
   const byId = new Map<string, ParsedSource>();
-  for (const src of registry) {
+  for (const src of resolutionRegistry) {
     if (src.kind === 'reference' || src.id === undefined) continue;
     byId.set(src.id, src);
   }
@@ -46,7 +47,7 @@ export function buildWatcherChain(
   const sources: WatcherSourcePlan[] = [];
   const passThrough: ParsedSource[] = [];
 
-  for (const src of registry) {
+  for (const src of servedRegistry) {
     if (src.kind === 'reference') continue;
     const plan = buildSourcePlan(src, byId);
     if (planNeedsWatching(plan)) {

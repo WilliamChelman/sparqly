@@ -14,9 +14,8 @@ import {
   parseSourceSpecs,
   type ParsedSource,
   type ParsedViewSource,
-  QueryEngine,
+  resolveServeScope,
   resolveSource,
-  selectTarget,
   type SourceSpecInput,
 } from 'core';
 import { DEFAULT_DESCRIBE_CONFIG, type DescribeConfig } from './describe.service';
@@ -37,11 +36,13 @@ import {
 export interface CreateServerOptions {
   sources: SourceSpecInput | ReadonlyArray<SourceSpecInput>;
   /**
-   * Selector for the target source within `sources`. An `@id` ref into the
-   * registry, or an inline glob/URL. Same precedence as the CLI: explicit
-   * value > `default: true` > sole entry > error.
+   * Scope filter for what `serve` exposes. An `@id` ref into `sources` narrows
+   * the served/listed set to that one entry (its `from:` deps stay resolvable
+   * but unlisted); an inline glob/URL serves a single synthesized `@default`
+   * with the configured `sources:` available for `from:` resolution only.
+   * Absent → the whole non-`reference` registry is served.
    */
-  target?: string;
+  scope?: string;
   port: number;
   mutable?: boolean;
   graphMode?: GraphMode;
@@ -75,136 +76,37 @@ export async function createServer(
   options: CreateServerOptions,
 ): Promise<CreatedServer> {
   const logger = new Logger('sparqly');
-  const inputs = toSourceArray(options.sources);
-  const registry = parseSourceSpecs(inputs);
-
-  const isRegistryMode =
-    options.target === undefined &&
-    !(inputs.length === 1 && registry.length === 1 && registry[0].id === undefined);
-
-  if (isRegistryMode) {
-    return startRegistryMode(options, registry, logger);
-  }
-
-  const target = selectTarget(registry, options.target);
-
-  const loadStart = Date.now();
-  const querySources = await resolveSource(target, {
-    graphMode: options.graphMode,
-    registry,
-  });
-
-  let engine: QueryEngine;
-  let storeRef: StoreRef | undefined;
-  let initialFiles: ReadonlyArray<string> = [];
-  if (querySources.mode === 'pass-through') {
-    logger.log(
-      `Federating to endpoint ${querySources.endpoint.endpoint} in ${
-        Date.now() - loadStart
-      }ms`,
-    );
-    engine = new QueryEngine(querySources.endpoint);
-  } else {
-    logger.log(
-      `Loaded ${querySources.files.length} file(s) (${querySources.store.size} quads) in ${
-        Date.now() - loadStart
-      }ms`,
-    );
-    storeRef = { current: querySources.store };
-    const ref = storeRef;
-    engine = new QueryEngine(() => ref.current);
-    initialFiles = querySources.files;
-  }
-
-  const snippetAllowList = new SnippetAllowList();
-  snippetAllowList.update(initialFiles);
-  const singleSourceFiles = new Map<ParsedSource, ReadonlyArray<string>>();
-  singleSourceFiles.set(target, initialFiles);
-
-  const app = await NestFactory.create<NestExpressApplication>(
-    ServerModule.forRoot({
-      mode: 'single',
-      engine,
-      listing: buildSingleListing(target),
-      config: { mutable: options.mutable === true },
-      context: options.context ?? { prefixes: {} },
-      describe: resolveDescribeConfig(options.describe),
-      snippetAllowList,
-    }),
-    { abortOnError: false },
-  );
-  app.setGlobalPrefix('api');
-  app.use(sparqlQueryBodyParser);
-
-  if (options.webRootDir) {
-    mountWebPlayground(app, options.webRootDir);
-  }
-
-  await app.listen(options.port);
-  const url = await app.getUrl();
-  logger.log(`SPARQL endpoint listening at ${url}/api/sparql`);
-  if (options.webRootDir) {
-    logger.log(`Web playground served at ${url}/`);
-  }
-
-  const watcher = options.watch
-    ? await maybeStartSingleSourceWatcher({
-        target,
-        registry,
-        graphMode: options.graphMode,
-        storeRef,
-        logger,
-        debounceMs: options.watchDebounceMs ?? DEFAULT_DEBOUNCE_MS,
-        pollMs: options.watchPollMs ?? DEFAULT_POLL_MS,
-        snippetAllowList,
-        singleSourceFiles,
-      })
-    : undefined;
-  if (watcher) {
-    logger.log(
-      `Watching for changes (debounce: ${
-        options.watchDebounceMs ?? DEFAULT_DEBOUNCE_MS
-      }ms)`,
+  const parsedRegistry = parseSourceSpecs(toSourceArray(options.sources));
+  const scope = resolveServeScope(parsedRegistry, options.scope);
+  if (scope.servedRegistry.length === 0) {
+    throw new Error(
+      'No sources configured. Pass a positional/--source, or define `sources:` in your config.',
     );
   }
 
-  return {
-    port: portFromUrl(url) ?? options.port,
-    close: async () => {
-      if (watcher) await watcher.close();
-      await app.close();
-    },
-  };
-}
-
-async function startRegistryMode(
-  options: CreateServerOptions,
-  registry: ReadonlyArray<ParsedSource>,
-  logger: Logger,
-): Promise<CreatedServer> {
   const totalStart = Date.now();
-  const engineMap = await EngineMap.create(registry, {
+  const engineMap = await EngineMap.create(scope.servedRegistry, {
+    resolutionRegistry: scope.resolutionRegistry,
     onSourceLoaded: (id, kind, ms) => {
       logger.log(`Loaded @${id} (${kind}) in ${ms}ms`);
     },
   });
   logger.log(
-    `Registry mode: ${engineMap.allIds().length} source(s) ready in ${
-      Date.now() - totalStart
-    }ms`,
+    `${engineMap.allIds().length} source(s) ready in ${Date.now() - totalStart}ms`,
   );
 
-  const listing = buildListing(registry);
+  const listing = buildListing(scope.servedRegistry);
 
   const snippetAllowList = new SnippetAllowList();
   snippetAllowList.update(engineMap.allFiles());
 
   const app = await NestFactory.create<NestExpressApplication>(
     ServerModule.forRoot({
-      mode: 'registry',
       engineMap,
-      registry,
+      servedRegistry: scope.servedRegistry,
+      resolutionRegistry: scope.resolutionRegistry,
       listing,
+      defaultId: scope.defaultId,
       config: { mutable: options.mutable === true },
       context: options.context ?? { prefixes: {} },
       describe: resolveDescribeConfig(options.describe),
@@ -224,14 +126,18 @@ async function startRegistryMode(
   for (const id of engineMap.allIds()) {
     logger.log(`SPARQL endpoint for @${id} at ${url}/api/sparql/${id}`);
   }
+  if (scope.defaultId !== undefined) {
+    logger.log(`Default SPARQL endpoint at ${url}/api/sparql`);
+  }
   logger.log(`Config + source listing at ${url}/api/config`);
   if (options.webRootDir) {
     logger.log(`Web playground served at ${url}/`);
   }
 
   const watcher = options.watch
-    ? await maybeStartRegistryWatcher({
-        registry,
+    ? await maybeStartWatcher({
+        servedRegistry: scope.servedRegistry,
+        resolutionRegistry: scope.resolutionRegistry,
         engineMap,
         graphMode: options.graphMode,
         logger,
@@ -272,23 +178,11 @@ function resolveDescribeConfig(
   };
 }
 
-function buildSingleListing(target: ParsedSource): SourceListingEntry[] {
-  if (target.kind === 'reference') return [];
-  const id = target.id ?? 'source';
-  const entry: SourceListingEntry = {
-    id,
-    kind: target.kind,
-    label: id,
-    default: true,
-  };
-  return [entry];
-}
-
 function buildListing(
-  registry: ReadonlyArray<ParsedSource>,
+  servedRegistry: ReadonlyArray<ParsedSource>,
 ): SourceListingEntry[] {
   const out: SourceListingEntry[] = [];
-  for (const src of registry) {
+  for (const src of servedRegistry) {
     if (src.kind === 'reference') continue;
     if (src.id === undefined) continue;
     const entry: SourceListingEntry = {
@@ -329,80 +223,11 @@ function triggerLabel(trigger: RefreshTrigger): string {
   }
 }
 
-interface SingleSourceWatcherOptions {
-  target: ParsedSource;
-  registry: ReadonlyArray<ParsedSource>;
-  graphMode?: GraphMode;
-  storeRef: StoreRef | undefined;
-  logger: Logger;
-  debounceMs: number;
-  pollMs: number;
-  snippetAllowList: SnippetAllowList;
-  singleSourceFiles: Map<ParsedSource, ReadonlyArray<string>>;
-}
-
-async function maybeStartSingleSourceWatcher(
-  opts: SingleSourceWatcherOptions,
-): Promise<WatcherHandle | undefined> {
-  // Single-source mode reuses the multi-source builder over the full registry
-  // — including any `@id` upstreams the target's `from:` chain needs — but
-  // narrows the resulting WatcherChain down to just the target's plan. The
-  // target may not be in `opts.registry` when it was supplied as an inline
-  // positional/--source (`selectTarget` synthesises a fresh source in that
-  // case), so we ensure it leads the effective registry.
-  const effectiveRegistry: ReadonlyArray<ParsedSource> = opts.registry.includes(
-    opts.target,
-  )
-    ? opts.registry
-    : [opts.target, ...opts.registry];
-  const fullChain = buildWatcherChain(effectiveRegistry);
-  const plan = fullChain.sources.find((p) => p.source === opts.target);
-
-  if (!plan) {
-    opts.logger.warn(
-      '--watch ignored: no glob source in the target chain and no `cache.ttl`/`cache.freshness` views to refresh. SPARQL endpoints are not auto-refreshed; restart the process to pick up upstream changes.',
-    );
-    return undefined;
-  }
-  if (!opts.storeRef) {
-    opts.logger.warn(
-      '--watch ignored: target resolves pass-through to an endpoint; nothing local to refresh.',
-    );
-    return undefined;
-  }
-
-  const narrowedChain: WatcherChain = {
-    sources: [plan],
-    passThrough: [],
-    globBases: plan.globBases,
-  };
-  const storeRef = opts.storeRef;
-  const filesMap = opts.singleSourceFiles;
-  return startMultiSourceWatcher(
-    [
-      {
-        plan,
-        storeRef,
-        target: opts.target,
-        registry: opts.registry,
-        onRebuiltFiles: (files) => {
-          filesMap.set(opts.target, files);
-          opts.snippetAllowList.update(unionFiles(filesMap.values()));
-        },
-      },
-    ],
-    narrowedChain,
-    {
-      graphMode: opts.graphMode,
-      logger: opts.logger,
-      debounceMs: opts.debounceMs,
-      pollMs: opts.pollMs,
-    },
-  );
-}
-
-interface RegistryWatcherOptions {
-  registry: ReadonlyArray<ParsedSource>;
+interface WatcherOptions {
+  /** Sources `serve` exposes — the ones we try to watch. */
+  servedRegistry: ReadonlyArray<ParsedSource>;
+  /** Superset used to walk `from:` chains (e.g. a scoped `@view`'s upstreams). */
+  resolutionRegistry: ReadonlyArray<ParsedSource>;
   engineMap: EngineMap;
   graphMode?: GraphMode;
   logger: Logger;
@@ -411,10 +236,10 @@ interface RegistryWatcherOptions {
   snippetAllowList: SnippetAllowList;
 }
 
-async function maybeStartRegistryWatcher(
-  opts: RegistryWatcherOptions,
+async function maybeStartWatcher(
+  opts: WatcherOptions,
 ): Promise<WatcherHandle | undefined> {
-  const chain = buildWatcherChain(opts.registry);
+  const chain = buildWatcherChain(opts.servedRegistry, opts.resolutionRegistry);
 
   for (const skipped of chain.passThrough) {
     const id = (skipped as { id?: string }).id;
@@ -445,7 +270,7 @@ async function maybeStartRegistryWatcher(
       plan,
       storeRef,
       target: plan.source,
-      registry: opts.registry,
+      registry: opts.resolutionRegistry,
       onRebuiltFiles: (files) => {
         opts.engineMap.setFiles(sourceId, files);
         opts.snippetAllowList.update(opts.engineMap.allFiles());
@@ -453,7 +278,12 @@ async function maybeStartRegistryWatcher(
     });
   }
 
-  if (targets.length === 0) return undefined;
+  if (targets.length === 0) {
+    opts.logger.warn(
+      '--watch: nothing to refresh — no glob source in any served chain and no `cache.ttl`/`cache.freshness` views. SPARQL endpoints are not auto-refreshed; restart the process to pick up upstream changes.',
+    );
+    return undefined;
+  }
 
   return startMultiSourceWatcher(targets, chain, {
     graphMode: opts.graphMode,
@@ -740,16 +570,6 @@ async function runAskAgainstUpstream(
     );
   }
   return (await result.execute()) as boolean;
-}
-
-function unionFiles(
-  perSource: Iterable<ReadonlyArray<string>>,
-): string[] {
-  const out: string[] = [];
-  for (const files of perSource) {
-    for (const f of files) out.push(f);
-  }
-  return out;
 }
 
 function mountWebPlayground(

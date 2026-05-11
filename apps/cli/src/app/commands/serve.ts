@@ -1,11 +1,6 @@
 import { join } from 'node:path';
 import { z } from 'zod';
-import {
-  parseSourceSpecs,
-  selectTarget,
-  type ParsedSource,
-  type SourceSpecInput,
-} from 'core';
+import type { SourceSpecInput } from 'core';
 import { createServer } from 'server';
 import { configureLogger } from '../logging';
 import { printServeSplash } from './serve-splash';
@@ -115,20 +110,10 @@ const describeFromSourcePredicateField: FieldDescriptor = {
   schema: z.string().min(1),
 };
 
-export function resolveServeTarget(config: ServeConfig): ParsedSource {
-  const registry = parseSourceSpecs(config.sources ?? []);
-  const targetArg =
-    typeof config.source === 'string' ? config.source : undefined;
-  if (config.source !== undefined && targetArg === undefined) {
-    return parseSourceSpecs([config.source])[0];
-  }
-  return selectTarget(registry, targetArg);
-}
-
 export const serveSpec: CommandSpec<ServeConfig> = {
   name: 'serve',
   description:
-    'Serve a W3C SPARQL Protocol endpoint. With no positional/--source, boots in Registry mode and exposes /api/sparql/<id> for every non-`reference` source plus /api/config. With a positional or --source, boots in Single-source mode and exposes /api/sparql against that target. Intended for single-user development; not hardened for concurrent users.',
+    'Serve a W3C SPARQL Protocol endpoint. Exposes /api/sparql/<id> for every non-`reference` source, /api/sparql as an alias for the default source, plus /api/diff, /api/describe, /api/source-snippet, /api/config and the web playground. Pass a positional glob/URL or --source @id to scope the served set to one source (its `from:` deps stay resolvable but unlisted). Intended for single-user development; not hardened for concurrent users.',
   fields: [
     sourceField,
     sourcesRegistryField,
@@ -158,25 +143,25 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     const mutable = config.mutable === true;
 
     let sources: ReadonlyArray<SourceSpecInput>;
-    let target: string | undefined;
+    let scope: string | undefined;
     if (typeof config.source === 'object' && config.source !== null) {
-      // Inline object spec overrides the registry — single-source registry.
+      // Inline object spec replaces the configured registry; served as @default.
       sources = [config.source];
-      target = undefined;
+      scope = undefined;
     } else {
       sources = config.sources ?? [];
-      target = typeof config.source === 'string' ? config.source : undefined;
+      scope = typeof config.source === 'string' ? config.source : undefined;
     }
 
-    if (sources.length === 0 && target === undefined) {
+    if (sources.length === 0 && scope === undefined) {
       throw new Error(
-        'No sources configured. Pass a positional/--source, or define `sources:` in your config to boot in Registry mode.',
+        'No sources configured. Pass a positional/--source, or define `sources:` in your config.',
       );
     }
 
     await createServer({
       sources,
-      target,
+      scope,
       port,
       mutable,
       webRootDir: WEB_BUNDLE_DIR,

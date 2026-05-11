@@ -8,7 +8,7 @@ import { createServer, type CreatedServer } from './create-server';
 const SAMPLE_A = '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .';
 const SAMPLE_B = '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .';
 
-describe('createServer — Registry mode', () => {
+describe('createServer — served registry', () => {
   let dirA: string;
   let dirB: string;
   let server: CreatedServer;
@@ -154,5 +154,57 @@ describe('createServer — Registry mode', () => {
     expect(json.results.bindings.map((b) => b.s.value)).toEqual([
       'http://example.org/a',
     ]);
+  });
+});
+
+describe('createServer — scope filter', () => {
+  let dirA: string;
+  let dirB: string;
+
+  beforeAll(async () => {
+    Logger.overrideLogger(false);
+    dirA = await mkdtemp(join(tmpdir(), 'sparqly-scope-a-'));
+    dirB = await mkdtemp(join(tmpdir(), 'sparqly-scope-b-'));
+    await writeFile(join(dirA, 'a.ttl'), SAMPLE_A);
+    await writeFile(join(dirB, 'b.ttl'), SAMPLE_B);
+  });
+
+  afterAll(async () => {
+    await rm(dirA, { recursive: true, force: true });
+    await rm(dirB, { recursive: true, force: true });
+  });
+
+  it('scope `@id` narrows the served/listed set; filtered ids 404', async () => {
+    const server = await createServer({
+      sources: [
+        { id: 'alpha', glob: join(dirA, '*.ttl') },
+        { id: 'beta', glob: join(dirB, '*.ttl') },
+      ],
+      scope: '@alpha',
+      port: 0,
+    });
+    try {
+      const base = `http://localhost:${server.port}`;
+      const cfg = (await (await fetch(`${base}/api/config`)).json()) as {
+        sources: Array<{ id: string }>;
+      };
+      expect(cfg.sources.map((s) => s.id)).toEqual(['alpha']);
+      const beta = await fetch(
+        `${base}/api/sparql/beta?query=${encodeURIComponent('ASK { ?s ?p ?o }')}`,
+      );
+      expect(beta.status).toBe(404);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('rejects an `@id` scope that matches no source, listing the available ids', async () => {
+    await expect(
+      createServer({
+        sources: [{ id: 'alpha', glob: join(dirA, '*.ttl') }],
+        scope: '@nope',
+        port: 0,
+      }),
+    ).rejects.toThrow(/@nope[\s\S]*@alpha/);
   });
 });

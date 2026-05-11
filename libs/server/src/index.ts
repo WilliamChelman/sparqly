@@ -1,5 +1,4 @@
 export * from './lib/server.module';
-export * from './lib/sparql.controller';
 export * from './lib/config.controller';
 export * from './lib/registry-sparql.controller';
 export * from './lib/diff.controller';

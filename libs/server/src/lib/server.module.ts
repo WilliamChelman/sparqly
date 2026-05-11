@@ -1,5 +1,5 @@
-import { DynamicModule, Module, type Type } from '@nestjs/common';
-import type { ParsedSource, QueryEngine } from 'core';
+import { DynamicModule, Module } from '@nestjs/common';
+import type { ParsedSource } from 'core';
 import { ConfigController } from './config.controller';
 import { DescribeController } from './describe.controller';
 import { DescribeService, type DescribeConfig } from './describe.service';
@@ -9,14 +9,13 @@ import type { EngineMap } from './engine-map';
 import { RegistrySparqlController } from './registry-sparql.controller';
 import { SnippetAllowList } from './snippet-allow-list';
 import { SnippetController } from './snippet.controller';
-import { SparqlController } from './sparql.controller';
 import {
   SPARQL_CONFIG,
   SPARQL_CONTEXT,
+  SPARQL_DEFAULT_ID,
   SPARQL_DESCRIBE_CONFIG,
   SPARQL_DESCRIBE_SERVICE,
   SPARQL_DIFF_SERVICE,
-  SPARQL_ENGINE,
   SPARQL_ENGINE_MAP,
   SPARQL_REGISTRY_LISTING,
   SPARQL_SNIPPET_ALLOW_LIST,
@@ -25,70 +24,66 @@ import {
   type SparqlServerConfig,
 } from './tokens';
 
-export interface SingleSourceModuleOptions {
-  mode: 'single';
-  engine: QueryEngine;
-  listing: ReadonlyArray<SourceListingEntry>;
-  config: SparqlServerConfig;
-  context: SparqlContext;
-  describe: DescribeConfig;
-  snippetAllowList: SnippetAllowList;
-}
-
-export interface RegistryModuleOptions {
-  mode: 'registry';
+export interface ServerModuleOptions {
+  /** Engines for the served sources (eager for materialized, lazy for pass-through). */
   engineMap: EngineMap;
-  registry: ReadonlyArray<ParsedSource>;
+  /**
+   * The sources `serve` exposes: routed at `/api/sparql/<id>`, listed via
+   * `/api/config`, and the default enumeration set for `/api/diff` and
+   * `/api/describe`.
+   */
+  servedRegistry: ReadonlyArray<ParsedSource>;
+  /**
+   * Resolution registry — a superset of the served set used to walk `from:`
+   * chains (e.g. a scoped `@view`'s upstreams that are otherwise unlisted).
+   */
+  resolutionRegistry: ReadonlyArray<ParsedSource>;
+  /** The served registry's `/api/config` listing. */
   listing: ReadonlyArray<SourceListingEntry>;
+  /** `@id` the unparameterized `/api/sparql` forwards to, or `undefined` if none. */
+  defaultId: string | undefined;
   config: SparqlServerConfig;
   context: SparqlContext;
   describe: DescribeConfig;
   snippetAllowList: SnippetAllowList;
 }
-
-export type ServerModuleOptions =
-  | SingleSourceModuleOptions
-  | RegistryModuleOptions;
 
 @Module({})
 export class ServerModule {
   static forRoot(options: ServerModuleOptions): DynamicModule {
-    const controllers: Type<unknown>[] = [SnippetController];
-    const providers: DynamicModule['providers'] = [
-      { provide: SPARQL_CONFIG, useValue: options.config },
-      { provide: SPARQL_CONTEXT, useValue: options.context },
-      { provide: SPARQL_DESCRIBE_CONFIG, useValue: options.describe },
-      {
-        provide: SPARQL_SNIPPET_ALLOW_LIST,
-        useValue: options.snippetAllowList,
-      },
-    ];
-    if (options.mode === 'single') {
-      controllers.push(SparqlController, ConfigController);
-      providers.push(
-        { provide: SPARQL_ENGINE, useValue: options.engine },
-        { provide: SPARQL_REGISTRY_LISTING, useValue: options.listing },
-      );
-    } else {
-      controllers.push(
+    return {
+      module: ServerModule,
+      controllers: [
         ConfigController,
         RegistrySparqlController,
         DiffController,
         DescribeController,
-      );
-      providers.push(
+        SnippetController,
+      ],
+      providers: [
+        { provide: SPARQL_CONFIG, useValue: options.config },
+        { provide: SPARQL_CONTEXT, useValue: options.context },
+        { provide: SPARQL_DESCRIBE_CONFIG, useValue: options.describe },
+        { provide: SPARQL_SNIPPET_ALLOW_LIST, useValue: options.snippetAllowList },
         { provide: SPARQL_ENGINE_MAP, useValue: options.engineMap },
         { provide: SPARQL_REGISTRY_LISTING, useValue: options.listing },
+        { provide: SPARQL_DEFAULT_ID, useValue: options.defaultId },
         {
           provide: SPARQL_DIFF_SERVICE,
-          useValue: new DiffService(options.registry),
+          useValue: new DiffService(
+            options.servedRegistry,
+            options.resolutionRegistry,
+          ),
         },
         {
           provide: SPARQL_DESCRIBE_SERVICE,
-          useValue: new DescribeService(options.registry, options.describe),
+          useValue: new DescribeService(
+            options.servedRegistry,
+            options.describe,
+            options.resolutionRegistry,
+          ),
         },
-      );
-    }
-    return { module: ServerModule, controllers, providers };
+      ],
+    };
   }
 }

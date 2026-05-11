@@ -50,7 +50,12 @@ export type DiffResponse =
 
 @Injectable()
 export class DiffService {
-  constructor(private readonly registry: ReadonlyArray<ParsedSource>) {}
+  constructor(
+    /** Sources `serve` exposes — the only `@id`s a diff request may name. */
+    private readonly servedRegistry: ReadonlyArray<ParsedSource>,
+    /** Superset used to walk `from:` chains while materializing a side. */
+    private readonly resolutionRegistry: ReadonlyArray<ParsedSource> = servedRegistry,
+  ) {}
 
   async runDiff(req: DiffRequest): Promise<DiffResponse> {
     const leftSel = this.selectFromRegistry(req.left, 'left');
@@ -72,7 +77,7 @@ export class DiffService {
         rightQuery: req.rightQuery as string,
         leftShape: tabular.left,
         rightShape: tabular.right,
-        registry: this.registry,
+        registry: this.resolutionRegistry,
       });
     }
 
@@ -82,7 +87,7 @@ export class DiffService {
       leftQuery: req.leftQuery,
       rightQuery: req.rightQuery,
       skipAuto: req.skipAutoSourceAnnotation === true,
-      registry: this.registry,
+      registry: this.resolutionRegistry,
     });
   }
 
@@ -91,14 +96,14 @@ export class DiffService {
     side: 'left' | 'right',
   ): SideSelection {
     const id = ref.startsWith('@') ? ref.slice(1) : ref;
-    const found = this.registry.find(
+    const found = this.servedRegistry.find(
       (src) => src.kind !== 'reference' && src.id === id,
     );
     if (!found) {
       return {
         kind: 'err',
         side,
-        message: `unknown @id "${id}" on ${side} side; available: ${availableIds(this.registry)}`,
+        message: `unknown @id "${id}" on ${side} side; available: ${availableIds(this.servedRegistry)}`,
       };
     }
     return { kind: 'ok', value: found };
