@@ -14,6 +14,10 @@ import { SPARQL_DESCRIBE_SERVICE } from './tokens';
 const DESCRIBE_REQUEST_SCHEMA = z
   .object({
     iri: z.string().min(1),
+    sources: z.array(z.string()).optional(),
+    withProvenance: z.boolean().optional(),
+    perSourceLimit: z.number().int().positive().optional(),
+    fromSourcePredicate: z.string().min(1).optional(),
   })
   .strict();
 

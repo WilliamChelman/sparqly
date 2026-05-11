@@ -4,6 +4,7 @@ import type { Observable } from 'rxjs';
 
 export interface DescribeRequest {
   iri: string;
+  sources?: string[];
 }
 
 export interface DescribePerSourceEntry {
@@ -23,6 +24,8 @@ export class DescribeService {
   private readonly http = inject(HttpClient);
 
   run(req: DescribeRequest): Observable<DescribeResponse> {
-    return this.http.post<DescribeResponse>('/api/describe', { iri: req.iri });
+    const body: DescribeRequest = { iri: req.iri };
+    if (req.sources !== undefined) body.sources = [...req.sources];
+    return this.http.post<DescribeResponse>('/api/describe', body);
   }
 }

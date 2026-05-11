@@ -5,6 +5,7 @@ import {
   signal,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { MultiSourcesPickerComponent } from '@app/modules/multi-sources-picker';
 import { QuadTableComponent } from './components/quad-table.component';
 import {
   DescribeService,
@@ -15,16 +16,16 @@ import {
   selector: 'app-describe-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [QuadTableComponent],
+  imports: [QuadTableComponent, MultiSourcesPickerComponent],
   template: `
     <header class="border-b border-border-muted bg-surface px-4 py-3">
       <h1 class="font-serif text-2xl italic text-foreground">describe</h1>
       <p class="text-sm text-foreground-muted">
-        Resolve every quad about a seed IRI in the registry's first glob source.
+        Resolve every quad about a seed IRI across the registry's glob sources.
       </p>
     </header>
     <main class="flex flex-col gap-3 p-4">
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <input
           data-testid="seed-input"
           type="text"
@@ -32,6 +33,10 @@ import {
           placeholder="http://example.org/alice"
           [value]="seed()"
           (input)="seed.set($any($event.target).value)"
+        />
+        <app-multi-sources-picker
+          [value]="initialSources()"
+          (valueChange)="onSourcesChange($event)"
         />
         <button
           data-testid="run-describe"
@@ -68,10 +73,26 @@ export class DescribePage {
   readonly submittedSeed = signal<string>('');
   readonly running = signal<boolean>(false);
   readonly response = signal<DescribeResponse | null>(null);
+  // null means "no override" (server defaults to all sources).
+  private selectedSources: string[] | null = null;
+  readonly initialSources = signal<string[] | undefined>(undefined);
 
   constructor() {
     const iri = this.route.snapshot.queryParamMap.get('iri');
     if (iri !== null) this.seed.set(iri);
+    const sources = this.route.snapshot.queryParamMap.get('sources');
+    if (sources !== null) {
+      const ids = sources
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      this.selectedSources = ids;
+      this.initialSources.set(ids);
+    }
+  }
+
+  onSourcesChange(value: string[]): void {
+    this.selectedSources = value;
   }
 
   run(): void {
@@ -80,13 +101,21 @@ export class DescribePage {
     this.submittedSeed.set(iri);
     this.running.set(true);
     this.response.set(null);
+    const queryParams: Record<string, string | null> = { iri };
+    if (this.selectedSources !== null) {
+      queryParams['sources'] = this.selectedSources.join(',');
+    }
     void this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { iri },
+      queryParams,
       queryParamsHandling: 'merge',
       replaceUrl: true,
     });
-    this.describeService.run({ iri }).subscribe({
+    const req =
+      this.selectedSources !== null
+        ? { iri, sources: this.selectedSources }
+        : { iri };
+    this.describeService.run(req).subscribe({
       next: (resp) => {
         this.running.set(false);
         this.response.set(resp);
