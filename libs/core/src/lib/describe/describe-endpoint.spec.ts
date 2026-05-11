@@ -1,10 +1,10 @@
 import { DataFactory, Store } from 'n3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { describeEndpoint } from './describe-endpoint';
-import type { ParsedEndpointSource } from './sources';
-import type { FakeSparqlEndpoint } from './test/fake-sparql-endpoint';
-import { startStoreBackedSparqlEndpoint } from './test/store-backed-sparql-endpoint';
-import { ttl } from './test/turtle';
+import type { ParsedEndpointSource } from '../sources';
+import type { FakeSparqlEndpoint } from '../test/fake-sparql-endpoint';
+import { startStoreBackedSparqlEndpoint } from '../test/store-backed-sparql-endpoint';
+import { ttl } from '../test/turtle';
 
 const { namedNode, literal, quad } = DataFactory;
 
