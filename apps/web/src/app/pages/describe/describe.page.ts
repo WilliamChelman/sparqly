@@ -2,12 +2,15 @@ import {
   ChangeDetectionStrategy,
   Component,
   inject,
+  OnInit,
   signal,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MultiSourcesPickerComponent } from '@app/modules/multi-sources-picker';
+import { ConfigService } from '@app/core';
 import { QuadTableComponent } from './components/quad-table.component';
 import { SourceErrorsComponent } from './components/source-errors.component';
+import { describeIriExpand } from './utils/describe-iri-expand';
 import {
   DescribeService,
   type DescribeResponse,
@@ -31,9 +34,10 @@ import {
           data-testid="seed-input"
           type="text"
           class="flex-1 rounded border border-border bg-surface px-2 py-1 font-mono text-sm text-foreground"
-          placeholder="http://example.org/alice"
+          placeholder="http://example.org/alice — or ex:alice"
           [value]="seed()"
-          (input)="seed.set($any($event.target).value)"
+          (input)="onSeedInput($any($event.target).value)"
+          (keydown.enter)="run()"
         />
         <app-multi-sources-picker
           [value]="initialSources()"
@@ -43,12 +47,20 @@ import {
           data-testid="run-describe"
           type="button"
           class="rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground shadow-sm transition-colors hover:bg-accent-strong disabled:opacity-50"
-          [disabled]="running() || seed().length === 0"
+          [disabled]="running() || seed().trim().length === 0"
           (click)="run()"
         >
           {{ running() ? 'running…' : 'Describe' }}
         </button>
       </div>
+      @if (iriError(); as msg) {
+        <p
+          data-testid="iri-error"
+          class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
+        >
+          {{ msg }}
+        </p>
+      }
       @if (running()) {
         <div data-testid="spinner" class="text-sm text-foreground-faint">
           loading…
@@ -66,8 +78,9 @@ import {
     </main>
   `,
 })
-export class DescribePage {
+export class DescribePage implements OnInit {
   private readonly describeService = inject(DescribeService);
+  private readonly configService = inject(ConfigService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
@@ -75,9 +88,11 @@ export class DescribePage {
   readonly submittedSeed = signal<string>('');
   readonly running = signal<boolean>(false);
   readonly response = signal<DescribeResponse | null>(null);
+  readonly iriError = signal<string | null>(null);
   // null means "no override" (server defaults to all sources).
   private selectedSources: string[] | null = null;
   readonly initialSources = signal<string[] | undefined>(undefined);
+  private prefixes: Record<string, string> = {};
 
   constructor() {
     const iri = this.route.snapshot.queryParamMap.get('iri');
@@ -93,13 +108,31 @@ export class DescribePage {
     }
   }
 
+  ngOnInit(): void {
+    this.configService.config().subscribe((config) => {
+      this.prefixes = config.context.prefixes;
+      // A URL carrying ?iri is a bookmark — rehydrate and run immediately.
+      if (this.seed().trim().length > 0) this.run();
+    });
+  }
+
+  onSeedInput(value: string): void {
+    this.seed.set(value);
+    this.iriError.set(null);
+  }
+
   onSourcesChange(value: string[]): void {
     this.selectedSources = value;
   }
 
   run(): void {
-    const iri = this.seed();
-    if (iri.length === 0) return;
+    const expanded = describeIriExpand(this.seed(), this.prefixes);
+    if (!expanded.ok) {
+      this.iriError.set(expanded.error);
+      return;
+    }
+    const iri = expanded.iri;
+    this.iriError.set(null);
     this.submittedSeed.set(iri);
     this.running.set(true);
     this.response.set(null);
