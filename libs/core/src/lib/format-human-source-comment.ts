@@ -1,6 +1,6 @@
 import { compressSourceRecords } from './compress-source-records';
 import type { SourceRecord } from './diff';
-import { displaySourcePath } from './source-path-display';
+import { displaySourcePath } from './sources';
 
 /**
  * Render the trailing inline source-record comment for one `+` / `-` hunk in

@@ -5,9 +5,9 @@ import { join } from 'node:path';
 import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { canonicalizeRdf, canonicalizeStore } from './canonicalize';
-import { parseSourceSpec } from '../source-spec';
-import { resolveSource } from '../resolve-source';
-import { extractAnnotationPredicates } from '../annotate-transform';
+import { parseSourceSpec } from '../sources';
+import { resolveSource } from '../sources';
+import { extractAnnotationPredicates } from '../sources';
 
 async function hashOf(file: string, transforms?: ReadonlyArray<unknown>) {
   const spec = parseSourceSpec(

@@ -5,8 +5,8 @@ import {
   describeEndpointError,
   type ComunicaEndpointContext,
 } from './endpoint-http';
-import { assertImmutable, detectQueryType } from '../canonical';
-import type { ParsedEndpointSource } from '../source-spec';
+import { assertImmutable, detectQueryType } from '../canonical/immutability';
+import type { ParsedEndpointSource } from '../sources';
 
 export const SUPPORTED_FORMATS = ['json', 'turtle'] as const;
 

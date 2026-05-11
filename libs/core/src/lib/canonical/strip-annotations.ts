@@ -1,5 +1,5 @@
 import { Store } from 'n3';
-import type { AnnotationPredicateIris } from '../source-record-builder';
+import type { AnnotationPredicateIris } from '../sources';
 
 /**
  * Return a new Store containing only asserted triples — annotation triples

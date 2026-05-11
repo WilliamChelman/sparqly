@@ -3,12 +3,12 @@ import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import { DataFactory, Store, type Quad } from 'n3';
 import { loadRdf } from './engine';
-import { applyTransformPipeline } from './transform-pipeline';
+import { applyTransformPipeline } from './sources';
 import {
   type ParsedEndpointSource,
   type ParsedSource,
   type ParsedViewSource,
-} from './source-spec';
+} from './sources';
 import {
   lookup as cacheLookup,
   storeView as cacheStore,

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   parseSourceSpecs,
   type ParsedViewSource,
-} from './source-spec';
+} from './sources';
 import {
   startFakeSparqlEndpoint,
   type FakeSparqlEndpoint,

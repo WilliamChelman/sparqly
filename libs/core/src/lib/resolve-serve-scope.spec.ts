@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseSourceSpecs } from './source-spec';
+import { parseSourceSpecs } from './sources';
 import { resolveServeScope } from './resolve-serve-scope';
 
 describe('resolveServeScope — no --source', () => {

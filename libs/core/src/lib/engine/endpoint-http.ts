@@ -1,4 +1,4 @@
-import type { ParsedEndpointSource } from '../source-spec';
+import type { ParsedEndpointSource } from '../sources';
 
 export const DEFAULT_ENDPOINT_TIMEOUT_MS = 30000;
 

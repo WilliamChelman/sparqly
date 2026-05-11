@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   parseSourceSpecs,
   type ParsedEndpointSource,
-} from './source-spec';
+} from './sources';
 import {
   startFakeSparqlEndpoint,
   type FakeSparqlEndpoint,

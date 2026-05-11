@@ -5,7 +5,7 @@ import {
   parseAnnotateTransform,
 } from './annotate-transform';
 import { DEFAULT_ANNOTATION_PREDICATE_IRIS } from './source-record-builder';
-import type { RdfRecord } from './engine';
+import type { RdfRecord } from '../engine';
 
 const { namedNode, quad } = DataFactory;
 

@@ -1,6 +1,6 @@
 import { Store } from 'n3';
 import { parseGraphNameTransform } from './graph-name-transform';
-import { loadRdf, type GraphMode, type LoadResult } from './engine';
+import { loadRdf, type GraphMode, type LoadResult } from '../engine';
 import {
   type ParsedEndpointSource,
   type ParsedGlobSource,
@@ -9,7 +9,7 @@ import {
 } from './source-spec';
 import { applyTransformPipeline } from './transform-pipeline';
 import type { ParsedTransform } from './transform-spec';
-import { resolveView, type ResolveViewOptions } from './view-resolver';
+import { resolveView, type ResolveViewOptions } from '../view-resolver';
 
 export type QuerySources =
   | { mode: 'pass-through'; endpoint: ParsedEndpointSource }
