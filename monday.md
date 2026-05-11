@@ -57,7 +57,9 @@ https://github.com/WilliamChelman/sparqly/issues/184
 Then time to /tdd one after the other
 
 - Hungriest in my experience (~50% of my token usage)
-- If need to split models foer cost, I would use opus for most, but /tdd could be ran by sonnet most of the time (PRD, ADR, CONTEXT.md and issue description should guide it enough)
+- If need to split models for cost, I would use opus for most, but /tdd could be ran by sonnet most of the time (PRD, ADR, CONTEXT.md and issue description should guide it enough)
+- NEED OWNERSHIP OF CODE -> need to review it, starting with the tests.
+- /review can help too
 
 Tips and tricks:
 
