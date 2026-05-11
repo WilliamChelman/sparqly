@@ -57,10 +57,13 @@ const LISTING: SourceListing = {
   ],
 };
 
-async function setup(initialUrl = '/describe') {
+async function setup(
+  initialUrl = '/describe',
+  prefixes: Record<string, string> = {},
+) {
   const payload: ConfigPayload = {
     sources: LISTING.sources,
-    context: { prefixes: {} },
+    context: { prefixes },
     describe: {
       perSourceSoftLimit: 10000,
       perSourceHardLimit: 100000,
@@ -134,12 +137,20 @@ describe('DescribePage', () => {
   });
 
   it('seeds the input from the ?iri URL query param', async () => {
-    const { fixture } = await setup(
+    const { fixture, http } = await setup(
       '/describe?iri=' + encodeURIComponent('http://example.org/alice'),
     );
     const root = fixture.nativeElement as HTMLElement;
     const input = root.querySelector('input[data-testid=seed-input]') as HTMLInputElement;
     expect(input.value).toBe('http://example.org/alice');
+    // Loading from a URL with ?iri auto-runs the describe.
+    http.expectOne('/api/describe').flush({
+      iri: 'http://example.org/alice',
+      quads: '',
+      total: 0,
+      perSource: {},
+    });
+    http.verify();
   });
 
   it('shows a spinner while a describe request is in flight and clears it on response', async () => {
@@ -368,6 +379,108 @@ describe('DescribePage', () => {
       perSource: { alpha: { count: 3, truncated: false } },
     });
     expect(root.querySelector('[data-testid=source-errors]')).toBeFalsy();
+  });
+
+  it('expands a prefixed seed against the config prefix map before submitting', async () => {
+    const { fixture, http } = await setup('/describe', {
+      ex: 'http://example.org/',
+    });
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector('input[data-testid=seed-input]') as HTMLInputElement;
+    input.value = 'ex:alice';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    (root.querySelector('button[data-testid=run-describe]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const req = http.expectOne('/api/describe');
+    expect(req.request.body.iri).toBe('http://example.org/alice');
+    req.flush({
+      iri: 'http://example.org/alice',
+      quads: '',
+      total: 0,
+      perSource: {},
+    });
+    http.verify();
+  });
+
+  it('writes the fully-expanded IRI (not the prefixed form) into the ?iri URL param', async () => {
+    const { fixture, http, router } = await setup('/describe', {
+      ex: 'http://example.org/',
+    });
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector('input[data-testid=seed-input]') as HTMLInputElement;
+    input.value = 'ex:alice';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    (root.querySelector('button[data-testid=run-describe]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const tree = router.parseUrl(router.url);
+    expect(tree.queryParamMap.get('iri')).toBe('http://example.org/alice');
+
+    http.expectOne('/api/describe').flush({
+      iri: 'http://example.org/alice',
+      quads: '',
+      total: 0,
+      perSource: {},
+    });
+    http.verify();
+  });
+
+  it('shows a validation error and issues no request when the prefix is unknown', async () => {
+    const { fixture, http } = await setup('/describe', {
+      ex: 'http://example.org/',
+    });
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector('input[data-testid=seed-input]') as HTMLInputElement;
+    input.value = 'bogus:alice';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    (root.querySelector('button[data-testid=run-describe]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const err = root.querySelector('[data-testid=iri-error]');
+    expect(err).toBeTruthy();
+    expect(err?.textContent).toContain('bogus');
+    http.expectNone('/api/describe');
+  });
+
+  it('auto-runs a describe when loaded from a URL carrying ?iri', async () => {
+    const { http } = await setup(
+      '/describe?iri=' + encodeURIComponent('http://example.org/alice'),
+    );
+    const req = http.expectOne('/api/describe');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ iri: 'http://example.org/alice' });
+    req.flush({
+      iri: 'http://example.org/alice',
+      quads: '',
+      total: 0,
+      perSource: { alpha: { count: 0, truncated: false } },
+    });
+    http.verify();
+  });
+
+  it('auto-runs with the ?sources subset when the URL carries iri and sources', async () => {
+    const { http } = await setup(
+      '/describe?iri=' +
+        encodeURIComponent('http://example.org/alice') +
+        '&sources=beta',
+    );
+    const req = http.expectOne('/api/describe');
+    expect(req.request.body).toEqual({
+      iri: 'http://example.org/alice',
+      sources: ['beta'],
+    });
+    req.flush({
+      iri: 'http://example.org/alice',
+      quads: '',
+      total: 0,
+      perSource: { beta: { count: 0, truncated: false } },
+    });
+    http.verify();
   });
 
   it('renders the error rows when the request fails with 502 (all sources failed)', async () => {
