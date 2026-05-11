@@ -10,6 +10,9 @@ export interface DescribeRequest {
 export interface DescribePerSourceEntry {
   count: number;
   truncated: boolean;
+  /** Present when this source's describe run failed. The request still
+   * succeeds (HTTP 200) as long as another source contributed quads. */
+  error?: string;
 }
 
 export interface DescribeResponse {

@@ -33,6 +33,9 @@ interface ServeConfig {
   watchPoll?: number;
   prefixes?: Record<string, string>;
   base?: string;
+  perSourceSoftLimit?: number;
+  perSourceHardLimit?: number;
+  fromSourcePredicate?: string;
   verbose?: boolean;
   quiet?: boolean;
 }
@@ -95,6 +98,23 @@ const watchPollField: FieldDescriptor = {
   ],
 };
 
+// Registry-wide describe defaults, read from the top-level `describe:` block
+// (see `describeBlockSchema`). No CLI flags — these are deployment knobs.
+const describeSoftLimitField: FieldDescriptor = {
+  key: 'perSourceSoftLimit',
+  schema: z.number().int().positive(),
+};
+
+const describeHardLimitField: FieldDescriptor = {
+  key: 'perSourceHardLimit',
+  schema: z.number().int().positive(),
+};
+
+const describeFromSourcePredicateField: FieldDescriptor = {
+  key: 'fromSourcePredicate',
+  schema: z.string().min(1),
+};
+
 export function resolveServeTarget(config: ServeConfig): ParsedSource {
   const registry = parseSourceSpecs(config.sources ?? []);
   const targetArg =
@@ -119,6 +139,9 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     watchPollField,
     contextPrefixesField,
     contextBaseField,
+    describeSoftLimitField,
+    describeHardLimitField,
+    describeFromSourcePredicateField,
     ...verbosityFieldsFor('serve'),
   ],
   positionals: [{ field: 'source', name: 'glob' }],
@@ -163,6 +186,11 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       context: {
         prefixes: config.prefixes ?? {},
         base: config.base,
+      },
+      describe: {
+        perSourceSoftLimit: config.perSourceSoftLimit,
+        perSourceHardLimit: config.perSourceHardLimit,
+        fromSourcePredicate: config.fromSourcePredicate,
       },
     });
   },

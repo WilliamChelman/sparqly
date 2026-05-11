@@ -979,6 +979,78 @@ describe('registerSpec', () => {
       expect(received).toEqual({ sources: ['data/*.ttl'] });
     });
 
+    it('serve picks up describe.* keys flattened onto its field keys', async () => {
+      let received: Record<string, unknown> | undefined;
+      const softLimitField: FieldDescriptor = {
+        key: 'perSourceSoftLimit',
+        schema: z.number().int().positive(),
+      };
+      const hardLimitField: FieldDescriptor = {
+        key: 'perSourceHardLimit',
+        schema: z.number().int().positive(),
+      };
+      const spec: CommandSpec<Record<string, unknown>> = {
+        name: 'serve',
+        description: 's',
+        fields: [sourcesField, softLimitField, hardLimitField],
+        configScope: { sources: true, block: 'serve' },
+        handler: (c) => {
+          received = c as Record<string, unknown>;
+        },
+        exitCode: () => 1,
+      };
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        loadFile: async () => ({
+          data: {
+            sources: ['data/*.ttl'],
+            describe: { perSourceSoftLimit: 5000, perSourceHardLimit: 50000 },
+          },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(['serve', '--config', '/cfg.yaml'], {
+        from: 'user',
+      });
+      expect(received).toMatchObject({
+        sources: ['data/*.ttl'],
+        perSourceSoftLimit: 5000,
+        perSourceHardLimit: 50000,
+      });
+    });
+
+    it('a command without describe.* fields silently ignores describe: values', async () => {
+      let received: Record<string, unknown> | undefined;
+      const spec: CommandSpec<Record<string, unknown>> = {
+        name: 'query',
+        description: 'q',
+        fields: [sourcesField],
+        configScope: { sources: true },
+        handler: (c) => {
+          received = c as Record<string, unknown>;
+        },
+        exitCode: () => 1,
+      };
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        loadFile: async () => ({
+          data: {
+            sources: ['data/*.ttl'],
+            describe: { perSourceSoftLimit: 5000 },
+          },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(['query', '--config', '/cfg.yaml'], {
+        from: 'user',
+      });
+      expect(received).toEqual({ sources: ['data/*.ttl'] });
+    });
+
     it('SPARQLY_CACHE_DIR env overrides cache.dir from the file', async () => {
       let received: Record<string, unknown> | undefined;
       const spec: CommandSpec<Record<string, unknown>> = {

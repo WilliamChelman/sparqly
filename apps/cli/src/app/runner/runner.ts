@@ -158,10 +158,13 @@ function projectFileLayer(
   if (scope.sources !== false && data.sources !== undefined) {
     out.sources = data.sources;
   }
-  const ctx = data.context;
-  if (ctx && typeof ctx === 'object' && !Array.isArray(ctx)) {
-    const fieldKeys = new Set(spec.fields.map((f) => f.key));
-    for (const [k, v] of Object.entries(ctx as Record<string, unknown>)) {
+  // Registry-wide blocks whose keys map 1:1 onto a command's flat field keys.
+  // A command only picks up a block's keys if it declares matching fields.
+  const fieldKeys = new Set(spec.fields.map((f) => f.key));
+  for (const blockName of ['context', 'describe'] as const) {
+    const block = data[blockName];
+    if (!block || typeof block !== 'object' || Array.isArray(block)) continue;
+    for (const [k, v] of Object.entries(block as Record<string, unknown>)) {
       if (v === undefined) continue;
       if (fieldKeys.has(k)) out[k] = v;
     }

@@ -49,6 +49,11 @@ describe('createServer — Registry mode', () => {
         default?: boolean;
       }>;
       context: { prefixes: Record<string, string>; base?: string };
+      describe: {
+        perSourceSoftLimit: number;
+        perSourceHardLimit: number;
+        fromSourcePredicate: string;
+      };
     };
     expect(json.sources).toHaveLength(3);
     const byId = new Map(json.sources.map((s) => [s.id, s]));
@@ -58,6 +63,40 @@ describe('createServer — Registry mode', () => {
     expect(byId.get('alpha')?.default).toBeUndefined();
     expect(json.context).toBeDefined();
     expect(json.context.prefixes).toBeDefined();
+    // `describe:` block omitted from createServer → defaults surface here.
+    expect(json.describe).toEqual({
+      perSourceSoftLimit: 10000,
+      perSourceHardLimit: 100000,
+      fromSourcePredicate: 'urn:sparqly:fromSource',
+    });
+  });
+
+  it('GET /api/config surfaces a configured `describe:` block, filling missing fields with defaults', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sparqly-reg-desc-'));
+    await writeFile(join(dir, 'd.ttl'), SAMPLE_A);
+    const local = await createServer({
+      sources: [{ id: 'alpha', glob: join(dir, '*.ttl') }],
+      port: 0,
+      describe: { perSourceHardLimit: 42 },
+    });
+    try {
+      const resp = await fetch(`http://localhost:${local.port}/api/config`);
+      const json = (await resp.json()) as {
+        describe: {
+          perSourceSoftLimit: number;
+          perSourceHardLimit: number;
+          fromSourcePredicate: string;
+        };
+      };
+      expect(json.describe).toEqual({
+        perSourceSoftLimit: 10000,
+        perSourceHardLimit: 42,
+        fromSourcePredicate: 'urn:sparqly:fromSource',
+      });
+    } finally {
+      await local.close();
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it('GET /api/sparql/:id returns SPARQL JSON results for the named source', async () => {

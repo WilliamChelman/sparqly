@@ -242,6 +242,51 @@ describe('makeFileLoader — whole-project schema', () => {
     await expect(load(path, dir)).rejects.toThrow(/bogus/);
   });
 
+  it('accepts a valid describe: block and returns it intact', async () => {
+    const path = join(dir, 'sparqly.config.yaml');
+    await writeFile(
+      path,
+      [
+        'describe:',
+        '  perSourceSoftLimit: 5000',
+        '  perSourceHardLimit: 50000',
+        '  fromSourcePredicate: urn:my:fromSource',
+        '',
+      ].join('\n'),
+    );
+    const load = makeFileLoader();
+    const result = await load(path, dir);
+    expect(result.data).toEqual({
+      describe: {
+        perSourceSoftLimit: 5000,
+        perSourceHardLimit: 50000,
+        fromSourcePredicate: 'urn:my:fromSource',
+      },
+    });
+  });
+
+  it('accepts an empty describe: block', async () => {
+    const path = join(dir, 'sparqly.config.yaml');
+    await writeFile(path, 'describe: {}\n');
+    const load = makeFileLoader();
+    const result = await load(path, dir);
+    expect(result.data).toEqual({ describe: {} });
+  });
+
+  it('rejects an unknown key inside the describe: block (strict)', async () => {
+    const path = join(dir, 'sparqly.config.yaml');
+    await writeFile(path, 'describe:\n  bogus: 1\n');
+    const load = makeFileLoader();
+    await expect(load(path, dir)).rejects.toThrow(/bogus/);
+  });
+
+  it('rejects a non-positive perSourceSoftLimit in the describe: block', async () => {
+    const path = join(dir, 'sparqly.config.yaml');
+    await writeFile(path, 'describe:\n  perSourceSoftLimit: 0\n');
+    const load = makeFileLoader();
+    await expect(load(path, dir)).rejects.toThrow(/perSourceSoftLimit/);
+  });
+
   it.each([
     ['prefixes', 'format:\n  prefixes:\n    ex: http://example.org/'],
     ['base', 'format:\n  base: http://example.org/'],
