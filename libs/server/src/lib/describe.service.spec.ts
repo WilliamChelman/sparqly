@@ -396,4 +396,85 @@ describe('DescribeService — multi-source aggregation', () => {
       expect(out.perSource.alpha.count).toBeGreaterThan(0);
     });
   });
+
+  describe('view dispatch', () => {
+    it('describes a view whose upstream is a glob (materialized then describeStore)', async () => {
+      const registry = parseSourceSpecs([
+        { id: 'raw', glob: paths.alphaTtl },
+        {
+          id: 'projected',
+          from: '@raw',
+          query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        },
+      ]);
+      const out = await describeResponse(new DescribeService(registry), {
+        iri: 'http://example.org/alice',
+        sources: ['projected'],
+      });
+      expect(out.perSource.projected.error).toBeUndefined();
+      // alpha carries 3 quads about alice: knows bob, address _:b1, _:b1 city.
+      expect(out.perSource.projected.count).toBe(3);
+      expect(out.total).toBe(3);
+    });
+
+    it('describes a view whose upstream is an endpoint', async () => {
+      const ep = await startStubEndpoint(
+        '<http://example.org/alice> <http://example.org/knows> <http://example.org/bob> .\n',
+      );
+      try {
+        const registry = parseSourceSpecs([
+          { id: 'live', endpoint: ep.url },
+          {
+            id: 'overlay',
+            from: '@live',
+            query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+          },
+        ]);
+        const out = await describeResponse(new DescribeService(registry), {
+          iri: 'http://example.org/alice',
+          sources: ['overlay'],
+        });
+        expect(out.perSource.overlay.error).toBeUndefined();
+        expect(out.perSource.overlay.count).toBe(1);
+        expect(out.total).toBe(1);
+      } finally {
+        await ep.close();
+      }
+    });
+
+    it('relabels a view source\'s bnodes and annotates its quads with the view id as origin', async () => {
+      const registry = parseSourceSpecs([
+        { id: 'raw', glob: paths.alphaTtl },
+        {
+          id: 'projected',
+          from: '@raw',
+          query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        },
+      ]);
+      const out = await describeResponse(new DescribeService(registry), {
+        iri: 'http://example.org/alice',
+        sources: ['projected'],
+      });
+      const wire = parseNQuads(out.quads);
+      // Per-source bnode relabel: every bnode label is namespaced by the source id.
+      const bnodeLabels = wire
+        .flatMap((q) => [q.subject, q.object])
+        .filter((t) => t.termType === 'BlankNode')
+        .map((t) => t.value);
+      expect(bnodeLabels.length).toBeGreaterThan(0);
+      for (const label of bnodeLabels) {
+        expect(label).toMatch(/^projected__/);
+      }
+      // Provenance annotation carries the view id as the origin source.
+      const annotations = wire.filter(
+        (q) =>
+          (q.subject.termType as string) === 'Quad' &&
+          q.predicate.value === FROM_SOURCE,
+      );
+      expect(annotations.length).toBeGreaterThan(0);
+      expect(new Set(annotations.map((q) => q.object.value))).toEqual(
+        new Set(['projected']),
+      );
+    });
+  });
 });

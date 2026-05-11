@@ -163,10 +163,12 @@ export class DescribeService {
   }
 
   /**
-   * Per-source dispatch (ADR-0015, issue #189). `glob` resolves to a
-   * materialized store and runs {@link describeStore}; `endpoint` runs
-   * {@link describeEndpoint} over the wire. `empty` and `reference` sources
-   * have no describable graph of their own — they reject with guidance, which
+   * Per-source dispatch (ADR-0015, issues #189/#190). `glob` and `view` resolve
+   * via {@link resolveSource} to an in-memory materialized store — a view's
+   * upstream (glob, endpoint, or another view) is snapshotted first — then run
+   * {@link describeStore} against that stable store. `endpoint` runs
+   * {@link describeEndpoint} over the wire. `empty` and `reference` sources have
+   * no describable graph of their own — they reject with guidance, which
    * `runDescribe` surfaces as a per-source error rather than a global failure.
    */
   private async describeOne(
@@ -191,10 +193,12 @@ export class DescribeService {
           'describe that source directly',
       );
     }
+    // `glob` and `view` both land here; `resolveSource` materializes a view's
+    // upstream chain into an in-memory store before we describe over it.
     const resolved = await resolveSource(target, { registry: this.registry });
     if (resolved.mode !== 'materialized') {
-      // A declared glob always resolves to a materialized store; anything else
-      // here is a guard against an unexpected resolver outcome.
+      // A declared glob/view always resolves to a materialized store; anything
+      // else here is a guard against an unexpected resolver outcome.
       return { quads: [], truncated: false };
     }
     const raw = describeStore({ store: resolved.store, seed, perSourceLimit });
@@ -221,12 +225,13 @@ export class DescribeService {
 }
 
 function isSupportedKind(src: ParsedSource): boolean {
-  // `glob` and `endpoint` produce a describable graph; `empty` and `reference`
-  // are surfaced so the caller gets an explanatory per-source error rather than
-  // a silent omission. `view` dispatch is a separate slice (issue #184).
+  // `glob`, `endpoint` and `view` produce a describable graph; `empty` and
+  // `reference` are surfaced so the caller gets an explanatory per-source error
+  // rather than a silent omission.
   return (
     src.kind === 'glob' ||
     src.kind === 'endpoint' ||
+    src.kind === 'view' ||
     src.kind === 'empty' ||
     src.kind === 'reference'
   );
