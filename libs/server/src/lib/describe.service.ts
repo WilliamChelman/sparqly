@@ -58,12 +58,17 @@ export interface DescribeResult {
 @Injectable()
 export class DescribeService {
   private readonly config: DescribeConfig;
+  /** Registry used to walk `from:` chains while resolving a source's graph. */
+  private readonly resolutionRegistry: ReadonlyArray<ParsedSource>;
 
   constructor(
-    private readonly registry: ReadonlyArray<ParsedSource>,
+    /** Sources `serve` exposes — the default enumeration set when a request omits `sources`. */
+    private readonly servedRegistry: ReadonlyArray<ParsedSource>,
     config: DescribeConfig = DEFAULT_DESCRIBE_CONFIG,
+    resolutionRegistry: ReadonlyArray<ParsedSource> = servedRegistry,
   ) {
     this.config = config;
+    this.resolutionRegistry = resolutionRegistry;
   }
 
   async runDescribe(req: DescribeRequest): Promise<DescribeResult> {
@@ -195,7 +200,9 @@ export class DescribeService {
     }
     // `glob` and `view` both land here; `resolveSource` materializes a view's
     // upstream chain into an in-memory store before we describe over it.
-    const resolved = await resolveSource(target, { registry: this.registry });
+    const resolved = await resolveSource(target, {
+      registry: this.resolutionRegistry,
+    });
     if (resolved.mode !== 'materialized') {
       // A declared glob/view always resolves to a materialized store; anything
       // else here is a guard against an unexpected resolver outcome.
@@ -213,7 +220,7 @@ export class DescribeService {
       ? new Set(requested.map((s) => (s.startsWith('@') ? s.slice(1) : s)))
       : undefined;
     const out: ParsedSource[] = [];
-    for (const src of this.registry) {
+    for (const src of this.servedRegistry) {
       if (!isSupportedKind(src)) continue;
       const id = src.id;
       if (id === undefined) continue;

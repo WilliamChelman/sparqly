@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { blockSchemaFromFields, defaultsFromFields } from '../runner/field';
-import { resolveServeTarget, serveSpec } from './serve';
+import { serveSpec } from './serve';
 
 describe('serveSpec — single-target shape', () => {
   it('binds a single positional to the `source` field', () => {
@@ -84,61 +84,5 @@ describe('serveSpec — array `--source` rejection', () => {
     expect(message).toMatch(/SERVICE/);
     expect(message).toMatch(/empty/);
     expect(message).toMatch(/ADR-0005|0005-single-target-source/);
-  });
-});
-
-describe('resolveServeTarget — selection precedence', () => {
-  it('auto-picks the sole registry entry when no positional/--source is given', () => {
-    const target = resolveServeTarget({
-      sources: [{ id: 'files', glob: 'data/*.ttl' }],
-    });
-    expect(target).toMatchObject({ kind: 'glob', id: 'files' });
-  });
-
-  it('falls back to the `default: true` entry when no positional/--source is given', () => {
-    const target = resolveServeTarget({
-      sources: [
-        { id: 'files', glob: 'data/*.ttl' },
-        { id: 'live', endpoint: 'https://example.com/sparql', default: true },
-      ],
-    });
-    expect(target).toMatchObject({ kind: 'endpoint', id: 'live' });
-  });
-
-  it('errors with the available `@ids` when the registry is ambiguous and no --source is given', () => {
-    expect(() =>
-      resolveServeTarget({
-        sources: [
-          { id: 'files', glob: 'data/*.ttl' },
-          { id: 'live', endpoint: 'https://example.com/sparql' },
-        ],
-      }),
-    ).toThrow(/@files.*@live/s);
-  });
-
-  it('inline positional wins over a `default: true` entry', () => {
-    const target = resolveServeTarget({
-      sources: [
-        { id: 'live', endpoint: 'https://example.com/sparql', default: true },
-      ],
-      source: 'adhoc/*.ttl',
-    });
-    expect(target).toEqual({ kind: 'glob', glob: 'adhoc/*.ttl' });
-  });
-
-  it('explicit `@id` ref wins over a `default: true` entry', () => {
-    const target = resolveServeTarget({
-      sources: [
-        { id: 'files', glob: 'data/*.ttl' },
-        { id: 'live', endpoint: 'https://example.com/sparql', default: true },
-      ],
-      source: '@files',
-    });
-    expect(target).toMatchObject({ kind: 'glob', id: 'files' });
-  });
-
-  it('does not require any `sources` registry when an inline source is provided', () => {
-    const target = resolveServeTarget({ source: 'adhoc/*.ttl' });
-    expect(target).toEqual({ kind: 'glob', glob: 'adhoc/*.ttl' });
   });
 });

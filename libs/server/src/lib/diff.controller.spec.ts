@@ -186,7 +186,7 @@ describe('POST /api/diff', () => {
   });
 });
 
-describe('POST /api/diff — Single-source mode', () => {
+describe('POST /api/diff — single served source', () => {
   let dir: string;
   let server: CreatedServer;
   let baseUrl: string;
@@ -207,12 +207,20 @@ describe('POST /api/diff — Single-source mode', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it('does not mount /api/diff in Single-source mode (404)', async () => {
+  it('mounts /api/diff; diffing the lone @default source against itself is an empty grouped diff', async () => {
     const resp = await fetch(baseUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ left: '@a', right: '@a' }),
+      body: JSON.stringify({ left: '@default', right: '@default' }),
     });
-    expect(resp.status).toBe(404);
+    expect(resp.status).toBe(200);
+    const json = (await resp.json()) as {
+      kind: string;
+      hunked?: { changed?: unknown[]; removed?: unknown[]; added?: unknown[] };
+    };
+    expect(json.kind).toBe('grouped');
+    expect(json.hunked?.changed ?? []).toEqual([]);
+    expect(json.hunked?.removed ?? []).toEqual([]);
+    expect(json.hunked?.added ?? []).toEqual([]);
   });
 });

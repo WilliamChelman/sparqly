@@ -16,6 +16,11 @@ interface Entry {
 }
 
 export interface EngineMapOptions {
+  /**
+   * Registry used to resolve `from:` chains while building engines — a superset
+   * of the served set. Defaults to the served registry when omitted.
+   */
+  resolutionRegistry?: ReadonlyArray<ParsedSource>;
   onSourceLoaded?: (id: string, kind: ParsedSource['kind'], ms: number) => void;
 }
 
@@ -27,15 +32,16 @@ export class EngineMap {
   }
 
   static async create(
-    registry: ReadonlyArray<ParsedSource>,
+    servedRegistry: ReadonlyArray<ParsedSource>,
     options: EngineMapOptions = {},
   ): Promise<EngineMap> {
+    const resolutionRegistry = options.resolutionRegistry ?? servedRegistry;
     const entries = new Map<string, Entry>();
-    for (const src of registry) {
+    for (const src of servedRegistry) {
       if (src.kind === 'reference') continue;
       if (src.id === undefined) continue;
       const start = Date.now();
-      const entry = await buildEntry(src, registry);
+      const entry = await buildEntry(src, resolutionRegistry);
       entries.set(src.id, entry);
       options.onSourceLoaded?.(src.id, src.kind, Date.now() - start);
     }
