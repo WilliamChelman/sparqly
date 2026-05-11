@@ -1,4 +1,4 @@
-import { parseSourceSpec, type ParsedSource } from './sources';
+import { parseSourceSpec, type ParsedSource } from '../sources';
 
 export function selectTarget(
   registry: ReadonlyArray<ParsedSource>,
