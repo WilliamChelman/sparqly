@@ -4,7 +4,7 @@ import {
   buildEndpointContext,
   describeEndpointError,
 } from './engine';
-import type { ParsedEndpointSource } from './source-spec';
+import type { ParsedEndpointSource } from './sources';
 
 export interface ResolveViewPassThroughOptions {
   endpoint: ParsedEndpointSource;

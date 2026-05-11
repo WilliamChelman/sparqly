@@ -1,6 +1,6 @@
-import { loadEndpointToStore } from './engine';
+import { loadEndpointToStore } from '../engine';
 import { resolveSource, type ResolveSourceOptions } from './resolve-source';
-import { type LoadResult, type GraphMode } from './engine';
+import { type LoadResult, type GraphMode } from '../engine';
 import { type ParsedSource } from './source-spec';
 
 export const NOT_SUPPORTED_TRACKING_URL =

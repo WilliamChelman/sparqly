@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseSourceSpecs } from './source-spec';
+import { parseSourceSpecs } from './sources';
 import { selectTarget } from './select-target';
 
 describe('selectTarget — explicit @ref', () => {

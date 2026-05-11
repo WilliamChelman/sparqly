@@ -2,7 +2,7 @@ import {
   parseSourceSpec,
   type DefaultMarkerField,
   type ParsedSource,
-} from './source-spec';
+} from './sources';
 
 export interface ServeScope {
   /** Sources `serve` routes (`/api/sparql/<id>`) and lists via `/api/config`. */

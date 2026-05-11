@@ -6,7 +6,7 @@ import {
   collectInjectedHeaders,
   describeEndpointError,
 } from './engine';
-import type { ParsedEndpointSource } from './source-spec';
+import type { ParsedEndpointSource } from './sources';
 
 /** Blank-node-chain depth fetched per remote CONSTRUCT round trip. */
 const DEPTH_CHUNK = 4;

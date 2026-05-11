@@ -7,11 +7,11 @@ import {
   type FormatGroupedRdfDiffOptions,
 } from './grouped-diff-formatter';
 import type { HunkedRdfDiff } from './group-rdf-diff-by-entity';
-import { displaySourcePath } from './source-path-display';
+import { displaySourcePath } from './sources';
 import {
   DEFAULT_ANNOTATION_PREDICATE_IRIS,
   type AnnotationPredicateIris,
-} from './source-record-builder';
+} from './sources';
 
 export type RdfDiffFormat =
   | 'human'

@@ -6,7 +6,7 @@ import {
   buildEndpointContext,
   describeEndpointError,
 } from './engine';
-import { resolveSource } from './resolve-source';
+import { resolveSource } from './sources';
 import { detectSelectShape } from './select-shape-detector';
 import {
   parseSourceSpec,
@@ -14,7 +14,7 @@ import {
   type ParsedEndpointSource,
   type ParsedSource,
   type SourceSpecInput,
-} from './source-spec';
+} from './sources';
 import type { TabularRow } from './tabular-row-key';
 import { validateViewQuery } from './view-query-validate';
 
