@@ -1,7 +1,7 @@
 import { DataFactory, Store } from 'n3';
 import { describe, expect, it } from 'vitest';
 import { relabelBnodes } from './relabel-bnodes';
-import { ttl } from './test/turtle';
+import { ttl } from '../test/turtle';
 
 const { namedNode, literal, quad, blankNode, defaultGraph } = DataFactory;
 

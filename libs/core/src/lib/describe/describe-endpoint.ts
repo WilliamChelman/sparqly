@@ -5,8 +5,8 @@ import {
   DEFAULT_ENDPOINT_TIMEOUT_MS,
   collectInjectedHeaders,
   describeEndpointError,
-} from './engine';
-import type { ParsedEndpointSource } from './sources';
+} from '../engine';
+import type { ParsedEndpointSource } from '../sources';
 
 /** Blank-node-chain depth fetched per remote CONSTRUCT round trip. */
 const DEPTH_CHUNK = 4;
