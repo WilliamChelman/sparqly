@@ -19,6 +19,7 @@ import {
   selectTarget,
   type SourceSpecInput,
 } from 'core';
+import { DEFAULT_DESCRIBE_CONFIG, type DescribeConfig } from './describe.service';
 import { EngineMap } from './engine-map';
 import { ServerModule } from './server.module';
 import { SnippetAllowList } from './snippet-allow-list';
@@ -54,6 +55,12 @@ export interface CreateServerOptions {
    * empty `prefixes` and no `base`.
    */
   context?: SparqlContext;
+  /**
+   * Registry-wide describe defaults (from the project config's `describe:`
+   * block). Any missing field falls back to {@link DEFAULT_DESCRIBE_CONFIG}.
+   * Surfaced to clients via /api/config.
+   */
+  describe?: Partial<DescribeConfig>;
 }
 
 export interface CreatedServer {
@@ -121,6 +128,7 @@ export async function createServer(
       listing: buildSingleListing(target),
       config: { mutable: options.mutable === true },
       context: options.context ?? { prefixes: {} },
+      describe: resolveDescribeConfig(options.describe),
       snippetAllowList,
     }),
     { abortOnError: false },
@@ -199,6 +207,7 @@ async function startRegistryMode(
       listing,
       config: { mutable: options.mutable === true },
       context: options.context ?? { prefixes: {} },
+      describe: resolveDescribeConfig(options.describe),
       snippetAllowList,
     }),
     { abortOnError: false },
@@ -246,6 +255,20 @@ async function startRegistryMode(
       await app.close();
       await engineMap.close();
     },
+  };
+}
+
+function resolveDescribeConfig(
+  partial: Partial<DescribeConfig> | undefined,
+): DescribeConfig {
+  return {
+    perSourceSoftLimit:
+      partial?.perSourceSoftLimit ?? DEFAULT_DESCRIBE_CONFIG.perSourceSoftLimit,
+    perSourceHardLimit:
+      partial?.perSourceHardLimit ?? DEFAULT_DESCRIBE_CONFIG.perSourceHardLimit,
+    fromSourcePredicate:
+      partial?.fromSourcePredicate ??
+      DEFAULT_DESCRIBE_CONFIG.fromSourcePredicate,
   };
 }
 

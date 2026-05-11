@@ -16,9 +16,16 @@ export interface DisplayContext {
   base?: string;
 }
 
+export interface DescribeConfig {
+  perSourceSoftLimit: number;
+  perSourceHardLimit: number;
+  fromSourcePredicate: string;
+}
+
 export interface ConfigPayload {
   sources: SourceListingEntry[];
   context: DisplayContext;
+  describe: DescribeConfig;
 }
 
 export interface SourceListing {
@@ -39,5 +46,9 @@ export class ConfigService {
 
   context(): Observable<DisplayContext> {
     return this.config().pipe(map((c) => c.context));
+  }
+
+  describe(): Observable<DescribeConfig> {
+    return this.config().pipe(map((c) => c.describe));
   }
 }

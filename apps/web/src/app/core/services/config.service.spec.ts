@@ -16,6 +16,11 @@ const PAYLOAD: ConfigPayload = {
     { id: 'b', kind: 'glob', label: 'B (glob)', default: true },
   ],
   context: { prefixes: { ex: 'http://example.org/' }, base: 'http://x/' },
+  describe: {
+    perSourceSoftLimit: 10000,
+    perSourceHardLimit: 100000,
+    fromSourcePredicate: 'urn:sparqly:fromSource',
+  },
 };
 
 function setup() {
@@ -60,6 +65,17 @@ describe('ConfigService', () => {
     const req = http.expectOne('/api/config');
     req.flush(PAYLOAD);
     expect(await promise).toEqual(PAYLOAD.context);
+    http.verify();
+  });
+
+  it('describe() returns just the describe block from /api/config', async () => {
+    const { http, service } = setup();
+    const promise = new Promise<ConfigPayload['describe']>((resolve) =>
+      service.describe().subscribe(resolve),
+    );
+    const req = http.expectOne('/api/config');
+    req.flush(PAYLOAD);
+    expect(await promise).toEqual(PAYLOAD.describe);
     http.verify();
   });
 });

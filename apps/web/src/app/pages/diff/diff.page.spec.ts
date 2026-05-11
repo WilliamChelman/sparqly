@@ -101,6 +101,11 @@ async function setup(listing: SourceListing, initialUrl = '/diff') {
   const payload: ConfigPayload = {
     sources: listing.sources,
     context: { prefixes: {} },
+    describe: {
+      perSourceSoftLimit: 10000,
+      perSourceHardLimit: 100000,
+      fromSourcePredicate: 'urn:sparqly:fromSource',
+    },
   };
   const configStub: Pick<ConfigService, 'list' | 'config' | 'context'> = {
     list: () => of(listing),

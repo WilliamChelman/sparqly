@@ -8,7 +8,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { DescribeService, type DescribeResponse } from './describe.service';
+import { DescribeService, type DescribeResult } from './describe.service';
 import { SPARQL_DESCRIBE_SERVICE } from './tokens';
 
 const DESCRIBE_REQUEST_SCHEMA = z
@@ -45,10 +45,14 @@ export class DescribeController {
         })),
       });
     }
-    const result: DescribeResponse = await this.service.runDescribe(parsed.data);
+    const result: DescribeResult = await this.service.runDescribe(parsed.data);
+    const httpStatus =
+      result.status === 'all-sources-failed'
+        ? HttpStatus.BAD_GATEWAY
+        : HttpStatus.OK;
     res
-      .status(HttpStatus.OK)
+      .status(httpStatus)
       .setHeader('Content-Type', 'application/json')
-      .send(JSON.stringify(result));
+      .send(JSON.stringify(result.response));
   }
 }

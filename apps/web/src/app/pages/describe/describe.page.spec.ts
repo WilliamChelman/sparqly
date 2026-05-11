@@ -61,11 +61,20 @@ async function setup(initialUrl = '/describe') {
   const payload: ConfigPayload = {
     sources: LISTING.sources,
     context: { prefixes: {} },
+    describe: {
+      perSourceSoftLimit: 10000,
+      perSourceHardLimit: 100000,
+      fromSourcePredicate: 'urn:sparqly:fromSource',
+    },
   };
-  const configStub: Pick<ConfigService, 'list' | 'config' | 'context'> = {
+  const configStub: Pick<
+    ConfigService,
+    'list' | 'config' | 'context' | 'describe'
+  > = {
     list: () => of(LISTING),
     config: () => of(payload),
     context: () => of(payload.context),
+    describe: () => of(payload.describe),
   };
 
   TestBed.configureTestingModule({
@@ -308,5 +317,76 @@ describe('DescribePage', () => {
     const { fixture } = await setup('/describe?sources=beta');
     const picker = pickerStub(fixture);
     expect(picker?.value).toEqual(['beta']);
+  });
+
+  async function runAndFlush(
+    body: object,
+    opts?: { status: number; statusText: string },
+  ): Promise<{ root: HTMLElement; fixture: Awaited<ReturnType<typeof setup>>['fixture'] }> {
+    const { fixture, http } = await setup();
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector('input[data-testid=seed-input]') as HTMLInputElement;
+    input.value = 'http://example.org/alice';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    (root.querySelector('button[data-testid=run-describe]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    http.expectOne('/api/describe').flush(body, opts);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    http.verify();
+    return { root, fixture };
+  }
+
+  it('renders per-source error rows under the picker when the response carries failures', async () => {
+    const { root, fixture } = await runAndFlush({
+      iri: 'http://example.org/alice',
+      quads: NQUADS_SAMPLE,
+      total: 3,
+      perSource: {
+        alpha: { count: 3, truncated: false },
+        beta: { count: 0, truncated: false, error: 'No files matched: beta/*.ttl' },
+      },
+    });
+    const errors = root.querySelector('[data-testid=source-errors]');
+    expect(errors).toBeTruthy();
+    const rows = root.querySelectorAll('[data-testid=source-error-row]');
+    expect(rows.length).toBe(1);
+    expect(rows[0].textContent).toContain('beta');
+    expect(rows[0].textContent).toContain('No files matched');
+    // The successful source's results still render in the quad table above.
+    const table = quadTableStub(fixture);
+    expect(table?.quadsText).toBe(NQUADS_SAMPLE);
+  });
+
+  it('does not render the error list when every source succeeded', async () => {
+    const { root } = await runAndFlush({
+      iri: 'http://example.org/alice',
+      quads: NQUADS_SAMPLE,
+      total: 3,
+      perSource: { alpha: { count: 3, truncated: false } },
+    });
+    expect(root.querySelector('[data-testid=source-errors]')).toBeFalsy();
+  });
+
+  it('renders the error rows when the request fails with 502 (all sources failed)', async () => {
+    const { root } = await runAndFlush(
+      {
+        iri: 'http://example.org/alice',
+        quads: '',
+        total: 0,
+        perSource: {
+          alpha: { count: 0, truncated: false, error: 'boom-alpha' },
+          beta: { count: 0, truncated: false, error: 'boom-beta' },
+        },
+      },
+      { status: 502, statusText: 'Bad Gateway' },
+    );
+    const rows = root.querySelectorAll('[data-testid=source-error-row]');
+    expect(rows.length).toBe(2);
+    expect(root.querySelector('[data-testid=source-errors]')?.textContent).toContain(
+      'boom-alpha',
+    );
   });
 });

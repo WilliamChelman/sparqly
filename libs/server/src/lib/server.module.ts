@@ -2,7 +2,7 @@ import { DynamicModule, Module, type Type } from '@nestjs/common';
 import type { ParsedSource, QueryEngine } from 'core';
 import { ConfigController } from './config.controller';
 import { DescribeController } from './describe.controller';
-import { DescribeService } from './describe.service';
+import { DescribeService, type DescribeConfig } from './describe.service';
 import { DiffController } from './diff.controller';
 import { DiffService } from './diff.service';
 import type { EngineMap } from './engine-map';
@@ -13,6 +13,7 @@ import { SparqlController } from './sparql.controller';
 import {
   SPARQL_CONFIG,
   SPARQL_CONTEXT,
+  SPARQL_DESCRIBE_CONFIG,
   SPARQL_DESCRIBE_SERVICE,
   SPARQL_DIFF_SERVICE,
   SPARQL_ENGINE,
@@ -30,6 +31,7 @@ export interface SingleSourceModuleOptions {
   listing: ReadonlyArray<SourceListingEntry>;
   config: SparqlServerConfig;
   context: SparqlContext;
+  describe: DescribeConfig;
   snippetAllowList: SnippetAllowList;
 }
 
@@ -40,6 +42,7 @@ export interface RegistryModuleOptions {
   listing: ReadonlyArray<SourceListingEntry>;
   config: SparqlServerConfig;
   context: SparqlContext;
+  describe: DescribeConfig;
   snippetAllowList: SnippetAllowList;
 }
 
@@ -54,6 +57,7 @@ export class ServerModule {
     const providers: DynamicModule['providers'] = [
       { provide: SPARQL_CONFIG, useValue: options.config },
       { provide: SPARQL_CONTEXT, useValue: options.context },
+      { provide: SPARQL_DESCRIBE_CONFIG, useValue: options.describe },
       {
         provide: SPARQL_SNIPPET_ALLOW_LIST,
         useValue: options.snippetAllowList,
@@ -81,7 +85,7 @@ export class ServerModule {
         },
         {
           provide: SPARQL_DESCRIBE_SERVICE,
-          useValue: new DescribeService(options.registry),
+          useValue: new DescribeService(options.registry, options.describe),
         },
       );
     }

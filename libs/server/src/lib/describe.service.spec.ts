@@ -5,9 +5,21 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseDescribeWire } from 'common';
 import { parseSourceSpecs } from 'core';
 import type { Quad } from 'n3';
-import { DescribeService } from './describe.service';
+import {
+  DescribeService,
+  type DescribeRequest,
+  type DescribeResponse,
+} from './describe.service';
 
 const FROM_SOURCE = 'urn:sparqly:fromSource';
+
+/** Most tests only care about the response body, not the ok/all-failed status. */
+async function describeResponse(
+  svc: DescribeService,
+  req: DescribeRequest,
+): Promise<DescribeResponse> {
+  return (await svc.runDescribe(req)).response;
+}
 
 interface RegistryPaths {
   dir: string;
@@ -66,13 +78,13 @@ describe('DescribeService — multi-source aggregation', () => {
   });
 
   it('defaults to all glob sources when `sources` is omitted', async () => {
-    const out = await svc.runDescribe({ iri: 'http://example.org/alice' });
+    const out = await describeResponse(svc, { iri: 'http://example.org/alice' });
     expect(out.perSource).toHaveProperty('alpha');
     expect(out.perSource).toHaveProperty('beta');
   });
 
   it('runs describe against only the requested subset when `sources` is provided', async () => {
-    const out = await svc.runDescribe({
+    const out = await describeResponse(svc, {
       iri: 'http://example.org/alice',
       sources: ['alpha'],
     });
@@ -81,7 +93,7 @@ describe('DescribeService — multi-source aggregation', () => {
   });
 
   it('returns an empty result with zero per-source entries when `sources` is empty', async () => {
-    const out = await svc.runDescribe({
+    const out = await describeResponse(svc, {
       iri: 'http://example.org/alice',
       sources: [],
     });
@@ -91,7 +103,7 @@ describe('DescribeService — multi-source aggregation', () => {
   });
 
   it('dedupes IRI-only quads across sources (alice knows bob counted once in total) but counts each source under perSource.count', async () => {
-    const out = await svc.runDescribe({ iri: 'http://example.org/alice' });
+    const out = await describeResponse(svc, { iri: 'http://example.org/alice' });
     // alpha contributes: alice knows bob, alice address _:b1, _:b1 city "Paris" => 3
     // beta contributes:  alice knows bob, alice age 30 => 2
     // dedup: alice knows bob collapses; bnode-containing quads never collapse.
@@ -114,7 +126,7 @@ describe('DescribeService — multi-source aggregation', () => {
   });
 
   it('emits one RDF-star provenance annotation per (quad, origin-source) pair on the wire', async () => {
-    const out = await svc.runDescribe({ iri: 'http://example.org/alice' });
+    const out = await describeResponse(svc, { iri: 'http://example.org/alice' });
     const wire = parseNQuads(out.quads);
     const annotations = wire.filter(
       (q) =>
@@ -149,7 +161,7 @@ describe('DescribeService — multi-source aggregation', () => {
     ]);
     const localSvc = new DescribeService(registry);
 
-    const out = await localSvc.runDescribe({ iri: 'http://example.org/alice' });
+    const out = await describeResponse(localSvc, { iri: 'http://example.org/alice' });
     // Two ex:alice ex:has _:X quads (one per source, distinct bnodes) +
     // two _:X ex:tag literal quads = 4 merged quads.
     expect(out.total).toBe(4);
@@ -159,7 +171,7 @@ describe('DescribeService — multi-source aggregation', () => {
   });
 
   it('omits provenance annotations from the wire when `withProvenance: false`', async () => {
-    const out = await svc.runDescribe({
+    const out = await describeResponse(svc, {
       iri: 'http://example.org/alice',
       withProvenance: false,
     });
@@ -174,7 +186,7 @@ describe('DescribeService — multi-source aggregation', () => {
 
   it("uses a request-supplied `fromSourcePredicate` instead of the default", async () => {
     const custom = 'http://my/from';
-    const out = await svc.runDescribe({
+    const out = await describeResponse(svc, {
       iri: 'http://example.org/alice',
       fromSourcePredicate: custom,
     });
@@ -195,10 +207,111 @@ describe('DescribeService — multi-source aggregation', () => {
   });
 
   it('returns total=0 and zero per-source counts when seed is absent from every source', async () => {
-    const out = await svc.runDescribe({ iri: 'http://example.org/ghost' });
+    const out = await describeResponse(svc, { iri: 'http://example.org/ghost' });
     expect(out.total).toBe(0);
     expect(out.perSource.alpha.count).toBe(0);
     expect(out.perSource.beta.count).toBe(0);
     expect(out.quads.trim()).toBe('');
+  });
+
+  describe('partial failure', () => {
+    function registryWithBadSource(): DescribeService {
+      // `bad`'s glob matches nothing, so resolveSource throws "No files matched".
+      const registry = parseSourceSpecs([
+        { id: 'alpha', glob: paths.alphaTtl },
+        { id: 'bad', glob: join(paths.dir, 'does-not-exist', '*.ttl') },
+      ]);
+      return new DescribeService(registry);
+    }
+
+    it('does not fail the whole describe when one source throws; other sources still contribute', async () => {
+      const out = await describeResponse(registryWithBadSource(), {
+        iri: 'http://example.org/alice',
+      });
+      expect(out.perSource.alpha.count).toBeGreaterThan(0);
+      expect(out.perSource.bad.count).toBe(0);
+      expect(out.perSource.bad.error).toBeTruthy();
+    });
+
+    it("reports status 'ok' when at least one source succeeded", async () => {
+      const result = await registryWithBadSource().runDescribe({
+        iri: 'http://example.org/alice',
+      });
+      expect(result.status).toBe('ok');
+    });
+
+    it("reports status 'all-sources-failed' with the per-source error map when every selected source threw", async () => {
+      const registry = parseSourceSpecs([
+        { id: 'bad1', glob: join(paths.dir, 'nope1', '*.ttl') },
+        { id: 'bad2', glob: join(paths.dir, 'nope2', '*.ttl') },
+      ]);
+      const result = await new DescribeService(registry).runDescribe({
+        iri: 'http://example.org/alice',
+      });
+      expect(result.status).toBe('all-sources-failed');
+      expect(result.response.total).toBe(0);
+      expect(result.response.quads.trim()).toBe('');
+      expect(result.response.perSource.bad1.error).toBeTruthy();
+      expect(result.response.perSource.bad2.error).toBeTruthy();
+    });
+
+    it("reports status 'ok' (not all-failed) when zero sources are selected", async () => {
+      const result = await svc.runDescribe({
+        iri: 'http://example.org/alice',
+        sources: [],
+      });
+      expect(result.status).toBe('ok');
+    });
+  });
+
+  describe('per-source limit clamping', () => {
+    it('clamps a request `perSourceLimit` above `perSourceHardLimit`', async () => {
+      // alpha contributes 3 quads about alice; a hard ceiling of 1 truncates it.
+      const registry = parseSourceSpecs([{ id: 'alpha', glob: paths.alphaTtl }]);
+      const clamped = new DescribeService(registry, {
+        perSourceSoftLimit: 10000,
+        perSourceHardLimit: 1,
+        fromSourcePredicate: FROM_SOURCE,
+      });
+      const out = await describeResponse(clamped, {
+        iri: 'http://example.org/alice',
+        perSourceLimit: 1_000_000,
+      });
+      expect(out.perSource.alpha.truncated).toBe(true);
+      expect(out.perSource.alpha.count).toBeLessThan(3);
+    });
+
+    it('applies `perSourceSoftLimit` when the request omits `perSourceLimit`', async () => {
+      const registry = parseSourceSpecs([{ id: 'alpha', glob: paths.alphaTtl }]);
+      const soft = new DescribeService(registry, {
+        perSourceSoftLimit: 1,
+        perSourceHardLimit: 100000,
+        fromSourcePredicate: FROM_SOURCE,
+      });
+      const out = await describeResponse(soft, {
+        iri: 'http://example.org/alice',
+      });
+      expect(out.perSource.alpha.truncated).toBe(true);
+    });
+
+    it('falls back to the configured `fromSourcePredicate` when the request omits it', async () => {
+      const registry = parseSourceSpecs([{ id: 'alpha', glob: paths.alphaTtl }]);
+      const custom = 'http://configured/from';
+      const configured = new DescribeService(registry, {
+        perSourceSoftLimit: 10000,
+        perSourceHardLimit: 100000,
+        fromSourcePredicate: custom,
+      });
+      const out = await describeResponse(configured, {
+        iri: 'http://example.org/alice',
+      });
+      const wire = parseNQuads(out.quads);
+      const annotated = wire.filter(
+        (q) =>
+          (q.subject.termType as string) === 'Quad' &&
+          q.predicate.value === custom,
+      );
+      expect(annotated.length).toBeGreaterThan(0);
+    });
   });
 });

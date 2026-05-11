@@ -4,6 +4,12 @@ import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServer, type CreatedServer } from './create-server';
+import { DescribeController } from './describe.controller';
+import type {
+  DescribeResponse,
+  DescribeResult,
+  DescribeService,
+} from './describe.service';
 
 const SAMPLE =
   '@prefix ex: <http://example.org/> .\n' +
@@ -84,5 +90,70 @@ describe('POST /api/describe — tracer-bullet (single glob source)', () => {
     expect(json.total).toBe(0);
     expect(json.quads.trim()).toBe('');
     expect(json.perSource.alpha.count).toBe(0);
+  });
+});
+
+describe('DescribeController — service-status to HTTP mapping', () => {
+  interface FakeRes {
+    status(code: number): FakeRes;
+    setHeader(name: string, value: string): FakeRes;
+    send(body: string): FakeRes;
+  }
+
+  function fakeRes(): { res: FakeRes; calls: { status: number; body: string } } {
+    const calls = { status: 0, body: '' };
+    const res: FakeRes = {
+      status(code) {
+        calls.status = code;
+        return res;
+      },
+      setHeader() {
+        return res;
+      },
+      send(body) {
+        calls.body = body;
+        return res;
+      },
+    };
+    return { res, calls };
+  }
+
+  function controllerWith(result: DescribeResult): DescribeController {
+    const service = {
+      runDescribe: async () => result,
+    } as unknown as DescribeService;
+    return new DescribeController(service);
+  }
+
+  it("maps status 'all-sources-failed' to HTTP 502 with the per-source error map as the body", async () => {
+    const response: DescribeResponse = {
+      iri: 'http://example.org/alice',
+      quads: '',
+      total: 0,
+      perSource: { alpha: { count: 0, truncated: false, error: 'boom' } },
+    };
+    const { res, calls } = fakeRes();
+    await controllerWith({ status: 'all-sources-failed', response }).post(
+      { iri: 'http://example.org/alice' },
+      res,
+    );
+    expect(calls.status).toBe(502);
+    expect(JSON.parse(calls.body)).toEqual(response);
+  });
+
+  it("maps status 'ok' to HTTP 200", async () => {
+    const response: DescribeResponse = {
+      iri: 'http://example.org/alice',
+      quads: '',
+      total: 0,
+      perSource: { alpha: { count: 0, truncated: false } },
+    };
+    const { res, calls } = fakeRes();
+    await controllerWith({ status: 'ok', response }).post(
+      { iri: 'http://example.org/alice' },
+      res,
+    );
+    expect(calls.status).toBe(200);
+    expect(JSON.parse(calls.body)).toEqual(response);
   });
 });

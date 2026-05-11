@@ -7,6 +7,7 @@ import {
 import { ActivatedRoute, Router } from '@angular/router';
 import { MultiSourcesPickerComponent } from '@app/modules/multi-sources-picker';
 import { QuadTableComponent } from './components/quad-table.component';
+import { SourceErrorsComponent } from './components/source-errors.component';
 import {
   DescribeService,
   type DescribeResponse,
@@ -16,7 +17,7 @@ import {
   selector: 'app-describe-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [QuadTableComponent, MultiSourcesPickerComponent],
+  imports: [QuadTableComponent, MultiSourcesPickerComponent, SourceErrorsComponent],
   template: `
     <header class="border-b border-border-muted bg-surface px-4 py-3">
       <h1 class="font-serif text-2xl italic text-foreground">describe</h1>
@@ -54,6 +55,7 @@ import {
         </div>
       }
       @if (response(); as resp) {
+        <app-source-errors [perSource]="resp.perSource" />
         <section class="flex flex-col gap-2">
           <p class="text-sm text-foreground-muted">
             <span data-testid="describe-total">{{ resp.total }}</span> quad(s).
@@ -120,8 +122,19 @@ export class DescribePage {
         this.running.set(false);
         this.response.set(resp);
       },
-      error: () => {
+      error: (err: unknown) => {
         this.running.set(false);
+        // `/api/describe` returns 502 with the same response shape (per-source
+        // error map, empty quads) when every selected source failed — surface
+        // it so the error rows still render.
+        const body = (err as { error?: unknown } | null)?.error;
+        if (
+          body !== null &&
+          typeof body === 'object' &&
+          'perSource' in (body as Record<string, unknown>)
+        ) {
+          this.response.set(body as DescribeResponse);
+        }
       },
     });
   }

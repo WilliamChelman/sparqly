@@ -8,7 +8,20 @@ import {
 } from 'core';
 import { DataFactory, type Quad, type Term } from 'n3';
 
-const DEFAULT_FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
+export const DEFAULT_DESCRIBE_CONFIG: DescribeConfig = {
+  perSourceSoftLimit: 10000,
+  perSourceHardLimit: 100000,
+  fromSourcePredicate: 'urn:sparqly:fromSource',
+};
+
+export interface DescribeConfig {
+  /** Per-source quad cap applied when a request omits `perSourceLimit`. */
+  perSourceSoftLimit: number;
+  /** Absolute ceiling — a request-supplied `perSourceLimit` cannot exceed it. */
+  perSourceHardLimit: number;
+  /** Default RDF-star annotation predicate for describe provenance. */
+  fromSourcePredicate: string;
+}
 
 export interface DescribeRequest {
   iri: string;
@@ -21,6 +34,9 @@ export interface DescribeRequest {
 export interface DescribePerSourceEntry {
   count: number;
   truncated: boolean;
+  /** Present when this source's describe run failed; the source contributed
+   * no quads but the request still succeeds if any other source did. */
+  error?: string;
 }
 
 export interface DescribeResponse {
@@ -30,14 +46,35 @@ export interface DescribeResponse {
   perSource: Record<string, DescribePerSourceEntry>;
 }
 
+export interface DescribeResult {
+  /** `'all-sources-failed'` when every selected source threw — the controller
+   * maps that to HTTP 502. `'ok'` otherwise (including zero sources selected
+   * and partial failures). The per-source error map is on `response` either way. */
+  status: 'ok' | 'all-sources-failed';
+  response: DescribeResponse;
+}
+
 @Injectable()
 export class DescribeService {
-  constructor(private readonly registry: ReadonlyArray<ParsedSource>) {}
+  private readonly config: DescribeConfig;
 
-  async runDescribe(req: DescribeRequest): Promise<DescribeResponse> {
-    const predicate = req.fromSourcePredicate ?? DEFAULT_FROM_SOURCE_PREDICATE;
+  constructor(
+    private readonly registry: ReadonlyArray<ParsedSource>,
+    config: DescribeConfig = DEFAULT_DESCRIBE_CONFIG,
+  ) {
+    this.config = config;
+  }
+
+  async runDescribe(req: DescribeRequest): Promise<DescribeResult> {
+    const predicate =
+      req.fromSourcePredicate ?? this.config.fromSourcePredicate;
     const withProvenance = req.withProvenance !== false;
-    const perSourceLimit = req.perSourceLimit ?? Number.POSITIVE_INFINITY;
+    const requestedLimit = req.perSourceLimit ?? this.config.perSourceSoftLimit;
+    // Defense in depth: a client cannot blow past the deployment ceiling.
+    const perSourceLimit = Math.min(
+      requestedLimit,
+      this.config.perSourceHardLimit,
+    );
 
     const selected = this.selectSources(req.sources);
     const seed = DataFactory.namedNode(req.iri);
@@ -46,24 +83,36 @@ export class DescribeService {
       id: string;
       quads: Quad[];
       truncated: boolean;
+      error?: string;
     };
     const runs: SourceRun[] = [];
     for (const target of selected) {
       const id = target.id ?? 'source';
-      const resolved = await resolveSource(target, { registry: this.registry });
-      if (resolved.mode !== 'materialized') {
-        // Only glob sources are dispatched in this slice; resolveSource of a
-        // declared glob will always be materialized. Anything else is a guard.
-        runs.push({ id, quads: [], truncated: false });
-        continue;
+      try {
+        const resolved = await resolveSource(target, {
+          registry: this.registry,
+        });
+        if (resolved.mode !== 'materialized') {
+          // Only glob sources are dispatched in this slice; resolveSource of a
+          // declared glob will always be materialized. Anything else is a guard.
+          runs.push({ id, quads: [], truncated: false });
+          continue;
+        }
+        const raw = describeStore({
+          store: resolved.store,
+          seed,
+          perSourceLimit,
+        });
+        const relabelled = relabelBnodes(raw.quads, id);
+        runs.push({ id, quads: relabelled, truncated: raw.truncated });
+      } catch (err) {
+        runs.push({
+          id,
+          quads: [],
+          truncated: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
-      const raw = describeStore({
-        store: resolved.store,
-        seed,
-        perSourceLimit,
-      });
-      const relabelled = relabelBnodes(raw.quads, id);
-      runs.push({ id, quads: relabelled, truncated: raw.truncated });
     }
 
     // Merge with lexical (s, p, o, g) dedup. Track per-source membership so
@@ -87,6 +136,10 @@ export class DescribeService {
     const total = merged.size;
     const perSource: Record<string, DescribePerSourceEntry> = {};
     for (const run of runs) {
+      if (run.error !== undefined) {
+        perSource[run.id] = { count: 0, truncated: false, error: run.error };
+        continue;
+      }
       const count = countMembership(originsByQuad, run.id);
       perSource[run.id] = { count, truncated: run.truncated };
     }
@@ -104,12 +157,21 @@ export class DescribeService {
     }
 
     const quads = serializeDescribeWire(wire);
-    return {
+    const response: DescribeResponse = {
       iri: req.iri,
       quads,
       total,
       perSource,
     };
+
+    // 502 only when sources were configured-and-attempted and every one failed.
+    // Zero sources selected is not a failure (honest empty result).
+    const attempted = runs.length;
+    const failed = runs.filter((r) => r.error !== undefined).length;
+    const status: DescribeResult['status'] =
+      attempted > 0 && failed === attempted ? 'all-sources-failed' : 'ok';
+
+    return { status, response };
   }
 
   private selectSources(

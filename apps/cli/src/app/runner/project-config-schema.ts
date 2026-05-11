@@ -34,6 +34,18 @@ const cacheBlockSchema = z
   .partial()
   .strict();
 
+const describeBlockSchema = z
+  .object({
+    // Per-source quad cap applied when a request omits `perSourceLimit`.
+    perSourceSoftLimit: z.number().int().positive(),
+    // Absolute ceiling; a request-supplied `perSourceLimit` is clamped to it.
+    perSourceHardLimit: z.number().int().positive(),
+    // Default RDF-star annotation predicate for describe provenance.
+    fromSourcePredicate: z.string().min(1),
+  })
+  .partial()
+  .strict();
+
 const PER_INVOCATION_KEYS = new Set([
   'out',
   'query',
@@ -71,6 +83,7 @@ const KNOWN_TOP_LEVEL = new Set([
   'format',
   'cache',
   'context',
+  'describe',
 ]);
 
 const baseProjectSchema = z
@@ -80,6 +93,7 @@ const baseProjectSchema = z
     format: formatBlockSchema.optional(),
     cache: cacheBlockSchema.optional(),
     context: contextBlockSchema.optional(),
+    describe: describeBlockSchema.optional(),
   })
   .strict();
 
