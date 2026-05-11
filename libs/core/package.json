@@ -5,6 +5,16 @@
   "type": "commonjs",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./*": {
+      "types": "./src/lib/*.d.ts",
+      "default": "./src/lib/*.js"
+    }
+  },
   "dependencies": {
     "@comunica/query-sparql": "^5.2.1",
     "common": "workspace:*",
