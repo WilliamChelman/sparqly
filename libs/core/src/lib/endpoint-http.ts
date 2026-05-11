@@ -28,7 +28,7 @@ export function buildEndpointContext(
   return ctx;
 }
 
-function collectInjectedHeaders(
+export function collectInjectedHeaders(
   source: ParsedEndpointSource,
 ): Record<string, string> {
   const headers: Record<string, string> = {};
