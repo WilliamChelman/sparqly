@@ -502,4 +502,110 @@ describe('DescribePage', () => {
       'boom-alpha',
     );
   });
+
+  describe('Turtle/TriG tab', () => {
+    function tabIds(root: HTMLElement): (string | null)[] {
+      return Array.from(root.querySelectorAll('[data-testid^="tab-"]')).map((el) =>
+        el.getAttribute('data-testid'),
+      );
+    }
+
+    it('shows a table tab and a turtle tab once a default-graph result has loaded; the table is shown by default', async () => {
+      const { root } = await runAndFlush({
+        iri: 'http://example.org/alice',
+        quads: NQUADS_SAMPLE,
+        total: 3,
+        perSource: { alpha: { count: 3, truncated: false } },
+      });
+      expect(tabIds(root)).toEqual(['tab-table', 'tab-turtle']);
+      expect(root.querySelector('[data-testid=stub-quad-table]')).toBeTruthy();
+      expect(root.querySelector('[data-testid="result-formatted-body"]')).toBeFalsy();
+    });
+
+    it('labels the tab `trig` when any quad carries a named graph', async () => {
+      const { root } = await runAndFlush({
+        iri: 'http://example.org/alice',
+        quads:
+          '<http://example.org/alice> <http://example.org/knows> <http://example.org/bob> <http://example.org/g1> .\n',
+        total: 1,
+        perSource: { alpha: { count: 1, truncated: false } },
+      });
+      expect(tabIds(root)).toEqual(['tab-table', 'tab-trig']);
+    });
+
+    it('renders the formatted Turtle body when the turtle tab is clicked, hiding the table', async () => {
+      const { root, fixture } = await runAndFlush({
+        iri: 'http://example.org/alice',
+        quads: NQUADS_SAMPLE,
+        total: 3,
+        perSource: { alpha: { count: 3, truncated: false } },
+      });
+      (root.querySelector('[data-testid=tab-turtle]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      const body = root.querySelector('[data-testid="result-formatted-body"]');
+      expect(body).toBeTruthy();
+      expect(body?.textContent).toContain('http://example.org/alice');
+      expect(body?.textContent).toContain('http://example.org/knows');
+      expect(root.querySelector('[data-testid=stub-quad-table]')).toBeFalsy();
+    });
+
+    it('strips describe provenance annotations from the displayed Turtle', async () => {
+      const wire =
+        '<http://example.org/alice> <http://example.org/knows> <http://example.org/bob> .\n' +
+        '<<<http://example.org/alice> <http://example.org/knows> <http://example.org/bob>>> <urn:sparqly:fromSource> "alpha" .\n';
+      const { root, fixture } = await runAndFlush({
+        iri: 'http://example.org/alice',
+        quads: wire,
+        total: 1,
+        perSource: { alpha: { count: 1, truncated: false } },
+      });
+      (root.querySelector('[data-testid=tab-turtle]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      const body =
+        root.querySelector('[data-testid="result-formatted-body"]')?.textContent ?? '';
+      expect(body).toContain('http://example.org/knows');
+      expect(body).not.toContain('fromSource');
+    });
+
+    it('does not re-fetch when switching between the table and turtle tabs', async () => {
+      const { fixture, http } = await setup();
+      const root = fixture.nativeElement as HTMLElement;
+      const input = root.querySelector('input[data-testid=seed-input]') as HTMLInputElement;
+      input.value = 'http://example.org/alice';
+      input.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      (root.querySelector('button[data-testid=run-describe]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      http.expectOne('/api/describe').flush({
+        iri: 'http://example.org/alice',
+        quads: NQUADS_SAMPLE,
+        total: 3,
+        perSource: { alpha: { count: 3, truncated: false } },
+      });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      (root.querySelector('[data-testid=tab-turtle]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      (root.querySelector('[data-testid=tab-table]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      http.expectNone('/api/describe');
+      expect(quadTableStub(fixture)?.quadsText).toBe(NQUADS_SAMPLE);
+      http.verify();
+    });
+
+    it('does not show a turtle/trig tab when the result is empty', async () => {
+      const { root } = await runAndFlush({
+        iri: 'http://example.org/alice',
+        quads: '',
+        total: 0,
+        perSource: { alpha: { count: 0, truncated: false } },
+      });
+      expect(root.querySelector('[data-testid=tab-table]')).toBeTruthy();
+      expect(root.querySelector('[data-testid=tab-turtle]')).toBeFalsy();
+      expect(root.querySelector('[data-testid=tab-trig]')).toBeFalsy();
+    });
+  });
 });
