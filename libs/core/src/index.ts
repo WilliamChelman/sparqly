@@ -33,3 +33,4 @@ export * from './lib/load-sources';
 export * from './lib/resolve-source';
 export * from './lib/select-target';
 export * from './lib/env-substitute';
+export * from './lib/describe-store';

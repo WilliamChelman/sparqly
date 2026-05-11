@@ -1,6 +1,8 @@
 import { DynamicModule, Module, type Type } from '@nestjs/common';
 import type { ParsedSource, QueryEngine } from 'core';
 import { ConfigController } from './config.controller';
+import { DescribeController } from './describe.controller';
+import { DescribeService } from './describe.service';
 import { DiffController } from './diff.controller';
 import { DiffService } from './diff.service';
 import type { EngineMap } from './engine-map';
@@ -11,6 +13,7 @@ import { SparqlController } from './sparql.controller';
 import {
   SPARQL_CONFIG,
   SPARQL_CONTEXT,
+  SPARQL_DESCRIBE_SERVICE,
   SPARQL_DIFF_SERVICE,
   SPARQL_ENGINE,
   SPARQL_ENGINE_MAP,
@@ -63,13 +66,22 @@ export class ServerModule {
         { provide: SPARQL_REGISTRY_LISTING, useValue: options.listing },
       );
     } else {
-      controllers.push(ConfigController, RegistrySparqlController, DiffController);
+      controllers.push(
+        ConfigController,
+        RegistrySparqlController,
+        DiffController,
+        DescribeController,
+      );
       providers.push(
         { provide: SPARQL_ENGINE_MAP, useValue: options.engineMap },
         { provide: SPARQL_REGISTRY_LISTING, useValue: options.listing },
         {
           provide: SPARQL_DIFF_SERVICE,
           useValue: new DiffService(options.registry),
+        },
+        {
+          provide: SPARQL_DESCRIBE_SERVICE,
+          useValue: new DescribeService(options.registry),
         },
       );
     }
