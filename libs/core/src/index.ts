@@ -32,6 +32,7 @@ export * from './lib/tabular-row-key';
 export * from './lib/load-sources';
 export * from './lib/resolve-source';
 export * from './lib/select-target';
+export * from './lib/resolve-serve-scope';
 export * from './lib/env-substitute';
 export * from './lib/describe-store';
 export * from './lib/describe-endpoint';
