@@ -9,7 +9,7 @@ import {
 } from './source-spec';
 import { applyTransformPipeline } from './transform-pipeline';
 import type { ParsedTransform } from './transform-spec';
-import { resolveView, type ResolveViewOptions } from '../view-resolver';
+import { resolveView, type ResolveViewOptions } from '../views';
 
 export type QuerySources =
   | { mode: 'pass-through'; endpoint: ParsedEndpointSource }

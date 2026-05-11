@@ -6,11 +6,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   parseSourceSpecs,
   type ParsedViewSource,
-} from './sources';
+} from '../sources';
 import {
   startFakeSparqlEndpoint,
   type FakeSparqlEndpoint,
-} from './test/fake-sparql-endpoint';
+} from '../test/fake-sparql-endpoint';
 import { resolveView } from './view-resolver';
 
 const SPARQL_JSON_TWO_BINDINGS = JSON.stringify({

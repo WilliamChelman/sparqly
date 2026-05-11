@@ -6,7 +6,7 @@ import { Parser, Store, Writer, type Quad } from 'n3';
 import {
   type ParsedSource,
   type ParsedViewSource,
-} from './sources';
+} from '../sources';
 
 export type CacheFreshness = 'fresh' | 'stale' | 'miss';
 
