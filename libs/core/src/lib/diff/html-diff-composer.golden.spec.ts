@@ -17,7 +17,7 @@ async function readOrWrite(path: string, actual: string): Promise<string> {
   return readFile(path, 'utf8');
 }
 
-const FIXTURES = join(__dirname, '__fixtures__', 'diff-html');
+const FIXTURES = join(__dirname, '..', '__fixtures__', 'diff-html');
 
 const EX = 'http://example.org/';
 const SH = 'http://www.w3.org/ns/shacl#';

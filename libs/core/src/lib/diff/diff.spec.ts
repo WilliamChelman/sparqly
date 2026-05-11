@@ -9,9 +9,9 @@ import {
   formatRdfDiff,
   type RdfDiffResult,
 } from './diff';
-import { parseSourceSpec } from './sources';
-import { resolveSource } from './sources';
-import { extractAnnotationPredicates } from './sources';
+import { parseSourceSpec } from '../sources';
+import { resolveSource } from '../sources';
+import { extractAnnotationPredicates } from '../sources';
 import type { Store } from 'n3';
 
 interface ResolvedSide {

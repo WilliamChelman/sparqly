@@ -3,11 +3,11 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { diffStores } from './diff';
 import { groupRdfDiffByEntity, type HunkedRdfDiff } from './group-rdf-diff-by-entity';
-import { loadRdf } from './engine';
+import { loadRdf } from '../engine';
 
 const UPDATE = process.env['UPDATE_GOLDENS'] === '1';
-const FIXTURES = join(__dirname, '__fixtures__', 'group-rdf-diff-by-entity');
-const ERA_SHAPES_DIR = resolve(__dirname, '../../../../test/data');
+const FIXTURES = join(__dirname, '..', '__fixtures__', 'group-rdf-diff-by-entity');
+const ERA_SHAPES_DIR = resolve(__dirname, '../../../../../test/data');
 
 async function readOrWrite(path: string, actual: string): Promise<string> {
   if (UPDATE) {
