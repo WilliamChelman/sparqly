@@ -1,11 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { Parser, type Quad, type Term } from 'n3';
+import type { Quad, Term } from 'n3';
+import { describeProvenance, parseDescribeWire } from 'common';
 
 interface DisplayRow {
   s: string;
   p: string;
   o: string;
   g: string;
+  origins: string[];
 }
 
 interface DisplayGroup {
@@ -13,6 +15,8 @@ interface DisplayGroup {
   isSeed: boolean;
   rows: DisplayRow[];
 }
+
+const DEFAULT_FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
 
 function termLabel(term: Term): string {
   if (term.termType === 'NamedNode') return term.value;
@@ -22,10 +26,15 @@ function termLabel(term: Term): string {
   return term.value;
 }
 
-function parseNQuads(body: string): Quad[] {
-  if (body.trim().length === 0) return [];
-  const parser = new Parser({ format: 'application/n-quads' });
-  return parser.parse(body) as Quad[];
+function quadKey(q: Quad): string {
+  return `${termKey(q.subject)} ${termKey(q.predicate)} ${termKey(q.object)} ${termKey(q.graph)}`;
+}
+
+function termKey(t: Term): string {
+  if ((t.termType as string) === 'Quad') {
+    return `<<${quadKey(t as unknown as Quad)}>>`;
+  }
+  return `${t.termType}:${t.value}`;
 }
 
 @Component({
@@ -48,6 +57,7 @@ function parseNQuads(body: string): Quad[] {
             <th class="border border-border-muted px-2 py-1">p</th>
             <th class="border border-border-muted px-2 py-1">o</th>
             <th class="border border-border-muted px-2 py-1">g</th>
+            <th class="border border-border-muted px-2 py-1">from</th>
           </tr>
         </thead>
         <tbody>
@@ -61,6 +71,14 @@ function parseNQuads(body: string): Quad[] {
                 <td class="border border-border-muted px-2 py-1">{{ row.p }}</td>
                 <td class="border border-border-muted px-2 py-1">{{ row.o }}</td>
                 <td class="border border-border-muted px-2 py-1">{{ row.g }}</td>
+                <td class="border border-border-muted px-2 py-1">
+                  @for (origin of row.origins; track origin) {
+                    <span
+                      data-testid="source-badge"
+                      class="mr-1 inline-block rounded-md border border-border bg-surface-sunken px-1.5 py-0.5 text-[11px] font-medium text-foreground-muted"
+                    >{{ origin }}</span>
+                  }
+                </td>
               </tr>
             }
           }
@@ -72,10 +90,14 @@ function parseNQuads(body: string): Quad[] {
 export class QuadTableComponent {
   readonly quadsText = input<string>('');
   readonly seed = input<string>('');
+  readonly fromSourcePredicate = input<string>(DEFAULT_FROM_SOURCE_PREDICATE);
 
   readonly groups = computed<DisplayGroup[]>(() => {
-    const quads = parseNQuads(this.quadsText());
+    const text = this.quadsText();
     const seed = this.seed();
+    const predicate = this.fromSourcePredicate();
+    const all = text.trim().length === 0 ? [] : parseDescribeWire(text);
+    const { quads, originsByQuad } = describeProvenance.strip(all, predicate);
     const bySubject = new Map<string, DisplayRow[]>();
     for (const q of quads) {
       const s = termLabel(q.subject);
@@ -84,6 +106,7 @@ export class QuadTableComponent {
         p: termLabel(q.predicate),
         o: termLabel(q.object),
         g: termLabel(q.graph),
+        origins: originsByQuad.get(quadKey(q)) ?? [],
       };
       const list = bySubject.get(s);
       if (list) list.push(row);

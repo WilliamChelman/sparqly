@@ -1,4 +1,4 @@
-import { Component, Input } from '@angular/core';
+import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   HttpTestingController,
@@ -14,6 +14,7 @@ import {
 } from '@app/core';
 import { DescribePage } from './describe.page';
 import { QuadTableComponent } from './components/quad-table.component';
+import { MultiSourcesPickerComponent } from '@app/modules/multi-sources-picker';
 
 @Component({
   selector: 'app-quad-table',
@@ -29,8 +30,31 @@ class QuadTableStub {
   @Input() seed = '';
 }
 
+@Component({
+  selector: 'app-multi-sources-picker',
+  standalone: true,
+  template: `<div
+    data-testid="stub-multi-picker"
+    [attr.data-value]="(value ?? []).join(',')"
+  ></div>`,
+})
+class MultiSourcesPickerStub {
+  @Input() value: string[] | undefined = undefined;
+  @Input() label = 'sources';
+  @Input() excludeKinds: ReadonlyArray<string> = [];
+  @Output() valueChange = new EventEmitter<string[]>();
+
+  emit(value: string[]): void {
+    this.value = value;
+    this.valueChange.emit(value);
+  }
+}
+
 const LISTING: SourceListing = {
-  sources: [{ id: 'alpha', kind: 'glob', label: 'A (glob)', default: true }],
+  sources: [
+    { id: 'alpha', kind: 'glob', label: 'A (glob)', default: true },
+    { id: 'beta', kind: 'glob', label: 'B (glob)' },
+  ],
 };
 
 async function setup(initialUrl = '/describe') {
@@ -54,8 +78,8 @@ async function setup(initialUrl = '/describe') {
     ],
   })
     .overrideComponent(DescribePage, {
-      remove: { imports: [QuadTableComponent] },
-      add: { imports: [QuadTableStub] },
+      remove: { imports: [QuadTableComponent, MultiSourcesPickerComponent] },
+      add: { imports: [QuadTableStub, MultiSourcesPickerStub] },
     })
     .compileComponents();
 
@@ -75,6 +99,15 @@ function quadTableStub(fixture: {
   const all = fixture.debugElement
     .queryAll((n) => n.componentInstance instanceof QuadTableStub)
     .map((d) => d.componentInstance as QuadTableStub);
+  return all[0] ?? null;
+}
+
+function pickerStub(fixture: {
+  debugElement: import('@angular/core').DebugElement;
+}): MultiSourcesPickerStub | null {
+  const all = fixture.debugElement
+    .queryAll((n) => n.componentInstance instanceof MultiSourcesPickerStub)
+    .map((d) => d.componentInstance as MultiSourcesPickerStub);
   return all[0] ?? null;
 }
 
@@ -116,7 +149,7 @@ describe('DescribePage', () => {
 
     const req = http.expectOne('/api/describe');
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ iri: 'http://example.org/alice' });
+    expect(req.request.body.iri).toBe('http://example.org/alice');
 
     req.flush({
       iri: 'http://example.org/alice',
@@ -182,5 +215,98 @@ describe('DescribePage', () => {
       perSource: { alpha: { count: 0, truncated: false } },
     });
     http.verify();
+  });
+
+  it('renders the multi-sources picker', async () => {
+    const { fixture } = await setup();
+    expect(pickerStub(fixture)).toBeTruthy();
+  });
+
+  it('omits `sources` from the request body when the picker is at its default (all selected)', async () => {
+    const { fixture, http } = await setup();
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector('input[data-testid=seed-input]') as HTMLInputElement;
+    input.value = 'http://example.org/alice';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    // No explicit picker change → no `sources` in body.
+    (root.querySelector('button[data-testid=run-describe]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const req = http.expectOne('/api/describe');
+    expect(req.request.body).toEqual({ iri: 'http://example.org/alice' });
+    req.flush({
+      iri: 'http://example.org/alice',
+      quads: '',
+      total: 0,
+      perSource: {},
+    });
+    http.verify();
+  });
+
+  it('sends `sources` in the request body when the picker emits a subset', async () => {
+    const { fixture, http } = await setup();
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector('input[data-testid=seed-input]') as HTMLInputElement;
+    input.value = 'http://example.org/alice';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    const picker = pickerStub(fixture);
+    if (!picker) throw new Error('picker stub not found');
+    picker.emit(['beta']);
+    fixture.detectChanges();
+
+    (root.querySelector('button[data-testid=run-describe]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const req = http.expectOne('/api/describe');
+    expect(req.request.body).toEqual({
+      iri: 'http://example.org/alice',
+      sources: ['beta'],
+    });
+    req.flush({
+      iri: 'http://example.org/alice',
+      quads: '',
+      total: 0,
+      perSource: { beta: { count: 0, truncated: false } },
+    });
+    http.verify();
+  });
+
+  it('mirrors picker selection into the ?sources URL query param on submit', async () => {
+    const { fixture, http, router } = await setup();
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector('input[data-testid=seed-input]') as HTMLInputElement;
+    input.value = 'http://example.org/alice';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    const picker = pickerStub(fixture);
+    if (!picker) throw new Error('picker stub not found');
+    picker.emit(['alpha', 'beta']);
+    fixture.detectChanges();
+
+    (root.querySelector('button[data-testid=run-describe]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const tree = router.parseUrl(router.url);
+    expect(tree.queryParamMap.get('sources')).toBe('alpha,beta');
+
+    http.expectOne('/api/describe').flush({
+      iri: 'http://example.org/alice',
+      quads: '',
+      total: 0,
+      perSource: {},
+    });
+    http.verify();
+  });
+
+  it('seeds the picker from the ?sources URL query param', async () => {
+    const { fixture } = await setup('/describe?sources=beta');
+    const picker = pickerStub(fixture);
+    expect(picker?.value).toEqual(['beta']);
   });
 });

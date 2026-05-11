@@ -1,13 +1,21 @@
 import { Injectable } from '@nestjs/common';
+import { describeProvenance, serializeDescribeWire } from 'common';
 import {
   describeStore,
+  relabelBnodes,
   resolveSource,
   type ParsedSource,
 } from 'core';
-import { DataFactory, Writer, type Quad } from 'n3';
+import { DataFactory, type Quad, type Term } from 'n3';
+
+const DEFAULT_FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
 
 export interface DescribeRequest {
   iri: string;
+  sources?: ReadonlyArray<string>;
+  withProvenance?: boolean;
+  perSourceLimit?: number;
+  fromSourcePredicate?: string;
 }
 
 export interface DescribePerSourceEntry {
@@ -27,49 +35,127 @@ export class DescribeService {
   constructor(private readonly registry: ReadonlyArray<ParsedSource>) {}
 
   async runDescribe(req: DescribeRequest): Promise<DescribeResponse> {
-    const target = this.firstGlob();
-    if (!target) {
-      throw new Error(
-        'describe: tracer-bullet slice requires at least one glob source in the registry',
-      );
-    }
-    const sources = await resolveSource(target, { registry: this.registry });
-    if (sources.mode !== 'materialized') {
-      throw new Error(
-        `describe: tracer-bullet slice only supports materialized glob sources; got ${sources.mode}`,
-      );
-    }
+    const predicate = req.fromSourcePredicate ?? DEFAULT_FROM_SOURCE_PREDICATE;
+    const withProvenance = req.withProvenance !== false;
+    const perSourceLimit = req.perSourceLimit ?? Number.POSITIVE_INFINITY;
+
+    const selected = this.selectSources(req.sources);
     const seed = DataFactory.namedNode(req.iri);
-    const result = describeStore({
-      store: sources.store,
-      seed,
-      perSourceLimit: Number.POSITIVE_INFINITY,
-    });
-    const serialized = await serializeNQuads(result.quads);
-    const id = target.id ?? 'source';
+
+    type SourceRun = {
+      id: string;
+      quads: Quad[];
+      truncated: boolean;
+    };
+    const runs: SourceRun[] = [];
+    for (const target of selected) {
+      const id = target.id ?? 'source';
+      const resolved = await resolveSource(target, { registry: this.registry });
+      if (resolved.mode !== 'materialized') {
+        // Only glob sources are dispatched in this slice; resolveSource of a
+        // declared glob will always be materialized. Anything else is a guard.
+        runs.push({ id, quads: [], truncated: false });
+        continue;
+      }
+      const raw = describeStore({
+        store: resolved.store,
+        seed,
+        perSourceLimit,
+      });
+      const relabelled = relabelBnodes(raw.quads, id);
+      runs.push({ id, quads: relabelled, truncated: raw.truncated });
+    }
+
+    // Merge with lexical (s, p, o, g) dedup. Track per-source membership so
+    // we can both report perSource.count and inject one annotation per
+    // (quad, origin) pair on the wire.
+    const merged = new Map<string, Quad>();
+    const originsByQuad = new Map<string, string[]>();
+    for (const run of runs) {
+      for (const q of run.quads) {
+        const key = quadKey(q);
+        if (!merged.has(key)) merged.set(key, q);
+        const list = originsByQuad.get(key);
+        if (list) {
+          if (!list.includes(run.id)) list.push(run.id);
+        } else {
+          originsByQuad.set(key, [run.id]);
+        }
+      }
+    }
+
+    const total = merged.size;
+    const perSource: Record<string, DescribePerSourceEntry> = {};
+    for (const run of runs) {
+      const count = countMembership(originsByQuad, run.id);
+      perSource[run.id] = { count, truncated: run.truncated };
+    }
+
+    let wire: Quad[] = [...merged.values()];
+    if (withProvenance) {
+      const annotations: Quad[] = [];
+      for (const [key, q] of merged) {
+        const origins = originsByQuad.get(key) ?? [];
+        for (const origin of origins) {
+          annotations.push(...describeProvenance.inject([q], origin, predicate).slice(1));
+        }
+      }
+      wire = [...wire, ...annotations];
+    }
+
+    const quads = serializeDescribeWire(wire);
     return {
       iri: req.iri,
-      quads: serialized,
-      total: result.quads.length,
-      perSource: {
-        [id]: { count: result.quads.length, truncated: result.truncated },
-      },
+      quads,
+      total,
+      perSource,
     };
   }
 
-  private firstGlob(): ParsedSource | undefined {
-    return this.registry.find((s) => s.kind === 'glob');
+  private selectSources(
+    requested: ReadonlyArray<string> | undefined,
+  ): ParsedSource[] {
+    if (requested !== undefined && requested.length === 0) return [];
+    const requestedSet = requested
+      ? new Set(requested.map((s) => (s.startsWith('@') ? s.slice(1) : s)))
+      : undefined;
+    const out: ParsedSource[] = [];
+    for (const src of this.registry) {
+      if (!isSupportedKind(src)) continue;
+      const id = src.id;
+      if (id === undefined) continue;
+      if (requestedSet && !requestedSet.has(id)) continue;
+      out.push(src);
+    }
+    return out;
   }
 }
 
-async function serializeNQuads(quads: ReadonlyArray<Quad>): Promise<string> {
-  if (quads.length === 0) return '';
-  const writer = new Writer({ format: 'application/n-quads' });
-  for (const q of quads) writer.addQuad(q);
-  return new Promise<string>((resolve, reject) => {
-    writer.end((err: Error | null | undefined, result: string) => {
-      if (err) reject(err);
-      else resolve(result);
-    });
-  });
+function isSupportedKind(src: ParsedSource): boolean {
+  // This slice only dispatches glob sources; endpoint/view come in later
+  // slices. empty/reference are intentionally excluded by ADR-0015.
+  return src.kind === 'glob';
 }
+
+function countMembership(
+  originsByQuad: Map<string, string[]>,
+  id: string,
+): number {
+  let n = 0;
+  for (const origins of originsByQuad.values()) {
+    if (origins.includes(id)) n++;
+  }
+  return n;
+}
+
+function quadKey(q: Quad): string {
+  return `${termKey(q.subject)} ${termKey(q.predicate)} ${termKey(q.object)} ${termKey(q.graph)}`;
+}
+
+function termKey(t: Term): string {
+  if ((t.termType as string) === 'Quad') {
+    return `<<${quadKey(t as unknown as Quad)}>>`;
+  }
+  return `${t.termType}:${t.value}`;
+}
+
