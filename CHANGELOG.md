@@ -1,3 +1,19 @@
+## [0.20.0](https://github.com/WilliamChelman/sparqly/compare/v0.19.0...v0.20.0) (2026-05-12)
+
+### Features
+
+* **cli:** sub-cluster runner/ into config/ and fields/ (Phase L, ADR-0017) ([8e1387e](https://github.com/WilliamChelman/sparqly/commit/8e1387e0bef23919731626a88be9e352e5c12b77))
+* **core:** path-expansion query builder + describeEndpoint honours paths (ADR-0019) ([0a1299b](https://github.com/WilliamChelman/sparqly/commit/0a1299b8ad7a29c7667b603469502c31f57b8ad9)), closes [#208](https://github.com/WilliamChelman/sparqly/issues/208)
+* new icon ([2b3dc27](https://github.com/WilliamChelman/sparqly/commit/2b3dc275b1c553292e9cc406c353fb6ff477c7ed))
+* **server:** POST /api/describe accepts expandedPaths (ADR-0019) ([89c4d2a](https://github.com/WilliamChelman/sparqly/commit/89c4d2a630c5ce30c7df26ecc1229d1e5479cc39))
+* **web:** expand affordance on dangling endpoint bnodes (ADR-0019) ([33f4f62](https://github.com/WilliamChelman/sparqly/commit/33f4f62cdd5ed3fa29a319b81189a94e95652f94)), closes [#210](https://github.com/WilliamChelman/sparqly/issues/210)
+
+### Bug Fixes
+
+* **core:** make endpoint describe depth-0 (ADR-0019) ([a6f10bf](https://github.com/WilliamChelman/sparqly/commit/a6f10bfd1c12fdedb4dd9230177b81845711bcf3))
+* **core:** make remote describe work against Virtuoso endpoints ([93d4612](https://github.com/WilliamChelman/sparqly/commit/93d4612bb35df01f258e00157dfc4e8ac8afad27))
+* **core:** submit remote SPARQL queries via direct POST ([1fa9a84](https://github.com/WilliamChelman/sparqly/commit/1fa9a84d42d934d0fc5c14580dd11d8d53e8e737))
+
 ## [0.19.0](https://github.com/WilliamChelman/sparqly/compare/v0.18.0...v0.19.0) (2026-05-12)
 
 ### Features
