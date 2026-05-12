@@ -45,5 +45,8 @@ describe('groupRdfDiffByEntity — era-shapes 3.2.0 vs 3.2.2 golden', () => {
       stableJson(hunked),
     );
     expect(stableJson(hunked)).toBe(golden);
+    // This fixture pair is loaded without `sparqly:source` annotations, so no
+    // `changed` hunk can carry an anchor definition site.
+    expect(hunked.hunks.some((h) => h.anchorSource !== undefined)).toBe(false);
   }, 30_000);
 });
