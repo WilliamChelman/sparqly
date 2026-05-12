@@ -19,6 +19,13 @@ ex:Alice a ex:Person ;
     ex:Alexandra
     ex:Arboricia
   ) ;
+  ex:address [
+    ex:number 3 ;
+    ex:street "avenue des moissons" ;
+    ex:city [
+      ex:name "Bruxelles"@fr ;
+    ] ;
+  ] ;
 . 
 
 ex:Bob a ex:Person ; 
