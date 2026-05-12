@@ -1,9 +1,12 @@
 ---
 status: accepted
 amends: 0011
+partially-superseded-by: 0018
 ---
 
 # Webapp turtle/trig view, formatted in the browser via `libs/common`
+
+> **Note (ADR-0018):** the "four sibling libs (`common`, `core`, `domain`, `server`)" framing below is obsolete — `libs/domain` was deleted (its sole contents were unused); the map is now three libs. The formatter-placement reasoning is unaffected.
 
 ## Context
 
