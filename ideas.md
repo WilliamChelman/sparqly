@@ -40,8 +40,6 @@
 - diff using templting library instead of "manual" html
 - https://diffs.com/
 - service queries using source ids
-- direct access to localhost:3000 fails (SPA redirection)
-- describe page
   - 2 paths implementation: sonnet vs. opus (for comparison)
 - quick queries (default select with or withou ?g, filled with prefixes from config) + saved queries that make sense
 - new source kind: remote file
