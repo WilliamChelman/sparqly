@@ -2,7 +2,10 @@ import { DataFactory, Store } from 'n3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { describeEndpoint } from './describe-endpoint';
 import type { ParsedEndpointSource } from '../sources';
-import type { FakeSparqlEndpoint } from '../test/fake-sparql-endpoint';
+import {
+  startFakeSparqlEndpoint,
+  type FakeSparqlEndpoint,
+} from '../test/fake-sparql-endpoint';
 import { startStoreBackedSparqlEndpoint } from '../test/store-backed-sparql-endpoint';
 import { ttl } from '../test/turtle';
 
@@ -50,6 +53,9 @@ describe('describeEndpoint', () => {
     expect(result.truncated).toBe(false);
     // alice knows bob, carol knows alice, alice age 30 = 3.
     expect(result.quads).toHaveLength(3);
+    // No blank node in the description ⇒ no deeper round trip is fired
+    // (two closure queries + one RDF-star post-pass batch).
+    expect(ep?.requestCount() ?? 0).toBe(3);
   });
 
   it('expands a multi-hop blank-node chain, matching describeStore', async () => {
@@ -205,5 +211,37 @@ describe('describeEndpoint', () => {
       (q) => (q.subject.termType as string) === 'Quad',
     );
     expect(annotated?.object.value).toBe('wiki');
+  });
+
+  it('returns the last good round as truncated when a deeper query fails', async () => {
+    // First closure round returns a seed→blank edge, forcing a second round;
+    // that one 500s (Virtuoso rejects the larger UNION). The partial
+    // description must come back marked truncated, not as an error.
+    let n = 0;
+    ep = await startFakeSparqlEndpoint(({ query }) => {
+      // Annotation post-pass (quoted-triple subjects) — no annotations.
+      if (query.includes('<<')) return { body: '' };
+      n += 1;
+      if (n <= 2) {
+        return {
+          contentType: 'application/n-triples',
+          body:
+            '<http://example.org/alice> <http://example.org/has> _:b1 .\n' +
+            '_:b1 <http://example.org/label> "first" .\n',
+        };
+      }
+      return { status: 500, body: 'SQ142: too many columns' };
+    });
+    const endpoint: ParsedEndpointSource = {
+      kind: 'endpoint',
+      endpoint: ep.url,
+    };
+    const result = await describeEndpoint({
+      endpoint,
+      seed: namedNode('http://example.org/alice'),
+      perSourceLimit: 10000,
+    });
+    expect(result.truncated).toBe(true);
+    expect(result.quads).toHaveLength(2);
   });
 });

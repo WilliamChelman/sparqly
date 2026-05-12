@@ -111,4 +111,22 @@ describe('describeWire codec', () => {
     expect(serializeDescribeWire([])).toBe('');
     expect(parseDescribeWire('')).toEqual([]);
   });
+
+  it('tolerates N-Triples line comments (e.g. Virtuoso\'s "# Empty NT")', () => {
+    expect(parseDescribeWire('# Empty NT\n')).toEqual([]);
+    const back = parseDescribeWire(
+      '# header comment\n<http://example.org/a> <http://example.org/p> <http://example.org/b> . # trailing\n',
+    );
+    expect(back).toHaveLength(1);
+    expect(back[0].subject.value).toBe('http://example.org/a');
+  });
+
+  it('decodes \\uXXXX / \\UXXXXXXXX numeric escapes in literals and IRIs', () => {
+    const back = parseDescribeWire(
+      '<http://example.org/caf\\u00E9> <http://example.org/p> "r\\u00E9sum\\u00E9 \\U0001F600" .\n',
+    );
+    expect(back).toHaveLength(1);
+    expect(back[0].subject.value).toBe('http://example.org/café');
+    expect(back[0].object.value).toBe('résumé \u{1F600}');
+  });
 });

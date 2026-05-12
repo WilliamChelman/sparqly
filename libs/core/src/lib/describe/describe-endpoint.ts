@@ -32,12 +32,12 @@ export interface DescribeEndpointResult {
  *
  * Runs the same algorithm contract as {@link describeStore} — seed-as-s/o,
  * symmetric blank-node-chain fixpoint, RDF-star post-pass, no named-IRI
- * traversal — but over the wire via iterative Comunica `CONSTRUCT` queries
+ * traversal — but over the wire via iterative `CONSTRUCT` queries
  * instead of `store.match`. The blank-node closure is fetched `DEPTH_CHUNK`
- * levels at a time; each response is internally consistent (the endpoint
- * evaluates the whole query), so loading it into a fresh `Store` and running
- * `describeStore` reproduces the algorithm exactly for everything within the
- * fetched depth. Iteration stops once the description stops growing or the
+ * levels at a time (one query per edge direction); each response is internally
+ * consistent (the endpoint evaluates the whole query), so loading them into a
+ * fresh `Store` and running `describeStore` reproduces the algorithm exactly
+ * for everything within the fetched depth. Iteration stops once the description stops growing or the
  * per-source cap fires, keeping wire round-trips bounded.
  */
 export async function describeEndpoint(
@@ -53,13 +53,39 @@ export async function describeEndpoint(
   for (;;) {
     depth += DEPTH_CHUNK;
     const store = new Store();
-    store.addQuads(await run(buildClosureQuery(seed.value, depth)));
+    const [outgoing, incoming] = buildClosureQueries(seed.value, depth);
+    const outP = run(outgoing);
+    const inP = run(incoming);
+    let outQuads: Quad[];
+    let inQuads: Quad[];
+    try {
+      [outQuads, inQuads] = await Promise.all([outP, inP]);
+    } catch (err) {
+      // One leg may still be in flight — keep its eventual rejection from
+      // becoming an unhandled rejection.
+      outP.catch(() => undefined);
+      inP.catch(() => undefined);
+      // Deep closure rounds grow the `UNION`; some engines (notably Virtuoso)
+      // reject or run out of memory on the larger query. If an earlier round
+      // already produced a description, treat the failure as a depth cutoff
+      // rather than failing the whole describe.
+      if (prevSize >= 0) {
+        depthExhausted = true;
+        break;
+      }
+      throw err;
+    }
+    store.addQuads(outQuads);
+    store.addQuads(inQuads);
     desc = describeStore({ store, seed, perSourceLimit });
     if (
       desc.truncated ||
       desc.quads.length === 0 ||
-      desc.quads.length === prevSize
+      desc.quads.length === prevSize ||
+      !hasBlankNode(desc.quads)
     ) {
+      // No blank node in the description ⇒ the blank-node-chain fixpoint is
+      // already reached; deeper rounds cannot add anything.
       break;
     }
     prevSize = desc.quads.length;
@@ -78,6 +104,13 @@ export async function describeEndpoint(
   merged.addQuads(annotations);
   const final = describeStore({ store: merged, seed, perSourceLimit });
   return { quads: final.quads, truncated: final.truncated || depthExhausted };
+}
+
+function hasBlankNode(quads: ReadonlyArray<Quad>): boolean {
+  return quads.some(
+    (q) =>
+      q.subject.termType === 'BlankNode' || q.object.termType === 'BlankNode',
+  );
 }
 
 function makeConstructRunner(
@@ -112,36 +145,46 @@ function makeConstructRunner(
 }
 
 /**
- * A single `CONSTRUCT` that fetches a superset of the seed's description down to
- * `maxDepth` blank-node hops: a `UNION` over chain lengths `0..maxDepth`, where
- * the length-`k` branch walks a `k`-step blank-only path out of the seed (either
- * edge direction at every step) and emits every edge incident to its endpoint.
- * Per-branch `!sameTerm` filters forbid revisiting a node, so each branch is
- * finite even on cyclic data and empties out once `k` exceeds the number of
- * reachable blank nodes. `describeStore` then prunes the superset down to the
- * exact algorithm result.
+ * The two `CONSTRUCT` queries (outgoing `?z ?p ?o`, incoming `?s ?p ?z`) that
+ * together fetch a superset of the seed's description down to `maxDepth`
+ * blank-node hops. `?z` is bound by a `UNION` over chain lengths `0..maxDepth`:
+ * length 0 is the seed itself (`VALUES`); the length-`k` branch walks a `k`-step
+ * blank-only path out of the seed (either edge direction at every step) with
+ * per-branch `!sameTerm` filters forbidding revisits, so each branch is finite
+ * even on cyclic data and empties once `k` exceeds the reachable blank-node
+ * count. `describeStore` then prunes the superset down to the exact algorithm
+ * result.
+ *
+ * Why two queries instead of one with `BIND(?z AS ?s)` spokes: Virtuoso (e.g.
+ * Fedlex's) rejects a `CONSTRUCT` whose `WHERE` is a many-branch `UNION` with
+ * `BIND` inside — `SQ142: Different number of expected and generated columns` —
+ * so every branch here keeps the same projected variables and no `BIND`.
  */
-function buildClosureQuery(seedIri: string, maxDepth: number): string {
+function buildClosureQueries(
+  seedIri: string,
+  maxDepth: number,
+): readonly [string, string] {
   const seed = `<${seedIri}>`;
-  const spokes = (node: string) =>
-    `{ ${node} ?p ?o . BIND(${node} AS ?s) } UNION { ?s ?p ${node} . BIND(${node} AS ?o) }`;
-  const branches: string[] = [spokes(seed)];
+  const branches: string[] = [`VALUES ?z { ${seed} }`];
   for (let k = 1; k <= maxDepth; k++) {
     const parts: string[] = [];
     const nodes: string[] = [];
     let prev = seed;
     for (let i = 1; i <= k; i++) {
-      const node = `?b${i}`;
+      const node = i === k ? '?z' : `?m${i}`;
       parts.push(`{ ${prev} ?e${i} ${node} } UNION { ${node} ?e${i} ${prev} }`);
       parts.push(`FILTER(isBlank(${node}))`);
       for (const seen of nodes) parts.push(`FILTER(!sameTerm(${node}, ${seen}))`);
       nodes.push(node);
       prev = node;
     }
-    parts.push(spokes(prev));
     branches.push(parts.join(' '));
   }
-  return `CONSTRUCT { ?s ?p ?o } WHERE { { ${branches.join(' } UNION { ')} } }`;
+  const where = `{ ${branches.join(' } UNION { ')} }`;
+  return [
+    `CONSTRUCT { ?z ?p ?o } WHERE { ${where} ?z ?p ?o . }`,
+    `CONSTRUCT { ?s ?p ?z } WHERE { ${where} ?s ?p ?z . }`,
+  ];
 }
 
 /**

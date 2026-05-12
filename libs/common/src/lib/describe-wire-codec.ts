@@ -153,13 +153,20 @@ function readIri(c: Cursor): Term {
   // Consume single '<'
   c.pos++;
   const start = c.pos;
-  while (c.pos < c.text.length && c.text[c.pos] !== '>') c.pos++;
-  const iri = c.text.slice(start, c.pos);
+  let value = '';
+  while (c.pos < c.text.length && c.text[c.pos] !== '>') {
+    if (c.text[c.pos] === '\\') {
+      value += readEscape(c);
+      continue;
+    }
+    value += c.text[c.pos];
+    c.pos++;
+  }
   if (c.text[c.pos] !== '>') {
     throw new Error(`describe-wire: unterminated IRI at offset ${start}`);
   }
   c.pos++; // consume '>'
-  return namedNode(iri);
+  return namedNode(value);
 }
 
 function readBlankNode(c: Cursor): Term {
@@ -183,14 +190,7 @@ function readLiteral(c: Cursor): Term {
   while (c.pos < c.text.length) {
     const ch = c.text[c.pos];
     if (ch === '\\') {
-      const next = c.text[c.pos + 1];
-      if (next === 'n') value += '\n';
-      else if (next === 'r') value += '\r';
-      else if (next === 't') value += '\t';
-      else if (next === '"') value += '"';
-      else if (next === '\\') value += '\\';
-      else value += next;
-      c.pos += 2;
+      value += readEscape(c);
       continue;
     }
     if (ch === '"') break;
@@ -222,13 +222,48 @@ function readLiteral(c: Cursor): Term {
 }
 
 function skipWhitespace(c: Cursor): void {
-  while (
-    c.pos < c.text.length &&
-    (c.text[c.pos] === ' ' ||
-      c.text[c.pos] === '\t' ||
-      c.text[c.pos] === '\n' ||
-      c.text[c.pos] === '\r')
-  ) {
-    c.pos++;
+  for (;;) {
+    const ch = c.text[c.pos];
+    if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
+      c.pos++;
+      continue;
+    }
+    // N-Triples/N-Quads line comments — Virtuoso emits `# Empty NT` for an
+    // empty CONSTRUCT result, and comments may appear between statements.
+    if (ch === '#') {
+      while (c.pos < c.text.length && c.text[c.pos] !== '\n') c.pos++;
+      continue;
+    }
+    break;
+  }
+}
+
+/**
+ * Decode one backslash escape at the cursor (which points at the `\`). Handles
+ * the N-Triples set: `\t \b \n \r \f \" \' \\` plus `\uXXXX` / `\UXXXXXXXX`
+ * numeric escapes. Unknown escapes fall back to the literal escaped character.
+ */
+function readEscape(c: Cursor): string {
+  const next = c.text[c.pos + 1];
+  if (next === 'u' || next === 'U') {
+    const width = next === 'u' ? 4 : 8;
+    const hex = c.text.slice(c.pos + 2, c.pos + 2 + width);
+    c.pos += 2 + width;
+    return String.fromCodePoint(parseInt(hex, 16));
+  }
+  c.pos += 2;
+  switch (next) {
+    case 't':
+      return '\t';
+    case 'b':
+      return '\b';
+    case 'n':
+      return '\n';
+    case 'r':
+      return '\r';
+    case 'f':
+      return '\f';
+    default:
+      return next;
   }
 }
