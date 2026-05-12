@@ -1,3 +1,31 @@
+## [0.19.0](https://github.com/WilliamChelman/sparqly/compare/v0.18.0...v0.19.0) (2026-05-12)
+
+### Features
+
+* **core:** collapse libs/core/src/index.ts to eight feature barrels (Phase J, ADR-0017) ([4efcd88](https://github.com/WilliamChelman/sparqly/commit/4efcd886c7f18f81ebf8a4e3a9be8f26d1902a1d)), closes [#201](https://github.com/WilliamChelman/sparqly/issues/201)
+* **core:** move canonicalize + strip-annotations + immutability into canonical/ (Phase C, ADR-0017) ([d98d029](https://github.com/WilliamChelman/sparqly/commit/d98d029774531ec401c26213642a676620d91da2)), closes [#201](https://github.com/WilliamChelman/sparqly/issues/201)
+* **core:** move describe-store + describe-endpoint + relabel-bnodes into describe/ (Phase G, ADR-0017) ([c0bad86](https://github.com/WilliamChelman/sparqly/commit/c0bad86ed4ec12f3f0b56394d3e45ddcadcae854)), closes [#201](https://github.com/WilliamChelman/sparqly/issues/201)
+* **core:** move diff + related formatters/utilities into diff/ (Phase I, ADR-0017) ([a2276e0](https://github.com/WilliamChelman/sparqly/commit/a2276e0d3c2be6c64a21b4ac8937f63f5580d6e1)), closes [#201](https://github.com/WilliamChelman/sparqly/issues/201)
+* **core:** move parse-sparql-prefixes + env-substitute into shared/ (Phase B, ADR-0017) ([3730e9d](https://github.com/WilliamChelman/sparqly/commit/3730e9d12be9066913d4aff987747cab5153dba5)), closes [#201](https://github.com/WilliamChelman/sparqly/issues/201)
+* **core:** move query-engine + rdf-loader + rdf-file-parser + endpoint-http + endpoint-load into engine/ (Phase D, ADR-0017) ([687cfa2](https://github.com/WilliamChelman/sparqly/commit/687cfa295d63b0d839d90a9496196c5ac294f6f7)), closes [#201](https://github.com/WilliamChelman/sparqly/issues/201)
+* **core:** move select-target + resolve-serve-scope into target/ (Phase H, ADR-0017) ([fb58084](https://github.com/WilliamChelman/sparqly/commit/fb5808417ce821ad66fc45fa660b6104e15a26a8)), closes [#201](https://github.com/WilliamChelman/sparqly/issues/201)
+* **core:** move source-spec + transforms + resolve/load into sources/ (Phase E, ADR-0017) ([4beb0dc](https://github.com/WilliamChelman/sparqly/commit/4beb0dc6cab3f9c73574a49dcf60c965e89de138)), closes [#201](https://github.com/WilliamChelman/sparqly/issues/201)
+* **core:** move view-* + anonymous-view-builder + resolve-anonymous-select-bindings into views/ (Phase F, ADR-0017) ([5bf84cb](https://github.com/WilliamChelman/sparqly/commit/5bf84cb2a2a44972c21627a9e145a6c9a35de2ee)), closes [#201](https://github.com/WilliamChelman/sparqly/issues/201)
+* **core:** resolveServeScope — pure serve-scope resolver ([#196](https://github.com/WilliamChelman/sparqly/issues/196)) ([dc2308d](https://github.com/WilliamChelman/sparqly/commit/dc2308de2146d396578aa975370712812deaab04)), closes [#195](https://github.com/WilliamChelman/sparqly/issues/195)
+* **core:** subpath exports + tsconfig wildcard alias (Phase A, ADR-0017) ([b64f71f](https://github.com/WilliamChelman/sparqly/commit/b64f71f9028f9c56f5f3f28f666acfe1100fbb5b)), closes [#200](https://github.com/WilliamChelman/sparqly/issues/200)
+* **describe:** "describe this" affordance + header nav link ([#193](https://github.com/WilliamChelman/sparqly/issues/193)) ([69faf39](https://github.com/WilliamChelman/sparqly/commit/69faf398b1e142db1519eb1aeee8ddd9851abed5))
+* **describe:** bnode-chain fixpoint, RDF-star post-pass, cap enforcement ([#186](https://github.com/WilliamChelman/sparqly/issues/186)) ([f07a753](https://github.com/WilliamChelman/sparqly/commit/f07a7539998600d5675bcf4c52964137b545f5eb))
+* **describe:** compact IRIs in quad table + copy-IRI affordance ([e112e8a](https://github.com/WilliamChelman/sparqly/commit/e112e8a8baedb269d91e095f56debb23eab6f25e))
+* **describe:** describeEndpoint (iterative remote CONSTRUCTs) + service dispatch for endpoint/empty/reference ([#189](https://github.com/WilliamChelman/sparqly/issues/189)) ([a44b02e](https://github.com/WilliamChelman/sparqly/commit/a44b02ee8dbaf9fdb4b8eb360cabdd85f0b60545))
+* **describe:** IRI input expansion + URL state round-trip on describe page ([#191](https://github.com/WilliamChelman/sparqly/issues/191)) ([15aea63](https://github.com/WilliamChelman/sparqly/commit/15aea632afd7f32102ef0569b6c5bcad8c8a22d1))
+* **describe:** multi-source aggregation, provenance, multi-select picker ([fb5abd8](https://github.com/WilliamChelman/sparqly/commit/fb5abd83e565edbed97dc18f8466ead2a82ee924)), closes [#187](https://github.com/WilliamChelman/sparqly/issues/187)
+* **describe:** partial-failure handling, per-source error rows, describe: config + caps ([#188](https://github.com/WilliamChelman/sparqly/issues/188)) ([84384cd](https://github.com/WilliamChelman/sparqly/commit/84384cdf9c413f85ab71a8e77c4462d279f74f64))
+* **describe:** tracer-bullet for /describe page ([#185](https://github.com/WilliamChelman/sparqly/issues/185)) ([85e3910](https://github.com/WilliamChelman/sparqly/commit/85e39109a87ddc12b9d002066d0eb15fa88b6735))
+* **describe:** Turtle/TriG tab on describe page ([#192](https://github.com/WilliamChelman/sparqly/issues/192)) ([a3fb24a](https://github.com/WilliamChelman/sparqly/commit/a3fb24a0ae920d8702dadd7d22fb57cc6af64fd6))
+* **describe:** view-target dispatch in DescribeService ([#190](https://github.com/WilliamChelman/sparqly/issues/190)) ([6cad32b](https://github.com/WilliamChelman/sparqly/commit/6cad32b52b99240c923150a95d47fc1d93433801))
+* **serve:** collapse serve into one surface; --source is a scope filter ([#197](https://github.com/WilliamChelman/sparqly/issues/197)) ([02751df](https://github.com/WilliamChelman/sparqly/commit/02751df10e10a59b0ef052a3fd5e5b44a192598d))
+* **server:** restructure libs/server/src/lib into six feature folders (Phase K, ADR-0017) ([8e4b2e8](https://github.com/WilliamChelman/sparqly/commit/8e4b2e83319ec0d025a31d7a1505c4fabc1d816d)), closes [#202](https://github.com/WilliamChelman/sparqly/issues/202)
+
 ## [0.18.0](https://github.com/WilliamChelman/sparqly/compare/v0.17.2...v0.18.0) (2026-05-10)
 
 ### Features
