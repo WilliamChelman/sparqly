@@ -89,6 +89,10 @@ describe('sparqly serve — watch mode', () => {
 
       const after = await eventuallyContains(handle, 'Dave');
       expect(after).toContain('Dave');
+
+      expect(handle.stderr()).toMatch(
+        /INFO \[sparqly\] view-rebuilt .*\bfiles=\d+\b.*\bquads=\d+\b.*\bms=\d+\b/,
+      );
     } finally {
       await handle.close();
     }
@@ -118,7 +122,7 @@ describe('sparqly serve — watch mode', () => {
 
       await eventuallyContains(handle, 'Four');
 
-      const rebuilds = (handle.stderr().match(/Rebuilt store/g) ?? []).length;
+      const rebuilds = (handle.stderr().match(/\bview-rebuilt\b/g) ?? []).length;
       expect(rebuilds).toBeLessThan(4);
       expect(rebuilds).toBeGreaterThanOrEqual(1);
     } finally {

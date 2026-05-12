@@ -22,11 +22,11 @@ export interface EngineMapOptions {
    * of the served set. Defaults to the served registry when omitted.
    */
   resolutionRegistry?: ReadonlyArray<ParsedSource>;
-  onSourceLoaded?: (id: string, kind: ParsedSource['kind'], ms: number) => void;
   /**
    * Boundary logger threaded into each source's {@link QueryEngine} (and into
    * `resolveSource` for view chains) so `serve`'s SPARQL executions emit the
-   * shared `query` debug event under `--verbose` (ADR-0020). Defaults to none.
+   * shared `query` debug event under `--verbose` (ADR-0020). Also emits a
+   * `source-loaded` debug line per source with its load timing. Defaults to none.
    */
   logger?: SparqlyLogger;
 }
@@ -50,7 +50,22 @@ export class EngineMap {
       const start = Date.now();
       const entry = await buildEntry(src, resolutionRegistry, options.logger);
       entries.set(src.id, entry);
-      options.onSourceLoaded?.(src.id, src.kind, Date.now() - start);
+      const ms = Date.now() - start;
+      if (entry.storeRef) {
+        options.logger?.debug('source-loaded', {
+          source: src.id,
+          kind: src.kind,
+          files: entry.files.length,
+          quads: entry.storeRef.current.size,
+          ms,
+        });
+      } else {
+        options.logger?.debug('source-loaded', {
+          source: src.id,
+          kind: src.kind,
+          ms,
+        });
+      }
     }
     return new EngineMap(entries);
   }

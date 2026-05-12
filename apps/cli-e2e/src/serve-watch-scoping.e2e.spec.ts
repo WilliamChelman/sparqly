@@ -104,7 +104,7 @@ describe('sparqly serve --watch — single-target scoping (ADR-0005)', () => {
     );
     expect(after).toEqual(['Alice', 'Bob']);
 
-    const rebuilds = (handle.stderr().match(/Rebuilt store/g) ?? []).length;
+    const rebuilds = (handle.stderr().match(/\bview-rebuilt\b/g) ?? []).length;
     expect(rebuilds).toBe(1);
   });
 
@@ -163,7 +163,7 @@ describe('sparqly serve --watch — single-target scoping (ADR-0005)', () => {
     const after = await fetchNames(handle);
     expect(after).toEqual(['Alice']);
 
-    const rebuilds = (handle.stderr().match(/Rebuilt store/g) ?? []).length;
+    const rebuilds = (handle.stderr().match(/\bview-rebuilt\b/g) ?? []).length;
     expect(rebuilds).toBe(0);
   });
 });

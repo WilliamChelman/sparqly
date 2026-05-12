@@ -110,7 +110,7 @@ describe('sparqly serve --watch with views', () => {
     expect(after).toEqual(['Alice', 'Bob']);
 
     expect(handle.stderr()).toMatch(
-      /Refreshing view "people" \(trigger: file change\)/,
+      /INFO \[sparqly\] view-refreshing .*\bview=people\b.*\btrigger=file-change\b/,
     );
   });
 
@@ -203,7 +203,7 @@ describe('sparqly serve --watch with views', () => {
       expect(maxV(after)).toBeGreaterThan(initialMax);
 
       expect(handle.stderr()).toMatch(
-        /Refreshing view "snap" \(trigger: ttl\)/,
+        /INFO \[sparqly\] view-refreshing .*\bview=snap\b.*\btrigger=ttl\b/,
       );
     } finally {
       await endpoint.close();
@@ -301,7 +301,7 @@ describe('sparqly serve --watch with views', () => {
       expect(maxR(after)).toBeGreaterThan(initialMax);
 
       expect(handle.stderr()).toMatch(
-        /Refreshing view "snap" \(trigger: freshness\)/,
+        /INFO \[sparqly\] view-refreshing .*\bview=snap\b.*\btrigger=freshness\b/,
       );
     } finally {
       await endpoint.close();

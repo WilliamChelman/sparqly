@@ -93,17 +93,11 @@ export async function createServer(
     );
   }
 
-  const totalStart = Date.now();
+  const startedAt = Date.now();
   const engineMap = await EngineMap.create(scope.servedRegistry, {
     resolutionRegistry: scope.resolutionRegistry,
     logger: boundaryLogger,
-    onSourceLoaded: (id, kind, ms) => {
-      logger.log(`Loaded @${id} (${kind}) in ${ms}ms`);
-    },
   });
-  logger.log(
-    `${engineMap.allIds().length} source(s) ready in ${Date.now() - totalStart}ms`,
-  );
 
   const listing = buildListing(scope.servedRegistry);
 
@@ -134,6 +128,12 @@ export async function createServer(
 
   await app.listen(options.port);
   const url = await app.getUrl();
+  const listeningPort = portFromUrl(url) ?? options.port;
+  boundaryLogger.info('serve-ready', {
+    sources: engineMap.allIds().length,
+    port: listeningPort,
+    ms: Date.now() - startedAt,
+  });
   for (const id of engineMap.allIds()) {
     logger.log(`SPARQL endpoint for @${id} at ${url}/api/sparql/${id}`);
   }
@@ -152,6 +152,7 @@ export async function createServer(
         engineMap,
         graphMode: options.graphMode,
         logger,
+        boundaryLogger,
         debounceMs: options.watchDebounceMs ?? DEFAULT_DEBOUNCE_MS,
         pollMs: options.watchPollMs ?? DEFAULT_POLL_MS,
         snippetAllowList,
@@ -166,7 +167,7 @@ export async function createServer(
   }
 
   return {
-    port: portFromUrl(url) ?? options.port,
+    port: listeningPort,
     close: async () => {
       if (watcher) await watcher.close();
       await app.close();
@@ -223,17 +224,6 @@ type RefreshTrigger =
   | { kind: 'ttl'; viewId: string }
   | { kind: 'freshness'; viewId: string };
 
-function triggerLabel(trigger: RefreshTrigger): string {
-  switch (trigger.kind) {
-    case 'file-change':
-      return 'file change';
-    case 'ttl':
-      return 'ttl';
-    case 'freshness':
-      return 'freshness';
-  }
-}
-
 interface WatcherOptions {
   /** Sources `serve` exposes — the ones we try to watch. */
   servedRegistry: ReadonlyArray<ParsedSource>;
@@ -241,7 +231,10 @@ interface WatcherOptions {
   resolutionRegistry: ReadonlyArray<ParsedSource>;
   engineMap: EngineMap;
   graphMode?: GraphMode;
+  /** NestJS logger — used for the `--watch:` skip warnings. */
   logger: Logger;
+  /** Boundary logger (ADR-0020) — carries the rebuild/freshness timing lines. */
+  boundaryLogger: SparqlyLogger;
   debounceMs: number;
   pollMs: number;
   snippetAllowList: SnippetAllowList;
@@ -298,7 +291,7 @@ async function maybeStartWatcher(
 
   return startMultiSourceWatcher(targets, chain, {
     graphMode: opts.graphMode,
-    logger: opts.logger,
+    boundaryLogger: opts.boundaryLogger,
     debounceMs: opts.debounceMs,
     pollMs: opts.pollMs,
   });
@@ -320,7 +313,7 @@ interface WatchedSource {
 
 interface MultiSourceWatcherDeps {
   graphMode?: GraphMode;
-  logger: Logger;
+  boundaryLogger: SparqlyLogger;
   debounceMs: number;
   pollMs: number;
 }
@@ -382,7 +375,7 @@ async function startMultiSourceWatcher(
         t.plan.cachedViews,
         t.plan.chain,
         deps.pollMs,
-        deps.logger,
+        deps.boundaryLogger,
         runner.schedule,
       ),
     );
@@ -408,7 +401,8 @@ function createSourceRunner(
   deps: MultiSourceWatcherDeps,
 ): SourceRunner {
   const inChainViewIds = target.plan.views.map((v) => v.id);
-  const labelPrefix = target.plan.id ? `@${target.plan.id}: ` : '';
+  const sourceField: { source?: string } =
+    target.plan.id !== undefined ? { source: target.plan.id } : {};
 
   let pending: NodeJS.Timeout | undefined;
   let inFlight = false;
@@ -424,27 +418,34 @@ function createSourceRunner(
       const refreshedIds =
         trigger.kind === 'file-change' ? inChainViewIds : [trigger.viewId];
       for (const id of refreshedIds) {
-        deps.logger.log(
-          `${labelPrefix}Refreshing view "${id}" (trigger: ${triggerLabel(trigger)})`,
-        );
+        deps.boundaryLogger.info('view-refreshing', {
+          ...sourceField,
+          view: id,
+          trigger: trigger.kind,
+        });
       }
       const start = Date.now();
       const refreshed = await resolveSource(target.target, {
         graphMode: deps.graphMode,
         registry: target.registry,
+        logger: deps.boundaryLogger,
       });
       if (refreshed.mode === 'materialized') {
         target.storeRef.current = refreshed.store;
         target.onRebuiltFiles?.(refreshed.files);
-        deps.logger.log(
-          `${labelPrefix}Rebuilt store: ${refreshed.files.length} file(s), ${refreshed.store.size} quads in ${
-            Date.now() - start
-          }ms`,
-        );
+        deps.boundaryLogger.info('view-rebuilt', {
+          ...sourceField,
+          files: refreshed.files.length,
+          quads: refreshed.store.size,
+          ms: Date.now() - start,
+        });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      deps.logger.error(`${labelPrefix}Rebuild failed: ${message}`);
+      deps.boundaryLogger.error('view-rebuild-failed', {
+        ...sourceField,
+        error: message,
+      });
     } finally {
       inFlight = false;
       const next = queued;
@@ -515,7 +516,7 @@ function startFreshnessPolls(
   views: ReadonlyArray<ParsedViewSource>,
   registry: ReadonlyArray<ParsedSource>,
   pollMs: number,
-  logger: Logger,
+  boundaryLogger: SparqlyLogger,
   schedule: (trigger: RefreshTrigger) => void,
 ): ScheduledHandle {
   const timers: NodeJS.Timeout[] = [];
@@ -524,18 +525,26 @@ function startFreshnessPolls(
     const askQuery = view.cache.freshness;
     let lastResult = true;
     const probe = async (): Promise<void> => {
+      const start = Date.now();
       try {
         const result = await runAskAgainstUpstream(view, registry, askQuery);
+        boundaryLogger.debug('freshness-probe', {
+          view: view.id,
+          upstream: view.from,
+          fresh: result,
+          ms: Date.now() - start,
+        });
         if (lastResult && !result) {
           schedule({ kind: 'freshness', viewId: view.id });
         }
         lastResult = result;
       } catch (err) {
-        logger.error(
-          `freshness probe failed for view "${view.id}": ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
+        boundaryLogger.error('freshness-probe-failed', {
+          view: view.id,
+          upstream: view.from,
+          error: err instanceof Error ? err.message : String(err),
+          ms: Date.now() - start,
+        });
       }
     };
     const t = setInterval(() => void probe(), pollMs);

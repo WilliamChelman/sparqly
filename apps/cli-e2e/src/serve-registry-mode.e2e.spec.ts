@@ -160,7 +160,11 @@ describe('sparqly serve — Registry mode default (issue #141)', () => {
     handle = await startServe(['--config', configPath, '--verbose']);
 
     const stderr = handle.stderr();
-    expect(stderr).toMatch(/Loaded @alpha \(glob\) in \d+ms/);
-    expect(stderr).toMatch(/Loaded @beta \(glob\) in \d+ms/);
+    expect(stderr).toMatch(
+      /DEBUG \[sparqly\] source-loaded .*\bsource=alpha\b.*\bkind=glob\b.*\bms=\d+\b/,
+    );
+    expect(stderr).toMatch(
+      /DEBUG \[sparqly\] source-loaded .*\bsource=beta\b.*\bkind=glob\b.*\bms=\d+\b/,
+    );
   });
 });

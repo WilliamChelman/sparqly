@@ -101,6 +101,34 @@ describe('EngineMap', () => {
     expect(typeof queryEvents[0].fields?.['ms']).toBe('number');
   });
 
+  it('emits a `source-loaded` debug event per source with its load timing', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const registry = parseSourceSpecs([
+      { id: 'files', glob: join(dir, '*.ttl') },
+    ]);
+    const rec = recordingLogger();
+
+    const map = await EngineMap.create(registry, { logger: rec.logger });
+    try {
+      const loaded = rec.entries.filter(
+        (e) => e.level === 'debug' && e.msg === 'source-loaded',
+      );
+      expect(loaded).toHaveLength(1);
+      expect(loaded[0].fields).toMatchObject({
+        source: 'files',
+        kind: 'glob',
+        files: 1,
+        quads: 1,
+      });
+      expect(typeof loaded[0].fields?.['ms']).toBe('number');
+    } finally {
+      await map.close();
+    }
+  });
+
   it('close() releases entries and is idempotent', async () => {
     await writeFile(
       join(dir, 'a.ttl'),
