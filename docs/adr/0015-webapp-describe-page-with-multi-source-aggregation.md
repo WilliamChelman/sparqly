@@ -128,8 +128,21 @@ Read by `/api/describe` and surfaced to the webapp via `GET /api/config` (which 
 - Initial state on first load: **all sources selected**.
 - Zero sources selected: **empty result with a "Select all" affordance**. `[0..n]` is honest — 0 is not aliased to "all", because the user-visible action of deselecting-everything should produce a visibly-empty page, not a visibly-everything page.
 - Seed IRI input: a single text field at the top of the page, plus an explicit "Describe" button. URL reflects state.
-- Renders the merged quad set using the same Turtle/TriG renderer as the query page's turtle/trig view, with two additions: per-quad source-badge chips and a "from N source(s)" header summary. RDF-star annotations on quads in the result render inline as the existing renderer already supports.
+- Renders the merged quad set. (v1: the same Turtle/TriG renderer as the query page's turtle/trig view, plus per-quad source-badge chips and a "from N source(s)" header summary. **Superseded by the sectioned render below** — the plain serialized rendering survives as the `turtle`/`trig` tab.)
 - Per-source errors render as small inline banners under the source-picker.
+
+### Page UX — sectioned render (amended 2026-05)
+
+The flat "table" view (rows grouped by subject, seed-subject group first) is replaced by an **outbound / inbound** split. The `turtle`/`trig` tab is unchanged; no third tab is added — the sectioned view *is* the default ("table") view.
+
+- **Two sections.** **Outbound** = result quads whose subject is the seed. **Inbound** = result quads whose object is the seed. Section order: outbound, then inbound. An empty section is hidden; if both are empty the page shows the existing "No quads." message.
+- **Grouped by predicate within a section.** Outbound: a predicate header (`rdf:type` rendered `a` and sorted first; the rest alphabetical), then that predicate's objects — named IRIs as **describe-this affordance** chips, literals inline, blank nodes expanded inline (see below); ordering within a group is IRIs (alphabetical, prefixed-form-aware) → literals (lexical) → inline bnode subtrees. Inbound: an inverse-arrow predicate header (all alphabetical), then the subjects pointing at the seed via it, same chip/literal/bnode treatment.
+- **Blank-node nesting.** A blank node reached from the seed is rendered inline as a nested `[ … ]` block showing its own predicate-grouped properties, recursively. It is attributed to the section whose edge first reached it (bnode *objects* of outbound seed quads → outbound; bnode *subjects* of inbound seed quads → inbound; transitive closure within the result set, cycle-guarded). A blank node reachable from the seed *both* ways renders in **both** sections with its subtree duplicated — consistent with how a Turtle serializer inlines a shared bnode at each reference site. A `<seed> :p <seed>` self-loop renders once, under outbound.
+- **Nesting heuristics are a light webapp-local reimplementation**, not a reuse of `formatRdf`: single-use blank node ⇒ inline, else a labeled `_:b` reference; `rdf:List` ⇒ `( … )` collection; cycle ⇒ labeled. Deliberately *not* byte-identical to the **Formatter** — this surface is interactive and decorated (every term carries chips/badges/expand), so the renderer emits a structured view-model tree rather than an opaque string. `formatRdf`'s `objectAnchoredPredicates` feature is not carried over in v1.
+- **RDF-star annotations** (a quad whose subject is a quoted triple already in the result) render as a nested `{| … |}` sub-block on the annotated row, not as a standalone `<<…>>` subject group; recursion descends into the annotation the same way. `urn:sparqly:fromSource` provenance is stripped first as before.
+- **Named graph** shows as a per-quad chip next to the object/subject (alongside the source badges); the default graph shows nothing. The dedicated `g` column of the old flat table is gone.
+- **The blank-node expand affordance** (ADR-0019) moves from a table cell onto the dangling `[ ]` block — same trigger conditions (endpoint-origin, within the path-step cap), same `(expand)` flow up to the page (`expandedPaths` / `mergeSourceSlice` untouched). Available in both sections.
+- **Unchanged:** seed input + "Describe" button + URL state, the source picker (collapses in Single-source mode), loading/error states, per-source error banners, the `turtle`/`trig` tab.
 
 ### Out of scope for this ADR
 
@@ -156,6 +169,16 @@ Read by `/api/describe` and surfaced to the webapp via `GET /api/config` (which 
 - **Fail the whole request on any per-source error.** Rejected: one slow endpoint should not blank the page. Per-source error map + 200-on-any-success matches the best-effort multi-origin intent.
 - **Render the provenance annotations inline (no strip).** Rejected: provenance noise would dominate the actual data on every page; user-authored RDF-star annotations would get visually lost; the `urn:sparqly:fromSource` predicate would leak into the user-visible UX as a built-in vocabulary the user has to ignore.
 - **Single ADR covering only the algorithm, separate ADR for the page and the provenance shape.** Rejected: the three decisions are tightly coupled — algorithm shape forces orchestration shape forces provenance shape — and reading them apart misses why each looks like it does. One ADR keeps the rationale connected.
+
+Alternatives weighed for the **sectioned render** amendment:
+
+- **Keep the flat by-subject table; add the sectioned view as a third tab.** Rejected: the flat table *is* the thing being replaced (showing the subject on every row is the noise the amendment removes), and `turtle`/`trig` already covers "I want the raw serialization." A third tab is clutter and a second renderer to maintain.
+- **Three sections: outbound, inbound, and a "blank nodes" bucket** (every bnode-subject quad, flat, like today's groups). Rejected: the bnode bucket is just the old flat table again and severs the "this subtree hangs off the seed" reading. Nesting bnode subtrees under whichever direction reached them keeps the bounded-description story intact.
+- **A both-ways blank node picks one home** (outbound wins). Rejected: rendering it in both sections matches how a Turtle serializer inlines a shared bnode at each reference site; a both-ways bnode is rare and seeing it on both sides is honest. Picking one side would hide a real edge.
+- **Reuse `formatRdf`'s output to render the sections** (two `<pre>` blocks over the outbound/inbound sub-stores). Rejected: `formatRdf` emits an opaque string — you cannot decorate individual terms inside it with describe-this chips, source badges, graph chips, or the bnode-expand affordance, all of which the page needs inline. The renderer emits a structured view-model and reimplements the nesting heuristics in a light form; the cost is a small risk of drift from `formatRdf`, accepted because this is a different (interactive) surface.
+- **Extract `detectLists` / `inlineSingleUseBlankNodes` from `formatter.ts` into shared `common` exports.** Considered. Rejected for v1: it's a refactor of stable code, and the two consumers want subtly different things (string emission vs. view-model tree), so the shared layer ends up thin. Revisit if a third consumer appears.
+- **Render RDF-star annotations only in the `turtle` tab, not in the sections.** Rejected: they'd vanish from the default view. A nested `{| … |}` sub-block on the annotated row keeps them visible without a standalone `<<…>>` subject group.
+- **A separate ADR for the sectioned render** (like ADR-0022 did for entity hunks). Rejected: this is a presentation reshape of an existing surface — no algorithm, orchestration, wire-shape, or config change — and ADR-0015 already owns "describe page UX." Amending it in place keeps the rationale in one place.
 
 ## Consequences
 
