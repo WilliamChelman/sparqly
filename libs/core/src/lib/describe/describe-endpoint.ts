@@ -1,6 +1,7 @@
-import { parseDescribeWire } from 'common';
+import { parseDescribeWire, type PathStep } from 'common';
 import { Store, type Literal, type NamedNode, type Quad, type Term } from 'n3';
 import { describeStore } from './describe-store';
+import { buildPathExpansionQuery } from './build-path-expansion-query';
 import {
   DEFAULT_ENDPOINT_TIMEOUT_MS,
   collectInjectedHeaders,
@@ -12,19 +13,15 @@ import type { ParsedEndpointSource } from '../sources';
 const POST_PASS_BATCH = 50;
 const XSD_STRING = 'http://www.w3.org/2001/XMLSchema#string';
 
-/** One hop of a UI-driven blank-node expansion path from the seed (ADR-0019). */
-export interface PathStep {
-  predicate: string;
-  inverse: boolean;
-}
-
 export interface DescribeEndpointOptions {
   endpoint: ParsedEndpointSource;
   seed: NamedNode;
   perSourceLimit: number;
   /**
-   * UI-driven blank-node expansion paths (ADR-0019). Wired through but inert
-   * until the path-expansion slice lands; defaults to no paths (depth-0).
+   * UI-driven blank-node expansion paths (ADR-0019). Each path is walked one
+   * blank-node hop further from the seed via {@link buildPathExpansionQuery}
+   * and its quads unioned into the depth-0 description before pruning. Defaults
+   * to no paths (depth-0).
    */
   paths?: PathStep[][];
 }
@@ -46,14 +43,14 @@ export interface DescribeEndpointResult {
  * at `perSourceLimit`.
  *
  * Unlike {@link describeStore} this is *not* a blank-node fixpoint: chasing the
- * chain deeper is an explicit UI gesture, carried by {@link PathStep} paths
- * (inert for now). The result is `truncated` when the cap fired, an edge
- * direction failed, or any dangling blank node remains.
+ * chain deeper is an explicit UI gesture, carried by {@link PathStep} `paths`
+ * (one extra query per path). The result is `truncated` when the cap fired, an
+ * edge direction or path query failed, or any dangling blank node remains.
  */
 export async function describeEndpoint(
   options: DescribeEndpointOptions,
 ): Promise<DescribeEndpointResult> {
-  const { endpoint, seed, perSourceLimit } = options;
+  const { endpoint, seed, perSourceLimit, paths = [] } = options;
   const run = makeConstructRunner(endpoint);
   const s = `<${seed.value}>`;
 
@@ -61,9 +58,11 @@ export async function describeEndpoint(
     run(`CONSTRUCT { ${s} ?p ?o } WHERE { ${s} ?p ?o . }`),
     run(`CONSTRUCT { ?s ?p ${s} } WHERE { ?s ?p ${s} . }`),
   );
+  const expanded = await fetchPathExpansions(run, seed.value, paths);
 
   const store = new Store();
   store.addQuads(direct.quads);
+  store.addQuads(expanded.quads);
   let desc = describeStore({ store, seed, perSourceLimit });
 
   const annotations = await fetchAnnotations(run, desc.quads);
@@ -75,8 +74,34 @@ export async function describeEndpoint(
   }
 
   const truncated =
-    desc.truncated || direct.partial || hasBlankNode(desc.quads);
+    desc.truncated ||
+    direct.partial ||
+    expanded.partial ||
+    hasBlankNode(desc.quads);
   return { quads: desc.quads, truncated };
+}
+
+/**
+ * Walk each requested path one blank-node hop further from the seed and gather
+ * the terminal nodes' quads. Best-effort per path — a path query that fails
+ * flags `partial` (→ `truncated`) without sinking the rest of the description.
+ */
+async function fetchPathExpansions(
+  run: (q: string) => Promise<Quad[]>,
+  seedIri: string,
+  paths: ReadonlyArray<PathStep[]>,
+): Promise<{ quads: Quad[]; partial: boolean }> {
+  if (paths.length === 0) return { quads: [], partial: false };
+  const results = await Promise.allSettled(
+    paths.map((path) => run(buildPathExpansionQuery(seedIri, path))),
+  );
+  const quads: Quad[] = [];
+  let partial = false;
+  for (const r of results) {
+    if (r.status === 'fulfilled') quads.push(...r.value);
+    else partial = true;
+  }
+  return { quads, partial };
 }
 
 /**

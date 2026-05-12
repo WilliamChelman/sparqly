@@ -223,10 +223,11 @@ describe('describeEndpoint (depth-0, ADR-0019)', () => {
     ).rejects.toThrow();
   });
 
-  it('accepts an optional paths argument (inert for now)', async () => {
+  it('with paths: [] behaves exactly as the depth-0 slice (two queries + post-pass)', async () => {
     const { quads } = ttl`
       @prefix ex: <http://example.org/> .
       ex:alice ex:knows ex:bob .
+      ex:carol ex:knows ex:alice .
     `;
     ep = await startStoreBackedSparqlEndpoint(storeFrom(quads));
     const endpoint: ParsedEndpointSource = { kind: 'endpoint', endpoint: ep.url };
@@ -234,10 +235,76 @@ describe('describeEndpoint (depth-0, ADR-0019)', () => {
       endpoint,
       seed: namedNode('http://example.org/alice'),
       perSourceLimit: 10000,
+      paths: [],
+    });
+    expect(result.truncated).toBe(false);
+    expect(result.quads).toHaveLength(2);
+    expect(ep.requestCount()).toBe(3);
+  });
+
+  it('expands a predicate-pinned path one hop; the new quads appear pruned through describeStore', async () => {
+    const { quads } = ttl`
+      @prefix ex: <http://example.org/> .
+      ex:alice ex:name "Alice" .
+      ex:alice ex:list _:b1 .
+      _:b1 ex:value "head" .
+      _:b1 ex:next _:b2 .
+      _:b2 ex:value "tail" .
+    `;
+    ep = await startStoreBackedSparqlEndpoint(storeFrom(quads));
+    const endpoint: ParsedEndpointSource = { kind: 'endpoint', endpoint: ep.url };
+    const baseline = await describeEndpoint({
+      endpoint,
+      seed: namedNode('http://example.org/alice'),
+      perSourceLimit: 10000,
+      paths: [],
+    });
+    const depth0Requests = ep.requestCount();
+    expect(baseline.quads).toHaveLength(2); // ex:name "Alice", ex:list _:b1
+
+    const beforeExpansion = ep.requestCount();
+    const result = await describeEndpoint({
+      endpoint,
+      seed: namedNode('http://example.org/alice'),
+      perSourceLimit: 10000,
+      paths: [[{ predicate: 'http://example.org/list', inverse: false }]],
+    });
+    // One hop further: _:b1's own quads (ex:value "head", ex:next _:b2). The
+    // chain past _:b2 stays dangling.
+    expect(result.quads).toHaveLength(4);
+    expect(
+      result.quads.some(
+        (q) =>
+          q.predicate.value === 'http://example.org/value' &&
+          q.object.value === 'head',
+      ),
+    ).toBe(true);
+    // still dangling at _:b2 → truncated
+    expect(result.truncated).toBe(true);
+    // exactly one query more than the depth-0 slice over the same data
+    expect(ep.requestCount() - beforeExpansion).toBe(depth0Requests + 1);
+  });
+
+  it('degrades gracefully when a path query fails but depth-0 succeeded: partial result, truncated', async () => {
+    ep = await startFakeSparqlEndpoint(({ query }) => {
+      if (query.includes('isBlank')) {
+        return { status: 500, body: 'path walk blew up' };
+      }
+      if (query.includes('<<')) return { body: '' }; // RDF-star post-pass
+      return {
+        contentType: 'application/n-triples',
+        body: '<http://example.org/alice> <http://example.org/knows> <http://example.org/bob> .\n',
+      };
+    });
+    const endpoint: ParsedEndpointSource = { kind: 'endpoint', endpoint: ep.url };
+    const result = await describeEndpoint({
+      endpoint,
+      seed: namedNode('http://example.org/alice'),
+      perSourceLimit: 10000,
       paths: [[{ predicate: 'http://example.org/knows', inverse: false }]],
     });
-    // Path expansion is not wired yet — same depth-0 result as without paths.
     expect(result.quads).toHaveLength(1);
-    expect(result.truncated).toBe(false);
+    expect(result.quads[0].object.value).toBe('http://example.org/bob');
+    expect(result.truncated).toBe(true);
   });
 });
