@@ -17,6 +17,23 @@ function storeFrom(quads: readonly unknown[]): Store {
   return s;
 }
 
+/** Minimal `application/sparql-results+json` body — every cell is treated as a URI. */
+function selectJson(rows: ReadonlyArray<Record<string, string>>): string {
+  const vars = [...new Set(rows.flatMap((r) => Object.keys(r)))];
+  return JSON.stringify({
+    head: { vars },
+    results: {
+      bindings: rows.map((r) =>
+        Object.fromEntries(
+          Object.entries(r).map(([k, v]) => [k, { type: 'uri', value: v }]),
+        ),
+      ),
+    },
+  });
+}
+
+const SELECT_JSON = 'application/sparql-results+json';
+
 describe('describeEndpoint (depth-0, ADR-0019)', () => {
   let ep: FakeSparqlEndpoint | undefined;
 
@@ -56,6 +73,67 @@ describe('describeEndpoint (depth-0, ADR-0019)', () => {
     // One outgoing CONSTRUCT, one incoming CONSTRUCT, one RDF-star post-pass
     // batch — and never anything deeper.
     expect(ep?.requestCount() ?? 0).toBe(3);
+  });
+
+  it('carries the named graph an endpoint quad came from', async () => {
+    const g = namedNode('http://example.org/graph1');
+    const result = await describeOver(
+      storeFrom([
+        quad(
+          namedNode('http://example.org/alice'),
+          namedNode('http://example.org/knows'),
+          namedNode('http://example.org/bob'),
+          g,
+        ),
+      ]),
+      'http://example.org/alice',
+    );
+    expect(result.truncated).toBe(false);
+    expect(result.quads).toHaveLength(1);
+    expect(result.quads[0].graph.value).toBe('http://example.org/graph1');
+  });
+
+  it('keeps a triple distinct in each named graph it appears in', async () => {
+    const knows = namedNode('http://example.org/knows');
+    const result = await describeOver(
+      storeFrom([
+        quad(
+          namedNode('http://example.org/alice'),
+          knows,
+          namedNode('http://example.org/bob'),
+          namedNode('http://example.org/g1'),
+        ),
+        quad(
+          namedNode('http://example.org/alice'),
+          knows,
+          namedNode('http://example.org/bob'),
+          namedNode('http://example.org/g2'),
+        ),
+      ]),
+      'http://example.org/alice',
+    );
+    expect(result.quads).toHaveLength(2);
+    expect(new Set(result.quads.map((q) => q.graph.value))).toEqual(
+      new Set(['http://example.org/g1', 'http://example.org/g2']),
+    );
+  });
+
+  it('drops the default-graph copy when the same triple is in a named graph', async () => {
+    const knows = namedNode('http://example.org/knows');
+    const result = await describeOver(
+      storeFrom([
+        quad(namedNode('http://example.org/alice'), knows, namedNode('http://example.org/bob')),
+        quad(
+          namedNode('http://example.org/alice'),
+          knows,
+          namedNode('http://example.org/bob'),
+          namedNode('http://example.org/g1'),
+        ),
+      ]),
+      'http://example.org/alice',
+    );
+    expect(result.quads).toHaveLength(1);
+    expect(result.quads[0].graph.value).toBe('http://example.org/g1');
   });
 
   it('does not traverse named IRIs', async () => {
@@ -196,8 +274,13 @@ describe('describeEndpoint (depth-0, ADR-0019)', () => {
         return { status: 500, body: 'incoming leg blew up' };
       }
       return {
-        contentType: 'application/n-triples',
-        body: '<http://example.org/alice> <http://example.org/knows> <http://example.org/bob> .\n',
+        contentType: SELECT_JSON,
+        body: selectJson([
+          {
+            p: 'http://example.org/knows',
+            o: 'http://example.org/bob',
+          },
+        ]),
       };
     });
     const endpoint: ParsedEndpointSource = { kind: 'endpoint', endpoint: ep.url };
@@ -285,6 +368,28 @@ describe('describeEndpoint (depth-0, ADR-0019)', () => {
     expect(ep.requestCount() - beforeExpansion).toBe(depth0Requests + 1);
   });
 
+  it('an expanded hop carries the named graph its quads live in', async () => {
+    const b1 = DataFactory.blankNode('b1');
+    const ep2 = storeFrom([
+      // chain edge in the default graph; the bnode's own quads in a named graph
+      quad(namedNode('http://example.org/alice'), namedNode('http://example.org/list'), b1),
+      quad(b1, namedNode('http://example.org/value'), literal('head'), namedNode('http://example.org/g1')),
+    ]);
+    ep = await startStoreBackedSparqlEndpoint(ep2);
+    const endpoint: ParsedEndpointSource = { kind: 'endpoint', endpoint: ep.url };
+    const result = await describeEndpoint({
+      endpoint,
+      seed: namedNode('http://example.org/alice'),
+      perSourceLimit: 10000,
+      paths: [[{ predicate: 'http://example.org/list', inverse: false }]],
+    });
+    const valueQuad = result.quads.find(
+      (q) => q.predicate.value === 'http://example.org/value',
+    );
+    expect(valueQuad?.object.value).toBe('head');
+    expect(valueQuad?.graph.value).toBe('http://example.org/g1');
+  });
+
   it('degrades gracefully when a path query fails but depth-0 succeeded: partial result, truncated', async () => {
     ep = await startFakeSparqlEndpoint(({ query }) => {
       if (query.includes('isBlank')) {
@@ -292,8 +397,13 @@ describe('describeEndpoint (depth-0, ADR-0019)', () => {
       }
       if (query.includes('<<')) return { body: '' }; // RDF-star post-pass
       return {
-        contentType: 'application/n-triples',
-        body: '<http://example.org/alice> <http://example.org/knows> <http://example.org/bob> .\n',
+        contentType: SELECT_JSON,
+        body: selectJson([
+          {
+            p: 'http://example.org/knows',
+            o: 'http://example.org/bob',
+          },
+        ]),
       };
     });
     const endpoint: ParsedEndpointSource = { kind: 'endpoint', endpoint: ep.url };

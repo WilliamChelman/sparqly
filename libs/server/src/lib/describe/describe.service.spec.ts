@@ -3,9 +3,10 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { parseDescribeWire } from 'common';
+import { QueryEngine } from '@comunica/query-sparql';
+import { parseDescribeWire, serializeDescribeWire } from 'common';
 import { parseSourceSpecs, type ParsedSource } from 'core';
-import type { Quad } from 'n3';
+import { Parser, Store, type Quad } from 'n3';
 import {
   DescribeService,
   type DescribeRequest,
@@ -61,45 +62,86 @@ function parseNQuads(text: string): Quad[] {
   return parseDescribeWire(text);
 }
 
-/** A throwaway HTTP SPARQL endpoint that returns `body` for every request. */
-async function startStubEndpoint(
-  body: string,
-): Promise<{ url: string; close: () => Promise<void> }> {
-  const server: Server = createServer((req, res) => {
-    req.resume();
-    req.on('end', () => {
-      res.writeHead(200, { 'Content-Type': 'application/n-triples' });
-      res.end(body);
-    });
-  });
-  await new Promise<void>((resolve) =>
-    server.listen(0, '127.0.0.1', () => resolve()),
-  );
-  const addr = server.address();
-  const port = typeof addr === 'object' && addr ? addr.port : 0;
-  return {
-    url: `http://127.0.0.1:${port}/sparql`,
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
-  };
+function storeFromTurtle(turtle: string): Store {
+  const s = new Store();
+  s.addQuads(new Parser().parse(turtle));
+  return s;
+}
+
+async function streamToString(stream: NodeJS.ReadableStream): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+  }
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 /**
- * A SPARQL endpoint stub that records every query body it receives and lets the
- * caller choose the response per query — used to assert what `describeEndpoint`
- * actually sends (e.g. the path-expansion `CONSTRUCT`).
+ * A throwaway HTTP SPARQL endpoint backed by a real n3 `Store` (parsed from
+ * Turtle), evaluating `SELECT`/`CONSTRUCT` via Comunica — `SELECT` answers in
+ * `application/sparql-results+json`, `CONSTRUCT` (and the RDF-star post-pass) in
+ * `serializeDescribeWire` N-Quads. Every query body is recorded on `queries` so
+ * tests can assert what `describeEndpoint` actually sent.
  */
-async function startRecordingEndpoint(
-  respond: (query: string) => string,
+async function startSparqlEndpoint(
+  turtle: string,
 ): Promise<{ url: string; queries: string[]; close: () => Promise<void> }> {
+  const store = storeFromTurtle(turtle);
+  const engine = new QueryEngine();
   const queries: string[] = [];
   const server: Server = createServer((req, res) => {
     let body = '';
     req.setEncoding('utf8');
     req.on('data', (chunk) => (body += chunk));
     req.on('end', () => {
-      queries.push(body);
-      res.writeHead(200, { 'Content-Type': 'application/n-triples' });
-      res.end(respond(body));
+      // Comunica probes a `sparql` source first with a body-less GET service
+      // description request, then POSTs queries form-urlencoded; `describeEndpoint`
+      // POSTs the raw query (`application/sparql-query`). Normalise all three.
+      const ct = String(req.headers['content-type'] ?? '');
+      const fromUrl =
+        new URL(req.url ?? '/', 'http://localhost').searchParams.get('query') ??
+        '';
+      const raw = ct.includes('application/x-www-form-urlencoded')
+        ? new URLSearchParams(body).get('query') ?? ''
+        : body || fromUrl;
+      queries.push(raw);
+      void (async (): Promise<void> => {
+        try {
+          if (raw.trim() === '') {
+            // Service-description probe: an empty graph is a valid answer.
+            res.writeHead(200, { 'Content-Type': 'text/turtle' });
+            res.end('');
+            return;
+          }
+          // Comunica understands RDF 1.2 triple terms `<<( … )>>`, not the
+          // SPARQL 1.1-star `<< … >>` form `describeEndpoint` sends.
+          const query = raw.replace(/<<\s+(.+?)\s+>>/g, '<<( $1 )>>');
+          const result = await engine.query(query, { sources: [store] });
+          if (result.resultType === 'quads') {
+            const quads: Quad[] = [];
+            const stream = await result.execute();
+            await new Promise<void>((resolve, reject) => {
+              stream.on('data', (q: Quad) => quads.push(q));
+              stream.on('end', () => resolve());
+              stream.on('error', reject);
+            });
+            res.writeHead(200, { 'Content-Type': 'application/n-quads' });
+            res.end(serializeDescribeWire(quads));
+            return;
+          }
+          const { data } = await engine.resultToString(
+            result,
+            'application/sparql-results+json',
+          );
+          res.writeHead(200, {
+            'Content-Type': 'application/sparql-results+json',
+          });
+          res.end(await streamToString(data));
+        } catch (err) {
+          res.writeHead(500);
+          res.end(err instanceof Error ? err.message : String(err));
+        }
+      })();
     });
   });
   await new Promise<void>((resolve) =>
@@ -127,10 +169,13 @@ describe('DescribeService — expandedPaths (ADR-0019)', () => {
 
   it("forwards a source's expandedPaths to that endpoint's describeEndpoint and unions the extra hop in", async () => {
     const PIN = 'http://example.org/list';
-    const ep = await startRecordingEndpoint((q) =>
-      q.includes(`<${PIN}>`)
-        ? '<http://example.org/alice> <http://example.org/extra> <http://example.org/thing> .\n'
-        : '',
+    const ep = await startSparqlEndpoint(
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:alice ex:list _:b1 .',
+        '_:b1 ex:value "head" .',
+        '',
+      ].join('\n'),
     );
     try {
       const registry = parseSourceSpecs([{ id: 'remote', endpoint: ep.url }]);
@@ -139,7 +184,8 @@ describe('DescribeService — expandedPaths (ADR-0019)', () => {
       const before = await describeResponse(svc, {
         iri: 'http://example.org/alice',
       });
-      expect(before.total).toBe(0);
+      // depth-0: just the dangling `alice list _:b1` edge.
+      expect(before.total).toBe(1);
 
       const after = await describeResponse(svc, {
         iri: 'http://example.org/alice',
@@ -147,9 +193,9 @@ describe('DescribeService — expandedPaths (ADR-0019)', () => {
       });
       // The path-walk query was sent and pinned the predicate.
       expect(ep.queries.some((q) => q.includes(`<${PIN}>`))).toBe(true);
-      // …and its quad is merged into the depth-0 description.
-      expect(after.total).toBe(1);
-      expect(after.perSource.remote.count).toBe(1);
+      // …and the bnode's own quad is merged into the description.
+      expect(after.total).toBe(2);
+      expect(after.perSource.remote.count).toBe(2);
     } finally {
       await ep.close();
     }
@@ -157,8 +203,8 @@ describe('DescribeService — expandedPaths (ADR-0019)', () => {
 
   it("does not forward one source's expandedPaths to another endpoint source", async () => {
     const PIN = 'http://example.org/list';
-    const target = await startRecordingEndpoint(() => '');
-    const other = await startRecordingEndpoint(() => '');
+    const target = await startSparqlEndpoint('');
+    const other = await startSparqlEndpoint('');
     try {
       const registry = parseSourceSpecs([
         { id: 'target', endpoint: target.url },
@@ -194,7 +240,7 @@ describe('DescribeService — expandedPaths (ADR-0019)', () => {
   });
 
   it('clamps an over-long expansion path to the cap and reports the source truncated', async () => {
-    const ep = await startRecordingEndpoint(() => '');
+    const ep = await startSparqlEndpoint('');
     try {
       const registry = parseSourceSpecs([{ id: 'remote', endpoint: ep.url }]);
       const overLong = Array.from({ length: 30 }, () => ({
@@ -207,15 +253,11 @@ describe('DescribeService — expandedPaths (ADR-0019)', () => {
       });
       expect(out.perSource.remote.truncated).toBe(true);
       // The path-walk query the endpoint received was clamped to MAX steps:
-      // its WHERE chains exactly MAX `?mN` variables, not 30.
-      const walkQuery = ep.queries.find((q) => /\?m1\b/.test(q));
+      // its WHERE chains exactly MAX blank-node hops (one isBlank filter each),
+      // not 30.
+      const walkQuery = ep.queries.find((q) => /isBlank/i.test(q));
       expect(walkQuery).toBeDefined();
-      const maxVarIndex = Math.max(
-        ...[...(walkQuery as string).matchAll(/\?m(\d+)\b/g)].map((m) =>
-          Number(m[1]),
-        ),
-      );
-      expect(maxVarIndex).toBe(12);
+      expect((walkQuery as string).match(/isBlank/gi)).toHaveLength(12);
     } finally {
       await ep.close();
     }
@@ -518,8 +560,8 @@ describe('DescribeService — multi-source aggregation', () => {
 
   describe('endpoint / empty / reference dispatch', () => {
     it('dispatches an endpoint source through describeEndpoint', async () => {
-      const ep = await startStubEndpoint(
-        '<http://example.org/alice> <http://example.org/knows> <http://example.org/bob> .\n',
+      const ep = await startSparqlEndpoint(
+        '@prefix ex: <http://example.org/> .\nex:alice ex:knows ex:bob .\n',
       );
       try {
         const registry = parseSourceSpecs([{ id: 'remote', endpoint: ep.url }]);
@@ -596,8 +638,8 @@ describe('DescribeService — multi-source aggregation', () => {
     });
 
     it('describes a view whose upstream is an endpoint', async () => {
-      const ep = await startStubEndpoint(
-        '<http://example.org/alice> <http://example.org/knows> <http://example.org/bob> .\n',
+      const ep = await startSparqlEndpoint(
+        '@prefix ex: <http://example.org/> .\nex:alice ex:knows ex:bob .\n',
       );
       try {
         const registry = parseSourceSpecs([

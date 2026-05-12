@@ -10,52 +10,57 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** Triple pattern with `iri` in the subject slot: `<iri> ?x ?y`. */
-function emitsAsSubject(query: string, iri: string): boolean {
-  return new RegExp(`<${escapeRegExp(iri)}>\\s+\\?\\w+\\s+\\?\\w+`).test(query);
-}
+describe('buildPathExpansionQuery (ADR-0019, ADR-0023)', () => {
+  it('is a SELECT projecting the terminal node and both edge trios', () => {
+    const q = buildPathExpansionQuery(SEED, [{ predicate: P1, inverse: false }]);
+    expect(q.startsWith('SELECT')).toBe(true);
+    for (const v of ['?node', '?eop', '?eoo', '?eg', '?eis', '?eip', '?eig']) {
+      expect(q).toContain(v);
+    }
+  });
 
-/** Triple pattern with `iri` in the object slot: `?x ?y <iri>`. */
-function emitsAsObject(query: string, iri: string): boolean {
-  return new RegExp(`\\?\\w+\\s+\\?\\w+\\s+<${escapeRegExp(iri)}>`).test(query);
-}
+  it('emits the terminal node in both directions, each branch graph-aware', () => {
+    const q = buildPathExpansionQuery(SEED, []);
+    // outgoing: a plain and a GRAPH-wrapped form over ?node as subject
+    expect(q).toMatch(/\{\s*\?node\s+\?eop\s+\?eoo\s*\}/);
+    expect(q).toMatch(/GRAPH\s+\?eg\s*\{\s*\?node\s+\?eop\s+\?eoo\s*\}/);
+    // incoming: a plain and a GRAPH-wrapped form over ?node as object
+    expect(q).toMatch(/\{\s*\?eis\s+\?eip\s+\?node\s*\}/);
+    expect(q).toMatch(/GRAPH\s+\?eig\s*\{\s*\?eis\s+\?eip\s+\?node\s*\}/);
+  });
 
-describe('buildPathExpansionQuery (ADR-0019)', () => {
   it('degenerates to the seed quads in both directions for the empty path', () => {
     const q = buildPathExpansionQuery(SEED, []);
-    expect(q.startsWith('CONSTRUCT')).toBe(true);
-    expect(emitsAsSubject(q, SEED)).toBe(true);
-    expect(emitsAsObject(q, SEED)).toBe(true);
     // no hops walked, so no blank-node filtering
     expect(q).not.toMatch(/isBlank/i);
+    // the seed is bound to the terminal variable
+    expect(
+      new RegExp(`BIND\\(\\s*<${escapeRegExp(SEED)}>\\s+AS\\s+\\?node\\s*\\)`).test(q),
+    ).toBe(true);
   });
 
   it('walks a single forward step, pins its predicate, and filters to a blank node', () => {
     const q = buildPathExpansionQuery(SEED, [{ predicate: P1, inverse: false }]);
-    // hop pattern: <seed> <p1> ?m1
+    // hop pattern: <seed> <p1> ?node
     expect(
-      new RegExp(`<${escapeRegExp(SEED)}>\\s+<${escapeRegExp(P1)}>\\s+\\?\\w+`).test(q),
+      new RegExp(`<${escapeRegExp(SEED)}>\\s+<${escapeRegExp(P1)}>\\s+\\?node`).test(q),
     ).toBe(true);
-    // the hop target is required to be a blank node
-    expect(q).toMatch(/FILTER\(\s*isBlank\(\s*\?\w+\s*\)\s*\)/i);
-    // the terminal (the hop target, not the seed) is emitted in both directions
-    expect(emitsAsSubject(q, SEED)).toBe(false);
-    expect(emitsAsObject(q, SEED)).toBe(false);
-    // exactly one isBlank filter for one hop
+    expect(q).toMatch(/FILTER\(\s*isBlank\(\s*\?node\s*\)\s*\)/i);
+    // exactly one isBlank filter for one hop, and no BIND degeneracy
     expect(q.match(/isBlank/gi)).toHaveLength(1);
+    expect(q).not.toMatch(/BIND/);
   });
 
   it('walks a single inverse step with the seed in the object slot of the hop', () => {
     const q = buildPathExpansionQuery(SEED, [{ predicate: P2, inverse: true }]);
-    // hop pattern: ?m1 <p2> <seed>  (the seed is the object of the pinned hop)
+    // hop pattern: ?node <p2> <seed>  (the seed is the object of the pinned hop)
     expect(
-      new RegExp(`\\?\\w+\\s+<${escapeRegExp(P2)}>\\s+<${escapeRegExp(SEED)}>`).test(q),
+      new RegExp(`\\?node\\s+<${escapeRegExp(P2)}>\\s+<${escapeRegExp(SEED)}>`).test(q),
     ).toBe(true);
-    // not the forward shape
     expect(
       new RegExp(`<${escapeRegExp(SEED)}>\\s+<${escapeRegExp(P2)}>`).test(q),
     ).toBe(false);
-    expect(q).toMatch(/FILTER\(\s*isBlank\(\s*\?\w+\s*\)\s*\)/i);
+    expect(q).toMatch(/FILTER\(\s*isBlank\(\s*\?node\s*\)\s*\)/i);
   });
 
   it('walks a multi-step mixed-direction path: every predicate pinned, one isBlank per hop', () => {
@@ -64,22 +69,17 @@ describe('buildPathExpansionQuery (ADR-0019)', () => {
       { predicate: P2, inverse: true },
       { predicate: P3, inverse: false },
     ]);
-    // every path predicate appears pinned
     for (const p of [P1, P2, P3]) {
       expect(q).toContain(`<${p}>`);
     }
-    // one blank-node filter per hop
     expect(q.match(/isBlank/gi)).toHaveLength(3);
     // first hop is forward from the seed
     expect(
       new RegExp(`<${escapeRegExp(SEED)}>\\s+<${escapeRegExp(P1)}>\\s+\\?\\w+`).test(q),
     ).toBe(true);
-    // the seed is never re-emitted — the terminal is the third hop's node
-    expect(emitsAsSubject(q, SEED)).toBe(false);
-    expect(emitsAsObject(q, SEED)).toBe(false);
-    // terminal emitted in both directions: a var-var-var outgoing triple and a
-    // var-var-var incoming triple over the same terminal variable exist in the
-    // CONSTRUCT template
-    expect(q).toMatch(/CONSTRUCT\s*\{\s*\?\w+\s+\?\w+\s+\?\w+\s*\.\s*\?\w+\s+\?\w+\s+\?\w+\s*\}/);
+    // the terminal hop binds ?node
+    expect(
+      new RegExp(`<${escapeRegExp(P3)}>\\s+\\?node`).test(q),
+    ).toBe(true);
   });
 });
