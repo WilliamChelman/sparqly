@@ -1,3 +1,14 @@
+## [0.21.0](https://github.com/WilliamChelman/sparqly/compare/v0.20.0...v0.21.0) (2026-05-12)
+
+### Features
+
+* bulk source-snippet fetch — many ranges, one request (ADR-0021) ([f4dbe10](https://github.com/WilliamChelman/sparqly/commit/f4dbe100816ed4bf2f46b8e83b94992ad36dc5a0))
+* **common:** SparqlyLogger interface + text/JSON log formatters (ADR-0020) ([52856a6](https://github.com/WilliamChelman/sparqly/commit/52856a683dacb3a62d29f48b0d1ab83209838f0b)), closes [#212](https://github.com/WilliamChelman/sparqly/issues/212)
+* **core:** QueryEngine emits the SPARQL-execution log event via injected meta (ADR-0020, [#213](https://github.com/WilliamChelman/sparqly/issues/213)) ([3a586be](https://github.com/WilliamChelman/sparqly/commit/3a586bef9ee2e9f061e39e437006ed7e01d17664))
+* **server:** HTTP request logging interceptor for `serve` (ADR-0020, [#215](https://github.com/WilliamChelman/sparqly/issues/215)) ([c376814](https://github.com/WilliamChelman/sparqly/commit/c3768149bda5250259996ed502ade316dbaa32d9))
+* **server:** route serve startup, source-load, watch & freshness timings through SparqlyLogger (ADR-0020, [#216](https://github.com/WilliamChelman/sparqly/issues/216)) ([faefd1c](https://github.com/WilliamChelman/sparqly/commit/faefd1c2b445527aa49fed7d9280f0b7012cb56b))
+* SPARQL-execution logging across hash, diff, and view chains (ADR-0020, [#214](https://github.com/WilliamChelman/sparqly/issues/214)) ([0d32b2d](https://github.com/WilliamChelman/sparqly/commit/0d32b2dc72350264b7cbb1559676d6236dc987aa))
+
 ## [0.20.0](https://github.com/WilliamChelman/sparqly/compare/v0.19.0...v0.20.0) (2026-05-12)
 
 ### Features
