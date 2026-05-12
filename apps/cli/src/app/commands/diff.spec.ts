@@ -552,4 +552,19 @@ describe('collectSnippetKeysForHunkedDiff — scope to changed hunks only', () =
     const keys = collectSnippetKeysForHunkedDiff({ hunks: [] });
     expect(keys.size).toBe(0);
   });
+
+  it('includes anchorSource definition-site ranges so `defined here` snippets are bulk-fetched', () => {
+    const keys = collectSnippetKeysForHunkedDiff({
+      hunks: [
+        {
+          ...hunk(),
+          anchorSource: {
+            left: [{ file: 'file:///def.ttl', line: 3 }],
+            right: [],
+          },
+        },
+      ],
+    });
+    expect([...keys.keys()]).toEqual(['file:///def.ttl:3']);
+  });
 });

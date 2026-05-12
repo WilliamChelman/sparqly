@@ -307,6 +307,69 @@ describe('composeHtmlDiff', () => {
     expect(out).not.toContain('<pre class="snippet"');
   });
 
+  it('renders a side\'s `anchorSource` definition site under a muted `defined here` heading when that side has no changed-line source records', () => {
+    const hunk = changedHunk({
+      sourceRecords: {
+        left: [],
+        right: [{ file: 'file:///cwd/r.ttl', line: 9 }],
+      },
+      anchorSource: {
+        left: [{ file: 'file:///cwd/def.ttl', line: 3 }],
+        right: [],
+      },
+    });
+    const snippets = new Map([
+      [
+        'file:///cwd/r.ttl:9',
+        {
+          kind: 'snippet' as const,
+          startLine: 8,
+          focalStart: 9,
+          focalEnd: 9,
+          lines: ['R8', 'R9', 'R10'],
+        },
+      ],
+      [
+        'file:///cwd/def.ttl:3',
+        {
+          kind: 'snippet' as const,
+          startLine: 2,
+          focalStart: 3,
+          focalEnd: 3,
+          lines: ['D2', 'D3', 'D4'],
+        },
+      ],
+    ]);
+    const out = composeHtmlDiff(hunked([hunk], { left: 1, right: 1 }), snippets, {
+      cwd: '/cwd',
+      prefixes: PREFIXES,
+    });
+
+    // A `defined here` heading, visually subdued (its own class — not the
+    // change-coloured snippet header).
+    expect(out).toMatch(/class="defined-here-label"[^>]*>defined here</);
+    // The definition-site snippet renders under it.
+    expect(out).toContain('D3');
+    // Two snippet blocks total: the right changed-line snippet + the
+    // left definition-site snippet.
+    const matches = out.match(/<pre class="snippet"/g) ?? [];
+    expect(matches).toHaveLength(2);
+  });
+
+  it('emits no `defined here` heading when a hunk carries no anchorSource', () => {
+    const hunk = changedHunk({
+      sourceRecords: {
+        left: [{ file: 'file:///cwd/a.ttl', line: 5 }],
+        right: [{ file: 'file:///cwd/b.ttl', line: 6 }],
+      },
+    });
+    const out = composeHtmlDiff(hunked([hunk], { left: 1, right: 1 }), emptySnippets, {
+      cwd: '/cwd',
+      prefixes: PREFIXES,
+    });
+    expect(out).not.toContain('defined here');
+  });
+
   it('boundary: a hunk with exactly 20 changed lines does NOT collapse the body', () => {
     const lines = Array.from({ length: 20 }, (_, i) => ({
       side: i % 2 === 0 ? ('-' as const) : ('+' as const),

@@ -11,15 +11,46 @@ export function collectSnippetRanges(
   hunk: Hunk,
   context: number,
 ): SnippetRange[] {
+  return reduceRanges(
+    rawRanges(hunk.sourceRecords.left, hunk.sourceRecords.right),
+    context,
+  );
+}
+
+/**
+ * Snippet ranges for a hunk's **anchor definition site** — the muted
+ * `defined here` snippets shown on a side that exists but contributed no
+ * changed-line source records. Returns `[]` when the hunk carries no
+ * `anchorSource`. Same merge/enclosure pipeline as {@link collectSnippetRanges}.
+ */
+export function collectAnchorSourceRanges(
+  hunk: Hunk,
+  context: number,
+): SnippetRange[] {
+  if (hunk.anchorSource === undefined) return [];
+  return reduceRanges(
+    rawRanges(hunk.anchorSource.left, hunk.anchorSource.right),
+    context,
+  );
+}
+
+function rawRanges(
+  left: readonly SourceRecord[],
+  right: readonly SourceRecord[],
+): SnippetRange[] {
   const ranges: SnippetRange[] = [];
-  for (const r of hunk.sourceRecords.left) {
+  for (const r of left) {
     const range = toRange(r, 'left');
     if (range !== undefined) ranges.push(range);
   }
-  for (const r of hunk.sourceRecords.right) {
+  for (const r of right) {
     const range = toRange(r, 'right');
     if (range !== undefined) ranges.push(range);
   }
+  return ranges;
+}
+
+function reduceRanges(ranges: SnippetRange[], context: number): SnippetRange[] {
   return mergeNearby(dropEnclosed(ranges), context);
 }
 

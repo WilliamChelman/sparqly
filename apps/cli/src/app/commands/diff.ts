@@ -515,8 +515,9 @@ export const diffSpec: CommandSpec<DiffConfig> = {
 /**
  * Compute the unique set of (file, line) snippet reads needed to render
  * the html diff. Walks the per-hunk source records gathered by
- * `groupRdfDiffByEntity`, which are themselves scoped to changed lines —
- * so this naturally avoids the auto-annotated full-file walk.
+ * `groupRdfDiffByEntity` — both the changed-line records and the
+ * anchor-definition-site records that back `defined here` snippets — all of
+ * which are scoped, so this naturally avoids the auto-annotated full-file walk.
  */
 export function collectSnippetKeysForHunkedDiff(
   hunked: { hunks: readonly Hunk[] },
@@ -537,6 +538,10 @@ export function collectSnippetKeysForHunkedDiff(
   for (const h of hunked.hunks) {
     collect(h.sourceRecords.left);
     collect(h.sourceRecords.right);
+    if (h.anchorSource !== undefined) {
+      collect(h.anchorSource.left);
+      collect(h.anchorSource.right);
+    }
   }
   return seen;
 }

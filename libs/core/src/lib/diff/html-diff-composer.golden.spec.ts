@@ -196,4 +196,35 @@ describe('composeHtmlDiff — golden fixtures', () => {
     );
     expect(out).toBe(golden);
   });
+
+  it('changed hunk: side with no changed-line records renders its anchor definition site under `defined here`: byte-identical to fixture', async () => {
+    const left = `<${EX}Foo> <${EX}label> "v1" .\n`;
+    const right = `<${EX}Foo> <${EX}label> "v2" .\n`;
+    const hunked = await buildHunked(left, right);
+    hunked.hunks[0].sourceRecords = {
+      left: [],
+      right: [{ file: 'file:///cwd/right.ttl', line: 9 }],
+    };
+    hunked.hunks[0].anchorSource = {
+      left: [{ file: 'file:///cwd/left.ttl', line: 2 }],
+      right: [],
+    };
+    const snippets = new Map<string, SnippetReadResult>([
+      [
+        'file:///cwd/right.ttl:9',
+        { kind: 'snippet', startLine: 7, focalStart: 9, focalEnd: 9, lines: ['L7', 'L8', 'L9', 'L10', 'L11'] },
+      ],
+      [
+        'file:///cwd/left.ttl:2',
+        { kind: 'snippet', startLine: 1, focalStart: 2, focalEnd: 2, lines: ['L1', 'L2', 'L3'] },
+      ],
+    ]);
+    const out = composeHtmlDiff(hunked, snippets, {
+      cwd: '/cwd',
+      prefixes: PREFIXES,
+      context: 3,
+    });
+    const golden = await readOrWrite(join(FIXTURES, 'defined-here.html'), out);
+    expect(out).toBe(golden);
+  });
 });
