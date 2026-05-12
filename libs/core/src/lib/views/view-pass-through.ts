@@ -1,15 +1,26 @@
 import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { DataFactory, Store, type Quad } from 'n3';
+import type { SparqlyLogger } from 'common';
 import {
   buildEndpointContext,
   describeEndpointError,
+  emitQueryEvent,
 } from '../engine';
+import { detectQueryType } from '../canonical/immutability';
 import type { ParsedEndpointSource } from '../sources';
+
+/** Identifies a view's SPARQL execution for the `query` log event (ADR-0020). */
+export interface ViewQueryLogMeta {
+  /** Source `@id` recorded on the `query` event (the view's id). */
+  source: string;
+  logger?: SparqlyLogger;
+}
 
 export interface ResolveViewPassThroughOptions {
   endpoint: ParsedEndpointSource;
   viewQuery: string;
   engine?: ComunicaQueryEngine;
+  meta?: ViewQueryLogMeta;
 }
 
 export async function resolveViewPassThrough(
@@ -17,6 +28,8 @@ export async function resolveViewPassThrough(
 ): Promise<Store> {
   const engine = options.engine ?? new ComunicaQueryEngine();
   const out = new Store();
+  const started = Date.now();
+  const type = detectQueryType(options.viewQuery);
   try {
     const result = await engine.query(
       options.viewQuery,
@@ -48,21 +61,41 @@ export async function resolveViewPassThrough(
           ),
         );
       }
-      return out;
-    }
-    if (result.resultType === 'quads') {
+    } else if (result.resultType === 'quads') {
       const quads = await result.execute();
       for await (const q of quads as AsyncIterable<Quad>) {
         out.addQuad(q);
       }
-      return out;
+    } else {
+      throw new Error(
+        `view query produced unexpected result type: ${String(result.resultType)}`,
+      );
     }
-    throw new Error(
-      `view query produced unexpected result type: ${String(result.resultType)}`,
-    );
+    if (options.meta) {
+      emitQueryEvent(options.meta.logger, {
+        source: options.meta.source,
+        mode: 'view',
+        query: options.viewQuery,
+        type,
+        ms: Date.now() - started,
+        size: { quads: out.size },
+      });
+    }
+    return out;
   } catch (err) {
-    throw new Error(
+    const wrapped = new Error(
       `endpoint ${options.endpoint.endpoint}: ${describeEndpointError(err)}`,
     );
+    if (options.meta) {
+      emitQueryEvent(options.meta.logger, {
+        source: options.meta.source,
+        mode: 'view',
+        query: options.viewQuery,
+        type,
+        ms: Date.now() - started,
+        err: wrapped,
+      });
+    }
+    throw wrapped;
   }
 }

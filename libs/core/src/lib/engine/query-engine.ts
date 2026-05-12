@@ -1,17 +1,16 @@
 import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { Parser, type Store } from 'n3';
-import {
-  noopLogger,
-  outcomeFields,
-  truncateQueryText,
-  type SparqlyLogFields,
-  type SparqlyLogger,
-} from 'common';
+import { noopLogger, type SparqlyLogger } from 'common';
 import {
   buildEndpointContext,
   describeEndpointError,
   type ComunicaEndpointContext,
 } from './endpoint-http';
+import {
+  emitQueryEvent,
+  type QueryResolutionMode,
+  type QueryResultSize,
+} from './query-log';
 import {
   assertImmutable,
   detectQueryType,
@@ -43,8 +42,7 @@ export type StoreSource = Store | (() => Store);
 
 export type QueryEngineSource = StoreSource | ParsedEndpointSource;
 
-/** Resolution mode label for the SPARQL-execution log event (ADR-0020). */
-export type QueryResolutionMode = 'materialized' | 'pass-through' | 'view';
+export type { QueryResolutionMode };
 
 /**
  * Optional context for boundary logging: the source `@id` (or endpoint URL),
@@ -138,19 +136,17 @@ export class QueryEngine {
       | { err: unknown },
   ): void {
     if (this.logger === noopLogger) return;
-    const fields: SparqlyLogFields = {
-      ...(this.meta ? { source: this.meta.id, mode: this.meta.mode } : {}),
+    const isOk = 'body' in outcome;
+    emitQueryEvent(this.logger, {
+      source: this.meta?.id,
+      mode: this.meta?.mode,
+      query,
       type,
       ms,
-    };
-    if ('body' in outcome) {
-      Object.assign(fields, resultSizeFields(outcome.resultType, outcome.body), {
-        bytes: Buffer.byteLength(outcome.body),
-      });
-    }
-    fields['query'] = truncateQueryText(query);
-    if ('err' in outcome) Object.assign(fields, outcomeFields(outcome.err));
-    this.logger.debug('query', fields);
+      size: isOk ? resultSize(outcome.resultType, outcome.body) : undefined,
+      bytes: isOk ? Buffer.byteLength(outcome.body) : undefined,
+      err: isOk ? undefined : outcome.err,
+    });
   }
 
   private async wrapEndpointErrors<T>(fn: () => Promise<T>): Promise<T> {
@@ -178,7 +174,7 @@ function isParsedEndpointSource(
   );
 }
 
-function resultSizeFields(resultType: string, body: string): SparqlyLogFields {
+function resultSize(resultType: string, body: string): QueryResultSize {
   if (resultType === 'quads') return { quads: new Parser().parse(body).length };
   const parsed = JSON.parse(body) as {
     boolean?: boolean;

@@ -2,7 +2,9 @@ import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import { DataFactory, Store, type Quad } from 'n3';
-import { loadRdf } from '../engine';
+import type { SparqlyLogger } from 'common';
+import { emitQueryEvent, loadRdf } from '../engine';
+import { detectQueryType } from '../canonical/immutability';
 import { applyTransformPipeline } from '../sources';
 import {
   type ParsedEndpointSource,
@@ -14,7 +16,10 @@ import {
   storeView as cacheStore,
   type ViewCacheBinding,
 } from './view-cache';
-import { resolveViewPassThrough } from './view-pass-through';
+import {
+  resolveViewPassThrough,
+  type ViewQueryLogMeta,
+} from './view-pass-through';
 import { validateViewQuery } from './view-query-validate';
 
 export interface ResolveViewOptions {
@@ -30,6 +35,12 @@ export interface ResolveViewOptions {
   now?: () => number;
   /** Test seam: inject a Comunica engine. */
   engine?: ComunicaQueryEngine;
+  /**
+   * When set, each SPARQL execution along the `from:` chain emits a `query`
+   * debug event (`mode=view`) on this logger — same shape as `sparqly query`
+   * (ADR-0020).
+   */
+  logger?: SparqlyLogger;
 }
 
 export async function resolveView(opts: ResolveViewOptions): Promise<Store> {
@@ -40,6 +51,7 @@ export async function resolveView(opts: ResolveViewOptions): Promise<Store> {
     opts.cacheDir,
     opts.now,
     opts.engine,
+    opts.logger,
   );
 }
 
@@ -50,6 +62,7 @@ async function resolveViewWithCache(
   cacheDir: string | undefined,
   now: (() => number) | undefined,
   engine: ComunicaQueryEngine | undefined,
+  logger: SparqlyLogger | undefined,
 ): Promise<Store> {
   if (view.cache && cacheDir) {
     const upstream = collectCacheUpstream(view, registry);
@@ -61,7 +74,8 @@ async function resolveViewWithCache(
       registry,
       loadProbeStore:
         view.cache.strategy === 'freshness'
-          ? () => loadUpstream(view, registry, stack, cacheDir, now, engine)
+          ? () =>
+              loadUpstream(view, registry, stack, cacheDir, now, engine, logger)
           : undefined,
     };
     const hit = await cacheLookup(binding);
@@ -75,11 +89,20 @@ async function resolveViewWithCache(
       cacheDir,
       now,
       engine,
+      logger,
     );
     await cacheStore(binding, fresh);
     return fresh;
   }
-  return resolveViewInternal(view, registry, stack, cacheDir, now, engine);
+  return resolveViewInternal(
+    view,
+    registry,
+    stack,
+    cacheDir,
+    now,
+    engine,
+    logger,
+  );
 }
 
 function collectCacheUpstream(
@@ -102,15 +125,18 @@ async function resolveViewInternal(
   cacheDir: string | undefined,
   now: (() => number) | undefined,
   engine: ComunicaQueryEngine | undefined,
+  logger: SparqlyLogger | undefined,
 ): Promise<Store> {
   const query = await loadViewQuery(view);
   validateViewQuery(query);
+  const meta = { source: view.id, logger };
   const singleEndpoint = singleEndpointUpstream(view, registry);
   if (singleEndpoint) {
     return resolveViewPassThrough({
       endpoint: singleEndpoint,
       viewQuery: query,
       engine,
+      meta,
     });
   }
   const upstreamStore = await loadUpstream(
@@ -120,8 +146,9 @@ async function resolveViewInternal(
     cacheDir,
     now,
     engine,
+    logger,
   );
-  return runViewQuery(upstreamStore, query, engine);
+  return runViewQuery(upstreamStore, query, engine, meta);
 }
 
 function singleEndpointUpstream(
@@ -152,6 +179,7 @@ async function loadUpstream(
   cacheDir: string | undefined,
   now: (() => number) | undefined,
   engine: ComunicaQueryEngine | undefined,
+  logger: SparqlyLogger | undefined,
 ): Promise<Store> {
   const refId = view.from;
   const byId = buildRegistryById(registry);
@@ -184,6 +212,7 @@ async function loadUpstream(
       cacheDir,
       now,
       engine,
+      logger,
     );
   }
   if (upstream.kind === 'empty') {
@@ -218,40 +247,64 @@ async function runViewQuery(
   source: Store,
   query: string,
   engine: ComunicaQueryEngine | undefined,
+  meta: ViewQueryLogMeta,
 ): Promise<Store> {
   const e = engine ?? new ComunicaQueryEngine();
   const out = new Store();
-  const result = await e.query(query, { sources: [source] });
-  if (result.resultType === 'bindings') {
-    const bindings = await result.execute();
-    for await (const b of bindings as AsyncIterable<{
-      get(name: string): Quad['subject'] | Quad['predicate'] | Quad['object'] | undefined;
-    }>) {
-      const s = b.get('s');
-      const p = b.get('p');
-      const o = b.get('o');
-      const g = b.get('g');
-      if (!s || !p || !o) continue;
-      const graph = g ? (g as Quad['graph']) : DataFactory.defaultGraph();
-      out.addQuad(
-        DataFactory.quad(
-          s as Quad['subject'],
-          p as Quad['predicate'],
-          o as Quad['object'],
-          graph,
-        ),
+  const started = Date.now();
+  const type = detectQueryType(query);
+  try {
+    const result = await e.query(query, { sources: [source] });
+    if (result.resultType === 'bindings') {
+      const bindings = await result.execute();
+      for await (const b of bindings as AsyncIterable<{
+        get(
+          name: string,
+        ): Quad['subject'] | Quad['predicate'] | Quad['object'] | undefined;
+      }>) {
+        const s = b.get('s');
+        const p = b.get('p');
+        const o = b.get('o');
+        const g = b.get('g');
+        if (!s || !p || !o) continue;
+        const graph = g ? (g as Quad['graph']) : DataFactory.defaultGraph();
+        out.addQuad(
+          DataFactory.quad(
+            s as Quad['subject'],
+            p as Quad['predicate'],
+            o as Quad['object'],
+            graph,
+          ),
+        );
+      }
+    } else if (result.resultType === 'quads') {
+      const quads = await result.execute();
+      for await (const q of quads as AsyncIterable<Quad>) {
+        out.addQuad(q);
+      }
+    } else {
+      throw new Error(
+        `view query produced unexpected result type: ${String(result.resultType)}`,
       );
     }
+    emitQueryEvent(meta.logger, {
+      source: meta.source,
+      mode: 'view',
+      query,
+      type,
+      ms: Date.now() - started,
+      size: { quads: out.size },
+    });
     return out;
+  } catch (err) {
+    emitQueryEvent(meta.logger, {
+      source: meta.source,
+      mode: 'view',
+      query,
+      type,
+      ms: Date.now() - started,
+      err,
+    });
+    throw err;
   }
-  if (result.resultType === 'quads') {
-    const quads = await result.execute();
-    for await (const q of quads as AsyncIterable<Quad>) {
-      out.addQuad(q);
-    }
-    return out;
-  }
-  throw new Error(
-    `view query produced unexpected result type: ${String(result.resultType)}`,
-  );
 }

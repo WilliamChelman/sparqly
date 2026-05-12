@@ -1,4 +1,5 @@
 import { Store } from 'n3';
+import type { SparqlyLogger } from 'common';
 import {
   parseSourceSpec,
   type ParsedSource,
@@ -11,10 +12,24 @@ export interface AnonymousViewInput {
   source: SourceSpecInput;
   query?: string;
   queryFile?: string;
+  /** Forwarded to view resolution so the SPARQL run emits a `query` event. */
+  logger?: SparqlyLogger;
 }
 
 const ANON_UPSTREAM_ID = '__sparqly_anon_upstream__';
 const ANON_VIEW_ID = '__sparqly_anon_view__';
+
+function anonViewLabel(upstream: ParsedSource): string {
+  const label =
+    upstream.kind === 'glob'
+      ? upstream.glob
+      : upstream.kind === 'endpoint'
+        ? upstream.endpoint
+        : (upstream.id ?? ANON_VIEW_ID);
+  // Keep the synthetic view id distinct from its upstream's so cycle
+  // detection on the `from:` chain never false-positives.
+  return label === (upstream.id ?? ANON_UPSTREAM_ID) ? ANON_VIEW_ID : label;
+}
 
 export async function resolveAnonymousView(
   input: AnonymousViewInput,
@@ -43,11 +58,15 @@ export async function resolveAnonymousView(
 
   const view: ParsedViewSource = {
     kind: 'view',
-    id: ANON_VIEW_ID,
+    id: anonViewLabel(upstream),
     from: upstreamId,
     ...(hasQuery ? { query: input.query } : {}),
     ...(hasQueryFile ? { queryFile: input.queryFile } : {}),
   };
 
-  return resolveView({ view, registry: [upstreamWithId, view] });
+  return resolveView({
+    view,
+    registry: [upstreamWithId, view],
+    logger: input.logger,
+  });
 }

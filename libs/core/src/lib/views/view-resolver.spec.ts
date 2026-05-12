@@ -11,6 +11,7 @@ import {
   startFakeSparqlEndpoint,
   type FakeSparqlEndpoint,
 } from '../test/fake-sparql-endpoint';
+import { recordingLogger } from '../test/recording-logger';
 import { resolveView } from './view-resolver';
 
 const SPARQL_JSON_TWO_BINDINGS = JSON.stringify({
@@ -538,6 +539,182 @@ describe('resolveView — failure surfacing', () => {
     ]);
     const view = registry[1] as ParsedViewSource;
     await expect(resolveView({ view, registry })).rejects.toThrow();
+  });
+});
+
+describe('resolveView — query event logging (ADR-0020)', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-view-resolver-log-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  function queryEvents(
+    entries: ReturnType<typeof recordingLogger>['entries'],
+  ): ReturnType<typeof recordingLogger>['entries'] {
+    return entries.filter((e) => e.msg === 'query');
+  }
+
+  it('emits a debug `query` event with mode=view and the view id for a materialized view', async () => {
+    const a = join(dir, 'a.ttl');
+    await writeFile(
+      a,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:keep ex:p ex:v1 .',
+        'ex:drop ex:p ex:v2 .',
+      ].join('\n'),
+    );
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: a },
+      {
+        id: 'kept',
+        from: '@raw',
+        query:
+          'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }',
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+    const { logger, entries } = recordingLogger();
+
+    await resolveView({ view, registry, logger });
+
+    const events = queryEvents(entries);
+    expect(events).toHaveLength(1);
+    expect(events[0].level).toBe('debug');
+    expect(events[0].fields).toMatchObject({
+      source: 'kept',
+      mode: 'view',
+      type: 'CONSTRUCT',
+      quads: 1,
+    });
+    expect(typeof events[0].fields?.ms).toBe('number');
+    expect(typeof events[0].fields?.query).toBe('string');
+  });
+
+  it('emits a `query` event with mode=view for an endpoint pass-through view', async () => {
+    const endpoint = await startFakeSparqlEndpoint(() => ({
+      body: JSON.stringify({
+        head: { vars: ['s', 'p', 'o'] },
+        results: {
+          bindings: [
+            {
+              s: { type: 'uri', value: 'http://example.org/keep' },
+              p: { type: 'uri', value: 'http://example.org/p' },
+              o: { type: 'uri', value: 'http://example.org/v1' },
+            },
+          ],
+        },
+      }),
+    }));
+    try {
+      const registry = parseSourceSpecs([
+        { id: 'live', endpoint: endpoint.url },
+        {
+          id: 'scoped',
+          from: '@live',
+          query: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
+        },
+      ]);
+      const view = registry[1] as ParsedViewSource;
+      const { logger, entries } = recordingLogger();
+
+      await resolveView({ view, registry, logger });
+
+      const events = queryEvents(entries);
+      expect(events).toHaveLength(1);
+      expect(events[0].fields).toMatchObject({
+        source: 'scoped',
+        mode: 'view',
+      });
+    } finally {
+      await endpoint.close();
+    }
+  });
+
+  it('emits one `query` event per hop in a view-on-view chain', async () => {
+    const a = join(dir, 'a.ttl');
+    await writeFile(
+      a,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:keep ex:p ex:v1 .',
+        'ex:drop ex:p ex:v2 .',
+      ].join('\n'),
+    );
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: a },
+      {
+        id: 'mid',
+        from: '@raw',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+      {
+        id: 'leaf',
+        from: '@mid',
+        query:
+          'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }',
+      },
+    ]);
+    const view = registry[2] as ParsedViewSource;
+    const { logger, entries } = recordingLogger();
+
+    await resolveView({ view, registry, logger });
+
+    const events = queryEvents(entries);
+    expect(events.map((e) => e.fields?.source).sort()).toEqual(['leaf', 'mid']);
+    for (const e of events) expect(e.fields).toMatchObject({ mode: 'view' });
+  });
+
+  it('emits an `error` outcome when an endpoint pass-through view fails', async () => {
+    const endpoint = await startFakeSparqlEndpoint(() => ({
+      status: 500,
+      body: 'boom',
+    }));
+    try {
+      const registry = parseSourceSpecs([
+        { id: 'live', endpoint: endpoint.url },
+        {
+          id: 'scoped',
+          from: '@live',
+          query: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
+        },
+      ]);
+      const view = registry[1] as ParsedViewSource;
+      const { logger, entries } = recordingLogger();
+
+      await expect(resolveView({ view, registry, logger })).rejects.toThrow();
+
+      const events = queryEvents(entries);
+      expect(events).toHaveLength(1);
+      expect(events[0].fields).toMatchObject({
+        source: 'scoped',
+        mode: 'view',
+        outcome: 'error',
+      });
+    } finally {
+      await endpoint.close();
+    }
+  });
+
+  it('emits nothing when no logger is supplied', async () => {
+    const a = join(dir, 'a.ttl');
+    await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: a },
+      {
+        id: 'plain',
+        from: '@raw',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+    // Should not throw — exercises the no-op default path.
+    await resolveView({ view, registry });
   });
 });
 

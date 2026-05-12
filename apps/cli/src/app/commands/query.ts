@@ -151,7 +151,7 @@ export const querySpec: CommandSpec<QueryConfig> = {
     const registry = parseSourceSpecs(config.sources ?? []);
 
     const loadStart = Date.now();
-    const sources = await resolveSource(target, { registry });
+    const sources = await resolveSource(target, { registry, logger: boundaryLog });
     const loadMs = Date.now() - loadStart;
     let engine: QueryEngine;
     if (sources.mode === 'pass-through') {

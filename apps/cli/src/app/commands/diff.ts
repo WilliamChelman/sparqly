@@ -1,10 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Logger } from '@nestjs/common';
 import { type Store } from 'n3';
 import { z } from 'zod';
-import { shortenNQuadLine } from 'common';
+import { shortenNQuadLine, type SparqlyLogger } from 'common';
 import {
   composeHtmlDiff,
   detectSelectShape,
@@ -76,6 +75,7 @@ interface DiffConfig {
   skipAutoSourceAnnotation?: boolean;
   verbose?: boolean;
   quiet?: boolean;
+  logFormat?: 'text' | 'json';
 }
 
 class DiffPresentSignal extends Error {
@@ -340,12 +340,12 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     return 2;
   },
   handler: async (config) => {
-    configureLogger({
+    const logger = configureLogger({
       verbose: config.verbose === true,
       quiet: config.quiet === true,
+      logFormat: config.logFormat,
     });
 
-    const logger = new Logger('sparqly');
     const format = (config.format ??
       inferDiffFormatFromOut(config.out) ??
       'human') as DiffFormat;
@@ -377,6 +377,7 @@ export const diffSpec: CommandSpec<DiffConfig> = {
         config,
         format,
         quiet,
+        logger,
         leftTarget,
         rightTarget,
         leftInlineQuery: leftInlineQuery as string,
@@ -389,16 +390,18 @@ export const diffSpec: CommandSpec<DiffConfig> = {
 
     const start = Date.now();
     const [leftResolved, rightResolved] = await Promise.all([
-      resolveSide(leftTarget, config, leftInlineQuery, 'left'),
-      resolveSide(rightTarget, config, rightInlineQuery, 'right'),
+      resolveSide(leftTarget, config, leftInlineQuery, 'left', logger),
+      resolveSide(rightTarget, config, rightInlineQuery, 'right', logger),
     ]);
     const diff = await diffStores(
       { store: leftResolved.store, annotationPredicates: leftResolved.annotationPredicates },
       { store: rightResolved.store, annotationPredicates: rightResolved.annotationPredicates },
     );
-    logger.log(
-      `Loaded ${leftResolved.fileCount} left + ${rightResolved.fileCount} right file(s), canonicalized in ${Date.now() - start}ms`,
-    );
+    logger.debug('source-loaded', {
+      leftFiles: leftResolved.fileCount,
+      rightFiles: rightResolved.fileCount,
+      ms: Date.now() - start,
+    });
 
     const sourcePrefixes: Record<string, Record<string, string>> = {
       ...leftResolved.prefixes,
@@ -619,6 +622,7 @@ async function resolveSide(
   config: DiffConfig,
   inlineQuery: string | undefined,
   side: 'left' | 'right',
+  logger: SparqlyLogger,
 ): Promise<SideResolved> {
   const target = withAutoSourceAnnotation(rawTarget, {
     skipAuto: config.skipAutoSourceAnnotation === true,
@@ -628,6 +632,7 @@ async function resolveSide(
     const store = await resolveAnonymousView({
       source: upstream,
       query: inlineQuery,
+      logger,
     });
     return {
       fileCount: 0,
@@ -645,7 +650,7 @@ async function resolveSide(
   }
 
   const registry = parseSourceSpecs(config.sources ?? []);
-  const sources = await resolveSource(target, { registry });
+  const sources = await resolveSource(target, { registry, logger });
   if (sources.mode === 'pass-through') {
     throw new Error(
       `SPARQL endpoint ${sources.endpoint.endpoint} cannot be diffed directly on the ${side} side (diff materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly diff\`)`,
@@ -725,6 +730,7 @@ interface RunTabularDiffArgs {
   config: DiffConfig;
   format: DiffFormat;
   quiet: boolean;
+  logger: SparqlyLogger;
   leftTarget: ParsedSource;
   rightTarget: ParsedSource;
   leftInlineQuery: string;
@@ -738,6 +744,7 @@ async function runTabularDiff(args: RunTabularDiffArgs): Promise<void> {
     config,
     format,
     quiet,
+    logger,
     leftTarget,
     rightTarget,
     leftInlineQuery,
@@ -787,11 +794,13 @@ async function runTabularDiff(args: RunTabularDiffArgs): Promise<void> {
       source: leftUpstream,
       query: leftInlineQuery,
       registry: sourcesRegistry,
+      logger,
     }),
     resolveAnonymousSelectBindings({
       source: rightUpstream,
       query: rightInlineQuery,
       registry: sourcesRegistry,
+      logger,
     }),
   ]);
 

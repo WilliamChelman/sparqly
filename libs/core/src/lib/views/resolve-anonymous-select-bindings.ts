@@ -2,16 +2,18 @@ import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import type { Term } from 'n3';
+import type { SparqlyLogger } from 'common';
 import {
   buildEndpointContext,
   describeEndpointError,
+  emitQueryEvent,
 } from '../engine';
+import { detectQueryType } from '../canonical/immutability';
 import { resolveSource } from '../sources';
 import { detectSelectShape } from '../diff';
 import {
   parseSourceSpec,
   parseSourceSpecs,
-  type ParsedEndpointSource,
   type ParsedSource,
   type SourceSpecInput,
 } from '../sources';
@@ -30,6 +32,14 @@ export interface AnonymousSelectBindingsInput {
   registry?: ReadonlyArray<SourceSpecInput>;
   /** Test seam: inject a Comunica engine. */
   engine?: ComunicaQueryEngine;
+  /** When set, the SELECT execution emits a `query` debug event (`mode=view`). */
+  logger?: SparqlyLogger;
+}
+
+function upstreamLabel(upstream: ParsedSource): string {
+  if (upstream.kind === 'glob') return upstream.glob;
+  if (upstream.kind === 'endpoint') return upstream.endpoint;
+  return upstream.id ?? `(${upstream.kind})`;
 }
 
 export interface AnonymousSelectBindingsResult {
@@ -91,44 +101,62 @@ export async function resolveAnonymousSelectBindings(
   }
 
   const engine = input.engine ?? new ComunicaQueryEngine();
+  const source = upstreamLabel(upstream);
+  const type = detectQueryType(query);
+  const started = Date.now();
 
-  if (upstream.kind === 'endpoint') {
-    return runPassThrough(engine, upstream, query, shape.variables);
-  }
-
-  const siblingRegistry = parseSourceSpecs(
-    (input.registry ?? []) as SourceSpecInput[],
-  );
-  const fullRegistry: ParsedSource[] = [upstream, ...siblingRegistry];
-  const sources = await resolveSource(upstream, { registry: fullRegistry });
-  if (sources.mode !== 'materialized') {
-    throw new Error(
-      'anonymous select-bindings: endpoint upstream cannot be materialized in tabular diff (use pass-through)',
-    );
-  }
-
-  const result = await engine.query(query, { sources: [sources.store] });
-  return collectBindings(result, shape.variables);
-}
-
-async function runPassThrough(
-  engine: ComunicaQueryEngine,
-  endpoint: ParsedEndpointSource,
-  query: string,
-  variables: string[],
-): Promise<AnonymousSelectBindingsResult> {
   try {
-    const result = await engine.query(
+    let bindings: AnonymousSelectBindingsResult;
+    if (upstream.kind === 'endpoint') {
+      try {
+        const result = await engine.query(
+          query,
+          buildEndpointContext(upstream) as Parameters<
+            ComunicaQueryEngine['query']
+          >[1],
+        );
+        bindings = await collectBindings(result, shape.variables);
+      } catch (err) {
+        throw new Error(
+          `endpoint ${upstream.endpoint}: ${describeEndpointError(err)}`,
+        );
+      }
+    } else {
+      const siblingRegistry = parseSourceSpecs(
+        (input.registry ?? []) as SourceSpecInput[],
+      );
+      const fullRegistry: ParsedSource[] = [upstream, ...siblingRegistry];
+      const sources = await resolveSource(upstream, {
+        registry: fullRegistry,
+        logger: input.logger,
+      });
+      if (sources.mode !== 'materialized') {
+        throw new Error(
+          'anonymous select-bindings: endpoint upstream cannot be materialized in tabular diff (use pass-through)',
+        );
+      }
+      const result = await engine.query(query, { sources: [sources.store] });
+      bindings = await collectBindings(result, shape.variables);
+    }
+    emitQueryEvent(input.logger, {
+      source,
+      mode: 'view',
       query,
-      buildEndpointContext(endpoint) as Parameters<
-        ComunicaQueryEngine['query']
-      >[1],
-    );
-    return await collectBindings(result, variables);
+      type,
+      ms: Date.now() - started,
+      size: { rows: bindings.rows.length },
+    });
+    return bindings;
   } catch (err) {
-    throw new Error(
-      `endpoint ${endpoint.endpoint}: ${describeEndpointError(err)}`,
-    );
+    emitQueryEvent(input.logger, {
+      source,
+      mode: 'view',
+      query,
+      type,
+      ms: Date.now() - started,
+      err,
+    });
+    throw err;
   }
 }
 

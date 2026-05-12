@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
-import { Logger } from '@nestjs/common';
 import { z } from 'zod';
+import type { SparqlyLogger } from 'common';
 import {
   canonicalizeStore,
   extractAnnotationPredicates,
@@ -36,6 +36,7 @@ interface HashConfig {
   out?: string;
   verbose?: boolean;
   quiet?: boolean;
+  logFormat?: 'text' | 'json';
 }
 
 class HashMismatchSignal extends Error {
@@ -212,9 +213,10 @@ export const hashSpec: CommandSpec<HashConfig> = {
     return isCompareMode ? 2 : 1;
   },
   handler: async (config) => {
-    configureLogger({
+    const logger = configureLogger({
       verbose: config.verbose === true,
       quiet: config.quiet === true,
+      logFormat: config.logFormat,
     });
 
     const isCompareMode = config.compareWith !== undefined;
@@ -225,7 +227,6 @@ export const hashSpec: CommandSpec<HashConfig> = {
       );
     }
 
-    const logger = new Logger('sparqly');
     const inlineQuery = await loadInlineScopeQuery(config);
     const compareInlineQuery = await loadCompareInlineScopeQuery(config);
 
@@ -294,7 +295,7 @@ async function hashTarget(
   target: ParsedSource,
   config: HashConfig,
   inlineQuery: string | undefined,
-  logger: Logger,
+  logger: SparqlyLogger,
 ): Promise<{ source: string; hash: string }> {
   const label = targetLabel(target);
   const start = Date.now();
@@ -304,12 +305,16 @@ async function hashTarget(
     const store = await resolveAnonymousView({
       source: upstreamSpec,
       query: inlineQuery,
+      logger,
     });
     const { canonicalText } = await canonicalizeStore(store);
     const hash = createHash('sha256').update(canonicalText).digest('hex');
-    logger.log(
-      `Materialized anonymous view (${store.size} quads), canonicalized + hashed '${label}' in ${Date.now() - start}ms`,
-    );
+    logger.debug('source-loaded', {
+      mode: 'view',
+      source: label,
+      quads: store.size,
+      ms: Date.now() - start,
+    });
     return { source: label, hash };
   }
 
@@ -320,7 +325,7 @@ async function hashTarget(
   }
 
   const registry = parseSourceSpecs(config.sources ?? []);
-  const sources = await resolveSource(target, { registry });
+  const sources = await resolveSource(target, { registry, logger });
   if (sources.mode === 'pass-through') {
     throw new Error(
       `SPARQL endpoint ${sources.endpoint.endpoint} cannot be hashed directly (hash materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
@@ -332,9 +337,13 @@ async function hashTarget(
     ),
   });
   const hash = createHash('sha256').update(canonicalText).digest('hex');
-  logger.log(
-    `Loaded ${sources.files.length} file(s) (${sources.store.size} quads), canonicalized + hashed '${label}' in ${Date.now() - start}ms`,
-  );
+  logger.debug('source-loaded', {
+    mode: 'materialized',
+    source: label,
+    files: sources.files.length,
+    quads: sources.store.size,
+    ms: Date.now() - start,
+  });
   return { source: label, hash };
 }
 

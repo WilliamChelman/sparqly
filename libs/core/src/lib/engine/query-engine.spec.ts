@@ -1,9 +1,9 @@
 import { Store } from 'n3';
 import { describe, expect, it } from 'vitest';
-import type { SparqlyLogFields, SparqlyLogger } from 'common';
 import { QueryEngine } from './query-engine';
 import { ttl } from '../test/turtle';
 import { startFakeSparqlEndpoint } from '../test/fake-sparql-endpoint';
+import { recordingLogger, type RecordedLog } from '../test/recording-logger';
 
 function exampleStore(): Store {
   const { quads } = ttl`
@@ -13,30 +13,6 @@ function exampleStore(): Store {
   const store = new Store();
   store.addQuads(quads);
   return store;
-}
-
-interface RecordedLog {
-  level: 'debug' | 'info' | 'warn' | 'error';
-  msg: string;
-  fields?: SparqlyLogFields;
-}
-
-function recordingLogger(): { logger: SparqlyLogger; entries: RecordedLog[] } {
-  const entries: RecordedLog[] = [];
-  const record =
-    (level: RecordedLog['level']) =>
-    (msg: string, fields?: SparqlyLogFields): void => {
-      entries.push({ level, msg, fields });
-    };
-  return {
-    entries,
-    logger: {
-      debug: record('debug'),
-      info: record('info'),
-      warn: record('warn'),
-      error: record('error'),
-    },
-  };
 }
 
 describe('QueryEngine.execute', () => {

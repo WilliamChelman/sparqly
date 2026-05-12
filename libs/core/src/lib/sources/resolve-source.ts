@@ -40,6 +40,8 @@ export interface ResolveSourceOptions {
   now?: ResolveViewOptions['now'];
   /** Forwarded to view resolution. */
   engine?: ResolveViewOptions['engine'];
+  /** Forwarded to view resolution so view-chain SPARQL runs emit `query` events. */
+  logger?: ResolveViewOptions['logger'];
 }
 
 export async function resolveSource(
@@ -75,6 +77,7 @@ async function resolveViewTarget(
     cacheDir: options.cacheDir,
     now: options.now,
     engine: options.engine,
+    logger: options.logger,
   });
   return materialized(store, [], {});
 }
