@@ -1,5 +1,6 @@
 import { DataFactory, Parser, type Quad, type Store, type Term } from 'n3';
 import type { DiffTotals, RdfDiffWithSourcesResult, SourceRecord } from './diff';
+import { anchorDefinitionSite } from './anchor-definition-site';
 
 const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 const RDF_FIRST_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#first';
@@ -52,6 +53,18 @@ export interface Hunk {
    * changed line in this hunk.
    */
   sourceRecords: { left: SourceRecord[]; right: SourceRecord[] };
+  /**
+   * The anchor's **definition site** on a side where it exists but contributed
+   * no changed-line source records — one {@link SourceRecord} per file the
+   * anchor's triples are annotated from, focused on the earliest annotated line
+   * of the anchor in that file. For a `changed` hunk, `anchorSource.left` is
+   * filled only when the left contributed zero entries to `sourceRecords.left`
+   * *and* the anchor IRI is present in the left store (symmetric for `right`);
+   * the other side is then `[]`. Absent for `added` / `removed` (and orphan)
+   * hunks, and whenever neither side qualifies — so renderers can show a muted
+   * "defined here" snippet without confusing it for a change.
+   */
+  anchorSource?: { left: SourceRecord[]; right: SourceRecord[] };
 }
 
 export interface HunkLine {
@@ -224,6 +237,19 @@ export function groupRdfDiffByEntity(
       const onRight = anchorPresentInStore(hunk.anchor, right.store);
       hunk.state =
         onLeft && !onRight ? 'removed' : !onLeft && onRight ? 'added' : 'changed';
+      if (hunk.state === 'changed') {
+        const leftDef =
+          hunk.sourceRecords.left.length === 0 && onLeft
+            ? anchorDefinitionSite(left.store, hunk.anchor)
+            : [];
+        const rightDef =
+          hunk.sourceRecords.right.length === 0 && onRight
+            ? anchorDefinitionSite(right.store, hunk.anchor)
+            : [];
+        if (leftDef.length > 0 || rightDef.length > 0) {
+          hunk.anchorSource = { left: leftDef, right: rightDef };
+        }
+      }
     }
     allHunks.push(hunk);
   }

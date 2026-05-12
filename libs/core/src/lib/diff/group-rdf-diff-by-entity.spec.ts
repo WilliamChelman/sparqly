@@ -1,11 +1,12 @@
 import { resolve } from 'node:path';
-import { Parser, Store } from 'n3';
+import { DataFactory, Parser, Store } from 'n3';
 import { describe, expect, it } from 'vitest';
 import { diffCanonicalStatements, diffStores } from './diff';
 import type { RdfDiffWithSourcesResult } from './diff';
 import { groupRdfDiffByEntity } from './group-rdf-diff-by-entity';
 import type { Hunk } from './group-rdf-diff-by-entity';
 import { parseRdfFile } from '../engine';
+import { buildSourceRecord, DEFAULT_ANNOTATION_PREDICATE_IRIS } from '../sources';
 
 const ex = (iri: string): string => `http://example.org/${iri}`;
 const t = (iri: string): string => `<${ex(iri)}>`;
@@ -715,6 +716,132 @@ describe('groupRdfDiffByEntity — one anchor-sorted list with `state` per hunk'
       `${EX}b`,
       `${EX}c`,
     ]);
+  });
+});
+
+describe('groupRdfDiffByEntity — anchorSource (anchor definition site)', () => {
+  const { namedNode, quad } = DataFactory;
+
+  interface AnnEntry {
+    s: string;
+    p: string;
+    o: string;
+    file: string;
+    line?: number;
+  }
+
+  function annotatedStore(entries: ReadonlyArray<AnnEntry>): Store {
+    const store = new Store();
+    for (const e of entries) {
+      const asserted = quad(namedNode(ex(e.s)), namedNode(ex(e.p)), namedNode(ex(e.o)));
+      store.addQuad(asserted);
+      store.addQuads(
+        buildSourceRecord({
+          asserted,
+          filePath: e.file,
+          line: e.line,
+          predicates: DEFAULT_ANNOTATION_PREDICATE_IRIS,
+        }),
+      );
+    }
+    return store;
+  }
+
+  it('a changed hunk where a property was only added to an existing subject: sourceRecords.left is empty and anchorSource.left points at the subject\'s earliest annotated line per left file', async () => {
+    const leftStore = annotatedStore([
+      { s: 'Alice', p: 'name', o: 'A', file: '/x/a.ttl', line: 5 },
+    ]);
+    const rightStore = annotatedStore([
+      { s: 'Alice', p: 'name', o: 'A', file: '/x/a.ttl', line: 5 },
+      { s: 'Alice', p: 'nick', o: 'Al', file: '/x/b.ttl', line: 9 },
+    ]);
+    const diff = await diffStores({ store: leftStore }, { store: rightStore });
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    expect(hunked.hunks).toHaveLength(1);
+    const hunk = hunked.hunks[0];
+    expect(hunk.anchor).toBe(ex('Alice'));
+    expect(hunk.state).toBe('changed');
+    expect(hunk.sourceRecords.left).toEqual([]);
+    expect(hunk.sourceRecords.right).toEqual([{ file: 'file:///x/b.ttl', line: 9 }]);
+    expect(hunk.anchorSource).toEqual({
+      left: [{ file: 'file:///x/a.ttl', line: 5 }],
+      right: [],
+    });
+  });
+
+  it('mirror: a changed hunk whose changes are removal-only from a still-existing subject populates anchorSource.right symmetrically', async () => {
+    const leftStore = annotatedStore([
+      { s: 'Alice', p: 'name', o: 'A', file: '/x/a.ttl', line: 5 },
+      { s: 'Alice', p: 'nick', o: 'Al', file: '/x/a.ttl', line: 6 },
+    ]);
+    const rightStore = annotatedStore([
+      { s: 'Alice', p: 'name', o: 'A', file: '/x/b.ttl', line: 3 },
+    ]);
+    const diff = await diffStores({ store: leftStore }, { store: rightStore });
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    expect(hunked.hunks).toHaveLength(1);
+    const hunk = hunked.hunks[0];
+    expect(hunk.state).toBe('changed');
+    expect(hunk.sourceRecords.right).toEqual([]);
+    expect(hunk.anchorSource).toEqual({
+      left: [],
+      right: [{ file: 'file:///x/b.ttl', line: 3 }],
+    });
+  });
+
+  it('added / removed hunks carry no anchorSource (the subject genuinely does not exist on the other side)', async () => {
+    const leftStore = annotatedStore([
+      { s: 'Gone', p: 'name', o: 'G', file: '/x/a.ttl', line: 2 },
+    ]);
+    const rightStore = annotatedStore([
+      { s: 'Fresh', p: 'name', o: 'F', file: '/x/b.ttl', line: 4 },
+    ]);
+    const diff = await diffStores({ store: leftStore }, { store: rightStore });
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    expect(hunked.hunks.map((h) => [h.anchor, h.state])).toEqual([
+      [ex('Fresh'), 'added'],
+      [ex('Gone'), 'removed'],
+    ]);
+    for (const hunk of hunked.hunks) {
+      expect(hunk.anchorSource).toBeUndefined();
+    }
+  });
+
+  it('a changed hunk where both sides contributed changed-line source records gets no anchorSource', async () => {
+    const leftStore = annotatedStore([
+      { s: 'Alice', p: 'name', o: 'Old', file: '/x/a.ttl', line: 5 },
+    ]);
+    const rightStore = annotatedStore([
+      { s: 'Alice', p: 'name', o: 'New', file: '/x/b.ttl', line: 5 },
+    ]);
+    const diff = await diffStores({ store: leftStore }, { store: rightStore });
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: leftStore },
+      right: { store: rightStore },
+    });
+
+    expect(hunked.hunks).toHaveLength(1);
+    const hunk = hunked.hunks[0];
+    expect(hunk.state).toBe('changed');
+    expect(hunk.sourceRecords.left.length).toBeGreaterThan(0);
+    expect(hunk.sourceRecords.right.length).toBeGreaterThan(0);
+    expect(hunk.anchorSource).toBeUndefined();
   });
 });
 

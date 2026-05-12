@@ -1,4 +1,5 @@
 export * from './diff';
+export * from './anchor-definition-site';
 export * from './group-rdf-diff-by-entity';
 export * from './grouped-diff-formatter';
 export * from './html-diff-composer';
