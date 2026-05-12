@@ -1,7 +1,9 @@
 import { Store } from 'n3';
 import { describe, expect, it } from 'vitest';
+import type { SparqlyLogFields, SparqlyLogger } from 'common';
 import { QueryEngine } from './query-engine';
 import { ttl } from '../test/turtle';
+import { startFakeSparqlEndpoint } from '../test/fake-sparql-endpoint';
 
 function exampleStore(): Store {
   const { quads } = ttl`
@@ -11,6 +13,30 @@ function exampleStore(): Store {
   const store = new Store();
   store.addQuads(quads);
   return store;
+}
+
+interface RecordedLog {
+  level: 'debug' | 'info' | 'warn' | 'error';
+  msg: string;
+  fields?: SparqlyLogFields;
+}
+
+function recordingLogger(): { logger: SparqlyLogger; entries: RecordedLog[] } {
+  const entries: RecordedLog[] = [];
+  const record =
+    (level: RecordedLog['level']) =>
+    (msg: string, fields?: SparqlyLogFields): void => {
+      entries.push({ level, msg, fields });
+    };
+  return {
+    entries,
+    logger: {
+      debug: record('debug'),
+      info: record('info'),
+      warn: record('warn'),
+      error: record('error'),
+    },
+  };
 }
 
 describe('QueryEngine.execute', () => {
@@ -190,5 +216,102 @@ describe('QueryEngine.execute', () => {
         ).resolves.toBeDefined();
       },
     );
+  });
+});
+
+describe('QueryEngine — query event logging', () => {
+  function queryEvents(entries: RecordedLog[]): RecordedLog[] {
+    return entries.filter((e) => e.msg === 'query');
+  }
+
+  it('emits one debug `query` event for a SELECT with type, rows, ms and a single-lined query', async () => {
+    const { logger, entries } = recordingLogger();
+    const engine = new QueryEngine(exampleStore(), {
+      id: 'people',
+      mode: 'materialized',
+      logger,
+    });
+
+    await engine.execute(
+      'SELECT ?s ?o\nWHERE {\n  ?s <http://example.org/p> ?o\n}',
+    );
+
+    const events = queryEvents(entries);
+    expect(events).toHaveLength(1);
+    expect(events[0].level).toBe('debug');
+    expect(events[0].fields).toMatchObject({
+      source: 'people',
+      mode: 'materialized',
+      type: 'SELECT',
+      rows: 1,
+    });
+    expect(typeof events[0].fields?.ms).toBe('number');
+    expect(events[0].fields?.query).toBe(
+      'SELECT ?s ?o WHERE { ?s <http://example.org/p> ?o }',
+    );
+  });
+
+  it.each([
+    {
+      verb: 'CONSTRUCT',
+      query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+    },
+    { verb: 'DESCRIBE', query: 'DESCRIBE <http://example.org/a>' },
+  ])('emits a `quads` count for $verb', async ({ verb, query }) => {
+    const { logger, entries } = recordingLogger();
+    const engine = new QueryEngine(exampleStore(), {
+      id: 'people',
+      mode: 'materialized',
+      logger,
+    });
+
+    await engine.execute(query);
+
+    const events = queryEvents(entries);
+    expect(events).toHaveLength(1);
+    expect(events[0].fields).toMatchObject({ type: verb, quads: 1 });
+  });
+
+  it('emits the `boolean` result for an ASK', async () => {
+    const { logger, entries } = recordingLogger();
+    const engine = new QueryEngine(exampleStore(), {
+      id: 'people',
+      mode: 'materialized',
+      logger,
+    });
+
+    await engine.execute('ASK WHERE { ?s <http://example.org/p> ?o }');
+
+    const events = queryEvents(entries);
+    expect(events).toHaveLength(1);
+    expect(events[0].fields).toMatchObject({ type: 'ASK', boolean: true });
+  });
+
+  it('emits an `error` outcome when an endpoint source fails', async () => {
+    const endpoint = await startFakeSparqlEndpoint(() => ({
+      status: 500,
+      body: 'boom',
+    }));
+    try {
+      const { logger, entries } = recordingLogger();
+      const engine = new QueryEngine(
+        { kind: 'endpoint', endpoint: endpoint.url },
+        { id: endpoint.url, mode: 'pass-through', logger },
+      );
+
+      await expect(
+        engine.execute('SELECT ?s WHERE { ?s ?p ?o }'),
+      ).rejects.toThrow();
+
+      const events = queryEvents(entries);
+      expect(events).toHaveLength(1);
+      expect(events[0].fields).toMatchObject({
+        mode: 'pass-through',
+        outcome: 'error',
+      });
+      expect(typeof events[0].fields?.error).toBe('string');
+    } finally {
+      await endpoint.close();
+    }
   });
 });

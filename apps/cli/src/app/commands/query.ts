@@ -1,5 +1,4 @@
 import { readFile } from 'node:fs/promises';
-import { Logger } from '@nestjs/common';
 import { z } from 'zod';
 import { formatRdf, parseRdfString } from 'common';
 import {
@@ -145,7 +144,6 @@ export const querySpec: CommandSpec<QueryConfig> = {
       query = stdinQuery as string;
     }
 
-    const logger = new Logger('sparqly');
     const format = config.format;
     const mutable = config.mutable === true;
 
@@ -162,7 +160,11 @@ export const querySpec: CommandSpec<QueryConfig> = {
         endpoint: sources.endpoint.endpoint,
         ms: loadMs,
       });
-      engine = new QueryEngine(sources.endpoint);
+      engine = new QueryEngine(sources.endpoint, {
+        id: sources.endpoint.endpoint,
+        mode: 'pass-through',
+        logger: boundaryLog,
+      });
     } else {
       boundaryLog.debug('source-loaded', {
         mode: sources.mode,
@@ -170,12 +172,14 @@ export const querySpec: CommandSpec<QueryConfig> = {
         quads: sources.store.size,
         ms: loadMs,
       });
-      engine = new QueryEngine(sources.store);
+      engine = new QueryEngine(sources.store, {
+        id: target.id ?? (target.kind === 'glob' ? target.glob : '(target)'),
+        mode: 'materialized',
+        logger: boundaryLog,
+      });
     }
 
-    const queryStart = Date.now();
     const result = await engine.execute(query, { format, mutable });
-    logger.log(`Query executed in ${Date.now() - queryStart}ms`);
 
     const rendered =
       result.format === 'turtle'

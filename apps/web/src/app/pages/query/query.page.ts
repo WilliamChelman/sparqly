@@ -40,7 +40,7 @@ function acceptForQueryType(queryType: string | undefined): string | undefined {
   }
 }
 
-const DEFAULT_BODY = 'SELECT * WHERE {\n  ?s ?p ?o .\n} LIMIT 10';
+const DEFAULT_BODY = 'SELECT ?s ?p ?o WHERE {\n  ?s ?p ?o .\n} LIMIT 10';
 
 function buildDefaultQuery(context: DisplayContext): string {
   const lines: string[] = [];

@@ -19,7 +19,9 @@ describe('sparqly query — logging', () => {
     expect(result.stderr).toMatch(
       /\d{2}:\d{2}:\d{2}\.\d{3} DEBUG \[sparqly\] source-loaded .*\bms=\d+/,
     );
-    expect(result.stderr).toMatch(/Query executed in \d+ms/);
+    expect(result.stderr).toMatch(
+      /\d{2}:\d{2}:\d{2}\.\d{3} DEBUG \[sparqly\] query .*\btype=SELECT\b.*\bms=\d+/,
+    );
   });
 
   it('--log-format json emits the source-load line as JSON on stderr while stdout stays clean (US 20)', async () => {
