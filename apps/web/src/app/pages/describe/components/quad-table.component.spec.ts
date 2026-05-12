@@ -8,12 +8,19 @@ const { namedNode, blankNode, literal, quad } = DataFactory;
 
 const FROM_SOURCE = 'urn:sparqly:fromSource';
 
-function setup(quadsText: string, seed = '', context?: DisplayContext) {
+function setup(
+  quadsText: string,
+  seed = '',
+  context?: DisplayContext,
+  endpointSourceIds?: readonly string[],
+) {
   TestBed.configureTestingModule({});
   const fixture = TestBed.createComponent(QuadTableComponent);
   fixture.componentRef.setInput('quadsText', quadsText);
   fixture.componentRef.setInput('seed', seed);
   if (context !== undefined) fixture.componentRef.setInput('context', context);
+  if (endpointSourceIds !== undefined)
+    fixture.componentRef.setInput('endpointSourceIds', endpointSourceIds);
   fixture.detectChanges();
   return { fixture, root: fixture.nativeElement as HTMLElement };
 }
@@ -117,6 +124,63 @@ describe('QuadTableComponent', () => {
     ).map((el) => el.textContent?.replace(/\s+/g, ''));
     // ex:alice / rdf:type (rdf is a default prefix) / ex:Person
     expect(cells).toEqual(['ex:alice', 'rdf:type', 'ex:Person']);
+  });
+
+  describe('blank-node expand affordance', () => {
+    const SEED = 'http://example.org/alice';
+    const KNOWS = 'http://example.org/knows';
+
+    function danglingBnodeWire(label: string): string {
+      return serializeDescribeWire([quad(namedNode(SEED), namedNode(KNOWS), blankNode(label))]);
+    }
+
+    it('renders an expand affordance on a dangling bnode from an endpoint source', () => {
+      const { root } = setup(danglingBnodeWire('ep__b0'), SEED, undefined, ['ep']);
+      expect(root.querySelector('[data-testid="expand-bnode"]')).toBeTruthy();
+    });
+
+    it('does not render the affordance on a bnode from a non-endpoint source', () => {
+      const { root } = setup(danglingBnodeWire('glb__b0'), SEED, undefined, ['ep']);
+      expect(root.querySelector('[data-testid="expand-bnode"]')).toBeFalsy();
+    });
+
+    it('does not render the affordance once the bnode has been expanded (has subject quads)', () => {
+      const wire = [
+        danglingBnodeWire('ep__b0'),
+        serializeDescribeWire([
+          quad(blankNode('ep__b0'), namedNode('http://example.org/since'), literal('2021')),
+        ]),
+      ].join('');
+      const { root } = setup(wire, SEED, undefined, ['ep']);
+      expect(root.querySelector('[data-testid="expand-bnode"]')).toBeFalsy();
+    });
+
+    it('hides the affordance when the path to the bnode would exceed the step cap', () => {
+      // Chain seed -p0-> _:ep__b0 -p1-> _:ep__b1 -> … with > 12 hops; only the
+      // last node in the chain is dangling.
+      const STEPS = 14;
+      const quads = [
+        quad(namedNode(SEED), namedNode('http://example.org/p0'), blankNode('ep__b0')),
+      ];
+      for (let i = 1; i < STEPS; i++) {
+        quads.push(
+          quad(blankNode(`ep__b${i - 1}`), namedNode(`http://example.org/p${i}`), blankNode(`ep__b${i}`)),
+        );
+      }
+      const { root } = setup(serializeDescribeWire(quads), SEED, undefined, ['ep']);
+      // Intermediate nodes are non-dangling; the tail node is past the cap.
+      expect(root.querySelector('[data-testid="expand-bnode"]')).toBeFalsy();
+    });
+
+    it('emits { sourceId, path } when the affordance is clicked', () => {
+      const { fixture, root } = setup(danglingBnodeWire('ep__b0'), SEED, undefined, ['ep']);
+      const emitted: { sourceId: string; path: unknown }[] = [];
+      fixture.componentInstance.expand.subscribe((e) => emitted.push(e));
+      (root.querySelector('[data-testid="expand-bnode"]') as HTMLButtonElement).click();
+      expect(emitted).toEqual([
+        { sourceId: 'ep', path: [{ predicate: KNOWS, inverse: false }] },
+      ]);
+    });
   });
 
   it('does not attach the affordance to bnodes or literals', () => {

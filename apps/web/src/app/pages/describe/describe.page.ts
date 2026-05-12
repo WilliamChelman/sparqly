@@ -17,11 +17,15 @@ import {
 import {
   describeProvenance,
   parseDescribeWire,
+  serializeDescribeWire,
   type FormatSerialization,
+  type PathStep,
 } from 'common';
+import type { Quad, Term } from 'n3';
 import { QuadTableComponent } from './components/quad-table.component';
 import { SourceErrorsComponent } from './components/source-errors.component';
 import { describeIriExpand } from './utils/describe-iri-expand';
+import type { DescribeBnodePathResult } from './utils/describe-bnode-path';
 import {
   DescribeService,
   type DescribeResponse,
@@ -122,6 +126,8 @@ const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
                 [quadsText]="resp.quads"
                 [seed]="submittedSeed()"
                 [context]="displayContext()"
+                [endpointSourceIds]="endpointSourceIds()"
+                (expand)="onExpand($event)"
               />
             }
             @case ('turtle') {
@@ -155,6 +161,11 @@ export class DescribePage implements OnInit {
   readonly initialSources = signal<string[] | undefined>(undefined);
   private prefixes: Record<string, string> = {};
   readonly displayContext = signal<DisplayContext>({ prefixes: {} });
+  /** Ids of `endpoint` sources — only their dangling bnodes get an expand affordance. */
+  readonly endpointSourceIds = signal<string[]>([]);
+  /** UI-driven blank-node expansion paths, keyed by source id (ADR-0019). Lives
+   * only in component state — the URL keeps carrying just the seed and sources. */
+  private expandedPaths: Record<string, PathStep[][]> = {};
 
   private readonly _activeTab = signal<DescribeTab>('table');
   readonly activeTab = this._activeTab.asReadonly();
@@ -190,6 +201,9 @@ export class DescribePage implements OnInit {
     this.configService.config().subscribe((config) => {
       this.prefixes = config.context.prefixes;
       this.displayContext.set(config.context);
+      this.endpointSourceIds.set(
+        config.sources.filter((s) => s.kind === 'endpoint').map((s) => s.id),
+      );
       // A URL carrying ?iri is a bookmark — rehydrate and run immediately.
       if (this.seed().trim().length > 0) this.run();
     });
@@ -217,6 +231,7 @@ export class DescribePage implements OnInit {
     const iri = expanded.iri;
     this.iriError.set(null);
     this.submittedSeed.set(iri);
+    this.expandedPaths = {};
     this.running.set(true);
     this.response.set(null);
     this._activeTab.set('table');
@@ -255,4 +270,116 @@ export class DescribePage implements OnInit {
       },
     });
   }
+
+  /**
+   * Expand a dangling blank node one hop deeper (ADR-0019). Append its
+   * predicate-pinned path to `expandedPaths` for its source, re-call
+   * `/api/describe` for that source alone, and splice the fresh slice into the
+   * merged view — sibling sources keep their existing quads and are not queried.
+   */
+  onExpand(target: DescribeBnodePathResult): void {
+    const current = this.response();
+    if (current === null) return;
+    const { sourceId, path } = target;
+    const existing = this.expandedPaths[sourceId] ?? [];
+    const serialized = JSON.stringify(path);
+    if (existing.some((p) => JSON.stringify(p) === serialized)) return;
+    this.expandedPaths = { ...this.expandedPaths, [sourceId]: [...existing, path] };
+    this.running.set(true);
+    this.describeService
+      .run({
+        iri: this.submittedSeed(),
+        sources: [sourceId],
+        expandedPaths: { [sourceId]: this.expandedPaths[sourceId] },
+      })
+      .subscribe({
+        next: (fresh) => {
+          this.running.set(false);
+          this.response.set(this.mergeSourceSlice(current, sourceId, fresh));
+        },
+        error: () => {
+          this.running.set(false);
+        },
+      });
+  }
+
+  /**
+   * Rebuild the merged describe view with `sourceId`'s quads taken wholesale
+   * from `fresh` and every other source's quads kept from `current`. The wire
+   * carries one `fromSource` annotation per (quad, origin), so per-source slices
+   * are recoverable from `current` by inspecting those annotations.
+   */
+  private mergeSourceSlice(
+    current: DescribeResponse,
+    sourceId: string,
+    fresh: DescribeResponse,
+  ): DescribeResponse {
+    const predicate = FROM_SOURCE_PREDICATE;
+    const slices = new Map<string, Map<string, Quad>>();
+    const currentAll =
+      current.quads.trim().length === 0 ? [] : parseDescribeWire(current.quads);
+    const stripped = describeProvenance.strip(currentAll, predicate);
+    for (const q of stripped.quads) {
+      const key = quadKey(q);
+      for (const origin of stripped.originsByQuad.get(key) ?? []) {
+        if (origin === sourceId) continue; // replaced wholesale below
+        let m = slices.get(origin);
+        if (!m) {
+          m = new Map();
+          slices.set(origin, m);
+        }
+        if (!m.has(key)) m.set(key, q);
+      }
+    }
+    const freshAll =
+      fresh.quads.trim().length === 0 ? [] : parseDescribeWire(fresh.quads);
+    const freshSlice = new Map<string, Quad>();
+    for (const q of describeProvenance.strip(freshAll, predicate).quads) {
+      const key = quadKey(q);
+      if (!freshSlice.has(key)) freshSlice.set(key, q);
+    }
+    slices.set(sourceId, freshSlice);
+
+    const orderedSources = Object.keys(current.perSource);
+    if (!orderedSources.includes(sourceId)) orderedSources.push(sourceId);
+    const merged = new Map<string, Quad>();
+    const originsByQuad = new Map<string, string[]>();
+    for (const src of orderedSources) {
+      const m = slices.get(src);
+      if (!m) continue;
+      for (const [key, q] of m) {
+        if (!merged.has(key)) merged.set(key, q);
+        const list = originsByQuad.get(key);
+        if (list) {
+          if (!list.includes(src)) list.push(src);
+        } else {
+          originsByQuad.set(key, [src]);
+        }
+      }
+    }
+    const annotations: Quad[] = [];
+    for (const [key, q] of merged) {
+      for (const origin of originsByQuad.get(key) ?? []) {
+        annotations.push(
+          ...describeProvenance.inject([q], origin, predicate).slice(1),
+        );
+      }
+    }
+    const quads = serializeDescribeWire([...merged.values(), ...annotations]);
+    const perSource = { ...current.perSource };
+    const freshEntry = fresh.perSource[sourceId];
+    if (freshEntry) perSource[sourceId] = freshEntry;
+    return { iri: current.iri, quads, total: merged.size, perSource };
+  }
+}
+
+function quadKey(q: Quad): string {
+  return `${termKey(q.subject)} ${termKey(q.predicate)} ${termKey(q.object)} ${termKey(q.graph)}`;
+}
+
+function termKey(t: Term): string {
+  if ((t.termType as string) === 'Quad') {
+    return `<<${quadKey(t as unknown as Quad)}>>`;
+  }
+  return `${t.termType}:${t.value}`;
 }

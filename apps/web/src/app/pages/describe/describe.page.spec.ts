@@ -29,6 +29,11 @@ class QuadTableStub {
   @Input() quadsText = '';
   @Input() seed = '';
   @Input() context: unknown = { prefixes: {} };
+  @Input() endpointSourceIds: readonly string[] = [];
+  @Output() expand = new EventEmitter<{
+    sourceId: string;
+    path: { predicate: string; inverse: boolean }[];
+  }>();
 }
 
 @Component({
@@ -61,9 +66,10 @@ const LISTING: SourceListing = {
 async function setup(
   initialUrl = '/describe',
   prefixes: Record<string, string> = {},
+  sources: SourceListing['sources'] = LISTING.sources,
 ) {
   const payload: ConfigPayload = {
-    sources: LISTING.sources,
+    sources,
     context: { prefixes },
     describe: {
       perSourceSoftLimit: 10000,
@@ -75,7 +81,7 @@ async function setup(
     ConfigService,
     'list' | 'config' | 'context' | 'describe'
   > = {
-    list: () => of(LISTING),
+    list: () => of({ sources }),
     config: () => of(payload),
     context: () => of(payload.context),
     describe: () => of(payload.describe),
@@ -113,6 +119,14 @@ function quadTableStub(fixture: {
     .queryAll((n) => n.componentInstance instanceof QuadTableStub)
     .map((d) => d.componentInstance as QuadTableStub);
   return all[0] ?? null;
+}
+
+function requireQuadTable(fixture: {
+  debugElement: import('@angular/core').DebugElement;
+}): QuadTableStub {
+  const stub = quadTableStub(fixture);
+  if (!stub) throw new Error('quad table stub not found');
+  return stub;
 }
 
 function pickerStub(fixture: {
@@ -502,6 +516,206 @@ describe('DescribePage', () => {
     expect(root.querySelector('[data-testid=source-errors]')?.textContent).toContain(
       'boom-alpha',
     );
+  });
+
+  describe('blank-node expansion (ADR-0019)', () => {
+    const ALICE = 'http://example.org/alice';
+    const KNOWS = 'http://example.org/knows';
+    const SOURCES_WITH_ENDPOINT: SourceListing['sources'] = [
+      { id: 'remote', kind: 'endpoint', label: 'R (endpoint)', default: true },
+    ];
+    const FS = 'urn:sparqly:fromSource';
+
+    function provQuad(s: string, p: string, oNquad: string, origin: string): string {
+      return `<<${s} ${p} ${oNquad}>> <${FS}> "${origin}" .\n`;
+    }
+
+    async function setupWithInitialResponse(
+      sources: SourceListing['sources'],
+      body: object,
+    ) {
+      const ctx = await setup(
+        '/describe?iri=' + encodeURIComponent(ALICE),
+        {},
+        sources,
+      );
+      ctx.http.expectOne('/api/describe').flush(body);
+      ctx.fixture.detectChanges();
+      await ctx.fixture.whenStable();
+      ctx.fixture.detectChanges();
+      return ctx;
+    }
+
+    it('passes endpoint source ids to the quad table', async () => {
+      const { fixture, http } = await setupWithInitialResponse(
+        [
+          { id: 'alpha', kind: 'glob', label: 'A (glob)', default: true },
+          { id: 'remote', kind: 'endpoint', label: 'R (endpoint)' },
+        ],
+        { iri: ALICE, quads: NQUADS_SAMPLE, total: 3, perSource: { alpha: { count: 3, truncated: false } } },
+      );
+      expect(quadTableStub(fixture)?.endpointSourceIds).toEqual(['remote']);
+      http.verify();
+    });
+
+    it('re-issues POST /api/describe with the path appended to expandedPaths for that source only', async () => {
+      const wire0 =
+        `<${ALICE}> <${KNOWS}> _:remote__b0 .\n` +
+        provQuad(`<${ALICE}>`, `<${KNOWS}>`, '_:remote__b0', 'remote');
+      const { fixture, http } = await setupWithInitialResponse(SOURCES_WITH_ENDPOINT, {
+        iri: ALICE,
+        quads: wire0,
+        total: 1,
+        perSource: { remote: { count: 1, truncated: true } },
+      });
+
+      requireQuadTable(fixture).expand.emit({
+        sourceId: 'remote',
+        path: [{ predicate: KNOWS, inverse: false }],
+      });
+      fixture.detectChanges();
+
+      const req = http.expectOne('/api/describe');
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual({
+        iri: ALICE,
+        sources: ['remote'],
+        expandedPaths: { remote: [[{ predicate: KNOWS, inverse: false }]] },
+      });
+      req.flush({
+        iri: ALICE,
+        quads:
+          `<${ALICE}> <${KNOWS}> _:remote__b0 .\n` +
+          provQuad(`<${ALICE}>`, `<${KNOWS}>`, '_:remote__b0', 'remote') +
+          `_:remote__b0 <http://example.org/since> "2021" .\n` +
+          provQuad('_:remote__b0', '<http://example.org/since>', '"2021"', 'remote'),
+        total: 2,
+        perSource: { remote: { count: 2, truncated: false } },
+      });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(quadTableStub(fixture)?.quadsText).toContain('http://example.org/since');
+      http.verify();
+    });
+
+    it('replaces only the expanded source’s slice, preserving other sources’ quads', async () => {
+      const sources: SourceListing['sources'] = [
+        { id: 'remote', kind: 'endpoint', label: 'R', default: true },
+        { id: 'other', kind: 'endpoint', label: 'O' },
+      ];
+      const initial =
+        `<${ALICE}> <${KNOWS}> _:remote__b0 .\n` +
+        provQuad(`<${ALICE}>`, `<${KNOWS}>`, '_:remote__b0', 'remote') +
+        `<${ALICE}> <http://example.org/name> "Alice" .\n` +
+        provQuad(`<${ALICE}>`, '<http://example.org/name>', '"Alice"', 'other');
+      const { fixture, http } = await setupWithInitialResponse(sources, {
+        iri: ALICE,
+        quads: initial,
+        total: 2,
+        perSource: {
+          remote: { count: 1, truncated: true },
+          other: { count: 1, truncated: false },
+        },
+      });
+
+      requireQuadTable(fixture).expand.emit({
+        sourceId: 'remote',
+        path: [{ predicate: KNOWS, inverse: false }],
+      });
+      fixture.detectChanges();
+
+      const req = http.expectOne('/api/describe');
+      expect(req.request.body.sources).toEqual(['remote']);
+      req.flush({
+        iri: ALICE,
+        quads:
+          `<${ALICE}> <${KNOWS}> _:remote__b0 .\n` +
+          provQuad(`<${ALICE}>`, `<${KNOWS}>`, '_:remote__b0', 'remote') +
+          `_:remote__b0 <http://example.org/since> "2021" .\n` +
+          provQuad('_:remote__b0', '<http://example.org/since>', '"2021"', 'remote'),
+        total: 2,
+        perSource: { remote: { count: 2, truncated: false } },
+      });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const text = requireQuadTable(fixture).quadsText;
+      expect(text).toContain('http://example.org/since'); // fresh remote hop spliced in
+      expect(text).toContain('"Alice"'); // the `other` source's quad is preserved
+      http.verify();
+    });
+
+    it('accumulates multiple expansions for the same source in expandedPaths', async () => {
+      const wire0 =
+        `<${ALICE}> <${KNOWS}> _:remote__b0 .\n` +
+        provQuad(`<${ALICE}>`, `<${KNOWS}>`, '_:remote__b0', 'remote') +
+        `<${ALICE}> <http://example.org/likes> _:remote__b1 .\n` +
+        provQuad(`<${ALICE}>`, '<http://example.org/likes>', '_:remote__b1', 'remote');
+      const { fixture, http } = await setupWithInitialResponse(SOURCES_WITH_ENDPOINT, {
+        iri: ALICE,
+        quads: wire0,
+        total: 2,
+        perSource: { remote: { count: 2, truncated: true } },
+      });
+
+      requireQuadTable(fixture).expand.emit({
+        sourceId: 'remote',
+        path: [{ predicate: KNOWS, inverse: false }],
+      });
+      fixture.detectChanges();
+      http.expectOne('/api/describe').flush({
+        iri: ALICE,
+        quads: wire0,
+        total: 2,
+        perSource: { remote: { count: 2, truncated: true } },
+      });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      requireQuadTable(fixture).expand.emit({
+        sourceId: 'remote',
+        path: [{ predicate: 'http://example.org/likes', inverse: false }],
+      });
+      fixture.detectChanges();
+      const req = http.expectOne('/api/describe');
+      expect(req.request.body.expandedPaths).toEqual({
+        remote: [
+          [{ predicate: KNOWS, inverse: false }],
+          [{ predicate: 'http://example.org/likes', inverse: false }],
+        ],
+      });
+      req.flush({ iri: ALICE, quads: wire0, total: 2, perSource: { remote: { count: 2, truncated: true } } });
+      http.verify();
+    });
+
+    it('does not touch the URL params on expand', async () => {
+      const wire0 =
+        `<${ALICE}> <${KNOWS}> _:remote__b0 .\n` +
+        provQuad(`<${ALICE}>`, `<${KNOWS}>`, '_:remote__b0', 'remote');
+      const { fixture, http, router } = await setupWithInitialResponse(SOURCES_WITH_ENDPOINT, {
+        iri: ALICE,
+        quads: wire0,
+        total: 1,
+        perSource: { remote: { count: 1, truncated: true } },
+      });
+      const urlBefore = router.url;
+      requireQuadTable(fixture).expand.emit({
+        sourceId: 'remote',
+        path: [{ predicate: KNOWS, inverse: false }],
+      });
+      fixture.detectChanges();
+      http.expectOne('/api/describe').flush({ iri: ALICE, quads: wire0, total: 1, perSource: { remote: { count: 1, truncated: true } } });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(router.url).toBe(urlBefore);
+      const tree = router.parseUrl(router.url);
+      expect([...tree.queryParamMap.keys].sort()).toEqual(['iri']);
+      http.verify();
+    });
   });
 
   describe('Turtle/TriG tab', () => {

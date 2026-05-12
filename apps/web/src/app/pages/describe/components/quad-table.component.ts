@@ -1,8 +1,20 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  input,
+  output,
+} from '@angular/core';
 import type { Quad, Term } from 'n3';
 import { describeProvenance, parseDescribeWire } from 'common';
 import type { DisplayContext, Term as CoreTerm } from '@app/core';
 import { TermCellComponent } from '@app/pages/query/components/result/term-cell.component';
+import {
+  describeBnodePath,
+  isExpandableBnode,
+  MAX_EXPANSION_PATH_STEPS,
+  type DescribeBnodePathResult,
+} from '../utils/describe-bnode-path';
 
 interface DisplayRow {
   s: CoreTerm;
@@ -11,6 +23,9 @@ interface DisplayRow {
   // Only present for named/blank graphs — the default graph renders as nothing.
   g: CoreTerm | null;
   origins: string[];
+  // Set when `o` is a dangling, endpoint-origin blank node within the step cap —
+  // the in-place expand affordance (ADR-0019).
+  expand: DescribeBnodePathResult | null;
 }
 
 interface DisplayGroup {
@@ -41,6 +56,19 @@ function termKey(t: Term): string {
     return `<<${quadKey(t as unknown as Quad)}>>`;
   }
   return `${t.termType}:${t.value}`;
+}
+
+function expandTargetFor(
+  object: Term,
+  quads: ReadonlyArray<Quad>,
+  seed: string,
+  endpointIds: ReadonlySet<string>,
+): DescribeBnodePathResult | null {
+  if (object.termType !== 'BlankNode') return null;
+  if (!isExpandableBnode(quads, object.value, endpointIds)) return null;
+  const found = describeBnodePath(quads, object.value, seed);
+  if (found === null || found.path.length > MAX_EXPANSION_PATH_STEPS) return null;
+  return found;
 }
 
 @Component({
@@ -82,6 +110,15 @@ function termKey(t: Term): string {
                 </td>
                 <td class="border border-border-muted px-2 py-1">
                   <app-term-cell [term]="row.o" [context]="context()" />
+                  @if (row.expand; as ex) {
+                    <button
+                      data-testid="expand-bnode"
+                      type="button"
+                      title="Expand this blank node one hop deeper"
+                      class="ml-1.5 cursor-pointer rounded border border-border bg-surface-sunken px-1 py-0.5 text-[10px] font-medium text-foreground-muted transition-colors hover:bg-surface hover:text-foreground"
+                      (click)="expand.emit(ex)"
+                    >⤵ expand</button>
+                  }
                 </td>
                 <td class="border border-border-muted px-2 py-1">
                   @if (row.g; as g) {
@@ -109,11 +146,15 @@ export class QuadTableComponent {
   readonly seed = input<string>('');
   readonly fromSourcePredicate = input<string>(DEFAULT_FROM_SOURCE_PREDICATE);
   readonly context = input<DisplayContext>({ prefixes: {} });
+  /** Ids of `endpoint` sources — only their dangling bnodes get an expand affordance. */
+  readonly endpointSourceIds = input<readonly string[]>([]);
+  readonly expand = output<DescribeBnodePathResult>();
 
   readonly groups = computed<DisplayGroup[]>(() => {
     const text = this.quadsText();
     const seed = this.seed();
     const predicate = this.fromSourcePredicate();
+    const endpointIds = new Set(this.endpointSourceIds());
     const all = text.trim().length === 0 ? [] : parseDescribeWire(text);
     const { quads, originsByQuad } = describeProvenance.strip(all, predicate);
     const bySubject = new Map<string, DisplayRow[]>();
@@ -125,6 +166,7 @@ export class QuadTableComponent {
         o: asCoreTerm(q.object),
         g: q.graph.termType === 'DefaultGraph' ? null : asCoreTerm(q.graph),
         origins: originsByQuad.get(quadKey(q)) ?? [],
+        expand: expandTargetFor(q.object, quads, seed, endpointIds),
       };
       const list = bySubject.get(key);
       if (list) list.push(row);
