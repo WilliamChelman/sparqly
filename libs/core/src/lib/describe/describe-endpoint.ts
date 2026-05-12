@@ -1,6 +1,6 @@
 import { parseDescribeWire } from 'common';
 import { Store, type Literal, type NamedNode, type Quad, type Term } from 'n3';
-import { describeStore, type DescribeStoreResult } from './describe-store';
+import { describeStore } from './describe-store';
 import {
   DEFAULT_ENDPOINT_TIMEOUT_MS,
   collectInjectedHeaders,
@@ -8,18 +8,25 @@ import {
 } from '../engine';
 import type { ParsedEndpointSource } from '../sources';
 
-/** Blank-node-chain depth fetched per remote CONSTRUCT round trip. */
-const DEPTH_CHUNK = 4;
-/** Round-trip safety net — chains deeper than this are reported truncated. */
-const MAX_DEPTH = 64;
 /** Quoted triples per RDF-star post-pass query. */
 const POST_PASS_BATCH = 50;
 const XSD_STRING = 'http://www.w3.org/2001/XMLSchema#string';
+
+/** One hop of a UI-driven blank-node expansion path from the seed (ADR-0019). */
+export interface PathStep {
+  predicate: string;
+  inverse: boolean;
+}
 
 export interface DescribeEndpointOptions {
   endpoint: ParsedEndpointSource;
   seed: NamedNode;
   perSourceLimit: number;
+  /**
+   * UI-driven blank-node expansion paths (ADR-0019). Wired through but inert
+   * until the path-expansion slice lands; defaults to no paths (depth-0).
+   */
+  paths?: PathStep[][];
 }
 
 export interface DescribeEndpointResult {
@@ -28,82 +35,75 @@ export interface DescribeEndpointResult {
 }
 
 /**
- * Describe a seed IRI against a remote SPARQL endpoint (ADR-0015, issue #189).
+ * Describe a seed IRI against a remote SPARQL endpoint — depth-0 (ADR-0019).
  *
- * Runs the same algorithm contract as {@link describeStore} — seed-as-s/o,
- * symmetric blank-node-chain fixpoint, RDF-star post-pass, no named-IRI
- * traversal — but over the wire via iterative `CONSTRUCT` queries
- * instead of `store.match`. The blank-node closure is fetched `DEPTH_CHUNK`
- * levels at a time (one query per edge direction); each response is internally
- * consistent (the endpoint evaluates the whole query), so loading them into a
- * fresh `Store` and running `describeStore` reproduces the algorithm exactly
- * for everything within the fetched depth. Iteration stops once the description stops growing or the
- * per-source cap fires, keeping wire round-trips bounded.
+ * Fetches only the seed's direct quads: one `CONSTRUCT` for outgoing edges
+ * (`<seed> ?p ?o`) and one for incoming edges (`?s ?p <seed>`), kept as two
+ * queries rather than a single `UNION` as `SQ142` insurance, plus the existing
+ * best-effort RDF-star post-pass over the small result. The responses are
+ * loaded into a fresh `Store`, pruned by {@link describeStore} (which here adds
+ * nothing past the fetched quads — blank nodes come back dangling), and capped
+ * at `perSourceLimit`.
+ *
+ * Unlike {@link describeStore} this is *not* a blank-node fixpoint: chasing the
+ * chain deeper is an explicit UI gesture, carried by {@link PathStep} paths
+ * (inert for now). The result is `truncated` when the cap fired, an edge
+ * direction failed, or any dangling blank node remains.
  */
 export async function describeEndpoint(
   options: DescribeEndpointOptions,
 ): Promise<DescribeEndpointResult> {
   const { endpoint, seed, perSourceLimit } = options;
   const run = makeConstructRunner(endpoint);
+  const s = `<${seed.value}>`;
 
-  let desc: DescribeStoreResult = { quads: [], truncated: false };
-  let prevSize = -1;
-  let depth = 0;
-  let depthExhausted = false;
-  for (;;) {
-    depth += DEPTH_CHUNK;
-    const store = new Store();
-    const [outgoing, incoming] = buildClosureQueries(seed.value, depth);
-    const outP = run(outgoing);
-    const inP = run(incoming);
-    let outQuads: Quad[];
-    let inQuads: Quad[];
-    try {
-      [outQuads, inQuads] = await Promise.all([outP, inP]);
-    } catch (err) {
-      // One leg may still be in flight — keep its eventual rejection from
-      // becoming an unhandled rejection.
-      outP.catch(() => undefined);
-      inP.catch(() => undefined);
-      // Deep closure rounds grow the `UNION`; some engines (notably Virtuoso)
-      // reject or run out of memory on the larger query. If an earlier round
-      // already produced a description, treat the failure as a depth cutoff
-      // rather than failing the whole describe.
-      if (prevSize >= 0) {
-        depthExhausted = true;
-        break;
-      }
-      throw err;
-    }
-    store.addQuads(outQuads);
-    store.addQuads(inQuads);
-    desc = describeStore({ store, seed, perSourceLimit });
-    if (
-      desc.truncated ||
-      desc.quads.length === 0 ||
-      desc.quads.length === prevSize ||
-      !hasBlankNode(desc.quads)
-    ) {
-      // No blank node in the description ⇒ the blank-node-chain fixpoint is
-      // already reached; deeper rounds cannot add anything.
-      break;
-    }
-    prevSize = desc.quads.length;
-    if (depth >= MAX_DEPTH) {
-      depthExhausted = true;
-      break;
-    }
-  }
+  const direct = await fetchBothDirections(
+    run(`CONSTRUCT { ${s} ?p ?o } WHERE { ${s} ?p ?o . }`),
+    run(`CONSTRUCT { ?s ?p ${s} } WHERE { ?s ?p ${s} . }`),
+  );
+
+  const store = new Store();
+  store.addQuads(direct.quads);
+  let desc = describeStore({ store, seed, perSourceLimit });
 
   const annotations = await fetchAnnotations(run, desc.quads);
-  if (annotations.length === 0) {
-    return { quads: desc.quads, truncated: desc.truncated || depthExhausted };
+  if (annotations.length > 0) {
+    const merged = new Store();
+    merged.addQuads(desc.quads);
+    merged.addQuads(annotations);
+    desc = describeStore({ store: merged, seed, perSourceLimit });
   }
-  const merged = new Store();
-  merged.addQuads(desc.quads);
-  merged.addQuads(annotations);
-  const final = describeStore({ store: merged, seed, perSourceLimit });
-  return { quads: final.quads, truncated: final.truncated || depthExhausted };
+
+  const truncated =
+    desc.truncated || direct.partial || hasBlankNode(desc.quads);
+  return { quads: desc.quads, truncated };
+}
+
+/**
+ * Await both edge-direction queries. If one rejects while the other resolves,
+ * return the partial result flagged `partial`; only a double failure throws.
+ */
+async function fetchBothDirections(
+  outgoing: Promise<Quad[]>,
+  incoming: Promise<Quad[]>,
+): Promise<{ quads: Quad[]; partial: boolean }> {
+  const [out, inc] = await Promise.allSettled([outgoing, incoming]);
+  const quads: Quad[] = [];
+  let fulfilled = 0;
+  let partial = false;
+  for (const r of [out, inc]) {
+    if (r.status === 'fulfilled') {
+      quads.push(...r.value);
+      fulfilled += 1;
+    } else {
+      partial = true;
+    }
+  }
+  if (fulfilled === 0) {
+    throw (out as PromiseRejectedResult).reason ??
+      (inc as PromiseRejectedResult).reason;
+  }
+  return { quads, partial };
 }
 
 function hasBlankNode(quads: ReadonlyArray<Quad>): boolean {
@@ -142,49 +142,6 @@ function makeConstructRunner(
       clearTimeout(timer);
     }
   };
-}
-
-/**
- * The two `CONSTRUCT` queries (outgoing `?z ?p ?o`, incoming `?s ?p ?z`) that
- * together fetch a superset of the seed's description down to `maxDepth`
- * blank-node hops. `?z` is bound by a `UNION` over chain lengths `0..maxDepth`:
- * length 0 is the seed itself (`VALUES`); the length-`k` branch walks a `k`-step
- * blank-only path out of the seed (either edge direction at every step) with
- * per-branch `!sameTerm` filters forbidding revisits, so each branch is finite
- * even on cyclic data and empties once `k` exceeds the reachable blank-node
- * count. `describeStore` then prunes the superset down to the exact algorithm
- * result.
- *
- * Why two queries instead of one with `BIND(?z AS ?s)` spokes: Virtuoso (e.g.
- * Fedlex's) rejects a `CONSTRUCT` whose `WHERE` is a many-branch `UNION` with
- * `BIND` inside — `SQ142: Different number of expected and generated columns` —
- * so every branch here keeps the same projected variables and no `BIND`.
- */
-function buildClosureQueries(
-  seedIri: string,
-  maxDepth: number,
-): readonly [string, string] {
-  const seed = `<${seedIri}>`;
-  const branches: string[] = [`VALUES ?z { ${seed} }`];
-  for (let k = 1; k <= maxDepth; k++) {
-    const parts: string[] = [];
-    const nodes: string[] = [];
-    let prev = seed;
-    for (let i = 1; i <= k; i++) {
-      const node = i === k ? '?z' : `?m${i}`;
-      parts.push(`{ ${prev} ?e${i} ${node} } UNION { ${node} ?e${i} ${prev} }`);
-      parts.push(`FILTER(isBlank(${node}))`);
-      for (const seen of nodes) parts.push(`FILTER(!sameTerm(${node}, ${seen}))`);
-      nodes.push(node);
-      prev = node;
-    }
-    branches.push(parts.join(' '));
-  }
-  const where = `{ ${branches.join(' } UNION { ')} }`;
-  return [
-    `CONSTRUCT { ?z ?p ?o } WHERE { ${where} ?z ?p ?o . }`,
-    `CONSTRUCT { ?s ?p ?z } WHERE { ${where} ?s ?p ?z . }`,
-  ];
 }
 
 /**

@@ -17,7 +17,7 @@ function storeFrom(quads: readonly unknown[]): Store {
   return s;
 }
 
-describe('describeEndpoint', () => {
+describe('describeEndpoint (depth-0, ADR-0019)', () => {
   let ep: FakeSparqlEndpoint | undefined;
 
   afterEach(async () => {
@@ -38,7 +38,7 @@ describe('describeEndpoint', () => {
     return describeEndpoint({ endpoint, seed: namedNode(iri), perSourceLimit });
   }
 
-  it('emits every quad where the seed appears as subject or object', async () => {
+  it('emits every quad where the seed appears as subject or object via two CONSTRUCT queries', async () => {
     const { quads } = ttl`
       @prefix ex: <http://example.org/> .
       ex:alice ex:knows ex:bob .
@@ -53,51 +53,9 @@ describe('describeEndpoint', () => {
     expect(result.truncated).toBe(false);
     // alice knows bob, carol knows alice, alice age 30 = 3.
     expect(result.quads).toHaveLength(3);
-    // No blank node in the description ⇒ no deeper round trip is fired
-    // (two closure queries + one RDF-star post-pass batch).
+    // One outgoing CONSTRUCT, one incoming CONSTRUCT, one RDF-star post-pass
+    // batch — and never anything deeper.
     expect(ep?.requestCount() ?? 0).toBe(3);
-  });
-
-  it('expands a multi-hop blank-node chain, matching describeStore', async () => {
-    const { quads } = ttl`
-      @prefix ex: <http://example.org/> .
-      ex:alice ex:list _:b1 .
-      _:b1 ex:next _:b2 .
-      _:b2 ex:next _:b3 .
-      _:b3 ex:value "tail" .
-      ex:noise ex:irrelevant "x" .
-    `;
-    const result = await describeOver(
-      storeFrom(quads),
-      'http://example.org/alice',
-    );
-    expect(result.truncated).toBe(false);
-    expect(result.quads).toHaveLength(4);
-    expect(result.quads.map((q) => q.predicate.value).sort()).toEqual([
-      'http://example.org/list',
-      'http://example.org/next',
-      'http://example.org/next',
-      'http://example.org/value',
-    ]);
-  });
-
-  it('expands an o-side blank-node chain symmetrically', async () => {
-    const { quads } = ttl`
-      @prefix ex: <http://example.org/> .
-      _:b1 ex:about ex:alice .
-      _:b1 ex:source "wiki" .
-      _:b1 ex:confidence 0.9 .
-      ex:other ex:p ex:thing .
-    `;
-    const result = await describeOver(
-      storeFrom(quads),
-      'http://example.org/alice',
-    );
-    expect(result.truncated).toBe(false);
-    expect(result.quads).toHaveLength(3);
-    expect(result.quads.every((q) => q.subject.termType === 'BlankNode')).toBe(
-      true,
-    );
   });
 
   it('does not traverse named IRIs', async () => {
@@ -116,31 +74,50 @@ describe('describeEndpoint', () => {
     expect(result.quads[0].object.value).toBe('http://example.org/bob');
   });
 
-  it('terminates on a blank-node cycle within bounded round trips', async () => {
+  it('leaves blank nodes dangling — no automatic expansion — and reports truncated', async () => {
     const { quads } = ttl`
       @prefix ex: <http://example.org/> .
-      ex:alice ex:has _:b1 .
-      _:b1 ex:loops _:b2 .
-      _:b2 ex:loops _:b1 .
-      _:b1 ex:label "first" .
+      ex:alice ex:list _:b1 .
+      _:b1 ex:next _:b2 .
+      _:b2 ex:value "tail" .
     `;
     const result = await describeOver(
       storeFrom(quads),
       'http://example.org/alice',
     );
-    expect(result.truncated).toBe(false);
-    expect(result.quads).toHaveLength(4);
-    expect(ep?.requestCount() ?? 0).toBeLessThanOrEqual(5);
+    // Only the seed's direct edge to the blank node; the chain past it is
+    // not fetched.
+    expect(result.quads).toHaveLength(1);
+    expect(result.quads[0].predicate.value).toBe('http://example.org/list');
+    expect(result.quads[0].object.termType).toBe('BlankNode');
+    expect(result.truncated).toBe(true);
   });
 
-  it('reports truncated and stays within bounded round trips when the cap fires', async () => {
+  it('leaves an o-side dangling blank node truncated too', async () => {
     const { quads } = ttl`
       @prefix ex: <http://example.org/> .
-      ex:alice ex:has _:b1 .
-      _:b1 ex:a "1" .
-      _:b1 ex:b "2" .
-      _:b1 ex:c "3" .
-      _:b1 ex:d "4" .
+      _:b1 ex:about ex:alice .
+      _:b1 ex:source "wiki" .
+      ex:other ex:p ex:thing .
+    `;
+    const result = await describeOver(
+      storeFrom(quads),
+      'http://example.org/alice',
+    );
+    // _:b1 ex:about ex:alice is the only quad mentioning the seed; _:b1's
+    // other properties are a hop away and not fetched.
+    expect(result.quads).toHaveLength(1);
+    expect(result.quads[0].subject.termType).toBe('BlankNode');
+    expect(result.truncated).toBe(true);
+  });
+
+  it('reports truncated when the per-source cap fires', async () => {
+    const { quads } = ttl`
+      @prefix ex: <http://example.org/> .
+      ex:alice ex:a "1" .
+      ex:alice ex:b "2" .
+      ex:alice ex:c "3" .
+      ex:alice ex:d "4" .
     `;
     const result = await describeOver(
       storeFrom(quads),
@@ -149,7 +126,6 @@ describe('describeEndpoint', () => {
     );
     expect(result.truncated).toBe(true);
     expect(result.quads).toHaveLength(2);
-    expect(ep?.requestCount() ?? 0).toBeLessThanOrEqual(5);
   });
 
   it('returns an empty result when the seed is absent', async () => {
@@ -213,35 +189,55 @@ describe('describeEndpoint', () => {
     expect(annotated?.object.value).toBe('wiki');
   });
 
-  it('returns the last good round as truncated when a deeper query fails', async () => {
-    // First closure round returns a seed→blank edge, forcing a second round;
-    // that one 500s (Virtuoso rejects the larger UNION). The partial
-    // description must come back marked truncated, not as an error.
-    let n = 0;
+  it('degrades gracefully when one edge direction fails: partial result, truncated', async () => {
     ep = await startFakeSparqlEndpoint(({ query }) => {
-      // Annotation post-pass (quoted-triple subjects) — no annotations.
-      if (query.includes('<<')) return { body: '' };
-      n += 1;
-      if (n <= 2) {
-        return {
-          contentType: 'application/n-triples',
-          body:
-            '<http://example.org/alice> <http://example.org/has> _:b1 .\n' +
-            '_:b1 <http://example.org/label> "first" .\n',
-        };
+      if (query.includes('<<')) return { body: '' }; // RDF-star post-pass
+      if (query.includes('?s ?p <http://example.org/alice>')) {
+        return { status: 500, body: 'incoming leg blew up' };
       }
-      return { status: 500, body: 'SQ142: too many columns' };
+      return {
+        contentType: 'application/n-triples',
+        body: '<http://example.org/alice> <http://example.org/knows> <http://example.org/bob> .\n',
+      };
     });
-    const endpoint: ParsedEndpointSource = {
-      kind: 'endpoint',
-      endpoint: ep.url,
-    };
+    const endpoint: ParsedEndpointSource = { kind: 'endpoint', endpoint: ep.url };
     const result = await describeEndpoint({
       endpoint,
       seed: namedNode('http://example.org/alice'),
       perSourceLimit: 10000,
     });
+    expect(result.quads).toHaveLength(1);
+    expect(result.quads[0].object.value).toBe('http://example.org/bob');
     expect(result.truncated).toBe(true);
-    expect(result.quads).toHaveLength(2);
+  });
+
+  it('throws when both edge directions fail', async () => {
+    ep = await startFakeSparqlEndpoint(() => ({ status: 500, body: 'down' }));
+    const endpoint: ParsedEndpointSource = { kind: 'endpoint', endpoint: ep.url };
+    await expect(
+      describeEndpoint({
+        endpoint,
+        seed: namedNode('http://example.org/alice'),
+        perSourceLimit: 10000,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('accepts an optional paths argument (inert for now)', async () => {
+    const { quads } = ttl`
+      @prefix ex: <http://example.org/> .
+      ex:alice ex:knows ex:bob .
+    `;
+    ep = await startStoreBackedSparqlEndpoint(storeFrom(quads));
+    const endpoint: ParsedEndpointSource = { kind: 'endpoint', endpoint: ep.url };
+    const result = await describeEndpoint({
+      endpoint,
+      seed: namedNode('http://example.org/alice'),
+      perSourceLimit: 10000,
+      paths: [[{ predicate: 'http://example.org/knows', inverse: false }]],
+    });
+    // Path expansion is not wired yet — same depth-0 result as without paths.
+    expect(result.quads).toHaveLength(1);
+    expect(result.truncated).toBe(false);
   });
 });

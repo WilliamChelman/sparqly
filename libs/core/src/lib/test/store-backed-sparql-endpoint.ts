@@ -9,10 +9,9 @@ import {
 /**
  * A fake SPARQL HTTP endpoint that answers CONSTRUCT queries by evaluating them
  * (via Comunica) against an in-memory n3 `Store`. Blank-node identity is
- * preserved within each response because the whole query runs in-process —
- * exactly what `describeEndpoint`'s iterative CONSTRUCTs assume. Responses use
- * `serializeDescribeWire` output (line-oriented N-Quads with `<<...>>`
- * quoted-triple subjects) so RDF-star annotations round-trip.
+ * preserved within each response because the whole query runs in-process.
+ * Responses use `serializeDescribeWire` output (line-oriented N-Quads with
+ * `<<...>>` quoted-triple subjects) so RDF-star annotations round-trip.
  */
 export async function startStoreBackedSparqlEndpoint(
   store: Store,
