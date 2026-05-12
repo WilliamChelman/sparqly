@@ -138,6 +138,19 @@ export function verbosityFieldsFor(
         },
       ],
     },
+    {
+      key: 'logFormat',
+      schema: z.enum(['text', 'json']),
+      default: 'text',
+      env: ['SPARQLY_LOG_FORMAT'],
+      flags: [
+        {
+          spec: '--log-format <format>',
+          description:
+            'Log output format on stderr: "text" (human-readable) or "json" (one object per line). Default: text.',
+        },
+      ],
+    },
   ];
 }
 

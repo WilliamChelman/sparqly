@@ -130,6 +130,7 @@ export function registerSpec<T extends Record<string, unknown>>(
       configureLogger({
         verbose: data.verbose === true,
         quiet: data.quiet === true,
+        logFormat: data.logFormat === 'json' ? 'json' : 'text',
       });
       if (fileLayers.filepath && data.verbose === true) {
         new Logger('sparqly').log(`Loaded config from ${fileLayers.filepath}`);

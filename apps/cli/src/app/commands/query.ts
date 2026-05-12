@@ -38,6 +38,7 @@ interface QueryConfig {
   out?: string;
   verbose?: boolean;
   quiet?: boolean;
+  logFormat?: 'text' | 'json';
 }
 
 const sourceSpecObjectSchema = z.record(z.string(), z.unknown());
@@ -109,9 +110,10 @@ export const querySpec: CommandSpec<QueryConfig> = {
   configScope: { sources: true },
   exitCode: () => 1,
   handler: async (config) => {
-    configureLogger({
+    const boundaryLog = configureLogger({
       verbose: config.verbose === true,
       quiet: config.quiet === true,
+      logFormat: config.logFormat,
     });
 
     const stdinQuery = await readStdin();
@@ -152,20 +154,22 @@ export const querySpec: CommandSpec<QueryConfig> = {
 
     const loadStart = Date.now();
     const sources = await resolveSource(target, { registry });
+    const loadMs = Date.now() - loadStart;
     let engine: QueryEngine;
     if (sources.mode === 'pass-through') {
-      logger.log(
-        `Federating to endpoint ${sources.endpoint.endpoint} in ${
-          Date.now() - loadStart
-        }ms`,
-      );
+      boundaryLog.debug('source-loaded', {
+        mode: sources.mode,
+        endpoint: sources.endpoint.endpoint,
+        ms: loadMs,
+      });
       engine = new QueryEngine(sources.endpoint);
     } else {
-      logger.log(
-        `Loaded ${sources.files.length} file(s) (${sources.store.size} quads) in ${
-          Date.now() - loadStart
-        }ms`,
-      );
+      boundaryLog.debug('source-loaded', {
+        mode: sources.mode,
+        files: sources.files.length,
+        quads: sources.store.size,
+        ms: loadMs,
+      });
       engine = new QueryEngine(sources.store);
     }
 
