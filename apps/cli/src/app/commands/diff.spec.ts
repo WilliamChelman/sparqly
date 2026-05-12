@@ -513,14 +513,12 @@ describe('collectSnippetKeysForHunkedDiff — scope to changed hunks only', () =
 
   it('returns the union of unique (file, line) keys across both sides of every hunk', () => {
     const keys = collectSnippetKeysForHunkedDiff({
-      changed: [
+      hunks: [
         hunk({
           left: [{ file: 'file:///l.ttl', line: 20 }],
           right: [{ file: 'file:///r.ttl', line: 25 }],
         }),
       ],
-      removed: [],
-      added: [],
     });
 
     expect([...keys.keys()].sort()).toEqual([
@@ -531,9 +529,7 @@ describe('collectSnippetKeysForHunkedDiff — scope to changed hunks only', () =
 
   it('dedupes identical (file, line) pairs across multiple records on the same hunk', () => {
     const keys = collectSnippetKeysForHunkedDiff({
-      changed: [],
-      removed: [],
-      added: [
+      hunks: [
         hunk({
           right: [
             { file: 'file:///r.ttl', line: 7 },
@@ -547,19 +543,13 @@ describe('collectSnippetKeysForHunkedDiff — scope to changed hunks only', () =
 
   it('skips records that do not carry a line', () => {
     const keys = collectSnippetKeysForHunkedDiff({
-      changed: [],
-      removed: [hunk({ left: [{ file: 'file:///l.ttl' }] })],
-      added: [],
+      hunks: [hunk({ left: [{ file: 'file:///l.ttl' }] })],
     });
     expect(keys.size).toBe(0);
   });
 
   it('returns an empty map when there are no hunks', () => {
-    const keys = collectSnippetKeysForHunkedDiff({
-      changed: [],
-      removed: [],
-      added: [],
-    });
+    const keys = collectSnippetKeysForHunkedDiff({ hunks: [] });
     expect(keys.size).toBe(0);
   });
 });

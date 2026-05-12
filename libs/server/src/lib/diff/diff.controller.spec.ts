@@ -70,13 +70,13 @@ describe('POST /api/diff', () => {
     expect(resp.status).toBe(400);
   });
 
-  it('returns kind=grouped carrying a HunkedRdfDiff (changed/removed/added hunks + totals) on a glob×glob pair', async () => {
+  it('returns kind=grouped carrying a HunkedRdfDiff (one anchor-sorted hunk list + totals) on a glob×glob pair', async () => {
     const resp = await postJson({ left: '@alpha', right: '@beta' });
     expect(resp.status).toBe(200);
     const json = (await resp.json()) as {
       kind: string;
       hunked: {
-        changed: Array<{
+        hunks: Array<{
           anchor: string;
           state: string;
           removed: number;
@@ -87,17 +87,13 @@ describe('POST /api/diff', () => {
             right: Array<{ file: string; line?: number }>;
           };
         }>;
-        removed: unknown[];
-        added: unknown[];
         totals: { left: number; right: number };
       };
     };
     expect(json.kind).toBe('grouped');
     expect(json.hunked.totals).toEqual({ left: 2, right: 2 });
-    expect(json.hunked.changed).toHaveLength(1);
-    expect(json.hunked.removed).toHaveLength(0);
-    expect(json.hunked.added).toHaveLength(0);
-    const hunk = json.hunked.changed[0];
+    expect(json.hunked.hunks).toHaveLength(1);
+    const hunk = json.hunked.hunks[0];
     expect(hunk.anchor).toBe('http://example.org/a');
     expect(hunk.state).toBe('changed');
     expect(hunk.removed).toBe(1);
@@ -161,27 +157,15 @@ describe('POST /api/diff', () => {
     const json = (await resp.json()) as {
       kind: string;
       hunked: {
-        changed: Array<{
-          sourceRecords: { left: unknown[]; right: unknown[] };
-        }>;
-        removed: Array<{
-          sourceRecords: { left: unknown[]; right: unknown[] };
-        }>;
-        added: Array<{
+        hunks: Array<{
           sourceRecords: { left: unknown[]; right: unknown[] };
         }>;
       };
     };
     expect(json.kind).toBe('grouped');
-    for (const section of [
-      json.hunked.changed,
-      json.hunked.removed,
-      json.hunked.added,
-    ]) {
-      for (const h of section) {
-        expect(h.sourceRecords.left).toEqual([]);
-        expect(h.sourceRecords.right).toEqual([]);
-      }
+    for (const h of json.hunked.hunks) {
+      expect(h.sourceRecords.left).toEqual([]);
+      expect(h.sourceRecords.right).toEqual([]);
     }
   });
 });
@@ -216,11 +200,9 @@ describe('POST /api/diff — single served source', () => {
     expect(resp.status).toBe(200);
     const json = (await resp.json()) as {
       kind: string;
-      hunked?: { changed?: unknown[]; removed?: unknown[]; added?: unknown[] };
+      hunked?: { hunks?: unknown[] };
     };
     expect(json.kind).toBe('grouped');
-    expect(json.hunked?.changed ?? []).toEqual([]);
-    expect(json.hunked?.removed ?? []).toEqual([]);
-    expect(json.hunked?.added ?? []).toEqual([]);
+    expect(json.hunked?.hunks ?? []).toEqual([]);
   });
 });

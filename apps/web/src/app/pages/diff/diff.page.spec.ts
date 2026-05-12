@@ -212,9 +212,7 @@ describe('DiffPage', () => {
     diffStub.calls[0].responses.next({
       kind: 'grouped',
       hunked: {
-        changed: [],
-        removed: [],
-        added: [
+        hunks: [
           {
             anchor: 'http://example.org/a',
             state: 'added',
@@ -324,9 +322,7 @@ describe('DiffPage', () => {
     diffStub.calls[0].responses.next({
       kind: 'grouped',
       hunked: {
-        changed: [],
-        removed: [],
-        added: [
+        hunks: [
           {
             anchor: 'http://example.org/a',
             state: 'added',

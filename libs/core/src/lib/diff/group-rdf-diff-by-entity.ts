@@ -9,14 +9,14 @@ const SH_PATH_IRI = 'http://www.w3.org/ns/shacl#path';
 
 export interface HunkedRdfDiff {
   /**
-   * Hunks for entities that exist on both sides — i.e. paired changes. This
-   * is the most informative case and is rendered first.
+   * Every entity hunk in one list, sorted purely by anchor: lexicographic on
+   * the anchor string, with `state` as the only tie-break (`removed` <
+   * `changed` < `added`) — the tie-break exists solely to give a deterministic
+   * order to a left-only and a right-only orphan hunk that happen to share a
+   * canonical bnode label. Orphan hunks (anchors rendered `_:label`) sort
+   * naturally by that string; there is no separate region for them.
    */
-  changed: Hunk[];
-  /** Hunks for entities present only on the left side. */
-  removed: Hunk[];
-  /** Hunks for entities present only on the right side. */
-  added: Hunk[];
+  hunks: Hunk[];
   totals: DiffTotals;
 }
 
@@ -30,9 +30,9 @@ export interface Hunk {
   /** Full IRI of `rdf:type` for the anchor, when present on either side. */
   rdfType?: string;
   /**
-   * Section assignment derived from whether the anchor exists on both sides
-   * (`changed`) or only on the left/right (`removed` / `added`). Mirrors the
-   * section the hunk lives in.
+   * Derived from whether the anchor exists on both sides (`changed`) or only
+   * on the left/right (`removed` / `added`). Drives only the hunk's accent
+   * colour — not its position in the list, which is purely anchor-sorted.
    */
   state: 'changed' | 'removed' | 'added';
   /**
@@ -199,9 +199,7 @@ export function groupRdfDiffByEntity(
     addLine(nquad, '+', diff.sourceRecords.right.get(nquad));
   }
 
-  const changed: Hunk[] = [];
-  const removedSection: Hunk[] = [];
-  const addedSection: Hunk[] = [];
+  const allHunks: Hunk[] = [];
 
   for (const hunk of hunks.values()) {
     compactRdfListsInHunk(
@@ -211,48 +209,42 @@ export function groupRdfDiffByEntity(
     );
     hunk.lines.sort(compareHunkLines);
     if (hunk.orphan === true) {
-      // Orphan hunks have no named anchor in either store — derive section
-      // and state from which sides contributed lines.
-      if (hunk.removed > 0 && hunk.added === 0) {
-        hunk.state = 'removed';
-        removedSection.push(hunk);
-      } else if (hunk.added > 0 && hunk.removed === 0) {
-        hunk.state = 'added';
-        addedSection.push(hunk);
-      } else {
-        hunk.state = 'changed';
-        changed.push(hunk);
-      }
-      continue;
-    }
-    const rdfType = lookupRdfType(hunk.anchor, right.store, left.store);
-    if (rdfType !== undefined) hunk.rdfType = rdfType;
-    const onLeft = anchorPresentInStore(hunk.anchor, left.store);
-    const onRight = anchorPresentInStore(hunk.anchor, right.store);
-    if (onLeft && !onRight) {
-      hunk.state = 'removed';
-      removedSection.push(hunk);
-    } else if (!onLeft && onRight) {
-      hunk.state = 'added';
-      addedSection.push(hunk);
+      // Orphan hunks have no named anchor in either store — derive state from
+      // which sides contributed lines.
+      hunk.state =
+        hunk.removed > 0 && hunk.added === 0
+          ? 'removed'
+          : hunk.added > 0 && hunk.removed === 0
+            ? 'added'
+            : 'changed';
     } else {
-      hunk.state = 'changed';
-      changed.push(hunk);
+      const rdfType = lookupRdfType(hunk.anchor, right.store, left.store);
+      if (rdfType !== undefined) hunk.rdfType = rdfType;
+      const onLeft = anchorPresentInStore(hunk.anchor, left.store);
+      const onRight = anchorPresentInStore(hunk.anchor, right.store);
+      hunk.state =
+        onLeft && !onRight ? 'removed' : !onLeft && onRight ? 'added' : 'changed';
     }
+    allHunks.push(hunk);
   }
 
-  const byAnchor = (a: Hunk, b: Hunk): number =>
-    a.anchor < b.anchor ? -1 : a.anchor > b.anchor ? 1 : 0;
-  changed.sort(byAnchor);
-  removedSection.sort(byAnchor);
-  addedSection.sort(byAnchor);
-
-  return {
-    changed,
-    removed: removedSection,
-    added: addedSection,
-    totals: diff.totals,
+  // One comparator: lexicographic on the anchor, `state` as the only
+  // tie-break (`removed` < `changed` < `added`) — disambiguates a left-only
+  // and a right-only orphan hunk sharing a canonical bnode label.
+  const stateRank: Record<Hunk['state'], number> = {
+    removed: 0,
+    changed: 1,
+    added: 2,
   };
+  allHunks.sort((a, b) =>
+    a.anchor !== b.anchor
+      ? a.anchor < b.anchor
+        ? -1
+        : 1
+      : stateRank[a.state] - stateRank[b.state],
+  );
+
+  return { hunks: allHunks, totals: diff.totals };
 }
 
 function anchorPresentInStore(anchorIri: string, store: Store): boolean {

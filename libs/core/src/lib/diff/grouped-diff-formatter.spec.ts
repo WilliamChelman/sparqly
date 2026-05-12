@@ -92,14 +92,14 @@ describe('formatGroupedRdfDiff', () => {
     );
   });
 
-  it('emits sections in order changed → removed → added, with `(removed)` and `(added)` markers in single-side headers', async () => {
+  it('emits one anchor-sorted list — hunks interleave by IRI, not by state — with `(removed)` and `(added)` markers in single-side headers', async () => {
     const SH = 'http://www.w3.org/ns/shacl#';
     const RDFS = 'http://www.w3.org/2000/01/rdf-schema#';
     const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
     const EX = 'http://example.org/';
 
     // Foo: changed (label flip). Bar: removed only on the left. Baz: added
-    // only on the right. Output must list them in section order.
+    // only on the right. Output lists them sorted by anchor: Bar, Baz, Foo.
     const leftNquads =
       `<${EX}Foo> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
       `<${EX}Foo> <${RDFS}label> "Foo v1" .\n` +
@@ -132,12 +132,12 @@ describe('formatGroupedRdfDiff', () => {
       },
     });
 
-    // changed → removed → added; removed/added carry section state in header.
+    // Sorted by anchor: Bar, Baz, Foo. removed/added carry their state in the header.
     const headerLines = out.split('\n').filter((l) => l.includes('  ['));
     expect(headerLines).toEqual([
-      'ex:Foo  (sh:NodeShape)  [-1 +1]',
       'ex:Bar  (sh:NodeShape)  (removed)  [-2 +0]',
       'ex:Baz  (sh:NodeShape)  (added)  [-0 +2]',
+      'ex:Foo  (sh:NodeShape)  [-1 +1]',
     ]);
   });
 

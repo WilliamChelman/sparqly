@@ -40,9 +40,7 @@ describe('DiffService', () => {
     const response: DiffResponse = {
       kind: 'grouped',
       hunked: {
-        changed: [],
-        removed: [],
-        added: [],
+        hunks: [],
         totals: { left: 0, right: 0 },
       },
     };

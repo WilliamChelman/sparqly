@@ -39,7 +39,7 @@ describe('sparqly diff -f html — large real-world input (ERA shapes)', () => {
     const html = await readFile(reportPath, 'utf8');
     expect(html.startsWith('<!doctype html>')).toBe(true);
     expect(html).toMatch(/<pre[^>]*class="snippet"/);
-    expect(html).toContain('<h2>Removed</h2>');
-    expect(html).toContain('<h2>Added</h2>');
+    expect(html).toContain('<section class="hunks">');
+    expect(html).toMatch(/<article class="hunk (removed|added|changed)">/);
   }, 60000);
 });

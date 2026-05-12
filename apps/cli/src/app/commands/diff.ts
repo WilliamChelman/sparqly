@@ -519,7 +519,7 @@ export const diffSpec: CommandSpec<DiffConfig> = {
  * so this naturally avoids the auto-annotated full-file walk.
  */
 export function collectSnippetKeysForHunkedDiff(
-  hunked: { changed: readonly Hunk[]; removed: readonly Hunk[]; added: readonly Hunk[] },
+  hunked: { hunks: readonly Hunk[] },
 ): Map<string, { file: string; startLine: number; endLine: number }> {
   const seen = new Map<string, { file: string; startLine: number; endLine: number }>();
   const collect = (records: readonly SourceRecord[]): void => {
@@ -534,7 +534,7 @@ export function collectSnippetKeysForHunkedDiff(
       if (!seen.has(key)) seen.set(key, { file: r.file, startLine, endLine });
     }
   };
-  for (const h of [...hunked.changed, ...hunked.removed, ...hunked.added]) {
+  for (const h of hunked.hunks) {
     collect(h.sourceRecords.left);
     collect(h.sourceRecords.right);
   }
@@ -542,7 +542,7 @@ export function collectSnippetKeysForHunkedDiff(
 }
 
 async function fetchSnippetsForHunkedDiff(
-  hunked: { changed: readonly Hunk[]; removed: readonly Hunk[]; added: readonly Hunk[] },
+  hunked: { hunks: readonly Hunk[] },
   context: number,
 ): Promise<HtmlDiffSnippets> {
   const seen = collectSnippetKeysForHunkedDiff(hunked);

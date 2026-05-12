@@ -57,7 +57,7 @@ describe('sparqly diff -f grouped', () => {
     ]);
   });
 
-  it('buckets hunks into changed → removed → added sections with `(removed)` / `(added)` markers and lex sort within each', async () => {
+  it('emits one anchor-sorted hunk list (interleaving changed/removed/added) with `(removed)` / `(added)` markers in single-side headers', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
     await writeFile(
@@ -93,15 +93,15 @@ describe('sparqly diff -f grouped', () => {
     expect(result.exitCode).toBe(1);
     const lines = diffBodyLines(result.stdout);
     expect(lines).toEqual([
-      'ex:Foo  (sh:NodeShape)  [-1 +1]',
-      '- rdfs:label "Foo v1" .',
-      '+ rdfs:label "Foo v2" .',
       'ex:Bar  (sh:NodeShape)  (removed)  [-2 +0]',
       '- a sh:NodeShape .',
       '- rdfs:label "Bar v1" .',
       'ex:Baz  (sh:NodeShape)  (added)  [-0 +2]',
       '+ a sh:NodeShape .',
       '+ rdfs:label "Baz v1" .',
+      'ex:Foo  (sh:NodeShape)  [-1 +1]',
+      '- rdfs:label "Foo v1" .',
+      '+ rdfs:label "Foo v2" .',
     ]);
   });
 

@@ -48,7 +48,7 @@ async function buildHunked(left: string, right: string) {
 describe('composeHtmlDiff — golden fixtures', () => {
   it('empty diff: byte-identical to fixture', async () => {
     const out = composeHtmlDiff(
-      { changed: [], removed: [], added: [], totals: { left: 0, right: 0 } },
+      { hunks: [], totals: { left: 0, right: 0 } },
       emptySnippets,
       { cwd: '/cwd', prefixes: PREFIXES },
     );
@@ -56,7 +56,7 @@ describe('composeHtmlDiff — golden fixtures', () => {
     expect(out).toBe(golden);
   });
 
-  it('changed/removed/added sections all populated, no source records: byte-identical to fixture', async () => {
+  it('changed, removed and added hunks in one anchor-sorted list, no source records: byte-identical to fixture', async () => {
     // Foo: changed (label flip). Bar: removed only. Baz: added only.
     const left =
       `<${EX}Foo> <${RDF_TYPE}> <${SH}NodeShape> .\n` +
@@ -86,7 +86,7 @@ describe('composeHtmlDiff — golden fixtures', () => {
     const hunked = await buildHunked(left, right);
     // Stamp source records so chips render. The composer is pure over its
     // inputs, so we mutate the hunk we got back deterministically.
-    hunked.changed[0].sourceRecords = {
+    hunked.hunks[0].sourceRecords = {
       left: [{ file: 'file:///cwd/a.ttl', line: 7 }],
       right: [{ file: 'file:///cwd/b.ttl', line: 3 }],
     };
@@ -116,7 +116,7 @@ describe('composeHtmlDiff — golden fixtures', () => {
     const left = ``;
     const right = `<${EX}Foo> <${EX}label> "v2" .\n`;
     const hunked = await buildHunked(left, right);
-    hunked.added[0].sourceRecords = {
+    hunked.hunks[0].sourceRecords = {
       left: [],
       right: [{ file: 'file:///cwd/foo.ttl', line: 5 }],
     };
@@ -142,7 +142,7 @@ describe('composeHtmlDiff — golden fixtures', () => {
     const left = ``;
     const right = `<${EX}Foo> <${EX}label> "v2" .\n`;
     const hunked = await buildHunked(left, right);
-    hunked.added[0].sourceRecords = {
+    hunked.hunks[0].sourceRecords = {
       left: [],
       right: [{ file: 'file:///cwd/foo.jsonld' }],
     };

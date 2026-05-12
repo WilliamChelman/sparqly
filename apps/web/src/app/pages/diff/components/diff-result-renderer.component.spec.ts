@@ -62,7 +62,7 @@ function makeLine(side: '-' | '+', subjectPath: string, predicate: string): Hunk
 function emptyHunked(): GroupedDiffResponse {
   return {
     kind: 'grouped',
-    hunked: { changed: [], removed: [], added: [], totals: { left: 0, right: 0 } },
+    hunked: { hunks: [], totals: { left: 0, right: 0 } },
   };
 }
 
@@ -107,7 +107,7 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     const result: GroupedDiffResponse = {
       kind: 'grouped',
       hunked: {
-        changed: [
+        hunks: [
           {
             anchor: 'http://example.org/a',
             state: 'changed',
@@ -121,8 +121,6 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
             sourceRecords: { left: [], right: [] },
           },
         ],
-        removed: [],
-        added: [],
         totals: { left: 4, right: 5 },
       },
     };
@@ -136,9 +134,7 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     const result: GroupedDiffResponse = {
       kind: 'grouped',
       hunked: {
-        changed: [changedHunk()],
-        added: [addedHunk()],
-        removed: [removedHunk()],
+        hunks: [changedHunk(), removedHunk(), addedHunk()],
         totals: { left: 2, right: 2 },
       },
     };
@@ -156,17 +152,16 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     expect(hunks.length).toBe(3);
   });
 
-  it('tags each hunk with the classifier-derived state, not the server-provided bucket', () => {
-    // Server-provided buckets are intentionally swapped: the "added" bucket
-    // contains a hunk whose lines are all `-` (so should classify as removed),
-    // and vice versa. The renderer must trust the classifier when stamping
-    // each hunk's data-state.
+  it('tags each hunk with the classifier-derived state, not the server-provided state', () => {
+    // The hunks' server-provided `state` is intentionally wrong: the first
+    // hunk's lines are all `+` (so should classify as added) yet it says
+    // "removed", and vice versa. The renderer must trust the classifier when
+    // stamping each hunk's data-state.
     const result: GroupedDiffResponse = {
       kind: 'grouped',
       hunked: {
-        changed: [],
-        // server says "removed" but lines are all `+` → classifier says "added"
-        removed: [
+        hunks: [
+          // server says "removed" but lines are all `+` → classifier says "added"
           {
             anchor: 'http://example.org/should-be-added',
             state: 'removed',
@@ -175,9 +170,7 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
             lines: [makeLine('+', 'http://example.org/x', 'http://example.org/p')],
             sourceRecords: { left: [], right: [] },
           },
-        ],
-        // server says "added" but lines are all `-` → classifier says "removed"
-        added: [
+          // server says "added" but lines are all `-` → classifier says "removed"
           {
             anchor: 'http://example.org/should-be-removed',
             state: 'added',
@@ -208,7 +201,7 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     const result: GroupedDiffResponse = {
       kind: 'grouped',
       hunked: {
-        removed: [
+        hunks: [
           {
             anchor: 'http://example.org/gone',
             state: 'removed',
@@ -221,8 +214,6 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
             },
           },
         ],
-        changed: [],
-        added: [],
         totals: { left: 1, right: 0 },
       },
     };
@@ -237,7 +228,7 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     const result: GroupedDiffResponse = {
       kind: 'grouped',
       hunked: {
-        added: [
+        hunks: [
           {
             anchor: 'http://example.org/new',
             state: 'added',
@@ -250,8 +241,6 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
             },
           },
         ],
-        changed: [],
-        removed: [],
         totals: { left: 0, right: 1 },
       },
     };
@@ -265,7 +254,7 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     const result: GroupedDiffResponse = {
       kind: 'grouped',
       hunked: {
-        changed: [
+        hunks: [
           {
             anchor: 'http://example.org/a',
             state: 'changed',
@@ -281,8 +270,6 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
             },
           },
         ],
-        removed: [],
-        added: [],
         totals: { left: 1, right: 1 },
       },
     };
@@ -295,7 +282,7 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     const result: GroupedDiffResponse = {
       kind: 'grouped',
       hunked: {
-        changed: [
+        hunks: [
           {
             anchor: 'http://example.org/Alice',
             state: 'changed',
@@ -332,8 +319,6 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
             sourceRecords: { left: [], right: [] },
           },
         ],
-        removed: [],
-        added: [],
         totals: { left: 0, right: 0 },
       },
     };
@@ -366,7 +351,7 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     const result: GroupedDiffResponse = {
       kind: 'grouped',
       hunked: {
-        changed: [
+        hunks: [
           {
             anchor: 'http://example.org/a',
             state: 'changed',
@@ -387,8 +372,6 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
             },
           },
         ],
-        removed: [],
-        added: [],
         totals: { left: 4, right: 0 },
       },
     };
@@ -408,7 +391,7 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     const result: GroupedDiffResponse = {
       kind: 'grouped',
       hunked: {
-        changed: [
+        hunks: [
           {
             anchor: 'http://example.org/a',
             state: 'changed',
@@ -428,8 +411,6 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
             },
           },
         ],
-        removed: [],
-        added: [],
         totals: { left: 3, right: 0 },
       },
     };
@@ -446,7 +427,7 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     const result: GroupedDiffResponse = {
       kind: 'grouped',
       hunked: {
-        changed: [
+        hunks: [
           {
             anchor: 'http://example.org/a',
             state: 'changed',
@@ -465,8 +446,6 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
             },
           },
         ],
-        removed: [],
-        added: [],
         totals: { left: 2, right: 0 },
       },
     };
@@ -481,7 +460,7 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     const result: GroupedDiffResponse = {
       kind: 'grouped',
       hunked: {
-        changed: [
+        hunks: [
           {
             anchor: 'http://example.org/a',
             state: 'changed',
@@ -497,8 +476,6 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
             },
           },
         ],
-        removed: [],
-        added: [],
         totals: { left: 1, right: 0 },
       },
     };
@@ -520,9 +497,7 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     const populated: GroupedDiffResponse = {
       kind: 'grouped',
       hunked: {
-        changed: [],
-        removed: [],
-        added: [addedHunk()],
+        hunks: [addedHunk()],
         totals: { left: 0, right: 1 },
       },
     };
