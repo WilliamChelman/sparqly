@@ -53,7 +53,7 @@ describe('sparqly serve — POST /api/diff (issue #144)', () => {
     const json = (await resp.json()) as {
       kind: string;
       hunked: {
-        changed: Array<{
+        hunks: Array<{
           anchor: string;
           state: string;
           removed: number;
@@ -64,17 +64,13 @@ describe('sparqly serve — POST /api/diff (issue #144)', () => {
             right: Array<{ file: string; line?: number }>;
           };
         }>;
-        removed: unknown[];
-        added: unknown[];
         totals: { left: number; right: number };
       };
     };
     expect(json.kind).toBe('grouped');
     expect(json.hunked.totals).toEqual({ left: 2, right: 2 });
-    expect(json.hunked.changed).toHaveLength(1);
-    expect(json.hunked.removed).toHaveLength(0);
-    expect(json.hunked.added).toHaveLength(0);
-    const hunk = json.hunked.changed[0];
+    expect(json.hunked.hunks).toHaveLength(1);
+    const hunk = json.hunked.hunks[0];
     expect(hunk.anchor).toBe('http://example.org/a');
     expect(hunk.state).toBe('changed');
     expect(hunk.removed).toBe(1);

@@ -8,8 +8,6 @@ body{font:14px/1.5 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;margin:0;pa
 header{margin-bottom:1.5rem}
 h1{font-size:1.25rem;margin:0 0 .25rem}
 .summary{margin:0;color:#555;font-family:ui-monospace,Menlo,Consolas,monospace}
-.block{margin-bottom:1.5rem}
-.block h2{font-size:1rem;margin:0 0 .5rem}
 .empty{color:#888;font-style:italic;margin:0}
 .hunk{border-left:3px solid #ccc;padding:.5rem .75rem;margin:.5rem 0;background:#fafafa}
 .hunk.removed{border-left-color:#c33;background:#fff4f4}
@@ -46,22 +44,7 @@ h1{font-size:1.25rem;margin:0 0 .25rem}
 <h1>sparqly diff</h1>
 <p class="summary">left=4 right=4 +3 −3</p>
 </header>
-<section class="block changed">
-<h2>Changed</h2>
-<article class="hunk changed">
-<header class="hunk-header">
-<div class="hunk-title">ex:Foo  (sh:NodeShape)  [-1 +1]</div>
-</header>
-<div class="hunk-body">
-<div class="pair">
-<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:label &quot;v1&quot; .</span></div>
-<div class="line line-added"><span class="marker">+</span> <span class="text">ex:label &quot;v2&quot; .</span></div>
-</div>
-</div>
-</article>
-</section>
-<section class="block removed">
-<h2>Removed</h2>
+<section class="hunks">
 <article class="hunk removed">
 <header class="hunk-header">
 <div class="hunk-title">ex:Bar  (sh:NodeShape)  (removed)  [-2 +0]</div>
@@ -71,9 +54,6 @@ h1{font-size:1.25rem;margin:0 0 .25rem}
 <div class="line line-removed"><span class="marker">-</span> <span class="text">a sh:NodeShape .</span></div>
 </div>
 </article>
-</section>
-<section class="block added">
-<h2>Added</h2>
 <article class="hunk added">
 <header class="hunk-header">
 <div class="hunk-title">ex:Baz  (sh:NodeShape)  (added)  [-0 +2]</div>
@@ -81,6 +61,17 @@ h1{font-size:1.25rem;margin:0 0 .25rem}
 <div class="hunk-body">
 <div class="line line-added"><span class="marker">+</span> <span class="text">ex:label &quot;Baz&quot; .</span></div>
 <div class="line line-added"><span class="marker">+</span> <span class="text">a sh:NodeShape .</span></div>
+</div>
+</article>
+<article class="hunk changed">
+<header class="hunk-header">
+<div class="hunk-title">ex:Foo  (sh:NodeShape)  [-1 +1]</div>
+</header>
+<div class="hunk-body">
+<div class="pair">
+<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:label &quot;v1&quot; .</span></div>
+<div class="line line-added"><span class="marker">+</span> <span class="text">ex:label &quot;v2&quot; .</span></div>
+</div>
 </div>
 </article>
 </section>

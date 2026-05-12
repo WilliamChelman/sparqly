@@ -48,18 +48,16 @@ describe('DiffService — grouped mode', () => {
     await rm(paths.dir, { recursive: true, force: true });
   });
 
-  it('returns kind=grouped carrying a HunkedRdfDiff with section totals when both sides are triples-shape', async () => {
+  it('returns kind=grouped carrying a HunkedRdfDiff with totals when both sides are triples-shape', async () => {
     const out = await svc.runDiff({ left: '@alpha', right: '@beta' });
 
     expect(out.kind).toBe('grouped');
     if (out.kind !== 'grouped') return;
     expect(out.hunked.totals).toEqual({ left: 2, right: 2 });
-    // Both sides share the named anchor http://example.org/a so the only
-    // hunk lives in the `changed` section with one removed and one added line.
-    expect(out.hunked.changed).toHaveLength(1);
-    expect(out.hunked.removed).toHaveLength(0);
-    expect(out.hunked.added).toHaveLength(0);
-    const hunk = out.hunked.changed[0];
+    // Both sides share the named anchor http://example.org/a so there is one
+    // hunk, in `changed` state, with one removed and one added line.
+    expect(out.hunked.hunks).toHaveLength(1);
+    const hunk = out.hunked.hunks[0];
     expect(hunk.anchor).toBe('http://example.org/a');
     expect(hunk.state).toBe('changed');
     expect(hunk.removed).toBe(1);
@@ -73,7 +71,7 @@ describe('DiffService — grouped mode', () => {
 
     expect(out.kind).toBe('grouped');
     if (out.kind !== 'grouped') return;
-    const hunk = out.hunked.changed[0];
+    const hunk = out.hunked.hunks[0];
     expect(hunk.sourceRecords.left.length).toBeGreaterThan(0);
     expect(hunk.sourceRecords.left[0].file).toMatch(/alpha\.ttl$/);
     expect(hunk.sourceRecords.right.length).toBeGreaterThan(0);
@@ -89,15 +87,9 @@ describe('DiffService — grouped mode', () => {
 
     expect(out.kind).toBe('grouped');
     if (out.kind !== 'grouped') return;
-    for (const section of [
-      out.hunked.changed,
-      out.hunked.removed,
-      out.hunked.added,
-    ]) {
-      for (const hunk of section) {
-        expect(hunk.sourceRecords.left).toEqual([]);
-        expect(hunk.sourceRecords.right).toEqual([]);
-      }
+    for (const hunk of out.hunked.hunks) {
+      expect(hunk.sourceRecords.left).toEqual([]);
+      expect(hunk.sourceRecords.right).toEqual([]);
     }
   });
 
@@ -114,8 +106,8 @@ describe('DiffService — grouped mode', () => {
     expect(out.kind).toBe('grouped');
     if (out.kind !== 'grouped') return;
     expect(out.hunked.totals).toEqual({ left: 2, right: 2 });
-    expect(out.hunked.changed).toHaveLength(1);
-    expect(out.hunked.changed[0].anchor).toBe('http://example.org/a');
+    expect(out.hunked.hunks).toHaveLength(1);
+    expect(out.hunked.hunks[0].anchor).toBe('http://example.org/a');
   });
 });
 

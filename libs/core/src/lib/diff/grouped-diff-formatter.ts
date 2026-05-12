@@ -14,13 +14,12 @@ export function formatGroupedRdfDiff(
   hunked: HunkedRdfDiff,
   options: FormatGroupedRdfDiffOptions,
 ): string {
-  const allHunks = [...hunked.changed, ...hunked.removed, ...hunked.added];
-  const totalRemoved = allHunks.reduce((acc, h) => acc + h.removed, 0);
-  const totalAdded = allHunks.reduce((acc, h) => acc + h.added, 0);
+  const totalRemoved = hunked.hunks.reduce((acc, h) => acc + h.removed, 0);
+  const totalAdded = hunked.hunks.reduce((acc, h) => acc + h.added, 0);
   const summary = `# left=${hunked.totals.left} right=${hunked.totals.right} +${totalAdded} -${totalRemoved}\n`;
   const parts: string[] = [summary];
   const prefixEntries = Object.entries(options.prefixes);
-  for (const hunk of allHunks) {
+  for (const hunk of hunked.hunks) {
     const anchorDisplay = renderAnchor(hunk, prefixEntries);
     parts.push(renderHunkHeader(hunk, anchorDisplay, prefixEntries));
     for (const line of hunk.lines) {

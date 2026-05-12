@@ -4,12 +4,14 @@ import { composeHtmlDiff } from './html-diff-composer';
 
 const emptySnippets = new Map();
 
-const emptyHunked: HunkedRdfDiff = {
-  changed: [],
-  removed: [],
-  added: [],
-  totals: { left: 0, right: 0 },
-};
+function hunked(
+  hunks: Hunk[],
+  totals: { left: number; right: number } = { left: 0, right: 0 },
+): HunkedRdfDiff {
+  return { hunks, totals };
+}
+
+const emptyHunked: HunkedRdfDiff = hunked([]);
 
 const EX = 'http://example.org/';
 const SH = 'http://www.w3.org/ns/shacl#';
@@ -45,7 +47,7 @@ function changedHunk(over: Partial<Hunk> = {}): Hunk {
 const PREFIXES = { ex: EX, sh: SH };
 
 describe('composeHtmlDiff', () => {
-  it('emits a self-contained HTML5 shell with summary and three (Changed/Removed/Added) sections in display order on empty input', () => {
+  it('emits a self-contained HTML5 shell with a summary and a single hunk list on empty input — no Changed/Removed/Added sections', () => {
     const out = composeHtmlDiff(emptyHunked, emptySnippets, {
       cwd: '/cwd',
       prefixes: {},
@@ -61,29 +63,27 @@ describe('composeHtmlDiff', () => {
     // Summary contract preserved.
     expect(out).toMatch(/<p class="summary">left=0 right=0 \+0 −0<\/p>/);
 
-    // Three sections in display order: Changed, Removed, Added.
-    const changedIdx = out.indexOf('>Changed<');
-    const removedIdx = out.indexOf('>Removed<');
-    const addedIdx = out.indexOf('>Added<');
-    expect(changedIdx).toBeGreaterThan(0);
-    expect(removedIdx).toBeGreaterThan(changedIdx);
-    expect(addedIdx).toBeGreaterThan(removedIdx);
+    // One hunk list, no per-state section headers.
+    expect(out).toContain('<section class="hunks">');
+    expect(out).not.toContain('>Changed<');
+    expect(out).not.toContain('>Removed<');
+    expect(out).not.toContain('>Added<');
+    expect(out).toContain('(no changes)');
   });
 
   it('renders the hunk header line one as `<anchor-CURIE>  (<rdf:type CURIE>)  [-N +M]`', () => {
     const hunk = changedHunk({ removed: 2, added: 3 });
-    const out = composeHtmlDiff(
-      { changed: [hunk], removed: [], added: [], totals: { left: 5, right: 6 } },
-      emptySnippets,
-      { cwd: '/cwd', prefixes: PREFIXES },
-    );
+    const out = composeHtmlDiff(hunked([hunk], { left: 5, right: 6 }), emptySnippets, {
+      cwd: '/cwd',
+      prefixes: PREFIXES,
+    });
 
     expect(out).toMatch(
       /<header class="hunk-header">\s*<div class="hunk-title">ex:Foo\s+\(sh:NodeShape\)\s+\[-2 \+3\]<\/div>/,
     );
   });
 
-  it('renders `(removed)` / `(added)` markers in the header for single-side hunks (matches grouped formatter)', () => {
+  it('renders `(removed)` / `(added)` markers in the header for single-side hunks (state drives accent colour, not position)', () => {
     const removedHunk = changedHunk({ state: 'removed', removed: 2, added: 0 });
     const addedHunk = changedHunk({
       anchor: `${EX}Bar`,
@@ -92,18 +92,16 @@ describe('composeHtmlDiff', () => {
       added: 2,
     });
     const out = composeHtmlDiff(
-      {
-        changed: [],
-        removed: [removedHunk],
-        added: [addedHunk],
-        totals: { left: 2, right: 2 },
-      },
+      hunked([addedHunk, removedHunk], { left: 2, right: 2 }),
       emptySnippets,
       { cwd: '/cwd', prefixes: PREFIXES },
     );
 
     expect(out).toMatch(/ex:Foo\s+\(sh:NodeShape\)\s+\(removed\)\s+\[-2 \+0\]/);
     expect(out).toMatch(/ex:Bar\s+\(sh:NodeShape\)\s+\(added\)\s+\[-0 \+2\]/);
+    // The hunk's accent colour comes from its `state` class on the article.
+    expect(out).toMatch(/<article class="hunk removed">/);
+    expect(out).toMatch(/<article class="hunk added">/);
   });
 
   it('renders `(orphan)` marker and `_:`-prefixed anchor for orphan hunks', () => {
@@ -116,11 +114,10 @@ describe('composeHtmlDiff', () => {
       lines: [],
       sourceRecords: { left: [], right: [] },
     };
-    const out = composeHtmlDiff(
-      { changed: [], removed: [orphan], added: [], totals: { left: 2, right: 0 } },
-      emptySnippets,
-      { cwd: '/cwd', prefixes: PREFIXES },
-    );
+    const out = composeHtmlDiff(hunked([orphan], { left: 2, right: 0 }), emptySnippets, {
+      cwd: '/cwd',
+      prefixes: PREFIXES,
+    });
     expect(out).toMatch(/_:c14n0\s+\(orphan\)\s+\(removed\)\s+\[-2 \+0\]/);
   });
 
@@ -134,11 +131,10 @@ describe('composeHtmlDiff', () => {
         right: [{ file: 'file:///cwd/b.ttl', line: 3 }],
       },
     });
-    const out = composeHtmlDiff(
-      { changed: [hunk], removed: [], added: [], totals: { left: 1, right: 1 } },
-      emptySnippets,
-      { cwd: '/cwd', prefixes: PREFIXES },
-    );
+    const out = composeHtmlDiff(hunked([hunk], { left: 1, right: 1 }), emptySnippets, {
+      cwd: '/cwd',
+      prefixes: PREFIXES,
+    });
 
     // Chip row container exists.
     expect(out).toMatch(/<div class="hunk-chips">/);
@@ -159,11 +155,10 @@ describe('composeHtmlDiff', () => {
 
   it('omits the chip row entirely when a hunk has no source records on either side', () => {
     const hunk = changedHunk();
-    const out = composeHtmlDiff(
-      { changed: [hunk], removed: [], added: [], totals: { left: 1, right: 1 } },
-      emptySnippets,
-      { cwd: '/cwd', prefixes: PREFIXES },
-    );
+    const out = composeHtmlDiff(hunked([hunk], { left: 1, right: 1 }), emptySnippets, {
+      cwd: '/cwd',
+      prefixes: PREFIXES,
+    });
     expect(out).not.toMatch(/<div class="hunk-chips"/);
   });
 
@@ -186,11 +181,10 @@ describe('composeHtmlDiff', () => {
         },
       ],
     });
-    const out = composeHtmlDiff(
-      { changed: [hunk], removed: [], added: [], totals: { left: 1, right: 1 } },
-      emptySnippets,
-      { cwd: '/cwd', prefixes: PREFIXES },
-    );
+    const out = composeHtmlDiff(hunked([hunk], { left: 1, right: 1 }), emptySnippets, {
+      cwd: '/cwd',
+      prefixes: PREFIXES,
+    });
 
     // Body container exists.
     expect(out).toMatch(/<div class="hunk-body">/);
@@ -221,11 +215,10 @@ describe('composeHtmlDiff', () => {
         },
       ],
     });
-    const out = composeHtmlDiff(
-      { changed: [hunk], removed: [], added: [], totals: { left: 0, right: 1 } },
-      emptySnippets,
-      { cwd: '/cwd', prefixes: PREFIXES },
-    );
+    const out = composeHtmlDiff(hunked([hunk], { left: 0, right: 1 }), emptySnippets, {
+      cwd: '/cwd',
+      prefixes: PREFIXES,
+    });
     expect(out).not.toMatch(/<div class="pair">/);
     expect(out).toMatch(/<div class="line line-added">/);
   });
@@ -262,11 +255,10 @@ describe('composeHtmlDiff', () => {
         },
       ],
     ]);
-    const out = composeHtmlDiff(
-      { changed: [hunk], removed: [], added: [], totals: { left: 1, right: 1 } },
-      snippets,
-      { cwd: '/cwd', prefixes: PREFIXES },
-    );
+    const out = composeHtmlDiff(hunked([hunk], { left: 1, right: 1 }), snippets, {
+      cwd: '/cwd',
+      prefixes: PREFIXES,
+    });
 
     // Exactly two snippet `<pre>` blocks (a.ttl:7 dedup'd).
     const matches = out.match(/<pre class="snippet"/g) ?? [];
@@ -292,11 +284,10 @@ describe('composeHtmlDiff', () => {
         { kind: 'unavailable' as const, reason: 'missing' as const },
       ],
     ]);
-    const out = composeHtmlDiff(
-      { changed: [hunk], removed: [], added: [], totals: { left: 1, right: 1 } },
-      snippets,
-      { cwd: '/cwd', prefixes: PREFIXES },
-    );
+    const out = composeHtmlDiff(hunked([hunk], { left: 1, right: 1 }), snippets, {
+      cwd: '/cwd',
+      prefixes: PREFIXES,
+    });
 
     expect(out).toContain('(source file unavailable)');
     expect(out).not.toContain('<pre class="snippet"');
@@ -309,11 +300,10 @@ describe('composeHtmlDiff', () => {
         right: [{ file: 'file:///cwd/foo.jsonld' }],
       },
     });
-    const out = composeHtmlDiff(
-      { changed: [hunk], removed: [], added: [], totals: { left: 1, right: 1 } },
-      emptySnippets,
-      { cwd: '/cwd', prefixes: PREFIXES },
-    );
+    const out = composeHtmlDiff(hunked([hunk], { left: 1, right: 1 }), emptySnippets, {
+      cwd: '/cwd',
+      prefixes: PREFIXES,
+    });
     expect(out).not.toContain('<pre class="snippet"');
   });
 
@@ -326,11 +316,10 @@ describe('composeHtmlDiff', () => {
       nquad: `<${EX}Foo> <${EX}p${i}> "${i}" .`,
     }));
     const hunk = changedHunk({ removed: 10, added: 10, lines });
-    const out = composeHtmlDiff(
-      { changed: [hunk], removed: [], added: [], totals: { left: 10, right: 10 } },
-      emptySnippets,
-      { cwd: '/cwd', prefixes: PREFIXES },
-    );
+    const out = composeHtmlDiff(hunked([hunk], { left: 10, right: 10 }), emptySnippets, {
+      cwd: '/cwd',
+      prefixes: PREFIXES,
+    });
     expect(out).not.toMatch(/<details class="hunk-overflow">/);
     // Header still visible.
     expect(out).toMatch(/ex:Foo\s+\(sh:NodeShape\)\s+\[-10 \+10\]/);
@@ -345,11 +334,10 @@ describe('composeHtmlDiff', () => {
       nquad: `<${EX}Foo> <${EX}p${i}> "${i}" .`,
     }));
     const hunk = changedHunk({ removed: 11, added: 10, lines });
-    const out = composeHtmlDiff(
-      { changed: [hunk], removed: [], added: [], totals: { left: 11, right: 10 } },
-      emptySnippets,
-      { cwd: '/cwd', prefixes: PREFIXES },
-    );
+    const out = composeHtmlDiff(hunked([hunk], { left: 11, right: 10 }), emptySnippets, {
+      cwd: '/cwd',
+      prefixes: PREFIXES,
+    });
 
     // Header (anchor, type, counts) still visible OUTSIDE the <details>.
     const detailsOpen = out.indexOf('<details class="hunk-overflow"');
@@ -367,9 +355,9 @@ describe('composeHtmlDiff', () => {
     expect(inside).toMatch(/<div class="hunk-body">/);
   });
 
-  it('renders hunks across all three sections in display order: Changed → Removed → Added', () => {
-    const ch = changedHunk({ anchor: `${EX}Foo` });
-    const rm: Hunk = {
+  it('renders hunks in one anchor-sorted list — order is by anchor IRI, independent of state', () => {
+    const foo = changedHunk({ anchor: `${EX}Foo` });
+    const bar: Hunk = {
       anchor: `${EX}Bar`,
       rdfType: `${SH}NodeShape`,
       state: 'removed',
@@ -378,7 +366,7 @@ describe('composeHtmlDiff', () => {
       lines: [],
       sourceRecords: { left: [], right: [] },
     };
-    const ad: Hunk = {
+    const baz: Hunk = {
       anchor: `${EX}Baz`,
       rdfType: `${SH}NodeShape`,
       state: 'added',
@@ -387,27 +375,27 @@ describe('composeHtmlDiff', () => {
       lines: [],
       sourceRecords: { left: [], right: [] },
     };
-    const out = composeHtmlDiff(
-      { changed: [ch], removed: [rm], added: [ad], totals: { left: 4, right: 4 } },
-      emptySnippets,
-      { cwd: '/cwd', prefixes: PREFIXES },
-    );
+    // Caller passes them already sorted by anchor (Bar, Baz, Foo); the composer
+    // renders that order verbatim.
+    const out = composeHtmlDiff(hunked([bar, baz, foo], { left: 4, right: 4 }), emptySnippets, {
+      cwd: '/cwd',
+      prefixes: PREFIXES,
+    });
 
-    const fooIdx = out.indexOf('ex:Foo');
     const barIdx = out.indexOf('ex:Bar');
     const bazIdx = out.indexOf('ex:Baz');
-    expect(fooIdx).toBeGreaterThan(0);
-    expect(barIdx).toBeGreaterThan(fooIdx);
+    const fooIdx = out.indexOf('ex:Foo');
+    expect(barIdx).toBeGreaterThan(0);
     expect(bazIdx).toBeGreaterThan(barIdx);
+    expect(fooIdx).toBeGreaterThan(bazIdx);
   });
 
   it('omits the rdf:type slot when the anchor has no rdf:type', () => {
     const hunk = changedHunk({ rdfType: undefined });
-    const out = composeHtmlDiff(
-      { changed: [hunk], removed: [], added: [], totals: { left: 1, right: 1 } },
-      emptySnippets,
-      { cwd: '/cwd', prefixes: PREFIXES },
-    );
+    const out = composeHtmlDiff(hunked([hunk], { left: 1, right: 1 }), emptySnippets, {
+      cwd: '/cwd',
+      prefixes: PREFIXES,
+    });
 
     expect(out).toMatch(/ex:Foo\s+\[-1 \+1\]/);
     expect(out).not.toContain('()');

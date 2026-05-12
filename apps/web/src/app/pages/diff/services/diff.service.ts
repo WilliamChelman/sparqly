@@ -50,9 +50,7 @@ export interface Hunk {
 }
 
 export interface HunkedRdfDiff {
-  changed: Hunk[];
-  removed: Hunk[];
-  added: Hunk[];
+  hunks: Hunk[];
   totals: { left: number; right: number };
 }
 

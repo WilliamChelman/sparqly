@@ -21,8 +21,9 @@ export interface HtmlDiffComposerOptions {
  * Render an `html` diff: a single self-contained HTML document with an
  * inline `<style>` block, no JavaScript, and no external resources. Output
  * groups changed triples into hunks anchored on the affected named entity
- * (or orphan bnode tree) and renders three sections — `Changed`, `Removed`,
- * `Added` — in display order. Pure function over its inputs.
+ * (or orphan bnode tree) and renders them as one anchor-sorted list — a
+ * hunk's `state` drives only its accent colour, not its position. Pure
+ * function over its inputs.
  */
 export function composeHtmlDiff(
   hunked: HunkedRdfDiff,
@@ -32,16 +33,12 @@ export function composeHtmlDiff(
   const totalRemoved = countLines(hunked, '-');
   const totalAdded = countLines(hunked, '+');
   const prefixEntries = Object.entries(options.prefixes);
-  const renderSection = (
-    label: 'Changed' | 'Removed' | 'Added',
-    cls: 'changed' | 'removed' | 'added',
-    hunks: readonly Hunk[],
-  ): string =>
-    `<section class="block ${cls}">\n<h2>${label}</h2>\n` +
-    (hunks.length === 0
-      ? '<p class="empty">(none)</p>\n'
-      : hunks.map((h) => renderHunk(h, prefixEntries, snippets, options)).join('')) +
-    '</section>\n';
+  const hunkList =
+    hunked.hunks.length === 0
+      ? '<p class="empty">(no changes)</p>\n'
+      : hunked.hunks
+          .map((h) => renderHunk(h, prefixEntries, snippets, options))
+          .join('');
 
   return (
     '<!doctype html>\n' +
@@ -58,9 +55,7 @@ export function composeHtmlDiff(
     `<h1>sparqly diff</h1>\n` +
     `<p class="summary">left=${hunked.totals.left} right=${hunked.totals.right} +${totalAdded} −${totalRemoved}</p>\n` +
     '</header>\n' +
-    renderSection('Changed', 'changed', hunked.changed) +
-    renderSection('Removed', 'removed', hunked.removed) +
-    renderSection('Added', 'added', hunked.added) +
+    `<section class="hunks">\n${hunkList}</section>\n` +
     '</body>\n' +
     '</html>\n'
   );
@@ -369,7 +364,7 @@ function curieOrIri(
 
 function countLines(hunked: HunkedRdfDiff, side: '-' | '+'): number {
   let n = 0;
-  for (const h of [...hunked.changed, ...hunked.removed, ...hunked.added]) {
+  for (const h of hunked.hunks) {
     n += side === '-' ? h.removed : h.added;
   }
   return n;
@@ -391,8 +386,6 @@ const INLINE_STYLE = `body{font:14px/1.5 -apple-system,Segoe UI,Helvetica,Arial,
 header{margin-bottom:1.5rem}
 h1{font-size:1.25rem;margin:0 0 .25rem}
 .summary{margin:0;color:#555;font-family:ui-monospace,Menlo,Consolas,monospace}
-.block{margin-bottom:1.5rem}
-.block h2{font-size:1rem;margin:0 0 .5rem}
 .empty{color:#888;font-style:italic;margin:0}
 .hunk{border-left:3px solid #ccc;padding:.5rem .75rem;margin:.5rem 0;background:#fafafa}
 .hunk.removed{border-left-color:#c33;background:#fff4f4}

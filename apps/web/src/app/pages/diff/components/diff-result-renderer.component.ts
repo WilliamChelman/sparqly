@@ -80,8 +80,7 @@ export class DiffResultRendererComponent {
   readonly classifiedHunks = computed<ReadonlyArray<ClassifiedHunk>>(() => {
     const g = this.groupedView();
     if (g === null) return [];
-    const all: Hunk[] = [...g.hunked.changed, ...g.hunked.added, ...g.hunked.removed];
-    return all.map((hunk) => ({ hunk, cls: classifyHunk(hunk) }));
+    return g.hunked.hunks.map((hunk) => ({ hunk, cls: classifyHunk(hunk) }));
   });
 
   readonly totalsLine = computed<string | null>(() => {
@@ -90,11 +89,7 @@ export class DiffResultRendererComponent {
       const totals = r.hunked.totals;
       let added = 0;
       let removed = 0;
-      for (const h of [
-        ...r.hunked.changed,
-        ...r.hunked.added,
-        ...r.hunked.removed,
-      ]) {
+      for (const h of r.hunked.hunks) {
         added += h.added;
         removed += h.removed;
       }
