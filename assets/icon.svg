@@ -1,9 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" aria-hidden="true">
-  <line x1="64" y1="64" x2="22" y2="34" stroke="#9A98AD" stroke-width="0.6" opacity="0.55"/>
-  <line x1="64" y1="64" x2="104" y2="42" stroke="#9A98AD" stroke-width="0.6" opacity="0.55"/>
-  <line x1="64" y1="64" x2="34" y2="100" stroke="#9A98AD" stroke-width="0.6" opacity="0.55"/>
-  <path d="M64 28 L70 60 L96 64 L70 68 L64 100 L58 68 L32 64 L58 60 Z" fill="#D4A24C"/>
-  <circle cx="22" cy="34" r="4" fill="#2A7F7A"/>
-  <circle cx="104" cy="42" r="3.5" fill="#2A7F7A"/>
-  <circle cx="34" cy="100" r="3.5" fill="#2A7F7A"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <defs>
+    <radialGradient id="d-teal" cx="0.35" cy="0.3" r="0.85">
+      <stop offset="0%" stop-color="#a7d3ce"/>
+      <stop offset="55%" stop-color="#2a7f7a"/>
+      <stop offset="100%" stop-color="#1f5f5b"/>
+    </radialGradient>
+    <radialGradient id="d-ink" cx="0.35" cy="0.3" r="0.85">
+      <stop offset="0%" stop-color="#6f6d88"/>
+      <stop offset="55%" stop-color="#33324c"/>
+      <stop offset="100%" stop-color="#1b1b2e"/>
+    </radialGradient>
+    <radialGradient id="d-gold" cx="0.35" cy="0.3" r="0.85">
+      <stop offset="0%" stop-color="#f3dca8"/>
+      <stop offset="55%" stop-color="#d4a24c"/>
+      <stop offset="100%" stop-color="#b0832f"/>
+    </radialGradient>
+  </defs>
+  <g transform="rotate(25 12 12)">
+    <path d="M 12,6.4 Q 15.9,9.75 16.85,14.8" fill="none" stroke="#1b1b2e" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M 16.85,14.8 Q 12,16.5 7.15,14.8" fill="none" stroke="#1b1b2e" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M 7.15,14.8 Q 8.1,9.75 12,6.4" fill="none" stroke="#1b1b2e" stroke-width="2.2" stroke-linecap="round"/>
+    <circle cx="12" cy="6.4" r="3.6" fill="url(#d-teal)" stroke="#1b1b2e" stroke-width="0.5"/>
+    <circle cx="7.15" cy="14.8" r="3.6" fill="url(#d-ink)" stroke="#1b1b2e" stroke-width="0.5"/>
+    <circle cx="16.85" cy="14.8" r="3.6" fill="url(#d-gold)" stroke="#1b1b2e" stroke-width="0.5"/>
+  </g>
+  <polygon points="4,2.2 4.21,3.29 5.3,3.5 4.21,3.71 4,4.8 3.79,3.71 2.7,3.5 3.79,3.29" fill="#d4a24c"/>
+  <polygon points="21,21.15 21.13,21.87 21.85,22 21.13,22.13 21,22.85 20.87,22.13 20.15,22 20.87,21.87" fill="#d4a24c"/>
 </svg>
