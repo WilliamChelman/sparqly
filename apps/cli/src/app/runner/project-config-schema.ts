@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { projectSourcesSchema } from './fields-shared';
+import { projectSourcesSchema } from './fields/fields-shared';
 
 const serveBlockSchema = z
   .object({

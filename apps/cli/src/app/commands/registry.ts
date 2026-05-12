@@ -4,7 +4,7 @@ import { formatSpec } from './format';
 import { hashSpec } from './hash';
 import { querySpec } from './query';
 import { serveSpec } from './serve';
-import type { CommandSpec } from '../runner/spec';
+import type { CommandSpec } from '../runner/fields/spec';
 
 const ALL_SPECS: ReadonlyArray<CommandSpec<never>> = [
   cacheListSpec as unknown as CommandSpec<never>,

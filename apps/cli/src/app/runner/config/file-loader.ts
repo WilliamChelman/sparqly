@@ -3,8 +3,8 @@ import { dirname, extname, isAbsolute, resolve } from 'node:path';
 import { load as loadYaml, YAMLException } from 'js-yaml';
 import { substituteSourceEnv } from 'core';
 import { normalizeConfigPaths } from './normalize-config-paths';
-import { validateProjectConfig } from './project-config-schema';
-import type { FileLayers } from './runner';
+import { validateProjectConfig } from '../project-config-schema';
+import type { FileLayers } from '../runner';
 
 export class ConfigError extends Error {
   constructor(message: string) {

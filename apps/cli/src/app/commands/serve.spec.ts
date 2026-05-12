@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blockSchemaFromFields, defaultsFromFields } from '../runner/field';
+import { blockSchemaFromFields, defaultsFromFields } from '../runner/fields/field';
 import { serveSpec } from './serve';
 
 describe('serveSpec — single-target shape', () => {

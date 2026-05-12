@@ -8,9 +8,9 @@ import {
   type CachedEntrySummary,
 } from 'core';
 import { configureLogger } from '../logging';
-import type { FieldDescriptor } from '../runner/field';
-import { verbosityFieldsFor } from '../runner/fields-shared';
-import type { CommandSpec } from '../runner/spec';
+import type { FieldDescriptor } from '../runner/fields/field';
+import { verbosityFieldsFor } from '../runner/fields/fields-shared';
+import type { CommandSpec } from '../runner/fields/spec';
 
 interface CacheCommandConfig {
   cacheDir?: string;

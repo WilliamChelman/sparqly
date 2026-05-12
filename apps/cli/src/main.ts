@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { COMMAND_REGISTRY } from './app/commands/registry';
-import { discoverConfig } from './app/runner/discover-config';
-import { makeFileLoader } from './app/runner/file-loader';
+import { discoverConfig } from './app/runner/config/discover-config';
+import { makeFileLoader } from './app/runner/config/file-loader';
 import { registerSpec } from './app/runner/runner';
 
 async function bootstrap() {

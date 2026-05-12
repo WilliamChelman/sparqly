@@ -1,9 +1,9 @@
 import { Command } from 'commander';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import type { FieldDescriptor } from './field';
+import type { FieldDescriptor } from './fields/field';
 import { registerSpec } from './runner';
-import type { CommandSpec } from './spec';
+import type { CommandSpec } from './fields/spec';
 
 function makeProgram(): Command {
   return new Command('sparqly').exitOverride();

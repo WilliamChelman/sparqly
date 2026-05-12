@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { blockSchemaFromFields } from '../runner/field';
+import { blockSchemaFromFields } from '../runner/fields/field';
 import { formatSpec } from './format';
 
 describe('formatSpec', () => {

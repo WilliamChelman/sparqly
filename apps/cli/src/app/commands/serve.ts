@@ -4,7 +4,7 @@ import type { SourceSpecInput } from 'core';
 import { createServer } from 'server';
 import { configureLogger } from '../logging';
 import { printServeSplash } from './serve-splash';
-import type { FieldDescriptor } from '../runner/field';
+import type { FieldDescriptor } from '../runner/fields/field';
 import {
   coercedBooleanSchema,
   coercedIntSchema,
@@ -13,8 +13,8 @@ import {
   mutableFieldsFor,
   sourceField,
   verbosityFieldsFor,
-} from '../runner/fields-shared';
-import type { CommandSpec } from '../runner/spec';
+} from '../runner/fields/fields-shared';
+import type { CommandSpec } from '../runner/fields/spec';
 
 const WEB_BUNDLE_DIR = join(__dirname, 'web');
 

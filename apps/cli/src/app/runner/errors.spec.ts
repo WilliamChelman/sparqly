@@ -1,9 +1,9 @@
 import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import type { FieldDescriptor } from './field';
+import type { FieldDescriptor } from './fields/field';
 import { registerSpec } from './runner';
-import type { CommandSpec } from './spec';
+import type { CommandSpec } from './fields/spec';
 
 const sourcesField: FieldDescriptor = {
   key: 'sources',

@@ -2,10 +2,10 @@ import { Logger } from '@nestjs/common';
 import { Option, type Command } from 'commander';
 import { resolveSourceReferences, type SourceSpecInput } from 'core';
 import { configureLogger } from '../logging';
-import type { FieldDescriptor } from './field';
-import { blockSchemaFromFields } from './field';
-import { mergeLayers } from './merge';
-import type { CommandSpec } from './spec';
+import type { FieldDescriptor } from './fields/field';
+import { blockSchemaFromFields } from './fields/field';
+import { mergeLayers } from './fields/merge';
+import type { CommandSpec } from './fields/spec';
 
 export interface FileLayers {
   readonly data: Record<string, unknown>;

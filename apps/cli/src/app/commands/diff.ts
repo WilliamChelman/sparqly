@@ -36,15 +36,15 @@ import {
 } from 'core';
 import { configureLogger } from '../logging';
 import { writeOutputToFile } from '../output';
-import type { FieldDescriptor } from '../runner/field';
+import type { FieldDescriptor } from '../runner/fields/field';
 import {
   contextBaseField,
   contextPrefixesField,
   outFieldFor,
   singleSourceSchema,
   verbosityFieldsFor,
-} from '../runner/fields-shared';
-import type { CommandSpec } from '../runner/spec';
+} from '../runner/fields/fields-shared';
+import type { CommandSpec } from '../runner/fields/spec';
 
 const DIFF_FORMATS = [
   'html',

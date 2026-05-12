@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { FieldDescriptor } from './field';
-import { registerSpec } from './runner';
+import { registerSpec } from '../runner';
 import type { CommandSpec } from './spec';
 
 const sourcesField: FieldDescriptor = {
