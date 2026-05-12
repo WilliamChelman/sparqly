@@ -9,6 +9,7 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { Store } from 'n3';
+import { noopLogger, type SparqlyLogger } from 'common';
 import {
   type GraphMode,
   parseSourceSpecs,
@@ -20,6 +21,7 @@ import {
 } from 'core';
 import { DEFAULT_DESCRIBE_CONFIG, type DescribeConfig } from '../describe';
 import { EngineMap } from './engine-map';
+import { RequestLoggingInterceptor } from './request-logging.interceptor';
 import { ServerModule } from './server.module';
 import { SnippetAllowList } from '../snippet';
 import type {
@@ -62,6 +64,12 @@ export interface CreateServerOptions {
    * Surfaced to clients via /api/config.
    */
   describe?: Partial<DescribeConfig>;
+  /**
+   * Boundary logger (ADR-0020). Emits the per-request `info` line and the
+   * `--verbose` SPARQL-execution `debug` lines for the served sources.
+   * Defaults to the no-op logger so non-CLI callers stay silent.
+   */
+  logger?: SparqlyLogger;
 }
 
 export interface CreatedServer {
@@ -76,6 +84,7 @@ export async function createServer(
   options: CreateServerOptions,
 ): Promise<CreatedServer> {
   const logger = new Logger('sparqly');
+  const boundaryLogger = options.logger ?? noopLogger;
   const parsedRegistry = parseSourceSpecs(toSourceArray(options.sources));
   const scope = resolveServeScope(parsedRegistry, options.scope);
   if (scope.servedRegistry.length === 0) {
@@ -87,6 +96,7 @@ export async function createServer(
   const totalStart = Date.now();
   const engineMap = await EngineMap.create(scope.servedRegistry, {
     resolutionRegistry: scope.resolutionRegistry,
+    logger: boundaryLogger,
     onSourceLoaded: (id, kind, ms) => {
       logger.log(`Loaded @${id} (${kind}) in ${ms}ms`);
     },
@@ -116,6 +126,7 @@ export async function createServer(
   );
   app.setGlobalPrefix('api');
   app.use(sparqlQueryBodyParser);
+  app.useGlobalInterceptors(new RequestLoggingInterceptor(boundaryLogger));
 
   if (options.webRootDir) {
     mountWebPlayground(app, options.webRootDir);

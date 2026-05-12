@@ -33,6 +33,7 @@ interface ServeConfig {
   fromSourcePredicate?: string;
   verbose?: boolean;
   quiet?: boolean;
+  logFormat?: 'text' | 'json';
 }
 
 const sourceSpecObjectSchema = z.record(z.string(), z.unknown());
@@ -133,9 +134,10 @@ export const serveSpec: CommandSpec<ServeConfig> = {
   configScope: { sources: true, block: 'serve' },
   exitCode: () => 1,
   handler: async (config) => {
-    configureLogger({
+    const boundaryLog = configureLogger({
       verbose: config.verbose === true,
       quiet: config.quiet === true,
+      logFormat: config.logFormat,
     });
     printServeSplash({ quiet: config.quiet === true });
 
@@ -177,6 +179,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
         perSourceHardLimit: config.perSourceHardLimit,
         fromSourcePredicate: config.fromSourcePredicate,
       },
+      logger: boundaryLog,
     });
   },
 };

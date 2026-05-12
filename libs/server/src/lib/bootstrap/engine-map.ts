@@ -1,3 +1,4 @@
+import type { SparqlyLogger } from 'common';
 import { QueryEngine, resolveSource, type ParsedSource } from 'core';
 import type { StoreRef } from './tokens';
 
@@ -22,6 +23,12 @@ export interface EngineMapOptions {
    */
   resolutionRegistry?: ReadonlyArray<ParsedSource>;
   onSourceLoaded?: (id: string, kind: ParsedSource['kind'], ms: number) => void;
+  /**
+   * Boundary logger threaded into each source's {@link QueryEngine} (and into
+   * `resolveSource` for view chains) so `serve`'s SPARQL executions emit the
+   * shared `query` debug event under `--verbose` (ADR-0020). Defaults to none.
+   */
+  logger?: SparqlyLogger;
 }
 
 export class EngineMap {
@@ -41,7 +48,7 @@ export class EngineMap {
       if (src.kind === 'reference') continue;
       if (src.id === undefined) continue;
       const start = Date.now();
-      const entry = await buildEntry(src, resolutionRegistry);
+      const entry = await buildEntry(src, resolutionRegistry, options.logger);
       entries.set(src.id, entry);
       options.onSourceLoaded?.(src.id, src.kind, Date.now() - start);
     }
@@ -88,20 +95,30 @@ export class EngineMap {
 async function buildEntry(
   source: ParsedSource,
   registry: ReadonlyArray<ParsedSource>,
+  logger: SparqlyLogger | undefined,
 ): Promise<Entry> {
+  const sourceId = source.id ?? '(source)';
   if (source.kind === 'endpoint') {
     return {
       source,
-      engine: new QueryEngine(source),
+      engine: new QueryEngine(source, {
+        id: source.id ?? source.endpoint,
+        mode: 'pass-through',
+        logger,
+      }),
       storeRef: undefined,
       files: [],
     };
   }
-  const resolved = await resolveSource(source, { registry });
+  const resolved = await resolveSource(source, { registry, logger });
   if (resolved.mode === 'pass-through') {
     return {
       source,
-      engine: new QueryEngine(resolved.endpoint),
+      engine: new QueryEngine(resolved.endpoint, {
+        id: source.id ?? resolved.endpoint.endpoint,
+        mode: 'pass-through',
+        logger,
+      }),
       storeRef: undefined,
       files: [],
     };
@@ -110,7 +127,11 @@ async function buildEntry(
   const ref = storeRef;
   return {
     source,
-    engine: new QueryEngine(() => ref.current),
+    engine: new QueryEngine(() => ref.current, {
+      id: sourceId,
+      mode: source.kind === 'view' ? 'view' : 'materialized',
+      logger,
+    }),
     storeRef,
     files: [...resolved.files],
   };
