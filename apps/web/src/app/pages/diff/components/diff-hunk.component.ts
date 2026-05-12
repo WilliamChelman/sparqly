@@ -10,6 +10,7 @@ import type { DisplayContext } from '@app/core';
 import type { Hunk, HunkLine } from '../services/diff.service';
 import type { HunkClass } from '../utils/hunk-classifier';
 import {
+  collectAnchorSourceRanges,
   collectSnippetRanges,
   type SnippetRange,
 } from '../utils/source-snippet-ranges';
@@ -56,7 +57,7 @@ import { SourceSnippetComponent } from './source-snippet.component';
           }
         }
       </div>
-      @if (leftRecords().length > 0 || rightRecords().length > 0) {
+      @if (showSnippetArea()) {
         <div class="mt-2.5 flex flex-row flex-wrap gap-3">
           <div
             class="flex min-w-0 flex-1 basis-[280px] flex-col gap-1.5 rounded-md border border-removed-line bg-removed-bg p-2.5"
@@ -66,6 +67,21 @@ import { SourceSnippetComponent } from './source-snippet.component';
             >left</div>
             @if (leftRecords().length > 0) {
               @for (rec of leftRecords(); track rec.focalStart) {
+                <div data-testid="hunk-snippet">
+                  <app-source-snippet
+                    [file]="rec.file"
+                    [focalStart]="rec.focalStart"
+                    [focalEnd]="rec.focalEnd"
+                    [context]="context()"
+                  />
+                </div>
+              }
+            } @else if (leftDefinedHere().length > 0) {
+              <div
+                data-testid="defined-here-left"
+                class="font-mono text-[10px] italic text-foreground-faint"
+              >defined here</div>
+              @for (rec of leftDefinedHere(); track rec.focalStart) {
                 <div data-testid="hunk-snippet">
                   <app-source-snippet
                     [file]="rec.file"
@@ -90,6 +106,21 @@ import { SourceSnippetComponent } from './source-snippet.component';
             >right</div>
             @if (rightRecords().length > 0) {
               @for (rec of rightRecords(); track rec.focalStart) {
+                <div data-testid="hunk-snippet">
+                  <app-source-snippet
+                    [file]="rec.file"
+                    [focalStart]="rec.focalStart"
+                    [focalEnd]="rec.focalEnd"
+                    [context]="context()"
+                  />
+                </div>
+              }
+            } @else if (rightDefinedHere().length > 0) {
+              <div
+                data-testid="defined-here-right"
+                class="font-mono text-[10px] italic text-foreground-faint"
+              >defined here</div>
+              @for (rec of rightDefinedHere(); track rec.focalStart) {
                 <div data-testid="hunk-snippet">
                   <app-source-snippet
                     [file]="rec.file"
@@ -149,11 +180,34 @@ export class DiffHunkComponent {
     collectSnippetRanges(this.hunk(), this.context()),
   );
 
+  private readonly definedHereRanges = computed<ReadonlyArray<SnippetRange>>(
+    () => collectAnchorSourceRanges(this.hunk(), this.context()),
+  );
+
   readonly leftRecords = computed<ReadonlyArray<SnippetRange>>(() =>
     this.ranges().filter((r) => r.side === 'left'),
   );
   readonly rightRecords = computed<ReadonlyArray<SnippetRange>>(() =>
     this.ranges().filter((r) => r.side === 'right'),
+  );
+  readonly leftDefinedHere = computed<ReadonlyArray<SnippetRange>>(() =>
+    this.definedHereRanges().filter((r) => r.side === 'left'),
+  );
+  readonly rightDefinedHere = computed<ReadonlyArray<SnippetRange>>(() =>
+    this.definedHereRanges().filter((r) => r.side === 'right'),
+  );
+
+  /**
+   * The per-side snippet panels render only when there is something to put in
+   * them — a changed-line snippet on either side, or an anchor definition site.
+   * With no `annotateSource` transformation there are no source records at all,
+   * so the panels stay hidden, matching the pre-source-records diff.
+   */
+  readonly showSnippetArea = computed<boolean>(
+    () =>
+      this.leftRecords().length > 0 ||
+      this.rightRecords().length > 0 ||
+      this.definedHereRanges().length > 0,
   );
 
   readonly stateClasses = computed<Record<string, boolean>>(() => {

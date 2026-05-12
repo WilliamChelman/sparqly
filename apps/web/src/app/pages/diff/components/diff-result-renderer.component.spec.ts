@@ -278,6 +278,76 @@ describe('DiffResultRendererComponent (grouped mode)', () => {
     expect(root.querySelector('[data-testid=hunk-snippet-placeholder-right]')).toBeFalsy();
   });
 
+  it('renders the anchor definition site under a muted `defined here` heading on a side with no changed-line source records — not the `(absent)` placeholder', () => {
+    const result: GroupedDiffResponse = {
+      kind: 'grouped',
+      hunked: {
+        hunks: [
+          {
+            anchor: 'http://example.org/Alice',
+            state: 'changed',
+            removed: 0,
+            added: 1,
+            lines: [
+              makeLine('+', 'http://example.org/Alice', 'http://example.org/p'),
+            ],
+            sourceRecords: {
+              left: [],
+              right: [{ file: 'file:///tmp/right.ttl', line: 9 }],
+            },
+            anchorSource: {
+              left: [{ file: 'file:///tmp/left.ttl', line: 2 }],
+              right: [],
+            },
+          },
+        ],
+        totals: { left: 3, right: 4 },
+      },
+    };
+    const root = render(result);
+    expect(root.querySelector('[data-testid=defined-here-left]')).toBeTruthy();
+    expect(
+      root.querySelector('[data-testid=hunk-snippet-placeholder-left]'),
+    ).toBeFalsy();
+    // No `defined here` on the right — it carries a real changed-line snippet.
+    expect(root.querySelector('[data-testid=defined-here-right]')).toBeFalsy();
+    // Two snippets: the right changed-line one (focal 9) + the left
+    // definition-site one (focal 2).
+    const focals = Array.from(
+      root.querySelectorAll('[data-testid=snippet-stub]'),
+    )
+      .map((s) => s.getAttribute('data-focal-start'))
+      .sort();
+    expect(focals).toEqual(['2', '9']);
+  });
+
+  it('still shows the `(absent on left)` placeholder for a side that genuinely does not exist (no source records, no anchorSource)', () => {
+    const result: GroupedDiffResponse = {
+      kind: 'grouped',
+      hunked: {
+        hunks: [
+          {
+            anchor: 'http://example.org/new',
+            state: 'added',
+            removed: 0,
+            added: 1,
+            lines: [makeLine('+', 'http://example.org/new', 'http://example.org/p')],
+            sourceRecords: {
+              left: [],
+              right: [{ file: 'file:///tmp/right.ttl', line: 9 }],
+            },
+          },
+        ],
+        totals: { left: 0, right: 1 },
+      },
+    };
+    const root = render(result);
+    expect(
+      root.querySelector('[data-testid=hunk-snippet-placeholder-left]'),
+    ).toBeTruthy();
+    expect(root.querySelector('[data-testid=defined-here-left]')).toBeFalsy();
+  });
+
   it('renders compact `predicate ( item1 item2 )` for hunk lines that carry listItems, shortening item IRIs via the active prefixes', () => {
     const result: GroupedDiffResponse = {
       kind: 'grouped',

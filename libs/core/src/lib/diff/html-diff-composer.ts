@@ -73,6 +73,7 @@ function renderHunk(
     renderHunkHeader(hunk, prefixEntries) +
     renderHunkBody(hunk, anchorDisplay, options.prefixes) +
     renderHunkSnippets(hunk, snippets) +
+    renderDefinedHereSnippets(hunk, snippets) +
     '</article>\n'
   );
 }
@@ -85,8 +86,12 @@ interface DedupedRecord {
 }
 
 function dedupeRecordsByFileLine(hunk: Hunk): DedupedRecord[] {
+  return dedupeRecords([...hunk.sourceRecords.left, ...hunk.sourceRecords.right]);
+}
+
+function dedupeRecords(records: readonly SourceRecord[]): DedupedRecord[] {
   const ranges: DedupedRecord[] = [];
-  for (const r of [...hunk.sourceRecords.left, ...hunk.sourceRecords.right]) {
+  for (const r of records) {
     if (r.line === undefined) continue;
     ranges.push({
       file: r.file,
@@ -113,6 +118,25 @@ function renderHunkSnippets(hunk: Hunk, snippets: HtmlDiffSnippets): string {
   if (records.length === 0) return '';
   const blocks = records.map((rec) => renderSnippetBlock(rec, snippets));
   return `<div class="hunk-snippets">\n${blocks.join('')}</div>\n`;
+}
+
+function renderDefinedHereSnippets(
+  hunk: Hunk,
+  snippets: HtmlDiffSnippets,
+): string {
+  if (hunk.anchorSource === undefined) return '';
+  const records = dedupeRecords([
+    ...hunk.anchorSource.left,
+    ...hunk.anchorSource.right,
+  ]);
+  if (records.length === 0) return '';
+  const blocks = records.map((rec) => renderSnippetBlock(rec, snippets));
+  return (
+    '<div class="defined-here">\n' +
+    '<div class="defined-here-label">defined here</div>\n' +
+    blocks.join('') +
+    '</div>\n'
+  );
 }
 
 function renderSnippetBlock(
@@ -407,6 +431,8 @@ h1{font-size:1.25rem;margin:0 0 .25rem}
 .line-added .marker{color:#393}
 .pair{border-left:2px solid #d8d8d8;margin:.125rem 0;padding-left:.25rem}
 .hunk-snippets{margin-top:.5rem}
+.defined-here{margin-top:.5rem}
+.defined-here-label{margin:.25rem 0 .125rem;font-size:.75rem;font-style:italic;color:#888}
 .snippet-header{margin:.25rem 0 .125rem;font-size:.8125rem;font-family:ui-monospace,Menlo,Consolas,monospace;color:#06c}
 .snippet-header a{color:inherit;text-decoration:none}
 .snippet-header a:hover{text-decoration:underline}

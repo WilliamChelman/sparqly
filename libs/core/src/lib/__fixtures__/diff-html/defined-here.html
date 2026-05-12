@@ -44,36 +44,36 @@ h1{font-size:1.25rem;margin:0 0 .25rem}
 <body>
 <header>
 <h1>sparqly diff</h1>
-<p class="summary">left=4 right=4 +3 −3</p>
+<p class="summary">left=1 right=1 +1 −1</p>
 </header>
 <section class="hunks">
-<article class="hunk removed">
-<header class="hunk-header">
-<div class="hunk-title">ex:Bar  (sh:NodeShape)  (removed)  [-2 +0]</div>
-</header>
-<div class="hunk-body">
-<div class="line line-removed"><span class="marker">-</span> <span class="text">ex:label &quot;Bar&quot; .</span></div>
-<div class="line line-removed"><span class="marker">-</span> <span class="text">a sh:NodeShape .</span></div>
-</div>
-</article>
-<article class="hunk added">
-<header class="hunk-header">
-<div class="hunk-title">ex:Baz  (sh:NodeShape)  (added)  [-0 +2]</div>
-</header>
-<div class="hunk-body">
-<div class="line line-added"><span class="marker">+</span> <span class="text">ex:label &quot;Baz&quot; .</span></div>
-<div class="line line-added"><span class="marker">+</span> <span class="text">a sh:NodeShape .</span></div>
-</div>
-</article>
 <article class="hunk changed">
 <header class="hunk-header">
-<div class="hunk-title">ex:Foo  (sh:NodeShape)  [-1 +1]</div>
+<div class="hunk-title">ex:Foo  [-1 +1]</div>
+<div class="hunk-chips">
+<a class="chip chip-right" href="#right.ttl-L9">right.ttl:9</a>
+</div>
 </header>
 <div class="hunk-body">
 <div class="pair">
 <div class="line line-removed"><span class="marker">-</span> <span class="text">ex:label &quot;v1&quot; .</span></div>
 <div class="line line-added"><span class="marker">+</span> <span class="text">ex:label &quot;v2&quot; .</span></div>
 </div>
+</div>
+<div class="hunk-snippets">
+<div class="snippet-header" id="right.ttl-L9"><a href="file:///cwd/right.ttl">right.ttl:9</a></div>
+<pre class="snippet" data-focal="9"><code><span class="line"><span class="gutter">7</span> L7</span>
+<span class="line"><span class="gutter">8</span> L8</span>
+<span class="line focal" style="background:#fff7c2"><span class="gutter">9</span> L9</span>
+<span class="line"><span class="gutter">10</span> L10</span>
+<span class="line"><span class="gutter">11</span> L11</span></code></pre>
+</div>
+<div class="defined-here">
+<div class="defined-here-label">defined here</div>
+<div class="snippet-header" id="left.ttl-L2"><a href="file:///cwd/left.ttl">left.ttl:2</a></div>
+<pre class="snippet" data-focal="2"><code><span class="line"><span class="gutter">1</span> L1</span>
+<span class="line focal" style="background:#fff7c2"><span class="gutter">2</span> L2</span>
+<span class="line"><span class="gutter">3</span> L3</span></code></pre>
 </div>
 </article>
 </section>

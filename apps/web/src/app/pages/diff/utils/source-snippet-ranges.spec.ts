@@ -1,4 +1,7 @@
-import { collectSnippetRanges } from './source-snippet-ranges';
+import {
+  collectAnchorSourceRanges,
+  collectSnippetRanges,
+} from './source-snippet-ranges';
 import type { Hunk, SourceRecord } from '../services/diff.service';
 
 function hunkWith(
@@ -155,6 +158,51 @@ describe('collectSnippetRanges', () => {
         side: 'left',
         focalStart: 11,
         focalEnd: 16,
+      },
+    ]);
+  });
+});
+
+describe('collectAnchorSourceRanges', () => {
+  it('returns [] when the hunk carries no anchorSource', () => {
+    expect(collectAnchorSourceRanges(hunkWith(), 3)).toEqual([]);
+  });
+
+  it('emits one range per anchorSource record, tagged with its side', () => {
+    const hunk: Hunk = {
+      ...hunkWith(),
+      anchorSource: {
+        left: [{ file: 'file:///tmp/def.ttl', line: 4 }],
+        right: [],
+      },
+    };
+    expect(collectAnchorSourceRanges(hunk, 3)).toEqual([
+      {
+        file: 'file:///tmp/def.ttl',
+        side: 'left',
+        focalStart: 4,
+        focalEnd: 4,
+      },
+    ]);
+  });
+
+  it('merges adjacent same-side definition-site records like changed-line ranges do', () => {
+    const hunk: Hunk = {
+      ...hunkWith(),
+      anchorSource: {
+        left: [],
+        right: [
+          { file: 'file:///tmp/def.ttl', line: 8 },
+          { file: 'file:///tmp/def.ttl', line: 9 },
+        ],
+      },
+    };
+    expect(collectAnchorSourceRanges(hunk, 3)).toEqual([
+      {
+        file: 'file:///tmp/def.ttl',
+        side: 'right',
+        focalStart: 8,
+        focalEnd: 9,
       },
     ]);
   });

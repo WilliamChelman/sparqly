@@ -47,6 +47,14 @@ export interface Hunk {
   added: number;
   lines: HunkLine[];
   sourceRecords: { left: SourceRecord[]; right: SourceRecord[] };
+  /**
+   * The anchor's definition site on a side where it exists but contributed no
+   * changed-line source records — one record per file the anchor's triples are
+   * annotated from, focused on the earliest annotated line. Present only on
+   * `changed` hunks where a side qualifies; the renderer shows these under a
+   * muted `defined here` heading, distinct from a real change.
+   */
+  anchorSource?: { left: SourceRecord[]; right: SourceRecord[] };
 }
 
 export interface HunkedRdfDiff {
