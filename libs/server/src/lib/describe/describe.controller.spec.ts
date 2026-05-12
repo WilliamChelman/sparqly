@@ -115,6 +115,44 @@ describe('POST /api/describe — tracer-bullet (single glob source)', () => {
     expect(json.quads.trim()).toBe('');
     expect(json.perSource.alpha.count).toBe(0);
   });
+
+  it('accepts a well-formed `expandedPaths` map; a glob source ignores it (result unchanged)', async () => {
+    const resp = await postJson({
+      iri: 'http://example.org/alice',
+      expandedPaths: {
+        alpha: [[{ predicate: 'http://example.org/knows', inverse: false }]],
+      },
+    });
+    expect(resp.status).toBe(200);
+    const json = (await resp.json()) as {
+      total: number;
+      perSource: Record<string, { count: number; truncated: boolean }>;
+    };
+    // Same as the no-expandedPaths case: alpha is a glob, paths are ignored.
+    expect(json.total).toBe(3);
+    expect(json.perSource.alpha.count).toBe(3);
+    expect(json.perSource.alpha.truncated).toBe(false);
+  });
+
+  it('returns 400 when an `expandedPaths` step is malformed (missing `inverse`)', async () => {
+    const resp = await postJson({
+      iri: 'http://example.org/alice',
+      expandedPaths: { alpha: [[{ predicate: 'http://example.org/knows' }]] },
+    });
+    expect(resp.status).toBe(400);
+  });
+
+  it('does not reject an over-long expansion path — the cap clamps rather than 400s', async () => {
+    const longPath = Array.from({ length: 30 }, () => ({
+      predicate: 'http://example.org/p',
+      inverse: false,
+    }));
+    const resp = await postJson({
+      iri: 'http://example.org/alice',
+      expandedPaths: { alpha: [longPath] },
+    });
+    expect(resp.status).toBe(200);
+  });
 });
 
 describe('DescribeController — service-status to HTTP mapping', () => {

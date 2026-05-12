@@ -11,6 +11,10 @@ import { z } from 'zod';
 import { DescribeService, type DescribeResult } from './describe.service';
 import { SPARQL_DESCRIBE_SERVICE } from '../bootstrap';
 
+const PATH_STEP_SCHEMA = z
+  .object({ predicate: z.string().min(1), inverse: z.boolean() })
+  .strict();
+
 const DESCRIBE_REQUEST_SCHEMA = z
   .object({
     iri: z.string().min(1),
@@ -18,6 +22,9 @@ const DESCRIBE_REQUEST_SCHEMA = z
     withProvenance: z.boolean().optional(),
     perSourceLimit: z.number().int().positive().optional(),
     fromSourcePredicate: z.string().min(1).optional(),
+    expandedPaths: z
+      .record(z.string(), z.array(z.array(PATH_STEP_SCHEMA)))
+      .optional(),
   })
   .strict();
 

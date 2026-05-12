@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { describeProvenance, serializeDescribeWire } from 'common';
+import { describeProvenance, serializeDescribeWire, type PathStep } from 'common';
 import {
   describeEndpoint,
   describeStore,
@@ -30,7 +30,18 @@ export interface DescribeRequest {
   withProvenance?: boolean;
   perSourceLimit?: number;
   fromSourcePredicate?: string;
+  /**
+   * UI-driven blank-node expansion paths per source id (ADR-0019). For each
+   * `endpoint` source, `expandedPaths[id]` is forwarded as `paths` to
+   * {@link describeEndpoint}; `glob`/`view` sources ignore it (already fully
+   * expanded). Paths longer than {@link MAX_EXPANSION_PATH_STEPS} are clamped
+   * and the affected source is reported `truncated`.
+   */
+  expandedPaths?: Record<string, PathStep[][]>;
 }
+
+/** Cap on expansion-path length (ADR-0019); over-long paths are clamped, not rejected. */
+export const MAX_EXPANSION_PATH_STEPS = 12;
 
 export interface DescribePerSourceEntry {
   count: number;
@@ -95,7 +106,13 @@ export class DescribeService {
     for (const target of selected) {
       const id = target.id ?? 'source';
       try {
-        const raw = await this.describeOne(target, id, seed, perSourceLimit);
+        const raw = await this.describeOne(
+          target,
+          id,
+          seed,
+          perSourceLimit,
+          req.expandedPaths?.[id] ?? [],
+        );
         const relabelled = relabelBnodes(raw.quads, id);
         runs.push({ id, quads: relabelled, truncated: raw.truncated });
       } catch (err) {
@@ -181,9 +198,22 @@ export class DescribeService {
     id: string,
     seed: NamedNode,
     perSourceLimit: number,
+    requestedPaths: ReadonlyArray<PathStep[]>,
   ): Promise<{ quads: Quad[]; truncated: boolean }> {
     if (target.kind === 'endpoint') {
-      return describeEndpoint({ endpoint: target, seed, perSourceLimit });
+      const paths = requestedPaths.map((p) =>
+        p.slice(0, MAX_EXPANSION_PATH_STEPS),
+      );
+      const clamped = requestedPaths.some(
+        (p) => p.length > MAX_EXPANSION_PATH_STEPS,
+      );
+      const raw = await describeEndpoint({
+        endpoint: target,
+        seed,
+        perSourceLimit,
+        paths,
+      });
+      return { quads: raw.quads, truncated: raw.truncated || clamped };
     }
     if (target.kind === 'empty') {
       throw new Error(

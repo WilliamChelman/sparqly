@@ -83,6 +83,145 @@ async function startStubEndpoint(
   };
 }
 
+/**
+ * A SPARQL endpoint stub that records every query body it receives and lets the
+ * caller choose the response per query — used to assert what `describeEndpoint`
+ * actually sends (e.g. the path-expansion `CONSTRUCT`).
+ */
+async function startRecordingEndpoint(
+  respond: (query: string) => string,
+): Promise<{ url: string; queries: string[]; close: () => Promise<void> }> {
+  const queries: string[] = [];
+  const server: Server = createServer((req, res) => {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', () => {
+      queries.push(body);
+      res.writeHead(200, { 'Content-Type': 'application/n-triples' });
+      res.end(respond(body));
+    });
+  });
+  await new Promise<void>((resolve) =>
+    server.listen(0, '127.0.0.1', () => resolve()),
+  );
+  const addr = server.address();
+  const port = typeof addr === 'object' && addr ? addr.port : 0;
+  return {
+    url: `http://127.0.0.1:${port}/sparql`,
+    queries,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+}
+
+describe('DescribeService — expandedPaths (ADR-0019)', () => {
+  let paths: RegistryPaths;
+
+  beforeEach(async () => {
+    paths = await makeRegistry();
+  });
+
+  afterEach(async () => {
+    await rm(paths.dir, { recursive: true, force: true });
+  });
+
+  it("forwards a source's expandedPaths to that endpoint's describeEndpoint and unions the extra hop in", async () => {
+    const PIN = 'http://example.org/list';
+    const ep = await startRecordingEndpoint((q) =>
+      q.includes(`<${PIN}>`)
+        ? '<http://example.org/alice> <http://example.org/extra> <http://example.org/thing> .\n'
+        : '',
+    );
+    try {
+      const registry = parseSourceSpecs([{ id: 'remote', endpoint: ep.url }]);
+      const svc = new DescribeService(registry);
+
+      const before = await describeResponse(svc, {
+        iri: 'http://example.org/alice',
+      });
+      expect(before.total).toBe(0);
+
+      const after = await describeResponse(svc, {
+        iri: 'http://example.org/alice',
+        expandedPaths: { remote: [[{ predicate: PIN, inverse: false }]] },
+      });
+      // The path-walk query was sent and pinned the predicate.
+      expect(ep.queries.some((q) => q.includes(`<${PIN}>`))).toBe(true);
+      // …and its quad is merged into the depth-0 description.
+      expect(after.total).toBe(1);
+      expect(after.perSource.remote.count).toBe(1);
+    } finally {
+      await ep.close();
+    }
+  });
+
+  it("does not forward one source's expandedPaths to another endpoint source", async () => {
+    const PIN = 'http://example.org/list';
+    const target = await startRecordingEndpoint(() => '');
+    const other = await startRecordingEndpoint(() => '');
+    try {
+      const registry = parseSourceSpecs([
+        { id: 'target', endpoint: target.url },
+        { id: 'other', endpoint: other.url },
+      ]);
+      await describeResponse(new DescribeService(registry), {
+        iri: 'http://example.org/alice',
+        expandedPaths: { target: [[{ predicate: PIN, inverse: false }]] },
+      });
+      expect(target.queries.some((q) => q.includes(`<${PIN}>`))).toBe(true);
+      expect(other.queries.some((q) => q.includes(`<${PIN}>`))).toBe(false);
+    } finally {
+      await target.close();
+      await other.close();
+    }
+  });
+
+  it('ignores expandedPaths for a materialized (glob) source — result identical to omitting it', async () => {
+    const registry = parseSourceSpecs([{ id: 'alpha', glob: paths.alphaTtl }]);
+    const svc = new DescribeService(registry);
+    const baseline = await describeResponse(svc, {
+      iri: 'http://example.org/alice',
+    });
+    const withPaths = await describeResponse(svc, {
+      iri: 'http://example.org/alice',
+      expandedPaths: {
+        alpha: [[{ predicate: 'http://example.org/knows', inverse: false }]],
+      },
+    });
+    expect(withPaths.total).toBe(baseline.total);
+    expect(withPaths.perSource.alpha.count).toBe(baseline.perSource.alpha.count);
+    expect(withPaths.perSource.alpha.truncated).toBe(false);
+  });
+
+  it('clamps an over-long expansion path to the cap and reports the source truncated', async () => {
+    const ep = await startRecordingEndpoint(() => '');
+    try {
+      const registry = parseSourceSpecs([{ id: 'remote', endpoint: ep.url }]);
+      const overLong = Array.from({ length: 30 }, () => ({
+        predicate: 'http://example.org/p',
+        inverse: false,
+      }));
+      const out = await describeResponse(new DescribeService(registry), {
+        iri: 'http://example.org/alice',
+        expandedPaths: { remote: [overLong] },
+      });
+      expect(out.perSource.remote.truncated).toBe(true);
+      // The path-walk query the endpoint received was clamped to MAX steps:
+      // its WHERE chains exactly MAX `?mN` variables, not 30.
+      const walkQuery = ep.queries.find((q) => /\?m1\b/.test(q));
+      expect(walkQuery).toBeDefined();
+      const maxVarIndex = Math.max(
+        ...[...(walkQuery as string).matchAll(/\?m(\d+)\b/g)].map((m) =>
+          Number(m[1]),
+        ),
+      );
+      expect(maxVarIndex).toBe(12);
+    } finally {
+      await ep.close();
+    }
+  });
+});
+
 describe('DescribeService — multi-source aggregation', () => {
   let paths: RegistryPaths;
   let svc: DescribeService;
