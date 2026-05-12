@@ -10,22 +10,55 @@ import {
   Res,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { readSourceSnippet, type SnippetReadResult } from 'core';
+import {
+  readSourceSnippets,
+  type FocalRange,
+  type SnippetReadResult,
+} from 'core';
 import { SnippetAllowList } from './snippet-allow-list';
 import { SPARQL_SNIPPET_ALLOW_LIST } from '../bootstrap';
+
+const RANGE_SPEC = /^([1-9][0-9]*)(?:-([1-9][0-9]*))?$/;
+
+const RANGES = z
+  .union([z.string(), z.array(z.string())])
+  .transform((raw, ctx): FocalRange[] => {
+    const specs = Array.isArray(raw) ? raw : [raw];
+    if (specs.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'at least one `range` is required' });
+      return z.NEVER;
+    }
+    const ranges: FocalRange[] = [];
+    for (const spec of specs) {
+      const m = RANGE_SPEC.exec(spec);
+      if (m === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `\`range\` must be "<line>" or "<startLine>-<endLine>" (got "${spec}")`,
+        });
+        return z.NEVER;
+      }
+      const focalStart = Number(m[1]);
+      const focalEnd = m[2] === undefined ? focalStart : Number(m[2]);
+      if (focalEnd < focalStart) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `\`range\` end must be >= start (got "${spec}")`,
+        });
+        return z.NEVER;
+      }
+      ranges.push({ focalStart, focalEnd });
+    }
+    return ranges;
+  });
 
 const SNIPPET_QUERY_SCHEMA = z
   .object({
     file: z.string().min(1),
-    line: z.coerce.number().int().positive(),
-    endLine: z.coerce.number().int().positive().optional(),
     snippetContext: z.coerce.number().int().nonnegative(),
+    range: RANGES,
   })
-  .strict()
-  .refine((q) => q.endLine === undefined || q.endLine >= q.line, {
-    message: '`endLine` must be >= `line`',
-    path: ['endLine'],
-  });
+  .strict();
 
 interface ResLike {
   status(code: number): ResLike;
@@ -73,26 +106,15 @@ export class SnippetController {
       });
     }
 
-    const result: SnippetReadResult = await readSourceSnippet(
+    const snippets: SnippetReadResult[] = await readSourceSnippets(
       absPath,
-      parsed.data.line,
-      parsed.data.endLine ?? parsed.data.line,
+      parsed.data.range,
       parsed.data.snippetContext,
     );
 
-    const status = is404Reason(result)
-      ? HttpStatus.NOT_FOUND
-      : HttpStatus.OK;
     res
-      .status(status)
+      .status(HttpStatus.OK)
       .setHeader('Content-Type', 'application/json')
-      .send(JSON.stringify(result));
+      .send(JSON.stringify({ snippets }));
   }
-}
-
-function is404Reason(result: SnippetReadResult): boolean {
-  return (
-    result.kind === 'unavailable' &&
-    (result.reason === 'missing' || result.reason === 'not-a-file')
-  );
 }

@@ -14,15 +14,27 @@ const SAMPLE_TTL = [
   '',
 ].join('\n');
 
+interface SnippetEntry {
+  kind: string;
+  reason?: string;
+  startLine?: number;
+  focalStart?: number;
+  focalEnd?: number;
+  lines?: string[];
+}
+
 function snippetUrl(
   baseUrl: string,
-  args: { file: string; line: number; snippetContext: number },
+  args: {
+    file: string;
+    ranges: ReadonlyArray<number | string>;
+    snippetContext: number;
+  },
 ): string {
-  const params = new URLSearchParams({
-    file: args.file,
-    line: String(args.line),
-    snippetContext: String(args.snippetContext),
-  });
+  const params = new URLSearchParams();
+  params.set('file', args.file);
+  params.set('snippetContext', String(args.snippetContext));
+  for (const r of args.ranges) params.append('range', String(r));
   return `${baseUrl}/api/source-snippet?${params.toString()}`;
 }
 
@@ -40,7 +52,7 @@ describe('sparqly serve — GET /api/source-snippet (issue #145)', () => {
     await rm(scratch, { recursive: true, force: true });
   });
 
-  it('returns 200 + SnippetReadResult JSON for a loaded file', async () => {
+  it('returns 200 + { snippets: [...] } with one entry per requested range', async () => {
     const dataPath = join(scratch, 'data.ttl');
     await writeFile(dataPath, SAMPLE_TTL);
     const configPath = join(scratch, 'sparqly.config.yaml');
@@ -58,25 +70,18 @@ describe('sparqly serve — GET /api/source-snippet (issue #145)', () => {
     const resp = await fetch(
       snippetUrl(handle.baseUrl, {
         file: pathToFileURL(dataPath).href,
-        line: 3,
-        snippetContext: 1,
+        ranges: [3, 4],
+        snippetContext: 0,
       }),
     );
 
     expect(resp.status).toBe(200);
     expect(resp.headers.get('content-type')).toMatch(/application\/json/);
-    const json = (await resp.json()) as {
-      kind: string;
-      focalStart: number;
-      focalEnd: number;
-      startLine: number;
-      lines: string[];
-    };
-    expect(json.kind).toBe('snippet');
-    expect(json.focalStart).toBe(3);
-    expect(json.focalEnd).toBe(3);
-    expect(json.startLine).toBe(2);
-    expect(json.lines).toEqual(['', 'ex:a ex:p ex:b .', 'ex:a ex:q ex:c .']);
+    const json = (await resp.json()) as { snippets: SnippetEntry[] };
+    expect(json.snippets).toEqual([
+      { kind: 'snippet', startLine: 3, focalStart: 3, focalEnd: 3, lines: ['ex:a ex:p ex:b .'] },
+      { kind: 'snippet', startLine: 4, focalStart: 4, focalEnd: 4, lines: ['ex:a ex:q ex:c .'] },
+    ]);
   });
 
   it('returns 403 for a path outside the loader allow-list', async () => {
@@ -99,7 +104,7 @@ describe('sparqly serve — GET /api/source-snippet (issue #145)', () => {
     const resp = await fetch(
       snippetUrl(handle.baseUrl, {
         file: pathToFileURL(sneakyPath).href,
-        line: 1,
+        ranges: [1],
         snippetContext: 0,
       }),
     );
@@ -131,7 +136,7 @@ describe('sparqly serve — GET /api/source-snippet (issue #145)', () => {
     const beforeResp = await fetch(
       snippetUrl(handle.baseUrl, {
         file: pathToFileURL(newPath).href,
-        line: 1,
+        ranges: [1],
         snippetContext: 0,
       }),
     );
@@ -146,15 +151,16 @@ describe('sparqly serve — GET /api/source-snippet (issue #145)', () => {
       after = await fetch(
         snippetUrl(handle.baseUrl, {
           file: pathToFileURL(newPath).href,
-          line: 3,
+          ranges: [3],
           snippetContext: 0,
         }),
       );
     } while (after.status !== 200 && Date.now() < deadline);
 
     expect(after?.status).toBe(200);
-    const json = (await after!.json()) as { kind: string; lines: string[] };
-    expect(json.kind).toBe('snippet');
-    expect(json.lines).toEqual(['ex:a ex:p ex:b .']);
+    const json = (await after!.json()) as { snippets: SnippetEntry[] };
+    expect(json.snippets).toEqual([
+      { kind: 'snippet', startLine: 3, focalStart: 3, focalEnd: 3, lines: ['ex:a ex:p ex:b .'] },
+    ]);
   });
 });

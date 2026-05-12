@@ -16,6 +16,15 @@ const SAMPLE_TTL = [
   '',
 ].join('\n');
 
+interface SnippetEntry {
+  kind: string;
+  reason?: string;
+  startLine?: number;
+  focalStart?: number;
+  focalEnd?: number;
+  lines?: string[];
+}
+
 describe('GET /api/source-snippet', () => {
   let dir: string;
   let dataPath: string;
@@ -41,86 +50,92 @@ describe('GET /api/source-snippet', () => {
 
   function snippetUrl(args: {
     file: string;
-    line: number | string;
+    ranges: ReadonlyArray<number | string>;
     context: number | string;
   }): string {
-    const params = new URLSearchParams({
-      file: args.file,
-      line: String(args.line),
-      snippetContext: String(args.context),
-    });
+    const params = new URLSearchParams();
+    params.set('file', args.file);
+    params.set('snippetContext', String(args.context));
+    for (const r of args.ranges) params.append('range', String(r));
     return `${baseUrl}?${params.toString()}`;
   }
 
-  it('returns 200 + SnippetReadResult JSON for an allow-listed file', async () => {
+  it('returns 200 + { snippets: [...] } with one entry per requested range', async () => {
     const fileUri = pathToFileURL(dataPath).href;
-    const resp = await fetch(snippetUrl({ file: fileUri, line: 3, context: 1 }));
+    const resp = await fetch(snippetUrl({ file: fileUri, ranges: [3], context: 1 }));
 
     expect(resp.status).toBe(200);
     expect(resp.headers.get('content-type')).toMatch(/application\/json/);
-    const json = (await resp.json()) as {
-      kind: string;
-      startLine: number;
-      focalStart: number;
-      focalEnd: number;
-      lines: string[];
-    };
-    expect(json.kind).toBe('snippet');
-    expect(json.focalStart).toBe(3);
-    expect(json.focalEnd).toBe(3);
-    expect(json.startLine).toBe(2);
-    expect(json.lines).toEqual(['', 'ex:a ex:p ex:b .', 'ex:a ex:q ex:c .']);
+    const json = (await resp.json()) as { snippets: SnippetEntry[] };
+    expect(json.snippets).toHaveLength(1);
+    expect(json.snippets[0]).toEqual({
+      kind: 'snippet',
+      startLine: 2,
+      focalStart: 3,
+      focalEnd: 3,
+      lines: ['', 'ex:a ex:p ex:b .', 'ex:a ex:q ex:c .'],
+    });
   });
 
-  it('returns a multi-line focal range when `endLine` query param is provided', async () => {
+  it('returns one snippet per requested `range`, in request order', async () => {
     const fileUri = pathToFileURL(dataPath).href;
-    const params = new URLSearchParams({
-      file: fileUri,
-      line: '3',
-      endLine: '5',
-      snippetContext: '0',
-    });
-    const resp = await fetch(`${baseUrl}?${params.toString()}`);
+    const resp = await fetch(
+      snippetUrl({ file: fileUri, ranges: [5, 3], context: 0 }),
+    );
 
     expect(resp.status).toBe(200);
-    const json = (await resp.json()) as {
-      kind: string;
-      startLine: number;
-      focalStart: number;
-      focalEnd: number;
-      lines: string[];
-    };
-    expect(json.kind).toBe('snippet');
-    expect(json.focalStart).toBe(3);
-    expect(json.focalEnd).toBe(5);
-    expect(json.startLine).toBe(3);
-    expect(json.lines).toEqual([
-      'ex:a ex:p ex:b .',
-      'ex:a ex:q ex:c .',
-      'ex:a ex:r ex:d .',
+    const json = (await resp.json()) as { snippets: SnippetEntry[] };
+    expect(json.snippets).toEqual([
+      { kind: 'snippet', startLine: 5, focalStart: 5, focalEnd: 5, lines: ['ex:a ex:r ex:d .'] },
+      { kind: 'snippet', startLine: 3, focalStart: 3, focalEnd: 3, lines: ['ex:a ex:p ex:b .'] },
     ]);
   });
 
-  it('returns 400 when `endLine` < `line`', async () => {
+  it('accepts a "<start>-<end>" range spec for a multi-line focal range', async () => {
     const fileUri = pathToFileURL(dataPath).href;
-    const params = new URLSearchParams({
-      file: fileUri,
-      line: '4',
-      endLine: '2',
-      snippetContext: '0',
+    const resp = await fetch(
+      snippetUrl({ file: fileUri, ranges: ['3-5'], context: 0 }),
+    );
+
+    expect(resp.status).toBe(200);
+    const json = (await resp.json()) as { snippets: SnippetEntry[] };
+    expect(json.snippets[0]).toEqual({
+      kind: 'snippet',
+      startLine: 3,
+      focalStart: 3,
+      focalEnd: 5,
+      lines: ['ex:a ex:p ex:b .', 'ex:a ex:q ex:c .', 'ex:a ex:r ex:d .'],
     });
-    const resp = await fetch(`${baseUrl}?${params.toString()}`);
+  });
+
+  it('returns 400 when a range spec has end < start', async () => {
+    const fileUri = pathToFileURL(dataPath).href;
+    const resp = await fetch(
+      snippetUrl({ file: fileUri, ranges: ['4-2'], context: 0 }),
+    );
+    expect(resp.status).toBe(400);
+  });
+
+  it('returns 400 when a range spec is not a line/line-range', async () => {
+    const fileUri = pathToFileURL(dataPath).href;
+    const resp = await fetch(
+      snippetUrl({ file: fileUri, ranges: ['banana'], context: 0 }),
+    );
+    expect(resp.status).toBe(400);
+  });
+
+  it('returns 400 when no `range` is provided', async () => {
+    const fileUri = pathToFileURL(dataPath).href;
+    const resp = await fetch(
+      `${baseUrl}?file=${encodeURIComponent(fileUri)}&snippetContext=0`,
+    );
     expect(resp.status).toBe(400);
   });
 
   it('returns 403 for a file outside the allow-list', async () => {
     const otherPath = join(dir, 'not-loaded.ttl');
     const resp = await fetch(
-      snippetUrl({
-        file: pathToFileURL(otherPath).href,
-        line: 1,
-        context: 0,
-      }),
+      snippetUrl({ file: pathToFileURL(otherPath).href, ranges: [1], context: 0 }),
     );
     expect(resp.status).toBe(403);
   });
@@ -129,36 +144,32 @@ describe('GET /api/source-snippet', () => {
     const sneaky = join(dir, 'sneaky.txt');
     await writeFile(sneaky, 'secret\n');
     const resp = await fetch(
-      snippetUrl({
-        file: pathToFileURL(sneaky).href,
-        line: 1,
-        context: 0,
-      }),
+      snippetUrl({ file: pathToFileURL(sneaky).href, ranges: [1], context: 0 }),
     );
     expect(resp.status).toBe(403);
   });
 
   it('returns 400 when `file` is missing', async () => {
-    const resp = await fetch(`${baseUrl}?line=1&snippetContext=0`);
+    const resp = await fetch(`${baseUrl}?range=1&snippetContext=0`);
     expect(resp.status).toBe(400);
   });
 
   it('returns 400 when `file` is not a file:// URI', async () => {
     const resp = await fetch(
-      snippetUrl({ file: 'http://example.com/x', line: 1, context: 0 }),
+      snippetUrl({ file: 'http://example.com/x', ranges: [1], context: 0 }),
     );
     expect(resp.status).toBe(400);
   });
 
-  it('returns 400 when `line` is not a positive integer', async () => {
+  it('returns 400 when a range is not a positive integer', async () => {
     const fileUri = pathToFileURL(dataPath).href;
     const resp = await fetch(
-      snippetUrl({ file: fileUri, line: 'banana', context: 0 }),
+      snippetUrl({ file: fileUri, ranges: ['0'], context: 0 }),
     );
     expect(resp.status).toBe(400);
   });
 
-  it('returns 404 with `(source file unavailable)` payload when the allow-listed file disappears', async () => {
+  it('returns 200 with an `unavailable: missing` entry per range when the allow-listed file disappears', async () => {
     // File was loaded once (so it is allow-listed) but is gone at request time.
     const goneDir = await mkdtemp(join(tmpdir(), 'sparqly-snippet-gone-'));
     const gonePath = join(goneDir, 'gone.ttl');
@@ -174,14 +185,13 @@ describe('GET /api/source-snippet', () => {
         `http://localhost:${goneServer.port}/api/source-snippet?` +
           new URLSearchParams({
             file: fileUri,
-            line: '1',
+            range: '1',
             snippetContext: '0',
           }).toString(),
       );
-      expect(resp.status).toBe(404);
-      const json = (await resp.json()) as { kind: string; reason?: string };
-      expect(json.kind).toBe('unavailable');
-      expect(json.reason).toBe('missing');
+      expect(resp.status).toBe(200);
+      const json = (await resp.json()) as { snippets: SnippetEntry[] };
+      expect(json.snippets).toEqual([{ kind: 'unavailable', reason: 'missing' }]);
     } finally {
       await goneServer.close();
       await rm(goneDir, { recursive: true, force: true });
@@ -219,7 +229,7 @@ describe('GET /api/source-snippet — --watch rebuild refreshes the allow-list',
   function snippetReq(absPath: string): Promise<Response> {
     const params = new URLSearchParams({
       file: pathToFileURL(absPath).href,
-      line: '1',
+      range: '1',
       snippetContext: '0',
     });
     return fetch(`${baseUrl}?${params.toString()}`);

@@ -1,28 +1,12 @@
-import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
   Component,
-  computed,
   inject,
   input,
   OnInit,
   signal,
 } from '@angular/core';
-
-export interface SnippetPayload {
-  kind: 'snippet';
-  startLine: number;
-  focalStart: number;
-  focalEnd: number;
-  lines: string[];
-}
-
-export interface SnippetUnavailable {
-  kind: 'unavailable';
-  reason: 'missing' | 'not-a-file' | 'beyond-eof' | 'empty';
-}
-
-export type SnippetReadResult = SnippetPayload | SnippetUnavailable;
+import { SnippetService, type SnippetPayload } from '../services/snippet.service';
 
 @Component({
   selector: 'app-source-snippet',
@@ -95,7 +79,7 @@ export type SnippetReadResult = SnippetPayload | SnippetUnavailable;
   `,
 })
 export class SourceSnippetComponent implements OnInit {
-  private readonly http = inject(HttpClient);
+  private readonly snippets = inject(SnippetService);
 
   readonly file = input.required<string>();
   readonly focalStart = input.required<number>();
@@ -105,24 +89,16 @@ export class SourceSnippetComponent implements OnInit {
   readonly snippet = signal<SnippetPayload | null>(null);
   readonly unavailable = signal<boolean>(false);
 
-  readonly isMultiLineFocal = computed(() => this.focalEnd() > this.focalStart());
-
   ngOnInit(): void {
-    let params = new HttpParams()
-      .set('file', this.file())
-      .set('line', String(this.focalStart()))
-      .set('snippetContext', String(this.context()));
-    if (this.isMultiLineFocal()) {
-      params = params.set('endLine', String(this.focalEnd()));
-    }
-    this.http
-      .get<SnippetReadResult>('/api/source-snippet', { params })
-      .subscribe({
-        next: (result) => {
-          if (result.kind === 'snippet') this.snippet.set(result);
-          else this.unavailable.set(true);
-        },
-        error: (_err: HttpErrorResponse) => this.unavailable.set(true),
+    this.snippets
+      .fetch(
+        this.file(),
+        { focalStart: this.focalStart(), focalEnd: this.focalEnd() },
+        this.context(),
+      )
+      .subscribe((result) => {
+        if (result.kind === 'snippet') this.snippet.set(result);
+        else this.unavailable.set(true);
       });
   }
 

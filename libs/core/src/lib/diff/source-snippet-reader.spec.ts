@@ -4,7 +4,9 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   readSnippetFromLines,
+  readSnippetsFromLines,
   readSourceSnippet,
+  readSourceSnippets,
 } from './source-snippet-reader';
 
 let scratch: string;
@@ -184,5 +186,124 @@ describe('readSourceSnippet', () => {
       focalEnd: 2,
       lines: ['こんにちは', '世界', '🌍 emoji line'],
     });
+  });
+});
+
+describe('readSourceSnippets', () => {
+  it('returns one snippet per requested focal range, in request order, from a single read', async () => {
+    const path = await fixture(
+      'a.ttl',
+      'L1\nL2\nL3\nL4\nL5\nL6\nL7\nL8\nL9\n',
+    );
+
+    const out = await readSourceSnippets(
+      path,
+      [
+        { focalStart: 7, focalEnd: 8 },
+        { focalStart: 2, focalEnd: 2 },
+      ],
+      1,
+    );
+
+    expect(out).toEqual([
+      {
+        kind: 'snippet',
+        startLine: 6,
+        focalStart: 7,
+        focalEnd: 8,
+        lines: ['L6', 'L7', 'L8', 'L9'],
+      },
+      {
+        kind: 'snippet',
+        startLine: 1,
+        focalStart: 2,
+        focalEnd: 2,
+        lines: ['L1', 'L2', 'L3'],
+      },
+    ]);
+  });
+
+  it('streams: stops pulling lines after the highest requested upper bound across all ranges', async () => {
+    let pulled = 0;
+    async function* countingLines(): AsyncGenerator<string> {
+      for (let i = 1; i <= 1_000_000; i += 1) {
+        pulled += 1;
+        yield `L${i}`;
+      }
+    }
+
+    const out = await readSnippetsFromLines(
+      countingLines(),
+      [
+        { focalStart: 3, focalEnd: 3 },
+        { focalStart: 10, focalEnd: 11 },
+      ],
+      2,
+    );
+
+    expect(out).toEqual([
+      { kind: 'snippet', startLine: 1, focalStart: 3, focalEnd: 3, lines: ['L1', 'L2', 'L3', 'L4', 'L5'] },
+      { kind: 'snippet', startLine: 8, focalStart: 10, focalEnd: 11, lines: ['L8', 'L9', 'L10', 'L11', 'L12', 'L13'] },
+    ]);
+    // Highest upper bound is 11 + context(2) = 13 — never pulled line 14.
+    expect(pulled).toBe(13);
+  });
+
+  it('reports `beyond-eof` for ranges past EOF while still returning in-bounds ranges', async () => {
+    const path = await fixture('a.ttl', 'L1\nL2\nL3\n');
+
+    const out = await readSourceSnippets(
+      path,
+      [
+        { focalStart: 1, focalEnd: 1 },
+        { focalStart: 99, focalEnd: 99 },
+      ],
+      0,
+    );
+
+    expect(out).toEqual([
+      { kind: 'snippet', startLine: 1, focalStart: 1, focalEnd: 1, lines: ['L1'] },
+      { kind: 'unavailable', reason: 'beyond-eof' },
+    ]);
+  });
+
+  it('reports `empty` for every requested range on a zero-byte file', async () => {
+    const path = await fixture('empty.ttl', '');
+
+    const out = await readSourceSnippets(
+      path,
+      [
+        { focalStart: 1, focalEnd: 1 },
+        { focalStart: 4, focalEnd: 6 },
+      ],
+      2,
+    );
+
+    expect(out).toEqual([
+      { kind: 'unavailable', reason: 'empty' },
+      { kind: 'unavailable', reason: 'empty' },
+    ]);
+  });
+
+  it('reports `missing` for every requested range when the file does not exist', async () => {
+    const out = await readSourceSnippets(
+      join(scratch, 'nope.ttl'),
+      [
+        { focalStart: 1, focalEnd: 1 },
+        { focalStart: 2, focalEnd: 2 },
+      ],
+      1,
+    );
+
+    expect(out).toEqual([
+      { kind: 'unavailable', reason: 'missing' },
+      { kind: 'unavailable', reason: 'missing' },
+    ]);
+  });
+
+  it('returns an empty array when no ranges are requested (no read)', async () => {
+    const path = await fixture('a.ttl', 'L1\nL2\nL3\n');
+
+    expect(await readSourceSnippets(path, [], 2)).toEqual([]);
   });
 });
