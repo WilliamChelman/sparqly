@@ -57,6 +57,38 @@ describe('QueryEngine — pass-through federation', () => {
     expect(endpoint.requestCount()).toBeGreaterThan(0);
   });
 
+  it('submits long queries as a direct `application/sparql-query` POST (not form-encoded)', async () => {
+    // Comunica switches from GET to POST once the encoded request URL grows past
+    // ~600 chars. Some endpoints (e.g. Fedlex's Virtuoso) reject the
+    // form-encoded `query=` body it then sends; a direct POST sidesteps that.
+    let observedMethod: string | undefined;
+    let observedContentType: string | undefined;
+    let observedQuery: string | undefined;
+    endpoint = await startFakeSparqlEndpoint(({ headers, query, method }) => {
+      observedMethod = method;
+      const ct = headers['content-type'];
+      observedContentType = Array.isArray(ct) ? ct[0] : ct;
+      observedQuery = query;
+      return {
+        contentType: 'application/sparql-results+json',
+        body: SPARQL_JSON_TWO_BINDINGS,
+      };
+    });
+
+    const prefixes = Array.from(
+      { length: 12 },
+      (_, i) => `PREFIX p${i}: <http://example.org/very/long/namespace/number/${i}#>`,
+    ).join('\n');
+    const longQuery = `${prefixes}\n\nSELECT ?s WHERE { ?s ?p ?o }`;
+
+    const engine = new QueryEngine({ kind: 'endpoint', endpoint: endpoint.url });
+    await engine.execute(longQuery);
+
+    expect(observedMethod).toBe('POST');
+    expect(observedContentType).toContain('application/sparql-query');
+    expect(observedQuery).toContain('SELECT ?s WHERE');
+  });
+
   it('forwards bearer auth as `Authorization: Bearer <token>` on the upstream request', async () => {
     let observedAuth: string | undefined;
     endpoint = await startFakeSparqlEndpoint(({ headers }) => {
