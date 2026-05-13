@@ -154,6 +154,13 @@ function pickUsedPrefixes(
       const name = bestPrefixFor(term, entries);
       if (name) usedNames.add(name);
     }
+    if (q.object.termType === 'Literal') {
+      const dt = (q.object as Term & { datatype?: Term }).datatype;
+      if (dt) {
+        const name = bestPrefixFor(dt, entries);
+        if (name) usedNames.add(name);
+      }
+    }
   }
 
   const out: Record<string, string> = {};

@@ -96,6 +96,24 @@ describe('formatRdf', () => {
     `);
   });
 
+  it('shortens a typed literal datatype to a CURIE when a configured prefix matches', () => {
+    const { quads } = ttl`
+      @prefix ex: <http://example.org/> .
+      @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+      ex:s ex:p "2024-01-01"^^xsd:date .
+    `;
+    const out = formatRdf(quads, 'turtle', {
+      prefixes: {
+        ex: 'http://example.org/',
+        xsd: 'http://www.w3.org/2001/XMLSchema#',
+      },
+    });
+
+    expect(out).toContain('"2024-01-01"^^xsd:date');
+    expect(out).not.toContain('<http://www.w3.org/2001/XMLSchema#date>');
+    expect(out).toContain('@prefix xsd:');
+  });
+
   describe('blank lines between groups', () => {
     it('inserts a blank line between two adjacent subject blocks in turtle', () => {
       const { quads } = ttl`
