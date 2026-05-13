@@ -166,4 +166,181 @@ describe('buildDescribeSections', () => {
     expect(inbound.count).toBe(0);
     expect(inbound.predicateGroups.length).toBe(0);
   });
+
+  describe('blank-node nesting (PRD #221, slice #223)', () => {
+    it('populates a single-use bnode object with an empty inline BnodeBlock (no label)', () => {
+      const b = blankNode('b0');
+      const q = quad(seed, namedNode('http://example.org/address'), b);
+      const { outbound } = buildDescribeSections([q], NO_ORIGINS, SEED, NO_ENDPOINTS);
+      const member = outbound.predicateGroups[0].members[0];
+      expect(member.nested).toEqual({
+        kind: 'bnode',
+        label: null,
+        predicateGroups: [],
+      });
+    });
+
+    it('lifts a bnode object’s outgoing quads into its inline BnodeBlock predicate groups', () => {
+      const b = blankNode('b0');
+      const quads = [
+        quad(seed, namedNode('http://example.org/address'), b),
+        quad(b, namedNode('http://example.org/city'), literal('Paris')),
+        quad(b, namedNode('http://example.org/zip'), literal('75001')),
+      ];
+      const { outbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+      const member = outbound.predicateGroups[0].members[0];
+      const nested = member.nested;
+      if (!nested || nested.kind !== 'bnode') throw new Error('expected bnode nested');
+      expect(nested.label).toBeNull();
+      expect(nested.predicateGroups.map((g) => g.predicate)).toEqual([
+        'http://example.org/city',
+        'http://example.org/zip',
+      ]);
+      expect(nested.predicateGroups[0].members.map((m) => m.term.value)).toEqual([
+        'Paris',
+      ]);
+      // The seed section should NOT carry the bnode's outgoing quads as
+      // top-level groups — they've moved into the nested subtree.
+      expect(outbound.predicateGroups.length).toBe(1);
+      expect(outbound.predicateGroups[0].predicate).toBe('http://example.org/address');
+    });
+
+    it('duplicates a both-ways bnode into outbound AND inbound with its subtree in each', () => {
+      const b = blankNode('shared');
+      const quads = [
+        quad(seed, namedNode('http://example.org/has'), b),
+        quad(b, namedNode('http://example.org/p'), seed),
+        quad(b, namedNode('http://example.org/note'), literal('hi')),
+      ];
+      const { outbound, inbound } = buildDescribeSections(
+        quads,
+        NO_ORIGINS,
+        SEED,
+        NO_ENDPOINTS,
+      );
+      // Outbound: seed→:has→b, with b's subtree.
+      expect(outbound.predicateGroups.length).toBe(1);
+      const outBlock = outbound.predicateGroups[0].members[0].nested;
+      if (!outBlock || outBlock.kind !== 'bnode') throw new Error('outbound bnode');
+      expect(outBlock.predicateGroups.map((g) => g.predicate)).toEqual([
+        'http://example.org/note',
+        'http://example.org/p',
+      ]);
+      // Inbound: b→:p→seed, with b's subtree (same content).
+      expect(inbound.predicateGroups.length).toBe(1);
+      const inBlock = inbound.predicateGroups[0].members[0].nested;
+      if (!inBlock || inBlock.kind !== 'bnode') throw new Error('inbound bnode');
+      expect(inBlock.predicateGroups.map((g) => g.predicate)).toEqual([
+        'http://example.org/note',
+        'http://example.org/p',
+      ]);
+    });
+
+    it('falls back to a plain BnodeBlock when a chain is missing rdf:rest', () => {
+      const RDF_FIRST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#first';
+      const head = blankNode('h0');
+      const quads = [
+        quad(seed, namedNode('http://example.org/items'), head),
+        // rdf:first is present, but no rdf:rest → not a valid list.
+        quad(head, namedNode(RDF_FIRST), namedNode('http://example.org/a')),
+      ];
+      const { outbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+      const block = outbound.predicateGroups[0].members[0].nested;
+      if (!block || block.kind !== 'bnode') {
+        throw new Error('expected fallback bnode block, got ' + block?.kind);
+      }
+      expect(block.predicateGroups.map((g) => g.predicate)).toEqual([RDF_FIRST]);
+    });
+
+    it('collapses an rdf:first/rdf:rest/rdf:nil chain into a CollectionBlock', () => {
+      const RDF_FIRST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#first';
+      const RDF_REST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#rest';
+      const RDF_NIL = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#nil';
+      const head = blankNode('h0');
+      const mid = blankNode('h1');
+      const quads = [
+        quad(seed, namedNode('http://example.org/items'), head),
+        quad(head, namedNode(RDF_FIRST), namedNode('http://example.org/a')),
+        quad(head, namedNode(RDF_REST), mid),
+        quad(mid, namedNode(RDF_FIRST), literal('b')),
+        quad(mid, namedNode(RDF_REST), namedNode(RDF_NIL)),
+      ];
+      const { outbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+      const block = outbound.predicateGroups[0].members[0].nested;
+      if (!block || block.kind !== 'collection') {
+        throw new Error('expected collection block');
+      }
+      expect(block.items.length).toBe(2);
+      expect(block.items[0].term).toEqual(
+        expect.objectContaining({ termType: 'NamedNode', value: 'http://example.org/a' }),
+      );
+      expect(block.items[1].term).toEqual(
+        expect.objectContaining({ termType: 'Literal', value: 'b' }),
+      );
+    });
+
+    it('terminates a bnode cycle with a labeled back-reference (no infinite recursion)', () => {
+      const a = blankNode('A');
+      const b = blankNode('B');
+      const quads = [
+        quad(seed, namedNode('http://example.org/has'), a),
+        quad(a, namedNode('http://example.org/next'), b),
+        quad(b, namedNode('http://example.org/back'), a),
+      ];
+      const { outbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+      const aBlock = outbound.predicateGroups[0].members[0].nested;
+      if (!aBlock || aBlock.kind !== 'bnode') throw new Error('expected A bnode');
+      const bBlock = aBlock.predicateGroups[0].members[0].nested;
+      if (!bBlock || bBlock.kind !== 'bnode') throw new Error('expected B bnode');
+      const aBackRef = bBlock.predicateGroups[0].members[0].nested;
+      if (!aBackRef || aBackRef.kind !== 'bnode') throw new Error('expected A back-ref');
+      expect(aBackRef.label).toBe(aBlock.label);
+      expect(aBlock.label).not.toBeNull();
+      // The back-ref carries no further content — that's what stopped the cycle.
+      expect(aBackRef.predicateGroups).toEqual([]);
+    });
+
+    it('labels a multi-reference bnode and emits its subtree at the first site only', () => {
+      const b = blankNode('shared');
+      const quads = [
+        // Two outbound seed predicates both point at the same bnode.
+        quad(seed, namedNode('http://example.org/home'), b),
+        quad(seed, namedNode('http://example.org/work'), b),
+        quad(b, namedNode('http://example.org/city'), literal('Paris')),
+      ];
+      const { outbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+      // Predicates are alphabetical: :home before :work.
+      const homeBlock = outbound.predicateGroups[0].members[0].nested;
+      const workBlock = outbound.predicateGroups[1].members[0].nested;
+      if (!homeBlock || homeBlock.kind !== 'bnode') throw new Error('home bnode');
+      if (!workBlock || workBlock.kind !== 'bnode') throw new Error('work bnode');
+      // Both sites carry the same label (multi-ref).
+      expect(homeBlock.label).not.toBeNull();
+      expect(workBlock.label).toBe(homeBlock.label);
+      // Canonical content lands at the first site only; the second is a back-ref.
+      expect(homeBlock.predicateGroups.length).toBe(1);
+      expect(homeBlock.predicateGroups[0].predicate).toBe('http://example.org/city');
+      expect(workBlock.predicateGroups).toEqual([]);
+    });
+
+    it('recurses through nested bnodes (address → geo → lat/long)', () => {
+      const address = blankNode('addr');
+      const geo = blankNode('geo');
+      const quads = [
+        quad(seed, namedNode('http://example.org/address'), address),
+        quad(address, namedNode('http://example.org/geo'), geo),
+        quad(geo, namedNode('http://example.org/lat'), literal('48.85')),
+        quad(geo, namedNode('http://example.org/long'), literal('2.35')),
+      ];
+      const { outbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+      const addrBlock = outbound.predicateGroups[0].members[0].nested;
+      if (!addrBlock || addrBlock.kind !== 'bnode') throw new Error('expected addr bnode');
+      const geoBlock = addrBlock.predicateGroups[0].members[0].nested;
+      if (!geoBlock || geoBlock.kind !== 'bnode') throw new Error('expected geo bnode');
+      expect(geoBlock.predicateGroups.map((g) => g.predicate)).toEqual([
+        'http://example.org/lat',
+        'http://example.org/long',
+      ]);
+    });
+  });
 });
