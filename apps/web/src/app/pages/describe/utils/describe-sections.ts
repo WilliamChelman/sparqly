@@ -37,8 +37,12 @@ export interface SectionMember {
    *  - `null` → named IRI or literal member.
    */
   readonly nested: NestedBlock | null;
-  /** Stub — RDF-star annotation rendering arrives in the follow-up slice. */
-  readonly annotations: readonly never[];
+  /**
+   * Inline RDF-star annotation sub-blocks (`{| … |}`) attached to this
+   * member's underlying quad. Typically 0 or 1 element; the array shape leaves
+   * room for distinct annotation contexts on the same quad.
+   */
+  readonly annotations: readonly AnnotationBlock[];
   /**
    * Predicate-pinned path to this bnode + originating source id, when the
    * member is a dangling endpoint-origin blank node within the path-step cap;
@@ -64,6 +68,16 @@ export interface CollectionBlock {
 export interface CollectionItem {
   readonly term: CoreTerm;
   readonly nested: NestedBlock | null;
+}
+
+/**
+ * RDF-star annotation sub-block (`{| … |}`). Same recursive shape as
+ * `BnodeBlock`: predicate-grouped members; annotation members can themselves
+ * carry further annotations.
+ */
+export interface AnnotationBlock {
+  readonly kind: 'annotation';
+  readonly predicateGroups: readonly PredicateGroup[];
 }
 
 export interface PredicateGroup {
@@ -102,6 +116,7 @@ function newMember(
   graph: Term,
   origins: readonly string[],
   nested: NestedBlock | null,
+  annotations: readonly AnnotationBlock[],
   ctx: BuildCtx,
 ): SectionMember {
   return {
@@ -109,7 +124,7 @@ function newMember(
     origins,
     graph: graph.termType === 'DefaultGraph' ? null : asCoreTerm(graph),
     nested,
-    annotations: [],
+    annotations,
     expand: computeExpand(memberTerm, ctx),
   };
 }
@@ -167,6 +182,8 @@ interface BuildCtx {
   /** Number of times each bnode label appears as the object of any quad.
    *  Count > 1 ⇒ render as labeled `_:b` (multi-reference). */
   readonly bnodeRefCount: ReadonlyMap<string, number>;
+  /** RDF-star annotation quads keyed by their inner-quad key. */
+  readonly annotationsByQuadKey: ReadonlyMap<string, readonly Quad[]>;
   /** All describe quads (already stripped of provenance), for expand-target
    *  attribution via `describeBnodePath` / `isExpandableBnode`. */
   readonly quads: ReadonlyArray<Quad>;
@@ -182,6 +199,22 @@ function indexBnodeOutgoing(quads: ReadonlyArray<Quad>): Map<string, Quad[]> {
     if (!arr) {
       arr = [];
       out.set(q.subject.value, arr);
+    }
+    arr.push(q);
+  }
+  return out;
+}
+
+function indexAnnotations(quads: ReadonlyArray<Quad>): Map<string, Quad[]> {
+  const out = new Map<string, Quad[]>();
+  for (const q of quads) {
+    if ((q.subject.termType as string) !== 'Quad') continue;
+    const inner = q.subject as unknown as Quad;
+    const key = quadKey(inner);
+    let arr = out.get(key);
+    if (!arr) {
+      arr = [];
+      out.set(key, arr);
     }
     arr.push(q);
   }
@@ -308,7 +341,8 @@ function buildBnodeBlock(
       q.object.termType === 'BlankNode'
         ? buildNestedForBnode(q.object.value, ctx, emitted)
         : null;
-    acc.members.push(newMember(q.object, q.graph, origins, nested, ctx));
+    const annotations = buildAnnotations(q, ctx, emitted);
+    acc.members.push(newMember(q.object, q.graph, origins, nested, annotations, ctx));
   }
   const predicateGroups: PredicateGroup[] = [...groups]
     .map(([predicate, acc]) => ({
@@ -318,6 +352,47 @@ function buildBnodeBlock(
     }))
     .sort((a, b) => comparePredicate('outbound', a.predicate, b.predicate));
   return { kind: 'bnode', label: blockLabel, predicateGroups };
+}
+
+/**
+ * Build the `{| … |}` annotation sub-blocks attached to `annotatedQuad`.
+ * Returns an empty array when no RDF-star annotation quads target it.
+ * Predicate ordering is alphabetical (no `rdf:type`-first pin); member
+ * ordering matches the outer rule (IRIs → literals → bnodes).
+ */
+function buildAnnotations(
+  annotatedQuad: Quad,
+  ctx: BuildCtx,
+  emitted: Set<string>,
+): readonly AnnotationBlock[] {
+  const annotationQuads = ctx.annotationsByQuadKey.get(quadKey(annotatedQuad));
+  if (!annotationQuads || annotationQuads.length === 0) return [];
+  const groups = new Map<string, GroupAccumulator>();
+  for (const q of annotationQuads) {
+    const p = q.predicate.value;
+    let acc = groups.get(p);
+    if (!acc) {
+      acc = { predicateTerm: asCoreTerm(q.predicate), members: [] };
+      groups.set(p, acc);
+    }
+    const origins = ctx.originsByQuad.get(quadKey(q)) ?? [];
+    const nested: NestedBlock | null =
+      q.object.termType === 'BlankNode'
+        ? buildNestedForBnode(q.object.value, ctx, emitted)
+        : null;
+    const innerAnnotations = buildAnnotations(q, ctx, emitted);
+    acc.members.push(
+      newMember(q.object, q.graph, origins, nested, innerAnnotations, ctx),
+    );
+  }
+  const predicateGroups: PredicateGroup[] = [...groups]
+    .map(([predicate, acc]) => ({
+      predicate,
+      predicateTerm: acc.predicateTerm,
+      members: [...acc.members].sort(compareMembers),
+    }))
+    .sort((a, b) => a.predicate.localeCompare(b.predicate));
+  return [{ kind: 'annotation', predicateGroups }];
 }
 
 interface RawMember {
@@ -356,7 +431,15 @@ function buildSection(
           rm.memberTerm.termType === 'BlankNode'
             ? buildNestedForBnode(rm.memberTerm.value, ctx, emitted)
             : null;
-        return newMember(rm.memberTerm, rm.quad.graph, rm.origins, nested, ctx);
+        const annotations = buildAnnotations(rm.quad, ctx, emitted);
+        return newMember(
+          rm.memberTerm,
+          rm.quad.graph,
+          rm.origins,
+          nested,
+          annotations,
+          ctx,
+        );
       });
       return { predicate, predicateTerm: acc.predicateTerm, members };
     });
@@ -388,6 +471,7 @@ export function buildDescribeSections(
     originsByQuad,
     bnodeOutgoing: indexBnodeOutgoing(quads),
     bnodeRefCount: indexBnodeRefCount(quads),
+    annotationsByQuadKey: indexAnnotations(quads),
     quads,
     seed,
     endpointSourceIds,
