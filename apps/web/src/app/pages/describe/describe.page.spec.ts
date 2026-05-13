@@ -501,6 +501,49 @@ describe('DescribePage', () => {
     );
   });
 
+  describe('inline blank-node nesting + rdf:list collapse (#223)', () => {
+    const ALICE = 'http://example.org/alice';
+
+    it('renders a single-use bnode object inline with its nested predicate group', async () => {
+      const wire =
+        `<${ALICE}> <http://example.org/address> _:b0 .\n` +
+        `_:b0 <http://example.org/city> "Paris" .\n`;
+      const { root } = await runAndFlush({
+        iri: ALICE,
+        quads: wire,
+        total: 2,
+        perSource: { alpha: { count: 2, truncated: false } },
+      });
+      // One nested bnode block exists somewhere in the rendered sections.
+      expect(root.querySelector('[data-testid=nested-bnode]')).toBeTruthy();
+      // Outer row + one inner row from the nested predicate group.
+      const rows = root.querySelectorAll('[data-testid=describe-row]');
+      expect(rows.length).toBe(2);
+      // The nested row carries the city literal.
+      expect(root.textContent).toContain('Paris');
+    });
+
+    it('renders an rdf:list chain as a nested collection block', async () => {
+      const RDF_FIRST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#first';
+      const RDF_REST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#rest';
+      const RDF_NIL = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#nil';
+      const wire =
+        `<${ALICE}> <http://example.org/items> _:h0 .\n` +
+        `_:h0 <${RDF_FIRST}> <http://example.org/a> .\n` +
+        `_:h0 <${RDF_REST}> <${RDF_NIL}> .\n`;
+      const { root } = await runAndFlush({
+        iri: ALICE,
+        quads: wire,
+        total: 3,
+        perSource: { alpha: { count: 3, truncated: false } },
+      });
+      expect(root.querySelector('[data-testid=nested-collection]')).toBeTruthy();
+      // The collapsed `( … )` body should contain the single item's IRI.
+      expect(root.querySelector('[data-testid=nested-collection]')?.textContent)
+        .toContain('http://example.org/a');
+    });
+  });
+
   describe('blank-node expansion (ADR-0019)', () => {
     const ALICE = 'http://example.org/alice';
     const KNOWS = 'http://example.org/knows';

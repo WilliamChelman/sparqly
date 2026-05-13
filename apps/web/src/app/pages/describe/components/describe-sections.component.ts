@@ -5,6 +5,7 @@ import {
   input,
   output,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import type { Quad } from 'n3';
 import type { DisplayContext } from '@app/core';
 import { TermCellComponent } from '@app/pages/query/components/result/term-cell.component';
@@ -19,7 +20,7 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 @Component({
   selector: 'app-describe-sections',
   standalone: true,
-  imports: [TermCellComponent],
+  imports: [TermCellComponent, NgTemplateOutlet],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let view = sections();
@@ -39,42 +40,12 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
             <span data-testid="describe-section-count">{{ view.outbound.count }}</span>
           </h2>
           @for (g of view.outbound.predicateGroups; track g.predicate) {
-            <div
-              data-testid="predicate-group"
-              [attr.data-predicate]="g.predicate"
-              class="ml-2 flex flex-col gap-1"
-            >
-              <div class="font-mono text-sm">
-                @if (g.predicate === rdfType) {
-                  <span class="text-secondary dark:text-secondary-soft">a</span>
-                } @else {
-                  <app-term-cell [term]="g.predicateTerm" [context]="context()" />
-                }
-              </div>
-              <ul class="ml-4 flex flex-col gap-0.5">
-                @for (m of g.members; track $index) {
-                  <li
-                    data-testid="describe-row"
-                    class="flex flex-wrap items-baseline gap-1 font-mono text-sm"
-                  >
-                    @if (m.term.termType === 'BlankNode') {
-                      <span class="italic text-foreground-muted">_:{{ m.term.value }}</span>
-                    } @else {
-                      <app-term-cell [term]="m.term" [context]="context()" />
-                    }
-                    @if (m.graph; as g2) {
-                      <app-term-cell [term]="g2" [context]="context()" [linkable]="false" />
-                    }
-                    @for (origin of m.origins; track origin) {
-                      <span
-                        data-testid="source-badge"
-                        class="ml-0.5 inline-block rounded-md border border-border bg-surface-sunken px-1.5 py-0.5 text-[11px] font-medium text-foreground-muted"
-                      >{{ origin }}</span>
-                    }
-                  </li>
-                }
-              </ul>
-            </div>
+            <ng-container
+              *ngTemplateOutlet="
+                predicateGroupTpl;
+                context: { $implicit: g, direction: 'outbound' }
+              "
+            ></ng-container>
           }
         </section>
       }
@@ -89,43 +60,114 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
             <span data-testid="describe-section-count">{{ view.inbound.count }}</span>
           </h2>
           @for (g of view.inbound.predicateGroups; track g.predicate) {
-            <div
-              data-testid="predicate-group"
-              [attr.data-predicate]="g.predicate"
-              class="ml-2 flex flex-col gap-1"
-            >
-              <div class="font-mono text-sm">
-                <span class="text-foreground-faint">←</span>
-                <app-term-cell [term]="g.predicateTerm" [context]="context()" />
-              </div>
-              <ul class="ml-4 flex flex-col gap-0.5">
-                @for (m of g.members; track $index) {
-                  <li
-                    data-testid="describe-row"
-                    class="flex flex-wrap items-baseline gap-1 font-mono text-sm"
-                  >
-                    @if (m.term.termType === 'BlankNode') {
-                      <span class="italic text-foreground-muted">_:{{ m.term.value }}</span>
-                    } @else {
-                      <app-term-cell [term]="m.term" [context]="context()" />
-                    }
-                    @if (m.graph; as g2) {
-                      <app-term-cell [term]="g2" [context]="context()" [linkable]="false" />
-                    }
-                    @for (origin of m.origins; track origin) {
-                      <span
-                        data-testid="source-badge"
-                        class="ml-0.5 inline-block rounded-md border border-border bg-surface-sunken px-1.5 py-0.5 text-[11px] font-medium text-foreground-muted"
-                      >{{ origin }}</span>
-                    }
-                  </li>
-                }
-              </ul>
-            </div>
+            <ng-container
+              *ngTemplateOutlet="
+                predicateGroupTpl;
+                context: { $implicit: g, direction: 'inbound' }
+              "
+            ></ng-container>
           }
         </section>
       }
     }
+
+    <ng-template #predicateGroupTpl let-g let-direction="direction">
+      <div
+        data-testid="predicate-group"
+        [attr.data-predicate]="g.predicate"
+        class="ml-2 flex flex-col gap-1"
+      >
+        <div class="font-mono text-sm">
+          @if (direction === 'outbound' && g.predicate === rdfType) {
+            <span class="text-secondary dark:text-secondary-soft">a</span>
+          } @else {
+            @if (direction === 'inbound') {
+              <span class="text-foreground-faint">←</span>
+            }
+            <app-term-cell [term]="g.predicateTerm" [context]="context()" />
+          }
+        </div>
+        <ul class="ml-4 flex flex-col gap-0.5">
+          @for (m of g.members; track $index) {
+            <ng-container
+              *ngTemplateOutlet="memberRowTpl; context: { $implicit: m }"
+            ></ng-container>
+          }
+        </ul>
+      </div>
+    </ng-template>
+
+    <ng-template #memberRowTpl let-m>
+      <li
+        data-testid="describe-row"
+        class="flex flex-wrap items-baseline gap-1 font-mono text-sm"
+      >
+        @if (m.nested) {
+          <ng-container
+            *ngTemplateOutlet="nestedBlockTpl; context: { $implicit: m.nested, term: m.term }"
+          ></ng-container>
+        } @else if (m.term.termType === 'BlankNode') {
+          <span class="italic text-foreground-muted">_:{{ m.term.value }}</span>
+        } @else {
+          <app-term-cell [term]="m.term" [context]="context()" />
+        }
+        @if (m.graph; as g2) {
+          <app-term-cell [term]="g2" [context]="context()" [linkable]="false" />
+        }
+        @for (origin of m.origins; track origin) {
+          <span
+            data-testid="source-badge"
+            class="ml-0.5 inline-block rounded-md border border-border bg-surface-sunken px-1.5 py-0.5 text-[11px] font-medium text-foreground-muted"
+          >{{ origin }}</span>
+        }
+      </li>
+    </ng-template>
+
+    <ng-template #nestedBlockTpl let-block let-term="term">
+      @if (block.kind === 'bnode') {
+        <span data-testid="nested-bnode" class="flex flex-wrap items-baseline gap-1">
+          @if (block.label) {
+            <span class="italic text-foreground-muted">_:{{ block.label }}</span>
+          }
+          @if (block.predicateGroups.length > 0) {
+            <span class="text-foreground-faint">[</span>
+            <span class="ml-2 flex flex-col gap-1">
+              @for (g of block.predicateGroups; track g.predicate) {
+                <ng-container
+                  *ngTemplateOutlet="
+                    predicateGroupTpl;
+                    context: { $implicit: g, direction: 'outbound' }
+                  "
+                ></ng-container>
+              }
+            </span>
+            <span class="text-foreground-faint">]</span>
+          }
+        </span>
+      } @else {
+        <span
+          data-testid="nested-collection"
+          class="flex flex-wrap items-baseline gap-1"
+        >
+          <span class="text-foreground-faint">(</span>
+          @for (item of block.items; track $index) {
+            @if (item.nested) {
+              <ng-container
+                *ngTemplateOutlet="
+                  nestedBlockTpl;
+                  context: { $implicit: item.nested, term: item.term }
+                "
+              ></ng-container>
+            } @else if (item.term.termType === 'BlankNode') {
+              <span class="italic text-foreground-muted">_:{{ item.term.value }}</span>
+            } @else {
+              <app-term-cell [term]="item.term" [context]="context()" />
+            }
+          }
+          <span class="text-foreground-faint">)</span>
+        </span>
+      }
+    </ng-template>
   `,
 })
 export class DescribeSectionsComponent {
@@ -148,5 +190,4 @@ export class DescribeSectionsComponent {
       new Set(this.endpointSourceIds()),
     ),
   );
-
 }
