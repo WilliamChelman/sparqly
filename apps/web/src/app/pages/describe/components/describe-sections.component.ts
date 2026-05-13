@@ -111,6 +111,16 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
         } @else {
           <app-term-cell [term]="m.term" [context]="context()" />
         }
+        @if (m.expand) {
+          <button
+            data-testid="expand-bnode"
+            type="button"
+            class="ml-1 cursor-pointer rounded border border-border bg-surface-sunken px-1 py-0 text-[11px] text-foreground-muted transition-colors hover:bg-surface hover:text-foreground"
+            (click)="expand.emit(m.expand)"
+            [attr.aria-label]="'expand bnode'"
+            title="expand"
+          >⤵ expand</button>
+        }
         @if (m.graph; as g2) {
           <app-term-cell [term]="g2" [context]="context()" [linkable]="false" />
         }
@@ -175,9 +185,9 @@ export class DescribeSectionsComponent {
   readonly originsByQuad = input<ReadonlyMap<string, readonly string[]>>(new Map());
   readonly seed = input<string>('');
   readonly context = input<DisplayContext>({ prefixes: {} });
-  /** Ids of `endpoint` sources — wired through for the follow-up `⤵ expand` slice. */
+  /** Ids of `endpoint` sources — only their dangling bnodes get an expand affordance. */
   readonly endpointSourceIds = input<readonly string[]>([]);
-  /** Wired for the follow-up slice; not emitted in v1. */
+  /** Emitted when the user clicks `⤵ expand` on a dangling endpoint-origin bnode. */
   readonly expand = output<DescribeBnodePathResult>();
 
   readonly rdfType = RDF_TYPE;
