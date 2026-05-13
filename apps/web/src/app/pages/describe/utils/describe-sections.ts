@@ -1,5 +1,11 @@
 import type { Quad, Term } from 'n3';
 import type { Term as CoreTerm } from '@app/core';
+import {
+  describeBnodePath,
+  isExpandableBnode,
+  MAX_EXPANSION_PATH_STEPS,
+  type DescribeBnodePathResult,
+} from './describe-bnode-path';
 
 /**
  * Describe sections (PRD #221, slice #222 — flat).
@@ -33,8 +39,13 @@ export interface SectionMember {
   readonly nested: NestedBlock | null;
   /** Stub — RDF-star annotation rendering arrives in the follow-up slice. */
   readonly annotations: readonly never[];
-  /** Stub — the `⤵ expand` target arrives in the follow-up slice. */
-  readonly expand: null;
+  /**
+   * Predicate-pinned path to this bnode + originating source id, when the
+   * member is a dangling endpoint-origin blank node within the path-step cap;
+   * otherwise `null`. Drives the `⤵ expand` affordance in the component
+   * (ADR-0019).
+   */
+  readonly expand: DescribeBnodePathResult | null;
 }
 
 export type NestedBlock = BnodeBlock | CollectionBlock;
@@ -91,6 +102,7 @@ function newMember(
   graph: Term,
   origins: readonly string[],
   nested: NestedBlock | null,
+  ctx: BuildCtx,
 ): SectionMember {
   return {
     term: asCoreTerm(memberTerm),
@@ -98,8 +110,22 @@ function newMember(
     graph: graph.termType === 'DefaultGraph' ? null : asCoreTerm(graph),
     nested,
     annotations: [],
-    expand: null,
+    expand: computeExpand(memberTerm, ctx),
   };
+}
+
+function computeExpand(
+  memberTerm: Term,
+  ctx: BuildCtx,
+): DescribeBnodePathResult | null {
+  if (memberTerm.termType !== 'BlankNode') return null;
+  if (!isExpandableBnode(ctx.quads, memberTerm.value, ctx.endpointSourceIds)) {
+    return null;
+  }
+  const result = describeBnodePath(ctx.quads, memberTerm.value, ctx.seed);
+  if (result === null) return null;
+  if (result.path.length > MAX_EXPANSION_PATH_STEPS) return null;
+  return result;
 }
 
 function quadKey(q: Quad): string {
@@ -141,6 +167,11 @@ interface BuildCtx {
   /** Number of times each bnode label appears as the object of any quad.
    *  Count > 1 ⇒ render as labeled `_:b` (multi-reference). */
   readonly bnodeRefCount: ReadonlyMap<string, number>;
+  /** All describe quads (already stripped of provenance), for expand-target
+   *  attribution via `describeBnodePath` / `isExpandableBnode`. */
+  readonly quads: ReadonlyArray<Quad>;
+  readonly seed: string;
+  readonly endpointSourceIds: ReadonlySet<string>;
 }
 
 function indexBnodeOutgoing(quads: ReadonlyArray<Quad>): Map<string, Quad[]> {
@@ -277,7 +308,7 @@ function buildBnodeBlock(
       q.object.termType === 'BlankNode'
         ? buildNestedForBnode(q.object.value, ctx, emitted)
         : null;
-    acc.members.push(newMember(q.object, q.graph, origins, nested));
+    acc.members.push(newMember(q.object, q.graph, origins, nested, ctx));
   }
   const predicateGroups: PredicateGroup[] = [...groups]
     .map(([predicate, acc]) => ({
@@ -325,7 +356,7 @@ function buildSection(
           rm.memberTerm.termType === 'BlankNode'
             ? buildNestedForBnode(rm.memberTerm.value, ctx, emitted)
             : null;
-        return newMember(rm.memberTerm, rm.quad.graph, rm.origins, nested);
+        return newMember(rm.memberTerm, rm.quad.graph, rm.origins, nested, ctx);
       });
       return { predicate, predicateTerm: acc.predicateTerm, members };
     });
@@ -343,7 +374,7 @@ export function buildDescribeSections(
   quads: ReadonlyArray<Quad>,
   originsByQuad: ReadonlyMap<string, readonly string[]>,
   seed: string,
-  _endpointSourceIds: ReadonlySet<string>,
+  endpointSourceIds: ReadonlySet<string>,
 ): DescribeSections {
   const outboundQuads: Quad[] = [];
   const inboundQuads: Quad[] = [];
@@ -357,6 +388,9 @@ export function buildDescribeSections(
     originsByQuad,
     bnodeOutgoing: indexBnodeOutgoing(quads),
     bnodeRefCount: indexBnodeRefCount(quads),
+    quads,
+    seed,
+    endpointSourceIds,
   };
   return {
     outbound: buildSection('outbound', outboundQuads, ctx),

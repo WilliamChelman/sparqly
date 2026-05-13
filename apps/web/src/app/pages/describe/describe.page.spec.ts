@@ -731,6 +731,72 @@ describe('DescribePage', () => {
       http.verify();
     });
 
+    it('clicking the rendered expand-bnode button re-issues describe and splices the slice in', async () => {
+      const wire0 =
+        `<${ALICE}> <${KNOWS}> _:remote__b0 .\n` +
+        provQuad(`<${ALICE}>`, `<${KNOWS}>`, '_:remote__b0', 'remote');
+      const { fixture, http } = await setupWithInitialResponse(SOURCES_WITH_ENDPOINT, {
+        iri: ALICE,
+        quads: wire0,
+        total: 1,
+        perSource: { remote: { count: 1, truncated: true } },
+      });
+      const root = fixture.nativeElement as HTMLElement;
+      const button = root.querySelector(
+        '[data-testid=expand-bnode]',
+      ) as HTMLButtonElement | null;
+      expect(button).toBeTruthy();
+      button!.click();
+      fixture.detectChanges();
+
+      const req = http.expectOne('/api/describe');
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual({
+        iri: ALICE,
+        sources: ['remote'],
+        expandedPaths: { remote: [[{ predicate: KNOWS, inverse: false }]] },
+      });
+      req.flush({
+        iri: ALICE,
+        quads:
+          `<${ALICE}> <${KNOWS}> _:remote__b0 .\n` +
+          provQuad(`<${ALICE}>`, `<${KNOWS}>`, '_:remote__b0', 'remote') +
+          `_:remote__b0 <http://example.org/since> "2021" .\n` +
+          provQuad('_:remote__b0', '<http://example.org/since>', '"2021"', 'remote'),
+        total: 2,
+        perSource: { remote: { count: 2, truncated: false } },
+      });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const merged = requireDescribeSections(fixture).quads();
+      expect(merged.some((q) => q.predicate.value === 'http://example.org/since')).toBe(true);
+      // After the bnode is expanded, it's no longer dangling — the expand
+      // button must disappear from the rendered sections.
+      expect(root.querySelector('[data-testid=expand-bnode]')).toBeFalsy();
+      http.verify();
+    });
+
+    it('does not render an expand button on a glob-source bnode (only endpoint origins qualify)', async () => {
+      const sources: SourceListing['sources'] = [
+        { id: 'alpha', kind: 'glob', label: 'A (glob)', default: true },
+      ];
+      const wire =
+        `<${ALICE}> <${KNOWS}> _:alpha__b0 .\n` +
+        provQuad(`<${ALICE}>`, `<${KNOWS}>`, '_:alpha__b0', 'alpha');
+      const { fixture, http } = await setupWithInitialResponse(sources, {
+        iri: ALICE,
+        quads: wire,
+        total: 1,
+        perSource: { alpha: { count: 1, truncated: false } },
+      });
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('[data-testid=expand-bnode]')).toBeFalsy();
+      http.verify();
+      void fixture;
+    });
+
     it('does not touch the URL params on expand', async () => {
       const wire0 =
         `<${ALICE}> <${KNOWS}> _:remote__b0 .\n` +

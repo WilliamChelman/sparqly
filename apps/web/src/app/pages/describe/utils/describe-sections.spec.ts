@@ -323,6 +323,75 @@ describe('buildDescribeSections', () => {
       expect(workBlock.predicateGroups).toEqual([]);
     });
 
+    it('leaves expand null when the bnode origin is not in the endpoint set', () => {
+      const b = blankNode('local__b0');
+      const q = quad(seed, namedNode('http://example.org/knows'), b);
+      const { outbound } = buildDescribeSections(
+        [q],
+        NO_ORIGINS,
+        SEED,
+        new Set(['remote']),
+      );
+      expect(outbound.predicateGroups[0].members[0].expand).toBeNull();
+    });
+
+    it('leaves expand null on a dangling bnode past the path-step cap (13 hops)', () => {
+      // Chain: seed -p-> b1 -p-> b2 -> … -> b13 (dangling). Cap is 12, so b13
+      // — reached in 13 predicate hops — must NOT carry an expand target.
+      const p = namedNode('http://example.org/p');
+      const quads = [quad(seed, p, blankNode('remote__b1'))];
+      for (let i = 1; i < 13; i++) {
+        quads.push(quad(blankNode(`remote__b${i}`), p, blankNode(`remote__b${i + 1}`)));
+      }
+      const { outbound } = buildDescribeSections(
+        quads,
+        NO_ORIGINS,
+        SEED,
+        new Set(['remote']),
+      );
+      // Walk down 12 nested levels: top member is b1, then b2..b13.
+      let member = outbound.predicateGroups[0].members[0];
+      for (let i = 1; i < 13; i++) {
+        const block = member.nested;
+        if (!block || block.kind !== 'bnode') throw new Error('expected bnode at hop ' + i);
+        member = block.predicateGroups[0].members[0];
+      }
+      expect(member.term.value).toBe('remote__b13');
+      expect(member.expand).toBeNull();
+    });
+
+    it('leaves expand null on a fully-resolved bnode (the bnode is in subject position)', () => {
+      const b = blankNode('remote__b0');
+      const quads = [
+        quad(seed, namedNode('http://example.org/address'), b),
+        quad(b, namedNode('http://example.org/city'), literal('Paris')),
+      ];
+      const { outbound } = buildDescribeSections(
+        quads,
+        NO_ORIGINS,
+        SEED,
+        new Set(['remote']),
+      );
+      const member = outbound.predicateGroups[0].members[0];
+      expect(member.expand).toBeNull();
+    });
+
+    it('pins an expand target on a dangling endpoint-origin bnode within the cap', () => {
+      const b = blankNode('remote__b0');
+      const q = quad(seed, namedNode('http://example.org/knows'), b);
+      const { outbound } = buildDescribeSections(
+        [q],
+        NO_ORIGINS,
+        SEED,
+        new Set(['remote']),
+      );
+      const member = outbound.predicateGroups[0].members[0];
+      expect(member.expand).toEqual({
+        sourceId: 'remote',
+        path: [{ predicate: 'http://example.org/knows', inverse: false }],
+      });
+    });
+
     it('recurses through nested bnodes (address → geo → lat/long)', () => {
       const address = blankNode('addr');
       const geo = blankNode('geo');
