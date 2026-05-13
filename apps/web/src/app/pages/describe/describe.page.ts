@@ -22,7 +22,7 @@ import {
   type PathStep,
 } from 'common';
 import type { Quad, Term } from 'n3';
-import { QuadTableComponent } from './components/quad-table.component';
+import { DescribeSectionsComponent } from './components/describe-sections.component';
 import { SourceErrorsComponent } from './components/source-errors.component';
 import { describeIriExpand } from './utils/describe-iri-expand';
 import type { DescribeBnodePathResult } from './utils/describe-bnode-path';
@@ -33,7 +33,6 @@ import {
 
 type DescribeTab = 'table' | 'turtle';
 
-// Mirrors QuadTableComponent's default — the describe page does not override it.
 const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
 
 @Component({
@@ -41,7 +40,7 @@ const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    QuadTableComponent,
+    DescribeSectionsComponent,
     FormattedResultComponent,
     MultiSourcesPickerComponent,
     SourceErrorsComponent,
@@ -122,8 +121,9 @@ const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
           </nav>
           @switch (activeTab()) {
             @case ('table') {
-              <app-quad-table
-                [quadsText]="resp.quads"
+              <app-describe-sections
+                [quads]="strippedQuads()"
+                [originsByQuad]="originsByQuad()"
                 [seed]="submittedSeed()"
                 [context]="displayContext()"
                 [endpointSourceIds]="endpointSourceIds()"
@@ -170,13 +170,35 @@ export class DescribePage implements OnInit {
   private readonly _activeTab = signal<DescribeTab>('table');
   readonly activeTab = this._activeTab.asReadonly();
 
-  readonly formatted = computed<FormattedResult | null>(() => {
+  /** Stripped describe quads + origins map, shared by the table tab and the
+   *  turtle/trig tab so wire parsing happens once per response. */
+  private readonly strippedResponse = computed<{
+    quads: readonly Quad[];
+    originsByQuad: ReadonlyMap<string, readonly string[]>;
+  }>(() => {
     const resp = this.response();
-    if (!resp || resp.quads.trim().length === 0) return null;
+    if (!resp || resp.quads.trim().length === 0) {
+      return { quads: [], originsByQuad: new Map() };
+    }
     const all = parseDescribeWire(resp.quads);
-    const { quads } = describeProvenance.strip(all, FROM_SOURCE_PREDICATE);
+    const { quads, originsByQuad } = describeProvenance.strip(
+      all,
+      FROM_SOURCE_PREDICATE,
+    );
+    return { quads, originsByQuad };
+  });
+
+  readonly strippedQuads = computed<readonly Quad[]>(
+    () => this.strippedResponse().quads,
+  );
+  readonly originsByQuad = computed<ReadonlyMap<string, readonly string[]>>(
+    () => this.strippedResponse().originsByQuad,
+  );
+
+  readonly formatted = computed<FormattedResult | null>(() => {
+    const quads = this.strippedResponse().quads;
     if (quads.length === 0) return null;
-    return resultToFormatted(quads, {}, undefined, this.displayContext());
+    return resultToFormatted(quads as Quad[], {}, undefined, this.displayContext());
   });
 
   readonly serialization = computed<FormatSerialization | null>(
