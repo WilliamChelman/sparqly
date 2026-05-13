@@ -10,9 +10,36 @@ export interface DiffRequest {
   skipAutoSourceAnnotation?: boolean;
 }
 
+/**
+ * Wire mirror of `libs/core/src/lib/diff/errors.ts`. Each variant carries
+ * structured fields so the renderer can highlight the offending SELECT chip
+ * for `tabular-blank-node`; `legacy-message` is the transitional bucket for
+ * un-converted thrown messages (ADR-0024).
+ */
+export type DiffError = TabularBlankNodeError | LegacyMessageError;
+
+export interface TabularBlankNodeError {
+  kind: 'tabular-blank-node';
+  column: string;
+}
+
+export interface LegacyMessageError {
+  kind: 'legacy-message';
+  message: string;
+}
+
 export interface DiffErrorResponse {
   kind: 'error';
-  errors: { left?: string; right?: string; top?: string };
+  errors: { left?: DiffError; right?: DiffError; top?: DiffError };
+}
+
+export function formatDiffError(error: DiffError): string {
+  switch (error.kind) {
+    case 'tabular-blank-node':
+      return `tabular diff cannot key a row with a blank-node-valued column ?${error.column}: blank nodes have no cross-side identity. Project a stable IRI or literal in your SELECT (e.g. via a deterministic IRI mint or by selecting an identifying property) instead.`;
+    case 'legacy-message':
+      return error.message;
+  }
 }
 
 export interface SourceRecord {

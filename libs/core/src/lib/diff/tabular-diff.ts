@@ -1,3 +1,5 @@
+import { err, ok, type Result } from 'neverthrow';
+import type { TabularBlankNodeError } from './errors';
 import { tabularRowKey, type TabularRow } from './tabular-row-key';
 
 export interface TabularDiffEntry {
@@ -34,21 +36,23 @@ export function tabularDiff(
   leftRows: ReadonlyArray<TabularRow>,
   rightRows: ReadonlyArray<TabularRow>,
   variables: ReadonlyArray<string>,
-): TabularDiffResult {
+): Result<TabularDiffResult, TabularBlankNodeError> {
   const leftCounts = countRows(leftRows, variables);
+  if (leftCounts.isErr()) return err(leftCounts.error);
   const rightCounts = countRows(rightRows, variables);
+  if (rightCounts.isErr()) return err(rightCounts.error);
 
   const added: TabularDiffEntry[] = [];
   const removed: TabularDiffEntry[] = [];
 
   const allKeys = new Set<string>([
-    ...leftCounts.keys(),
-    ...rightCounts.keys(),
+    ...leftCounts.value.keys(),
+    ...rightCounts.value.keys(),
   ]);
   const sortedKeys = [...allKeys].sort();
   for (const key of sortedKeys) {
-    const left = leftCounts.get(key);
-    const right = rightCounts.get(key);
+    const left = leftCounts.value.get(key);
+    const right = rightCounts.value.get(key);
     const leftCount = left?.count ?? 0;
     const rightCount = right?.count ?? 0;
     const net = rightCount - leftCount;
@@ -63,11 +67,11 @@ export function tabularDiff(
       removed.push({ row, count: -net });
     }
   }
-  return {
+  return ok({
     added,
     removed,
     totals: { left: leftRows.length, right: rightRows.length },
-  };
+  });
 }
 
 interface CountedRow {
@@ -78,13 +82,14 @@ interface CountedRow {
 function countRows(
   rows: ReadonlyArray<TabularRow>,
   variables: ReadonlyArray<string>,
-): Map<string, CountedRow> {
+): Result<Map<string, CountedRow>, TabularBlankNodeError> {
   const out = new Map<string, CountedRow>();
   for (const row of rows) {
-    const key = tabularRowKey(row, variables);
-    const entry = out.get(key);
-    if (entry === undefined) out.set(key, { row, count: 1 });
+    const keyResult = tabularRowKey(row, variables);
+    if (keyResult.isErr()) return err(keyResult.error);
+    const entry = out.get(keyResult.value);
+    if (entry === undefined) out.set(keyResult.value, { row, count: 1 });
     else entry.count += 1;
   }
-  return out;
+  return ok(out);
 }

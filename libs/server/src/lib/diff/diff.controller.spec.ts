@@ -141,10 +141,11 @@ describe('POST /api/diff', () => {
     expect(resp.status).toBe(200);
     const json = (await resp.json()) as {
       kind: string;
-      errors: { top?: string };
+      errors: { top?: { kind: string; message?: string } };
     };
     expect(json.kind).toBe('error');
-    expect(json.errors.top).toMatch(/mixed.*shape|shape mismatch/i);
+    expect(json.errors.top?.kind).toBe('legacy-message');
+    expect(json.errors.top?.message).toMatch(/mixed.*shape|shape mismatch/i);
   });
 
   it('skipAutoSourceAnnotation in body leaves per-hunk source records empty on glob targets', async () => {

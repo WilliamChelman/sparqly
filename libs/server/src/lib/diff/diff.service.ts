@@ -9,6 +9,7 @@ import {
   resolveSource,
   tabularDiff,
   withAutoSourceAnnotation,
+  type DiffError,
   type HunkedRdfDiff,
   type ParsedSource,
   type SelectShapeReport,
@@ -17,6 +18,17 @@ import {
   type TabularRow,
 } from 'core';
 import type { Store } from 'n3';
+
+/**
+ * Wrap a legacy throw-derived string into a DiffError envelope variant. Once
+ * the source folders (resolveSource, parsing, anonymousUpstream) convert to
+ * Result in subsequent slices (ADR-0024), each call here will be replaced
+ * with the structured variant the converted leaf returns, and this helper
+ * will be deleted.
+ */
+function legacy(message: string): DiffError {
+  return { kind: 'legacy-message', message };
+}
 
 export interface DiffRequest {
   left: string;
@@ -40,7 +52,7 @@ export interface TabularDiffResponse {
 
 export interface DiffErrorResponse {
   kind: 'error';
-  errors: { left?: string; right?: string; top?: string };
+  errors: { left?: DiffError; right?: DiffError; top?: DiffError };
 }
 
 export type DiffResponse =
@@ -66,7 +78,7 @@ export class DiffService {
 
     const tabular = detectTabularDispatchSafe(req.leftQuery, req.rightQuery);
     if (tabular.kind === 'mixed') {
-      return { kind: 'error', errors: { top: tabular.message } };
+      return { kind: 'error', errors: { top: legacy(tabular.message) } };
     }
 
     if (tabular.kind === 'tabular') {
@@ -126,8 +138,8 @@ function packageSideErrors(
   right: SideSelection,
 ): DiffErrorResponse {
   const errors: DiffErrorResponse['errors'] = {};
-  if (left.kind === 'err') errors.left = left.message;
-  if (right.kind === 'err') errors.right = right.message;
+  if (left.kind === 'err') errors.left = legacy(left.message);
+  if (right.kind === 'err') errors.right = legacy(right.message);
   return { kind: 'error', errors };
 }
 
@@ -273,8 +285,8 @@ function packageGraphResolveErrors(
   right: GraphSideResolved,
 ): DiffErrorResponse {
   const errors: DiffErrorResponse['errors'] = {};
-  if (left.kind === 'err') errors.left = left.message;
-  if (right.kind === 'err') errors.right = right.message;
+  if (left.kind === 'err') errors.left = legacy(left.message);
+  if (right.kind === 'err') errors.right = legacy(right.message);
   return { kind: 'error', errors };
 }
 
@@ -300,9 +312,11 @@ async function runTabular(args: RunTabularArgs): Promise<DiffResponse> {
     return {
       kind: 'error',
       errors: {
-        top: `tabular diff requires matching projected variable-name sets: left=${fmt(
-          leftSet,
-        )}, right=${fmt(rightSet)}`,
+        top: legacy(
+          `tabular diff requires matching projected variable-name sets: left=${fmt(
+            leftSet,
+          )}, right=${fmt(rightSet)}`,
+        ),
       },
     };
   }
@@ -311,8 +325,9 @@ async function runTabular(args: RunTabularArgs): Promise<DiffResponse> {
   const rightUpstream = anonymousUpstreamSafe(args.rightTarget, 'right');
   if (leftUpstream.kind === 'err' || rightUpstream.kind === 'err') {
     const errors: DiffErrorResponse['errors'] = {};
-    if (leftUpstream.kind === 'err') errors.left = leftUpstream.message;
-    if (rightUpstream.kind === 'err') errors.right = rightUpstream.message;
+    if (leftUpstream.kind === 'err') errors.left = legacy(leftUpstream.message);
+    if (rightUpstream.kind === 'err')
+      errors.right = legacy(rightUpstream.message);
     return { kind: 'error', errors };
   }
 
@@ -326,22 +341,55 @@ async function runTabular(args: RunTabularArgs): Promise<DiffResponse> {
   );
   if (leftBindings.kind === 'err' || rightBindings.kind === 'err') {
     const errors: DiffErrorResponse['errors'] = {};
-    if (leftBindings.kind === 'err') errors.left = leftBindings.message;
-    if (rightBindings.kind === 'err') errors.right = rightBindings.message;
+    if (leftBindings.kind === 'err') errors.left = legacy(leftBindings.message);
+    if (rightBindings.kind === 'err')
+      errors.right = legacy(rightBindings.message);
+    return { kind: 'error', errors };
+  }
+
+  const variables = [...args.rightShape.variables];
+  const leftKeyed = firstBlankNodeColumn(leftBindings.value.rows, variables);
+  const rightKeyed = firstBlankNodeColumn(rightBindings.value.rows, variables);
+  if (leftKeyed !== undefined || rightKeyed !== undefined) {
+    const errors: DiffErrorResponse['errors'] = {};
+    if (leftKeyed !== undefined) errors.left = leftKeyed;
+    if (rightKeyed !== undefined) errors.right = rightKeyed;
     return { kind: 'error', errors };
   }
 
   const tab = tabularDiff(
     leftBindings.value.rows,
     rightBindings.value.rows,
-    [...args.rightShape.variables],
+    variables,
   );
+  if (tab.isErr()) {
+    // Should be unreachable: per-side firstBlankNodeColumn above intercepts
+    // every blank-node column before tabularDiff sees it. The check exists
+    // only so TypeScript exhausts the Result.
+    return { kind: 'error', errors: { top: tab.error } };
+  }
   return {
     kind: 'tabular',
-    diff: tab,
-    totals: tab.totals,
-    variables: [...args.rightShape.variables],
+    diff: tab.value,
+    totals: tab.value.totals,
+    variables,
   };
+}
+
+/**
+ * Per-side pre-check that lets `runTabular` attribute a blank-node-keying
+ * failure to `left` or `right` in the envelope. `tabularDiff` itself returns
+ * a single `TabularBlankNodeError` (it sees both bags merged into a single
+ * key map and cannot know which side an offending row came from); we run the
+ * same check per-side here so the UI can highlight the offending SELECT.
+ */
+function firstBlankNodeColumn(
+  rows: ReadonlyArray<TabularRow>,
+  variables: ReadonlyArray<string>,
+): DiffError | undefined {
+  const single = tabularDiff(rows, [], variables);
+  if (single.isErr()) return single.error;
+  return undefined;
 }
 
 type AnonymousUpstreamResult =

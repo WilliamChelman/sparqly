@@ -4,71 +4,89 @@ import { tabularRowKey, UNBOUND_SENTINEL } from './tabular-row-key';
 
 const { namedNode, literal, blankNode } = DataFactory;
 
+function unwrapKey(
+  result: ReturnType<typeof tabularRowKey>,
+): string {
+  if (result.isErr()) {
+    throw new Error(
+      `expected ok, got err: ${JSON.stringify(result.error)}`,
+    );
+  }
+  return result.value;
+}
+
 describe('tabularRowKey', () => {
   it('serializes a single named-node binding', () => {
-    const key = tabularRowKey(
-      { id: namedNode('http://example.org/a') },
-      ['id'],
+    const key = unwrapKey(
+      tabularRowKey({ id: namedNode('http://example.org/a') }, ['id']),
     );
     expect(key).toBe('?id=<http://example.org/a>');
   });
 
   it('serializes a plain literal without datatype suffix (xsd:string is implicit)', () => {
-    const key = tabularRowKey({ name: literal('alice') }, ['name']);
+    const key = unwrapKey(tabularRowKey({ name: literal('alice') }, ['name']));
     expect(key).toBe('?name="alice"');
   });
 
   it('serializes a language-tagged literal with @lang', () => {
-    const key = tabularRowKey(
-      { greeting: literal('hello', 'en') },
-      ['greeting'],
+    const key = unwrapKey(
+      tabularRowKey({ greeting: literal('hello', 'en') }, ['greeting']),
     );
     expect(key).toBe('?greeting="hello"@en');
   });
 
   it('serializes a datatyped literal with ^^<datatype>', () => {
-    const key = tabularRowKey(
-      { age: literal('30', namedNode('http://www.w3.org/2001/XMLSchema#integer')) },
-      ['age'],
+    const key = unwrapKey(
+      tabularRowKey(
+        { age: literal('30', namedNode('http://www.w3.org/2001/XMLSchema#integer')) },
+        ['age'],
+      ),
     );
     expect(key).toBe('?age="30"^^<http://www.w3.org/2001/XMLSchema#integer>');
   });
 
   it('does NOT collapse value-equal but lexically-different datatyped literals', () => {
-    const intKey = tabularRowKey(
-      { age: literal('30', namedNode('http://www.w3.org/2001/XMLSchema#integer')) },
-      ['age'],
+    const intKey = unwrapKey(
+      tabularRowKey(
+        { age: literal('30', namedNode('http://www.w3.org/2001/XMLSchema#integer')) },
+        ['age'],
+      ),
     );
-    const intAliasKey = tabularRowKey(
-      { age: literal('30', namedNode('http://www.w3.org/2001/XMLSchema#int')) },
-      ['age'],
+    const intAliasKey = unwrapKey(
+      tabularRowKey(
+        { age: literal('30', namedNode('http://www.w3.org/2001/XMLSchema#int')) },
+        ['age'],
+      ),
     );
     expect(intKey).not.toBe(intAliasKey);
   });
 
   it('does NOT collapse same-value different-lexical literals (e.g. "01" vs "1")', () => {
-    const a = tabularRowKey(
-      { n: literal('1', namedNode('http://www.w3.org/2001/XMLSchema#integer')) },
-      ['n'],
+    const a = unwrapKey(
+      tabularRowKey(
+        { n: literal('1', namedNode('http://www.w3.org/2001/XMLSchema#integer')) },
+        ['n'],
+      ),
     );
-    const b = tabularRowKey(
-      { n: literal('01', namedNode('http://www.w3.org/2001/XMLSchema#integer')) },
-      ['n'],
+    const b = unwrapKey(
+      tabularRowKey(
+        { n: literal('01', namedNode('http://www.w3.org/2001/XMLSchema#integer')) },
+        ['n'],
+      ),
     );
     expect(a).not.toBe(b);
   });
 
   it('renders an unbound binding as the distinct sentinel', () => {
-    const key = tabularRowKey({ name: undefined }, ['name']);
+    const key = unwrapKey(tabularRowKey({ name: undefined }, ['name']));
     expect(key).toContain(UNBOUND_SENTINEL);
     expect(key).toBe(`?name=${UNBOUND_SENTINEL}`);
   });
 
   it('treats an unbound variable as distinct from a literal whose value happens to match the sentinel', () => {
-    const unbound = tabularRowKey({ x: undefined }, ['x']);
-    const literalSentinel = tabularRowKey(
-      { x: literal(UNBOUND_SENTINEL) },
-      ['x'],
+    const unbound = unwrapKey(tabularRowKey({ x: undefined }, ['x']));
+    const literalSentinel = unwrapKey(
+      tabularRowKey({ x: literal(UNBOUND_SENTINEL) }, ['x']),
     );
     expect(unbound).not.toBe(literalSentinel);
   });
@@ -78,23 +96,27 @@ describe('tabularRowKey', () => {
       name: literal('alice'),
       age: literal('30'),
     };
-    const keyByOne = tabularRowKey(row, ['name', 'age']);
-    const keyByOther = tabularRowKey(row, ['age', 'name']);
+    const keyByOne = unwrapKey(tabularRowKey(row, ['name', 'age']));
+    const keyByOther = unwrapKey(tabularRowKey(row, ['age', 'name']));
     expect(keyByOne).toBe(keyByOther);
   });
 
-  it('rejects a row with a blank-node-valued column with an actionable error', () => {
-    expect(() =>
-      tabularRowKey({ x: blankNode('b0') }, ['x']),
-    ).toThrow(/blank node/i);
+  it('returns Result.err with a tabular-blank-node variant when a column is a blank node', () => {
+    const result = tabularRowKey({ x: blankNode('b0') }, ['x']);
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      expect(result.error).toEqual({ kind: 'tabular-blank-node', column: 'x' });
+    }
   });
 
-  it('blank-node rejection names the offending variable', () => {
-    expect(() =>
-      tabularRowKey({ name: literal('alice'), x: blankNode('b0') }, [
-        'name',
-        'x',
-      ]),
-    ).toThrow(/\?x/);
+  it('blank-node err carries the structured offending column name', () => {
+    const result = tabularRowKey(
+      { name: literal('alice'), x: blankNode('b0') },
+      ['name', 'x'],
+    );
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      expect(result.error.column).toBe('x');
+    }
   });
 });

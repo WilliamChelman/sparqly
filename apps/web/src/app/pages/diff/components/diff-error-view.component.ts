@@ -1,9 +1,13 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import {
+  formatDiffError,
+  type DiffError,
+} from '../services/diff.service';
 
 export interface DiffErrors {
-  readonly top?: string;
-  readonly left?: string;
-  readonly right?: string;
+  readonly top?: DiffError;
+  readonly left?: DiffError;
+  readonly right?: DiffError;
 }
 
 @Component({
@@ -12,28 +16,32 @@ export interface DiffErrors {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let errs = errors();
-    @if (errs.top) {
+    @if (errs.top; as top) {
       <p
         data-testid="error-top"
         class="flex items-start gap-2.5 rounded-lg border border-error-line bg-error-bg px-3.5 py-3 font-mono text-xs text-error"
-      >{{ errs.top }}</p>
+      >{{ format(top) }}</p>
     }
     <div class="grid grid-cols-2 gap-4">
-      @if (errs.left) {
+      @if (errs.left; as left) {
         <p
           data-testid="error-left"
           class="flex items-start gap-2.5 rounded-lg border border-error-line bg-error-bg px-3.5 py-3 font-mono text-xs text-error"
-        >{{ errs.left }}</p>
+        >{{ format(left) }}</p>
       }
-      @if (errs.right) {
+      @if (errs.right; as right) {
         <p
           data-testid="error-right"
           class="flex items-start gap-2.5 rounded-lg border border-error-line bg-error-bg px-3.5 py-3 font-mono text-xs text-error"
-        >{{ errs.right }}</p>
+        >{{ format(right) }}</p>
       }
     </div>
   `,
 })
 export class DiffErrorViewComponent {
   readonly errors = input.required<DiffErrors>();
+
+  format(error: DiffError): string {
+    return formatDiffError(error);
+  }
 }

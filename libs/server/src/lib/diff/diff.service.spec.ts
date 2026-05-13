@@ -2,8 +2,15 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { parseSourceSpecs } from 'core';
+import { parseSourceSpecs, type DiffError } from 'core';
 import { DiffService } from './diff.service';
+
+function expectLegacyMessage(e: DiffError | undefined): string {
+  expect(e).toBeDefined();
+  expect(e?.kind).toBe('legacy-message');
+  if (e?.kind !== 'legacy-message') throw new Error('unreachable');
+  return e.message;
+}
 
 const TRIPLES_CONSTRUCT =
   'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:p ?o } WHERE { ?s ex:p ?o }';
@@ -163,7 +170,74 @@ describe('DiffService — tabular mode', () => {
 
     expect(out.kind).toBe('error');
     if (out.kind !== 'error') return;
-    expect(out.errors.top).toMatch(/variable/i);
+    expect(expectLegacyMessage(out.errors.top)).toMatch(/variable/i);
+  });
+
+  it('returns the structured tabular-blank-node variant inline when a right-side SELECT projects a blank-node column', async () => {
+    const blankTtl = join(paths.dir, 'blank.ttl');
+    await writeFile(
+      blankTtl,
+      '@prefix ex: <http://example.org/> . ex:a ex:hasThing _:b1 . ex:a ex:hasThing _:b2 .\n',
+    );
+    const svc2 = new DiffService(
+      parseSourceSpecs([
+        { id: 'alpha', glob: paths.alphaTtl },
+        { id: 'blank', glob: blankTtl },
+      ]),
+    );
+    const blankSelect =
+      'PREFIX ex: <http://example.org/> SELECT ?s ?thing WHERE { ?s ex:hasThing ?thing }';
+    const cleanSelect =
+      'PREFIX ex: <http://example.org/> SELECT ?s ?thing WHERE { ?s ex:p ?thing }';
+
+    const out = await svc2.runDiff({
+      left: '@alpha',
+      right: '@blank',
+      leftQuery: cleanSelect,
+      rightQuery: blankSelect,
+    });
+
+    expect(out.kind).toBe('error');
+    if (out.kind !== 'error') return;
+    expect(out.errors.right).toEqual({
+      kind: 'tabular-blank-node',
+      column: 'thing',
+    });
+    expect(out.errors.left).toBeUndefined();
+    expect(out.errors.top).toBeUndefined();
+  });
+
+  it('places the structured tabular-blank-node variant on the left when the left SELECT is the offender', async () => {
+    const blankTtl = join(paths.dir, 'blank-l.ttl');
+    await writeFile(
+      blankTtl,
+      '@prefix ex: <http://example.org/> . ex:a ex:hasThing _:b1 .\n',
+    );
+    const svc2 = new DiffService(
+      parseSourceSpecs([
+        { id: 'alpha', glob: paths.alphaTtl },
+        { id: 'blank', glob: blankTtl },
+      ]),
+    );
+    const blankSelect =
+      'PREFIX ex: <http://example.org/> SELECT ?s ?thing WHERE { ?s ex:hasThing ?thing }';
+    const cleanSelect =
+      'PREFIX ex: <http://example.org/> SELECT ?s ?thing WHERE { ?s ex:p ?thing }';
+
+    const out = await svc2.runDiff({
+      left: '@blank',
+      right: '@alpha',
+      leftQuery: blankSelect,
+      rightQuery: cleanSelect,
+    });
+
+    expect(out.kind).toBe('error');
+    if (out.kind !== 'error') return;
+    expect(out.errors.left).toEqual({
+      kind: 'tabular-blank-node',
+      column: 'thing',
+    });
+    expect(out.errors.right).toBeUndefined();
   });
 });
 
@@ -194,7 +268,9 @@ describe('DiffService — error packaging', () => {
 
     expect(out.kind).toBe('error');
     if (out.kind !== 'error') return;
-    expect(out.errors.top).toMatch(/mixed.*shape|shape mismatch/i);
+    expect(expectLegacyMessage(out.errors.top)).toMatch(
+      /mixed.*shape|shape mismatch/i,
+    );
   });
 
   it('returns kind=error with per-side messages when an `@id` is unknown on both sides', async () => {
@@ -202,10 +278,8 @@ describe('DiffService — error packaging', () => {
 
     expect(out.kind).toBe('error');
     if (out.kind !== 'error') return;
-    expect(out.errors.left).toBeDefined();
-    expect(out.errors.right).toBeDefined();
-    expect(out.errors.left).toMatch(/nope-l/);
-    expect(out.errors.right).toMatch(/nope-r/);
+    expect(expectLegacyMessage(out.errors.left)).toMatch(/nope-l/);
+    expect(expectLegacyMessage(out.errors.right)).toMatch(/nope-r/);
   });
 
   it('returns kind=error with per-side messages surfacing both parse failures together', async () => {

@@ -368,7 +368,10 @@ describe('DiffPage', () => {
 
     diffStub.calls[0].responses.next({
       kind: 'error',
-      errors: { left: 'left boom', right: 'right boom' },
+      errors: {
+        left: { kind: 'legacy-message', message: 'left boom' },
+        right: { kind: 'legacy-message', message: 'right boom' },
+      },
     });
     fixture.detectChanges();
     await fixture.whenStable();

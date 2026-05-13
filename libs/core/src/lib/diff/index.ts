@@ -10,3 +10,4 @@ export * from './tabular-diff';
 export * from './tabular-diff-formatter';
 export * from './tabular-row-key';
 export * from './select-shape-detector';
+export * from './errors';
