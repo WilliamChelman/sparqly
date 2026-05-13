@@ -13,28 +13,8 @@ import {
   type SourceListing,
 } from '@app/core';
 import { DescribePage } from './describe.page';
-import { QuadTableComponent } from './components/quad-table.component';
+import { DescribeSectionsComponent } from './components/describe-sections.component';
 import { MultiSourcesPickerComponent } from '@app/modules/multi-sources-picker';
-
-@Component({
-  selector: 'app-quad-table',
-  standalone: true,
-  template: `<div
-    data-testid="stub-quad-table"
-    [attr.data-quads-text]="quadsText"
-    [attr.data-seed]="seed"
-  ></div>`,
-})
-class QuadTableStub {
-  @Input() quadsText = '';
-  @Input() seed = '';
-  @Input() context: unknown = { prefixes: {} };
-  @Input() endpointSourceIds: readonly string[] = [];
-  @Output() expand = new EventEmitter<{
-    sourceId: string;
-    path: { predicate: string; inverse: boolean }[];
-  }>();
-}
 
 @Component({
   selector: 'app-multi-sources-picker',
@@ -97,8 +77,8 @@ async function setup(
     ],
   })
     .overrideComponent(DescribePage, {
-      remove: { imports: [QuadTableComponent, MultiSourcesPickerComponent] },
-      add: { imports: [QuadTableStub, MultiSourcesPickerStub] },
+      remove: { imports: [MultiSourcesPickerComponent] },
+      add: { imports: [MultiSourcesPickerStub] },
     })
     .compileComponents();
 
@@ -112,21 +92,21 @@ async function setup(
   return { fixture, router, http };
 }
 
-function quadTableStub(fixture: {
+function describeSections(fixture: {
   debugElement: import('@angular/core').DebugElement;
-}): QuadTableStub | null {
+}): DescribeSectionsComponent | null {
   const all = fixture.debugElement
-    .queryAll((n) => n.componentInstance instanceof QuadTableStub)
-    .map((d) => d.componentInstance as QuadTableStub);
+    .queryAll((n) => n.componentInstance instanceof DescribeSectionsComponent)
+    .map((d) => d.componentInstance as DescribeSectionsComponent);
   return all[0] ?? null;
 }
 
-function requireQuadTable(fixture: {
+function requireDescribeSections(fixture: {
   debugElement: import('@angular/core').DebugElement;
-}): QuadTableStub {
-  const stub = quadTableStub(fixture);
-  if (!stub) throw new Error('quad table stub not found');
-  return stub;
+}): DescribeSectionsComponent {
+  const cmp = describeSections(fixture);
+  if (!cmp) throw new Error('describe-sections component not found');
+  return cmp;
 }
 
 function pickerStub(fixture: {
@@ -221,10 +201,13 @@ describe('DescribePage', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    const stub = quadTableStub(fixture);
-    expect(stub).toBeTruthy();
-    expect(stub?.quadsText).toBe(NQUADS_SAMPLE);
-    expect(stub?.seed).toBe('http://example.org/alice');
+    // NQUADS_SAMPLE has 2 outbound quads and 1 inbound quad off the seed.
+    const sections = root.querySelectorAll('[data-testid=describe-section]');
+    expect(sections.length).toBe(2);
+    expect(root.querySelector('[data-direction=outbound]')).toBeTruthy();
+    expect(root.querySelector('[data-direction=inbound]')).toBeTruthy();
+    expect(root.querySelectorAll('[data-testid=describe-row]').length).toBe(3);
+    expect(requireDescribeSections(fixture).seed()).toBe('http://example.org/alice');
     http.verify();
   });
 
@@ -381,9 +364,9 @@ describe('DescribePage', () => {
     expect(rows.length).toBe(1);
     expect(rows[0].textContent).toContain('beta');
     expect(rows[0].textContent).toContain('No files matched');
-    // The successful source's results still render in the quad table above.
-    const table = quadTableStub(fixture);
-    expect(table?.quadsText).toBe(NQUADS_SAMPLE);
+    // The successful source's quads still render in the sectioned view above.
+    expect(root.querySelectorAll('[data-testid=describe-row]').length).toBe(3);
+    void fixture;
   });
 
   it('does not render the error list when every source succeeded', async () => {
@@ -546,7 +529,7 @@ describe('DescribePage', () => {
       return ctx;
     }
 
-    it('passes endpoint source ids to the quad table', async () => {
+    it('passes endpoint source ids to the sectioned view', async () => {
       const { fixture, http } = await setupWithInitialResponse(
         [
           { id: 'alpha', kind: 'glob', label: 'A (glob)', default: true },
@@ -554,7 +537,7 @@ describe('DescribePage', () => {
         ],
         { iri: ALICE, quads: NQUADS_SAMPLE, total: 3, perSource: { alpha: { count: 3, truncated: false } } },
       );
-      expect(quadTableStub(fixture)?.endpointSourceIds).toEqual(['remote']);
+      expect(requireDescribeSections(fixture).endpointSourceIds()).toEqual(['remote']);
       http.verify();
     });
 
@@ -569,7 +552,7 @@ describe('DescribePage', () => {
         perSource: { remote: { count: 1, truncated: true } },
       });
 
-      requireQuadTable(fixture).expand.emit({
+      requireDescribeSections(fixture).expand.emit({
         sourceId: 'remote',
         path: [{ predicate: KNOWS, inverse: false }],
       });
@@ -596,7 +579,11 @@ describe('DescribePage', () => {
       await fixture.whenStable();
       fixture.detectChanges();
 
-      expect(quadTableStub(fixture)?.quadsText).toContain('http://example.org/since');
+      // The fresh `_:remote__b0 :since "2021"` quad is not anchored to the seed
+      // in subject/object position — flat slice doesn't render bnode subtrees
+      // (follow-up slice does), but it must be present in the merged quads.
+      const merged = requireDescribeSections(fixture).quads();
+      expect(merged.some((q) => q.predicate.value === 'http://example.org/since')).toBe(true);
       http.verify();
     });
 
@@ -620,7 +607,7 @@ describe('DescribePage', () => {
         },
       });
 
-      requireQuadTable(fixture).expand.emit({
+      requireDescribeSections(fixture).expand.emit({
         sourceId: 'remote',
         path: [{ predicate: KNOWS, inverse: false }],
       });
@@ -642,9 +629,18 @@ describe('DescribePage', () => {
       await fixture.whenStable();
       fixture.detectChanges();
 
-      const text = requireQuadTable(fixture).quadsText;
-      expect(text).toContain('http://example.org/since'); // fresh remote hop spliced in
-      expect(text).toContain('"Alice"'); // the `other` source's quad is preserved
+      const merged = requireDescribeSections(fixture).quads();
+      // fresh remote hop spliced in
+      expect(merged.some((q) => q.predicate.value === 'http://example.org/since')).toBe(true);
+      // the `other` source's quad is preserved
+      expect(
+        merged.some(
+          (q) =>
+            q.predicate.value === 'http://example.org/name' &&
+            q.object.termType === 'Literal' &&
+            q.object.value === 'Alice',
+        ),
+      ).toBe(true);
       http.verify();
     });
 
@@ -661,7 +657,7 @@ describe('DescribePage', () => {
         perSource: { remote: { count: 2, truncated: true } },
       });
 
-      requireQuadTable(fixture).expand.emit({
+      requireDescribeSections(fixture).expand.emit({
         sourceId: 'remote',
         path: [{ predicate: KNOWS, inverse: false }],
       });
@@ -676,7 +672,7 @@ describe('DescribePage', () => {
       await fixture.whenStable();
       fixture.detectChanges();
 
-      requireQuadTable(fixture).expand.emit({
+      requireDescribeSections(fixture).expand.emit({
         sourceId: 'remote',
         path: [{ predicate: 'http://example.org/likes', inverse: false }],
       });
@@ -703,7 +699,7 @@ describe('DescribePage', () => {
         perSource: { remote: { count: 1, truncated: true } },
       });
       const urlBefore = router.url;
-      requireQuadTable(fixture).expand.emit({
+      requireDescribeSections(fixture).expand.emit({
         sourceId: 'remote',
         path: [{ predicate: KNOWS, inverse: false }],
       });
@@ -733,7 +729,7 @@ describe('DescribePage', () => {
         perSource: { alpha: { count: 3, truncated: false } },
       });
       expect(tabIds(root)).toEqual(['tab-table', 'tab-turtle']);
-      expect(root.querySelector('[data-testid=stub-quad-table]')).toBeTruthy();
+      expect(root.querySelector('[data-testid=describe-section]')).toBeTruthy();
       expect(root.querySelector('[data-testid="result-formatted-body"]')).toBeFalsy();
     });
 
@@ -761,7 +757,7 @@ describe('DescribePage', () => {
       expect(body).toBeTruthy();
       expect(body?.textContent).toContain('http://example.org/alice');
       expect(body?.textContent).toContain('http://example.org/knows');
-      expect(root.querySelector('[data-testid=stub-quad-table]')).toBeFalsy();
+      expect(root.querySelector('[data-testid=describe-section]')).toBeFalsy();
     });
 
     it('strips describe provenance annotations from the displayed Turtle', async () => {
@@ -807,7 +803,7 @@ describe('DescribePage', () => {
       fixture.detectChanges();
 
       http.expectNone('/api/describe');
-      expect(quadTableStub(fixture)?.quadsText).toBe(NQUADS_SAMPLE);
+      expect(requireDescribeSections(fixture).quads().length).toBe(3);
       http.verify();
     });
 
