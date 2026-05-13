@@ -1,4 +1,6 @@
 import type { Term } from 'n3';
+import { err, ok, type Result } from 'neverthrow';
+import type { TabularBlankNodeError } from './errors';
 
 /**
  * Distinct value used in the bag-key when a SELECT projection variable is
@@ -19,27 +21,25 @@ export type TabularRow = Record<string, Term | undefined>;
  * Term serialization mirrors graph-diff's lexical encoding (no value-equality
  * collapsing): `"30"^^xsd:integer` and `"30"^^xsd:int` are distinct keys.
  *
- * Throws if any projected column is a blank node: blank nodes are scoped to
- * a single result set, so cross-side bag identity over them is meaningless
- * — silently keying on `_:b0` would surface phantom diffs. The caller
- * (tabular diff) lets this propagate so the CLI can refuse the run.
+ * Returns Result.err with a `tabular-blank-node` variant if any projected
+ * column is a blank node: blank nodes are scoped to a single result set, so
+ * cross-side bag identity over them is meaningless — silently keying on
+ * `_:b0` would surface phantom diffs.
  */
 export function tabularRowKey(
   row: TabularRow,
   variables: ReadonlyArray<string>,
-): string {
+): Result<string, TabularBlankNodeError> {
   const sorted = [...variables].sort();
   const parts: string[] = [];
   for (const name of sorted) {
     const term = row[name];
     if (term !== undefined && term.termType === 'BlankNode') {
-      throw new Error(
-        `tabular diff cannot key a row with a blank-node-valued column ?${name}: blank nodes have no cross-side identity. Project a stable IRI or literal in your SELECT (e.g. via a deterministic IRI mint or by selecting an identifying property) instead.`,
-      );
+      return err({ kind: 'tabular-blank-node', column: name });
     }
     parts.push(`?${name}=${serializeTerm(term)}`);
   }
-  return parts.join(' ');
+  return ok(parts.join(' '));
 }
 
 function serializeTerm(term: Term | undefined): string {

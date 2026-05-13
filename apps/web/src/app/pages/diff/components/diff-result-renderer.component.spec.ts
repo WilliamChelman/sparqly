@@ -684,7 +684,11 @@ describe('DiffResultRendererComponent (error mode)', () => {
   it('renders error panels when the response is an error', () => {
     const result: DiffErrorResponse = {
       kind: 'error',
-      errors: { left: 'left boom', right: 'right boom', top: 'top boom' },
+      errors: {
+        left: { kind: 'legacy-message', message: 'left boom' },
+        right: { kind: 'legacy-message', message: 'right boom' },
+        top: { kind: 'legacy-message', message: 'top boom' },
+      },
     };
     const root = render(result);
     expect(root.querySelector('[data-testid=error-top]')?.textContent).toContain(
@@ -696,5 +700,18 @@ describe('DiffResultRendererComponent (error mode)', () => {
     expect(root.querySelector('[data-testid=error-right]')?.textContent).toContain(
       'right boom',
     );
+  });
+
+  it('formats the tabular-blank-node variant with the offending column name', () => {
+    const result: DiffErrorResponse = {
+      kind: 'error',
+      errors: {
+        right: { kind: 'tabular-blank-node', column: 'thing' },
+      },
+    };
+    const root = render(result);
+    const right = root.querySelector('[data-testid=error-right]')?.textContent ?? '';
+    expect(right).toMatch(/\?thing/);
+    expect(right).toMatch(/blank node/i);
   });
 });

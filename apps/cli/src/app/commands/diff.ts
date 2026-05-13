@@ -12,6 +12,7 @@ import {
   formatDiffSummaryLine,
   formatHumanSourceComment,
   formatRdfDiff,
+  formatDiffError,
   formatTabularDiff,
   groupRdfDiffByEntity,
   hasAnnotateTransform,
@@ -809,7 +810,16 @@ async function runTabularDiff(args: RunTabularDiffArgs): Promise<void> {
     }),
   ]);
 
-  const tab = tabularDiff(left.rows, right.rows, [...rightShape.variables]);
+  const tabResult = tabularDiff(left.rows, right.rows, [
+    ...rightShape.variables,
+  ]);
+  if (tabResult.isErr()) {
+    // Slice 1 (ADR-0024) keeps CLI consumption out of scope: surface the
+    // structured error by re-throwing with the formatter so existing exit
+    // behavior is preserved. CLI Result-consumption lands in a later slice.
+    throw new Error(formatDiffError(tabResult.error));
+  }
+  const tab = tabResult.value;
   const body = formatTabularDiff(tab, format, {
     variables: rightShape.variables,
   });

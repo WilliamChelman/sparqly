@@ -15,6 +15,8 @@ import {
 } from '@app/core';
 import {
   DiffService,
+  formatDiffError,
+  type DiffError,
   type DiffErrorResponse,
   type DiffRequest,
   type DiffResponse,
@@ -66,12 +68,12 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
               />
             </div>
 
-            @if (errors()?.left) {
+            @if (errors()?.left; as left) {
               <p
                 data-testid="error-left"
                 class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
               >
-                {{ errors()?.left }}
+                {{ format(left) }}
               </p>
             }
           </div>
@@ -90,22 +92,22 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
               />
             </div>
 
-            @if (errors()?.right) {
+            @if (errors()?.right; as right) {
               <p
                 data-testid="error-right"
                 class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
               >
-                {{ errors()?.right }}
+                {{ format(right) }}
               </p>
             }
           </div>
         </section>
-        @if (errors()?.top) {
+        @if (errors()?.top; as top) {
           <p
             data-testid="error-top"
             class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
           >
-            {{ errors()?.top }}
+            {{ format(top) }}
           </p>
         }
         <details class="rounded border border-border-muted bg-surface p-2 text-sm">
@@ -175,6 +177,10 @@ export class DiffPage implements OnInit {
   readonly context = signal<number>(3);
   readonly skipAutoSourceAnnotation = signal<boolean>(false);
   readonly displayContext = signal<DisplayContext>({ prefixes: {} });
+
+  format(error: DiffError): string {
+    return formatDiffError(error);
+  }
 
   constructor() {
     const params = this.route.snapshot.queryParamMap;
@@ -246,7 +252,9 @@ export class DiffPage implements OnInit {
             this.errors.set(err.error.errors);
             this.result.set(err.error);
           } else {
-            this.errors.set({ top: err?.message ?? 'request failed' });
+            this.errors.set({
+              top: { kind: 'legacy-message', message: err?.message ?? 'request failed' },
+            });
           }
         },
       });
