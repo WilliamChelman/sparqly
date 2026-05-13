@@ -1,3 +1,20 @@
+## [0.22.0](https://github.com/WilliamChelman/sparqly/compare/v0.21.0...v0.22.0) (2026-05-13)
+
+### Features
+
+* 'defined here' fallback snippets in webapp & CLI html diff ([#220](https://github.com/WilliamChelman/sparqly/issues/220)) ([ce4ec3d](https://github.com/WilliamChelman/sparqly/commit/ce4ec3d6b9365430946373b9814a653a90bc4e31))
+* **core:** anchor definition-site lookup + Hunk.anchorSource ([#219](https://github.com/WilliamChelman/sparqly/issues/219)) ([2b06ed9](https://github.com/WilliamChelman/sparqly/commit/2b06ed93d4ec546b17161708bd298e56b6712737))
+* **core:** quad-aware endpoint describe via graph-aware SELECT (ADR-0023) ([21c5e68](https://github.com/WilliamChelman/sparqly/commit/21c5e6826b08aee4aeef3152d646bd96163832ac))
+* flatten entity hunks into one anchor-sorted list ([#218](https://github.com/WilliamChelman/sparqly/issues/218)) ([61807d4](https://github.com/WilliamChelman/sparqly/commit/61807d4b78eafdd0fbe5eef25ef66467ac9b76f5))
+* **web:** inline bnode nesting + rdf:list collapse in describe view ([#223](https://github.com/WilliamChelman/sparqly/issues/223)) ([b8432c3](https://github.com/WilliamChelman/sparqly/commit/b8432c365da05e07c46a2a2e4a49be75b2df768b))
+* **web:** RDF-star annotations rendered as {| … |} sub-blocks ([#225](https://github.com/WilliamChelman/sparqly/issues/225)) ([6ec9a58](https://github.com/WilliamChelman/sparqly/commit/6ec9a5843d6130e5e566c55a67bcdfb2a7b4b402))
+* **web:** restore ⤵ expand affordance in sectioned describe view ([#224](https://github.com/WilliamChelman/sparqly/issues/224)) ([5b96d46](https://github.com/WilliamChelman/sparqly/commit/5b96d4631e859ffbc7706a65a66ea05139d6e9af))
+* **web:** sectioned outbound/inbound describe view ([#222](https://github.com/WilliamChelman/sparqly/issues/222)) ([144729d](https://github.com/WilliamChelman/sparqly/commit/144729d49f376f2e1ddf7e6e9cb70f85ea9fd2bf))
+
+### Bug Fixes
+
+* **common:** count literal datatypes when picking used prefixes ([0600201](https://github.com/WilliamChelman/sparqly/commit/060020139b429c06a6e4772115c7171f704f21bd))
+
 ## [0.21.0](https://github.com/WilliamChelman/sparqly/compare/v0.20.0...v0.21.0) (2026-05-12)
 
 ### Features
