@@ -523,6 +523,23 @@ describe('DescribePage', () => {
       expect(root.textContent).toContain('Paris');
     });
 
+    it('renders an RDF-star annotation on a row as a {| … |} sub-block', async () => {
+      const wire =
+        `<${ALICE}> <http://example.org/knows> <http://example.org/bob> .\n` +
+        `<<<${ALICE}> <http://example.org/knows> <http://example.org/bob>>> <http://example.org/sourcedBy> <http://example.org/CensusBureau> .\n`;
+      const { root } = await runAndFlush({
+        iri: ALICE,
+        quads: wire,
+        total: 1,
+        perSource: { alpha: { count: 1, truncated: false } },
+      });
+      const block = root.querySelector('[data-testid=annotation-block]');
+      expect(block).toBeTruthy();
+      // The annotation's predicate and value both render inside the sub-block.
+      expect(block?.textContent).toContain('http://example.org/sourcedBy');
+      expect(block?.textContent).toContain('http://example.org/CensusBureau');
+    });
+
     it('renders an rdf:list chain as a nested collection block', async () => {
       const RDF_FIRST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#first';
       const RDF_REST = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#rest';

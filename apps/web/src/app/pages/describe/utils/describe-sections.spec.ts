@@ -167,6 +167,147 @@ describe('buildDescribeSections', () => {
     expect(inbound.predicateGroups.length).toBe(0);
   });
 
+  describe('RDF-star annotations (PRD #221, slice #225)', () => {
+    it('populates annotations on a member when its quad has one RDF-star annotation attached', () => {
+      const knows = namedNode('http://example.org/knows');
+      const bob = namedNode('http://example.org/bob');
+      const annotated = quad(seed, knows, bob);
+      // RDF-star annotation: the asserted quad above is the subject of an
+      // annotation quad. The describe wire carries both side by side; the
+      // builder must group annotations by their inner-quad subject.
+      const annotation = quad(
+        // n3.js typings omit RDF-star quoted triples in subject position; the
+        // runtime accepts a Quad and emits termType 'Quad' (see strip-annotations).
+        annotated as unknown as Quad['subject'],
+        namedNode('http://example.org/sourcedBy'),
+        namedNode('http://example.org/CensusBureau'),
+      );
+      const { outbound } = buildDescribeSections(
+        [annotated, annotation],
+        NO_ORIGINS,
+        SEED,
+        NO_ENDPOINTS,
+      );
+      const member = outbound.predicateGroups[0].members[0];
+      expect(member.term.value).toBe('http://example.org/bob');
+      expect(member.annotations.length).toBe(1);
+      const block = member.annotations[0];
+      expect(block.kind).toBe('annotation');
+      expect(block.predicateGroups.length).toBe(1);
+      expect(block.predicateGroups[0].predicate).toBe('http://example.org/sourcedBy');
+      expect(block.predicateGroups[0].members.length).toBe(1);
+      expect(block.predicateGroups[0].members[0].term).toEqual(
+        expect.objectContaining({
+          termType: 'NamedNode',
+          value: 'http://example.org/CensusBureau',
+        }),
+      );
+    });
+
+    it('groups multiple annotation quads on the same triple into one block; predicates alphabetical, members ordered IRIs → literals → bnodes', () => {
+      const annotated = quad(
+        seed,
+        namedNode('http://example.org/knows'),
+        namedNode('http://example.org/bob'),
+      );
+      const innerSubject = annotated as unknown as Quad['subject'];
+      const sourcedBy = namedNode('http://example.org/sourcedBy');
+      const annotations = [
+        // :year — sorts after :sourcedBy alphabetically.
+        quad(innerSubject, namedNode('http://example.org/year'), literal('2023')),
+        // :sourcedBy with three values: a bnode, a literal, two IRIs.
+        quad(innerSubject, sourcedBy, blankNode('annB')),
+        quad(innerSubject, sourcedBy, literal('hearsay')),
+        quad(innerSubject, sourcedBy, namedNode('http://example.org/CensusBureau')),
+        quad(innerSubject, sourcedBy, namedNode('http://example.org/Acme')),
+      ];
+      const { outbound } = buildDescribeSections(
+        [annotated, ...annotations],
+        NO_ORIGINS,
+        SEED,
+        NO_ENDPOINTS,
+      );
+      const member = outbound.predicateGroups[0].members[0];
+      expect(member.annotations.length).toBe(1);
+      const block = member.annotations[0];
+      // Predicate groups are alphabetical.
+      expect(block.predicateGroups.map((g) => g.predicate)).toEqual([
+        'http://example.org/sourcedBy',
+        'http://example.org/year',
+      ]);
+      // Within :sourcedBy: IRIs (alphabetical) → literals → bnodes.
+      const sourcedByGroup = block.predicateGroups[0];
+      expect(
+        sourcedByGroup.members.map((m) => `${m.term.termType}:${m.term.value}`),
+      ).toEqual([
+        'NamedNode:http://example.org/Acme',
+        'NamedNode:http://example.org/CensusBureau',
+        'Literal:hearsay',
+        'BlankNode:annB',
+      ]);
+    });
+
+    it('inlines a single-use bnode object inside an annotation as a nested BnodeBlock', () => {
+      const annotated = quad(
+        seed,
+        namedNode('http://example.org/knows'),
+        namedNode('http://example.org/bob'),
+      );
+      const provenance = blankNode('prov');
+      const quads = [
+        annotated,
+        quad(
+          annotated as unknown as Quad['subject'],
+          namedNode('http://example.org/provenance'),
+          provenance,
+        ),
+        quad(provenance, namedNode('http://example.org/agent'), namedNode('http://example.org/Acme')),
+        quad(provenance, namedNode('http://example.org/when'), literal('2023')),
+      ];
+      const { outbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+      const member = outbound.predicateGroups[0].members[0];
+      const ann = member.annotations[0];
+      expect(ann.predicateGroups.length).toBe(1);
+      const provMember = ann.predicateGroups[0].members[0];
+      const nested = provMember.nested;
+      if (!nested || nested.kind !== 'bnode') throw new Error('expected nested bnode in annotation');
+      expect(nested.label).toBeNull();
+      expect(nested.predicateGroups.map((g) => g.predicate)).toEqual([
+        'http://example.org/agent',
+        'http://example.org/when',
+      ]);
+    });
+
+    it('populates annotations on an inbound member when an inbound quad carries an RDF-star annotation', () => {
+      const inboundQuad = quad(
+        namedNode('http://example.org/carol'),
+        namedNode('http://example.org/knows'),
+        seed,
+      );
+      const annotation = quad(
+        inboundQuad as unknown as Quad['subject'],
+        namedNode('http://example.org/sourcedBy'),
+        namedNode('http://example.org/CensusBureau'),
+      );
+      const { outbound, inbound } = buildDescribeSections(
+        [inboundQuad, annotation],
+        NO_ORIGINS,
+        SEED,
+        NO_ENDPOINTS,
+      );
+      expect(outbound.predicateGroups.length).toBe(0);
+      expect(inbound.predicateGroups.length).toBe(1);
+      const member = inbound.predicateGroups[0].members[0];
+      expect(member.term.value).toBe('http://example.org/carol');
+      expect(member.annotations.length).toBe(1);
+      const block = member.annotations[0];
+      expect(block.predicateGroups[0].predicate).toBe('http://example.org/sourcedBy');
+      expect(block.predicateGroups[0].members[0].term.value).toBe(
+        'http://example.org/CensusBureau',
+      );
+    });
+  });
+
   describe('blank-node nesting (PRD #221, slice #223)', () => {
     it('populates a single-use bnode object with an empty inline BnodeBlock (no label)', () => {
       const b = blankNode('b0');

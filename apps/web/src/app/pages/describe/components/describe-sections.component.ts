@@ -130,7 +130,32 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
             class="ml-0.5 inline-block rounded-md border border-border bg-surface-sunken px-1.5 py-0.5 text-[11px] font-medium text-foreground-muted"
           >{{ origin }}</span>
         }
+        @for (ann of m.annotations; track $index) {
+          <ng-container
+            *ngTemplateOutlet="annotationBlockTpl; context: { $implicit: ann }"
+          ></ng-container>
+        }
       </li>
+    </ng-template>
+
+    <ng-template #annotationBlockTpl let-block>
+      <span
+        data-testid="annotation-block"
+        class="ml-1 flex flex-wrap items-baseline gap-1"
+      >
+        <span class="text-foreground-faint">{{ '{|' }}</span>
+        <span class="ml-2 flex flex-col gap-1">
+          @for (g of block.predicateGroups; track g.predicate) {
+            <ng-container
+              *ngTemplateOutlet="
+                predicateGroupTpl;
+                context: { $implicit: g, direction: 'outbound' }
+              "
+            ></ng-container>
+          }
+        </span>
+        <span class="text-foreground-faint">{{ '|}' }}</span>
+      </span>
     </ng-template>
 
     <ng-template #nestedBlockTpl let-block let-term="term">
