@@ -44,6 +44,7 @@ const sourceObjectSchema = z
     auth: sparqlAuthSchema.optional(),
     headers: z.record(z.string(), z.string()).optional(),
     timeoutMs: z.number().int().positive().optional(),
+    splitByFile: z.literal(true).optional(),
   })
   .strict();
 

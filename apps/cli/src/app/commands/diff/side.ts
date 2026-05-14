@@ -28,14 +28,15 @@ export interface SideResolved {
 export function resolveDiffSide(
   config: DiffConfig,
   side: 'left' | 'right',
+  registry?: ReadonlyArray<ParsedSource>,
 ): ParsedSource {
-  const registry = parseSourceSpecs(config.sources ?? []);
+  const effective = registry ?? parseSourceSpecs(config.sources ?? []);
   const value = config[side];
   const targetArg = typeof value === 'string' ? value : undefined;
   if (value !== undefined && targetArg === undefined) {
     return parseSourceSpecs([value])[0];
   }
-  return selectTarget(registry, targetArg);
+  return selectTarget(effective, targetArg);
 }
 
 export function anonymousUpstream(
@@ -58,6 +59,7 @@ export async function resolveSide(
   inlineQuery: string | undefined,
   side: 'left' | 'right',
   logger: SparqlyLogger,
+  registry?: ReadonlyArray<ParsedSource>,
 ): Promise<SideResolved> {
   const target = withAutoSourceAnnotation(rawTarget, {
     skipAuto: config.skipAutoSourceAnnotation === true,
@@ -86,8 +88,11 @@ export async function resolveSide(
     });
   }
 
-  const registry = parseSourceSpecs(config.sources ?? []);
-  const sources = await resolveSource(target, { registry, logger });
+  const effectiveRegistry = registry ?? parseSourceSpecs(config.sources ?? []);
+  const sources = await resolveSource(target, {
+    registry: effectiveRegistry,
+    logger,
+  });
   if (sources.mode === 'pass-through') {
     throw new DiffErrorSignal({
       kind: 'endpoint-as-diff-target',

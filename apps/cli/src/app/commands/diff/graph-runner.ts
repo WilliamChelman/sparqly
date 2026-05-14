@@ -29,6 +29,7 @@ interface RunGraphDiffArgs {
   rightTarget: ParsedSource;
   leftInlineQuery: string | undefined;
   rightInlineQuery: string | undefined;
+  registry?: ReadonlyArray<ParsedSource>;
 }
 
 export async function runGraphDiff(args: RunGraphDiffArgs): Promise<void> {
@@ -41,12 +42,13 @@ export async function runGraphDiff(args: RunGraphDiffArgs): Promise<void> {
     rightTarget,
     leftInlineQuery,
     rightInlineQuery,
+    registry,
   } = args;
 
   const start = Date.now();
   const [leftResolved, rightResolved] = await Promise.all([
-    resolveSide(leftTarget, config, leftInlineQuery, 'left', logger),
-    resolveSide(rightTarget, config, rightInlineQuery, 'right', logger),
+    resolveSide(leftTarget, config, leftInlineQuery, 'left', logger, registry),
+    resolveSide(rightTarget, config, rightInlineQuery, 'right', logger, registry),
   ]);
   const diff = await diffStores(
     { store: leftResolved.store, annotationPredicates: leftResolved.annotationPredicates },

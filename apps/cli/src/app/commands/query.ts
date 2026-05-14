@@ -3,6 +3,8 @@ import { ok, type Result, type ResultAsync } from 'neverthrow';
 import { z } from 'zod';
 import { formatRdf, parseRdfString } from 'common';
 import {
+  defaultGlobWalker,
+  expandSplitGlobs,
   parseSourceSpecs,
   parseSparqlPrefixes,
   QueryEngine,
@@ -94,14 +96,15 @@ const formatField: FieldDescriptor = {
 
 export function resolveQueryTargetResult(
   config: QueryConfig,
+  registry?: ReadonlyArray<ParsedSource>,
 ): Result<ParsedSource, TargetError> {
-  const registry = parseSourceSpecs(config.sources ?? []);
+  const effective = registry ?? parseSourceSpecs(config.sources ?? []);
   const targetArg =
     typeof config.source === 'string' ? config.source : undefined;
   if (config.source !== undefined && targetArg === undefined) {
     return ok(parseSourceSpecs([config.source])[0]);
   }
-  return selectTargetResult(registry, targetArg);
+  return selectTargetResult(effective, targetArg);
 }
 
 export const querySpec: CommandSpec<QueryConfig> = {
@@ -163,10 +166,13 @@ export const querySpec: CommandSpec<QueryConfig> = {
 
     const format = config.format;
     const mutable = config.mutable === true;
-    const registry = parseSourceSpecs(config.sources ?? []);
+    const registry = await expandSplitGlobs(
+      parseSourceSpecs(config.sources ?? []),
+      { walkGlob: defaultGlobWalker, logger: boundaryLog },
+    );
 
     const pipeline: ResultAsync<ExecuteResult, SourceError | TargetError> =
-      resolveQueryTargetResult(config).asyncAndThen<
+      resolveQueryTargetResult(config, registry).asyncAndThen<
         ExecuteResult,
         SourceError | TargetError
       >((target) => {
