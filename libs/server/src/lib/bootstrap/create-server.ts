@@ -8,6 +8,8 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { noopLogger, type SparqlyLogger } from 'common';
 import {
+  defaultGlobWalker,
+  expandSplitGlobs,
   type GraphMode,
   parseSourceSpecs,
   type ParsedSource,
@@ -73,7 +75,10 @@ export async function createServer(
 ): Promise<CreatedServer> {
   const logger = new Logger('sparqly');
   const boundaryLogger = options.logger ?? noopLogger;
-  const parsedRegistry = parseSourceSpecs(toSourceArray(options.sources));
+  const parsedRegistry = await expandSplitGlobs(
+    parseSourceSpecs(toSourceArray(options.sources)),
+    { walkGlob: defaultGlobWalker, logger: boundaryLogger },
+  );
   const scope = resolveServeScope(parsedRegistry, options.scope);
   if (scope.servedRegistry.length === 0) {
     throw new Error(
@@ -191,6 +196,7 @@ function buildListing(
       label: src.id,
     };
     if ((src as { default?: true }).default === true) entry.default = true;
+    if (src.kind === 'file') entry.parentId = src.parentId;
     out.push(entry);
   }
   return out;

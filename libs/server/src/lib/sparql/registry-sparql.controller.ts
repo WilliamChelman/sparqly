@@ -71,27 +71,27 @@ export class RegistrySparqlController {
     await this.respond(undefined, query, accept, res);
   }
 
-  @Get(':id')
+  @Get('*id')
   async get(
-    @Param('id') id: string,
+    @Param('id') id: string | string[],
     @Query('query') query: string | undefined,
     @Headers('accept') accept: string | undefined,
     @Res() res: ResLike,
   ): Promise<void> {
     this.assertQuery(query);
-    await this.respond(`@${id}`, query, accept, res);
+    await this.respond(`@${joinId(id)}`, query, accept, res);
   }
 
-  @Post(':id')
+  @Post('*id')
   async post(
-    @Param('id') id: string,
+    @Param('id') id: string | string[],
     @Headers('content-type') contentType: string | undefined,
     @Headers('accept') accept: string | undefined,
     @Body() body: unknown,
     @Res() res: ResLike,
   ): Promise<void> {
     const query = this.extractPostQuery(contentType, body);
-    await this.respond(`@${id}`, query, accept, res);
+    await this.respond(`@${joinId(id)}`, query, accept, res);
   }
 
   private assertQuery(query: string | undefined): asserts query is string {
@@ -189,6 +189,10 @@ function statusToHttpException(
     default:
       return new InternalServerErrorException(body);
   }
+}
+
+function joinId(id: string | string[]): string {
+  return Array.isArray(id) ? id.join('/') : id;
 }
 
 function pickFormat(accept: string | undefined): SparqlFormat | undefined {
