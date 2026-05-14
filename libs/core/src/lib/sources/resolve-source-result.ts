@@ -55,7 +55,7 @@ export function resolveSourceResult(
     const transformsResult = effectiveTransforms(target, options.graphMode);
     if (transformsResult.isErr()) return errAsync(transformsResult.error);
     const transforms = transformsResult.value;
-    return loadGlobIntoStore(target, transforms).map((loaded) =>
+    return loadGlobIntoStore(target, transforms, options).map((loaded) =>
       materialized(loaded.store, loaded.files, loaded.prefixes),
     );
   }
@@ -80,8 +80,9 @@ function resolveViewTargetResult(
 function loadGlobIntoStore(
   source: ParsedGlobSource,
   transforms: ReadonlyArray<ParsedTransform>,
+  options: ResolveSourceResultOptions,
 ): ResultAsync<LoadResult, SourceError> {
-  return loadRdfResult({ sources: source.glob }).map((sub) => {
+  return loadRdfResult({ sources: source.glob, logger: options.logger }).map((sub) => {
     const transformed = applyTransformPipeline(sub.store, transforms, {
       perFileRecords: sub.perFileRecords,
     });

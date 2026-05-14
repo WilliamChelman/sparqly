@@ -5,6 +5,7 @@ import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadRdf, loadRdfResult } from './rdf-loader';
 import { QueryEngine } from './query-engine';
+import { recordingLogger } from '../test/recording-logger';
 
 const FIXTURES_DIR = resolve(__dirname, '../../../../../test/data/formats');
 
@@ -35,10 +36,12 @@ describe('loadRdf', () => {
     expect(store.size).toBe(2);
   });
 
-  it('throws when the glob matches no files', async () => {
-    await expect(
-      loadRdf({ sources: join(dir, 'nope-*.ttl') }),
-    ).rejects.toThrow(/no files/i);
+  it('returns an empty store when the glob matches no files (ADR-0028)', async () => {
+    const { store, files } = await loadRdf({
+      sources: join(dir, 'nope-*.ttl'),
+    });
+    expect(files).toEqual([]);
+    expect(store.size).toBe(0);
   });
 
   it('throws a parse error mentioning the offending file', async () => {
@@ -269,17 +272,30 @@ describe('loadRdfResult', () => {
     expect(result.value.store.size).toBe(1);
   });
 
-  it('returns Result.err with a glob-load variant naming the glob when no files match', async () => {
+  it('returns Result.ok with an empty store when the glob matches no files', async () => {
     const pattern = join(dir, 'nope-*.ttl');
     const result = await loadRdfResult({ sources: pattern });
 
-    expect(result.isErr()).toBe(true);
-    if (!result.isErr()) throw new Error('unreachable');
-    expect(result.error.kind).toBe('glob-load');
-    if (result.error.kind !== 'glob-load') throw new Error('unreachable');
-    expect(result.error.glob).toEqual([pattern]);
-    expect(result.error.file).toBeUndefined();
-    expect(result.error.message).toMatch(/no files matched/i);
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.files).toEqual([]);
+    expect(result.value.store.size).toBe(0);
+    expect(result.value.prefixes).toEqual({});
+    expect(result.value.perFileRecords?.size).toBe(0);
+  });
+
+  it('emits a single warn line naming the glob and absolute base path on empty match', async () => {
+    const pattern = join(dir, 'nope-*.ttl');
+    const { logger, entries } = recordingLogger();
+
+    const result = await loadRdfResult({ sources: pattern, logger });
+
+    expect(result.isOk()).toBe(true);
+    const warnings = entries.filter((e) => e.level === 'warn');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].msg).toContain(pattern);
+    expect(warnings[0].msg).toContain(dir);
+    expect(warnings[0].fields).toEqual({ glob: [pattern], base: [dir] });
   });
 
   it('returns Result.err with a glob-load variant naming the offending file on parse failure', async () => {
@@ -297,14 +313,17 @@ describe('loadRdfResult', () => {
     expect(result.error.file).toBe(bad);
   });
 
-  it('accepts an array glob and preserves it in the err variant', async () => {
+  it('accepts an array glob and warns once naming both patterns when empty', async () => {
     const patterns = [join(dir, 'nope-a*.ttl'), join(dir, 'nope-b*.ttl')];
+    const { logger, entries } = recordingLogger();
 
-    const result = await loadRdfResult({ sources: patterns });
+    const result = await loadRdfResult({ sources: patterns, logger });
 
-    expect(result.isErr()).toBe(true);
-    if (!result.isErr()) throw new Error('unreachable');
-    if (result.error.kind !== 'glob-load') throw new Error('unreachable');
-    expect(result.error.glob).toEqual(patterns);
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.files).toEqual([]);
+    const warnings = entries.filter((e) => e.level === 'warn');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].fields?.glob).toEqual(patterns);
   });
 });

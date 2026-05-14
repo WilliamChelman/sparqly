@@ -37,12 +37,14 @@ interface RegistryPaths {
   dir: string;
   alphaTtl: string;
   betaTtl: string;
+  badTtl: string;
 }
 
 async function makeRegistry(): Promise<RegistryPaths> {
   const dir = await mkdtemp(join(tmpdir(), 'sparqly-describe-svc-'));
   const alphaTtl = join(dir, 'alpha.ttl');
   const betaTtl = join(dir, 'beta.ttl');
+  const badTtl = join(dir, 'broken.ttl');
   // Shared quad: alice knows bob (will dedup across alpha/beta).
   // Alpha-only: alice has bnode address (Paris).
   // Beta-only: alice age 30.
@@ -65,7 +67,8 @@ async function makeRegistry(): Promise<RegistryPaths> {
       '',
     ].join('\n'),
   );
-  return { dir, alphaTtl, betaTtl };
+  await writeFile(badTtl, 'this is not valid turtle <<<');
+  return { dir, alphaTtl, betaTtl, badTtl };
 }
 
 function parseNQuads(text: string): Quad[] {
@@ -470,10 +473,11 @@ describe('DescribeService — multi-source aggregation', () => {
 
   describe('partial failure', () => {
     function registryWithBadSource(): DescribeService {
-      // `bad`'s glob matches nothing, so resolveSource throws "No files matched".
+      // `bad` points at a malformed turtle file, so resolveSource surfaces a
+      // real GlobLoadError. (Empty-glob is no longer a failure — ADR-0028.)
       const registry = parseSourceSpecs([
         { id: 'alpha', glob: paths.alphaTtl },
-        { id: 'bad', glob: join(paths.dir, 'does-not-exist', '*.ttl') },
+        { id: 'bad', glob: paths.badTtl },
       ]);
       return new DescribeService(registry);
     }
@@ -497,9 +501,13 @@ describe('DescribeService — multi-source aggregation', () => {
     });
 
     it('errs with all-sources-failed carrying per-source attribution when every selected source failed (ADR-0025 user story 6)', async () => {
+      const bad1 = join(paths.dir, 'bad1.ttl');
+      const bad2 = join(paths.dir, 'bad2.ttl');
+      await writeFile(bad1, 'not valid turtle <<<');
+      await writeFile(bad2, 'still not valid turtle <<<');
       const registry = parseSourceSpecs([
-        { id: 'bad1', glob: join(paths.dir, 'nope1', '*.ttl') },
-        { id: 'bad2', glob: join(paths.dir, 'nope2', '*.ttl') },
+        { id: 'bad1', glob: bad1 },
+        { id: 'bad2', glob: bad2 },
       ]);
       const result = await new DescribeService(registry).runDescribe({
         iri: 'http://example.org/alice',

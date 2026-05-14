@@ -1,6 +1,8 @@
+import { resolve as resolvePath } from 'node:path';
 import { Store } from 'n3';
-import { ResultAsync, errAsync, okAsync } from 'neverthrow';
+import { ResultAsync, okAsync } from 'neverthrow';
 import { glob } from 'tinyglobby';
+import { noopLogger, type SparqlyLogger } from 'common';
 import { parseRdfFileResult, type RdfRecord } from './rdf-file-parser';
 import type { GlobLoadError } from '../sources/errors';
 
@@ -15,6 +17,12 @@ export type GraphMode = (typeof GRAPH_MODES)[number];
 
 export interface LoadOptions {
   sources: string | string[];
+  /**
+   * Optional boundary logger. The empty-glob branch emits a single
+   * `warn`-level line through this logger naming the glob pattern(s) and the
+   * absolute base path that was searched (ADR-0028). Defaults to no-op.
+   */
+  logger?: SparqlyLogger;
 }
 
 export interface LoadResult {
@@ -42,18 +50,38 @@ export function loadRdfResult(
   options: LoadOptions,
 ): ResultAsync<LoadResult, GlobLoadError> {
   const globs = normalizeGlobs(options.sources);
+  const logger = options.logger ?? noopLogger;
   return ResultAsync.fromSafePromise(
     glob(options.sources, { absolute: true }),
   ).andThen((files) => {
     if (files.length === 0) {
-      return errAsync<LoadResult, GlobLoadError>({
-        kind: 'glob-load',
-        glob: globs,
-        message: `No files matched sources: ${globs.join(', ')}`,
+      const base = globBaseDirs(globs);
+      logger.warn(
+        `No files matched glob ${globs.join(', ')} in ${base.join(', ')}`,
+        { glob: globs, base },
+      );
+      return okAsync<LoadResult, GlobLoadError>({
+        store: new Store(),
+        files: [],
+        prefixes: {},
+        perFileRecords: new Map(),
       });
     }
     return parseFiles(files, globs);
   });
+}
+
+function globBaseDirs(globs: ReadonlyArray<string>): ReadonlyArray<string> {
+  return globs.map((pattern) => resolvePath(staticPrefix(pattern)));
+}
+
+function staticPrefix(pattern: string): string {
+  const meta = pattern.search(/[*?[{]/);
+  if (meta === -1) return pattern;
+  const head = pattern.slice(0, meta);
+  const lastSlash = head.lastIndexOf('/');
+  if (lastSlash === -1) return '.';
+  return head.slice(0, lastSlash) || '/';
 }
 
 function parseFiles(

@@ -304,7 +304,7 @@ function loadUpstreamResult(
     });
   }
   const globUpstream = upstream;
-  return loadRdfResult({ sources: globUpstream.glob }).map((sub) =>
+  return loadRdfResult({ sources: globUpstream.glob, logger }).map((sub) =>
     applyTransformPipeline(sub.store, globUpstream.transforms ?? [], {
       perFileRecords: sub.perFileRecords,
     }),
