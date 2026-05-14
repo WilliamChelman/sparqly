@@ -12,7 +12,6 @@ import {
   formatDiffSummaryLine,
   formatHumanSourceComment,
   formatRdfDiff,
-  formatDiffError,
   formatTabularDiff,
   groupRdfDiffByEntity,
   hasAnnotateTransform,
@@ -36,6 +35,11 @@ import {
 } from 'core';
 import { configureLogger } from '../logging';
 import { writeOutputToFile } from '../output';
+import {
+  DiffErrorSignal,
+  decorateDiffError,
+  diffErrorExitCode,
+} from './diff-error';
 import type { FieldDescriptor } from '../runner/fields/field';
 import {
   contextBaseField,
@@ -338,180 +342,193 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     ),
   exitCode: (err) => {
     if (err instanceof DiffPresentSignal) return 1;
+    if (err instanceof DiffErrorSignal) return diffErrorExitCode(err.diffError);
     return 2;
   },
   handler: async (config) => {
-    const logger = configureLogger({
-      verbose: config.verbose === true,
-      quiet: config.quiet === true,
-      logFormat: config.logFormat,
-    });
-
-    const format = (config.format ??
-      inferDiffFormatFromOut(config.out) ??
-      'human') as DiffFormat;
-    const quiet = config.quiet === true;
-
-    const symmetricInlineQuery = await loadSymmetricInlineScopeQuery(config);
-    const [leftInlineQuery, rightInlineQuery] = await Promise.all([
-      loadSideInlineScopeQuery(
-        symmetricInlineQuery,
-        config.leftQuery,
-        config.leftQueryFile,
-      ),
-      loadSideInlineScopeQuery(
-        symmetricInlineQuery,
-        config.rightQuery,
-        config.rightQueryFile,
-      ),
-    ]);
-
-    const leftTarget = resolveDiffSide(config, 'left');
-    const rightTarget = resolveDiffSide(config, 'right');
-
-    const tabularDispatch = detectTabularDispatch(
-      leftInlineQuery,
-      rightInlineQuery,
-    );
-    if (tabularDispatch) {
-      await runTabularDiff({
-        config,
-        format,
-        quiet,
-        logger,
-        leftTarget,
-        rightTarget,
-        leftInlineQuery: leftInlineQuery as string,
-        rightInlineQuery: rightInlineQuery as string,
-        leftShape: tabularDispatch.left,
-        rightShape: tabularDispatch.right,
-      });
-      return;
-    }
-
-    const start = Date.now();
-    const [leftResolved, rightResolved] = await Promise.all([
-      resolveSide(leftTarget, config, leftInlineQuery, 'left', logger),
-      resolveSide(rightTarget, config, rightInlineQuery, 'right', logger),
-    ]);
-    const diff = await diffStores(
-      { store: leftResolved.store, annotationPredicates: leftResolved.annotationPredicates },
-      { store: rightResolved.store, annotationPredicates: rightResolved.annotationPredicates },
-    );
-    logger.debug('source-loaded', {
-      leftFiles: leftResolved.fileCount,
-      rightFiles: rightResolved.fileCount,
-      ms: Date.now() - start,
-    });
-
-    const sourcePrefixes: Record<string, Record<string, string>> = {
-      ...leftResolved.prefixes,
-      ...rightResolved.prefixes,
-    };
-    const resolvedPrefixes = resolveDiffPrefixes(
-      config.prefixes ?? {},
-      sourcePrefixes,
-    );
-
-    const cwd = process.cwd();
-    const snippetContext = config.snippetContext ?? 3;
-    // Test-only synchronization hook: emits a stable stderr marker and
-    // pauses for N ms so an e2e parent can mutate the filesystem between
-    // load and snippet fetching, making the load→snippet boundary
-    // deterministically observable from a black-box CLI test. The marker
-    // is emitted directly (not through the Nest logger) so it survives
-    // --quiet and the default log-level filter. See
-    // `apps/cli-e2e/.../diff-format-html`.
-    const pauseMs = Number(
-      process.env['SPARQLY_DEBUG_PAUSE_BEFORE_SNIPPETS_MS'] ?? '',
-    );
-    if (Number.isFinite(pauseMs) && pauseMs > 0) {
-      process.stderr.write('sparqly-debug: pausing before snippets\n');
-      await new Promise<void>((r) => setTimeout(r, pauseMs));
-    }
-    const hunked =
-      format === 'html' || format === 'grouped'
-        ? groupRdfDiffByEntity({
-            diff,
-            left: { store: leftResolved.store },
-            right: { store: rightResolved.store },
-          })
-        : undefined;
-    const snippetsByRecord =
-      format === 'html'
-        ? await fetchSnippetsForHunkedDiff(
-            hunked as ReturnType<typeof groupRdfDiffByEntity>,
-            snippetContext,
-          )
-        : new Map<string, SnippetReadResult>();
-    const body =
-      format === 'html'
-        ? composeHtmlDiff(
-            hunked as ReturnType<typeof groupRdfDiffByEntity>,
-            snippetsByRecord,
-            { cwd, context: snippetContext, prefixes: resolvedPrefixes },
-          )
-        : format === 'turtle'
-          ? formatRdfDiff(diff, 'turtle', {
-              cwd,
-              prefixes: resolvedPrefixes,
-              sourceRecords: diff.sourceRecords,
-            })
-          : format === 'human'
-            ? renderHumanShortened(
-                diff,
-                resolvedPrefixes,
-                diff.sourceRecords,
-                cwd,
-              )
-            : format === 'grouped'
-              ? formatRdfDiff(diff, 'grouped', {
-                  prefixes: resolvedPrefixes,
-                  hunked: hunked as ReturnType<typeof groupRdfDiffByEntity>,
-                })
-              : formatRdfDiff(diff, format, {
-                  cwd,
-                  sourceRecords: diff.sourceRecords,
-                });
-    const { added, removed } = diff;
-
-    if (config.out !== undefined) {
-      await writeOutputToFile({
-        out: config.out,
-        cwd: process.cwd(),
-        body,
-      });
-    } else {
-      process.stdout.write(body);
-    }
-
-    if (!quiet) {
-      if (
-        format === 'html' &&
-        diff.sourceRecords.left.size === 0 &&
-        diff.sourceRecords.right.size === 0
-      ) {
-        process.stderr.write(
-          'note: no source records present; HTML output will contain no line numbers (auto source annotation only applies to glob targets — wrap views/endpoints in a glob, or remove --skip-auto-source-annotation)\n',
-        );
+    try {
+      await runDiff(config);
+    } catch (e) {
+      if (e instanceof DiffErrorSignal) {
+        const color = process.stderr.isTTY === true;
+        process.stderr.write(`${decorateDiffError(e.diffError, { color })}\n`);
       }
-      if (leftResolved.annotated !== rightResolved.annotated) {
-        const annotatedSide = leftResolved.annotated ? 'left' : 'right';
-        const otherSide = leftResolved.annotated ? 'right' : 'left';
-        process.stderr.write(
-          `note: source records present on ${annotatedSide} only — ${otherSide} side hunks will not be annotated\n`,
-        );
-      }
-      process.stderr.write(
-        `# ${formatDiffSummaryLine(diff.totals, added.length, removed.length)}\n`,
-      );
-    }
-
-    if (added.length !== 0 || removed.length !== 0) {
-      throw new DiffPresentSignal();
+      throw e;
     }
   },
 };
+
+async function runDiff(config: DiffConfig): Promise<void> {
+  const logger = configureLogger({
+    verbose: config.verbose === true,
+    quiet: config.quiet === true,
+    logFormat: config.logFormat,
+  });
+
+  const format = (config.format ??
+    inferDiffFormatFromOut(config.out) ??
+    'human') as DiffFormat;
+  const quiet = config.quiet === true;
+
+  const symmetricInlineQuery = await loadSymmetricInlineScopeQuery(config);
+  const [leftInlineQuery, rightInlineQuery] = await Promise.all([
+    loadSideInlineScopeQuery(
+      symmetricInlineQuery,
+      config.leftQuery,
+      config.leftQueryFile,
+    ),
+    loadSideInlineScopeQuery(
+      symmetricInlineQuery,
+      config.rightQuery,
+      config.rightQueryFile,
+    ),
+  ]);
+
+  const leftTarget = resolveDiffSide(config, 'left');
+  const rightTarget = resolveDiffSide(config, 'right');
+
+  const tabularDispatch = detectTabularDispatch(
+    leftInlineQuery,
+    rightInlineQuery,
+  );
+  if (tabularDispatch) {
+    await runTabularDiff({
+      config,
+      format,
+      quiet,
+      logger,
+      leftTarget,
+      rightTarget,
+      leftInlineQuery: leftInlineQuery as string,
+      rightInlineQuery: rightInlineQuery as string,
+      leftShape: tabularDispatch.left,
+      rightShape: tabularDispatch.right,
+    });
+    return;
+  }
+
+  const start = Date.now();
+  const [leftResolved, rightResolved] = await Promise.all([
+    resolveSide(leftTarget, config, leftInlineQuery, 'left', logger),
+    resolveSide(rightTarget, config, rightInlineQuery, 'right', logger),
+  ]);
+  const diff = await diffStores(
+    { store: leftResolved.store, annotationPredicates: leftResolved.annotationPredicates },
+    { store: rightResolved.store, annotationPredicates: rightResolved.annotationPredicates },
+  );
+  logger.debug('source-loaded', {
+    leftFiles: leftResolved.fileCount,
+    rightFiles: rightResolved.fileCount,
+    ms: Date.now() - start,
+  });
+
+  const sourcePrefixes: Record<string, Record<string, string>> = {
+    ...leftResolved.prefixes,
+    ...rightResolved.prefixes,
+  };
+  const resolvedPrefixes = resolveDiffPrefixes(
+    config.prefixes ?? {},
+    sourcePrefixes,
+  );
+
+  const cwd = process.cwd();
+  const snippetContext = config.snippetContext ?? 3;
+  // Test-only synchronization hook: emits a stable stderr marker and
+  // pauses for N ms so an e2e parent can mutate the filesystem between
+  // load and snippet fetching, making the load→snippet boundary
+  // deterministically observable from a black-box CLI test. The marker
+  // is emitted directly (not through the Nest logger) so it survives
+  // --quiet and the default log-level filter. See
+  // `apps/cli-e2e/.../diff-format-html`.
+  const pauseMs = Number(
+    process.env['SPARQLY_DEBUG_PAUSE_BEFORE_SNIPPETS_MS'] ?? '',
+  );
+  if (Number.isFinite(pauseMs) && pauseMs > 0) {
+    process.stderr.write('sparqly-debug: pausing before snippets\n');
+    await new Promise<void>((r) => setTimeout(r, pauseMs));
+  }
+  const hunked =
+    format === 'html' || format === 'grouped'
+      ? groupRdfDiffByEntity({
+          diff,
+          left: { store: leftResolved.store },
+          right: { store: rightResolved.store },
+        })
+      : undefined;
+  const snippetsByRecord =
+    format === 'html'
+      ? await fetchSnippetsForHunkedDiff(
+          hunked as ReturnType<typeof groupRdfDiffByEntity>,
+          snippetContext,
+        )
+      : new Map<string, SnippetReadResult>();
+  const body =
+    format === 'html'
+      ? composeHtmlDiff(
+          hunked as ReturnType<typeof groupRdfDiffByEntity>,
+          snippetsByRecord,
+          { cwd, context: snippetContext, prefixes: resolvedPrefixes },
+        )
+      : format === 'turtle'
+        ? formatRdfDiff(diff, 'turtle', {
+            cwd,
+            prefixes: resolvedPrefixes,
+            sourceRecords: diff.sourceRecords,
+          })
+        : format === 'human'
+          ? renderHumanShortened(
+              diff,
+              resolvedPrefixes,
+              diff.sourceRecords,
+              cwd,
+            )
+          : format === 'grouped'
+            ? formatRdfDiff(diff, 'grouped', {
+                prefixes: resolvedPrefixes,
+                hunked: hunked as ReturnType<typeof groupRdfDiffByEntity>,
+              })
+            : formatRdfDiff(diff, format, {
+                cwd,
+                sourceRecords: diff.sourceRecords,
+              });
+  const { added, removed } = diff;
+
+  if (config.out !== undefined) {
+    await writeOutputToFile({
+      out: config.out,
+      cwd: process.cwd(),
+      body,
+    });
+  } else {
+    process.stdout.write(body);
+  }
+
+  if (!quiet) {
+    if (
+      format === 'html' &&
+      diff.sourceRecords.left.size === 0 &&
+      diff.sourceRecords.right.size === 0
+    ) {
+      process.stderr.write(
+        'note: no source records present; HTML output will contain no line numbers (auto source annotation only applies to glob targets — wrap views/endpoints in a glob, or remove --skip-auto-source-annotation)\n',
+      );
+    }
+    if (leftResolved.annotated !== rightResolved.annotated) {
+      const annotatedSide = leftResolved.annotated ? 'left' : 'right';
+      const otherSide = leftResolved.annotated ? 'right' : 'left';
+      process.stderr.write(
+        `note: source records present on ${annotatedSide} only — ${otherSide} side hunks will not be annotated\n`,
+      );
+    }
+    process.stderr.write(
+      `# ${formatDiffSummaryLine(diff.totals, added.length, removed.length)}\n`,
+    );
+  }
+
+  if (added.length !== 0 || removed.length !== 0) {
+    throw new DiffPresentSignal();
+  }
+}
 
 /**
  * Compute the unique set of (file, line) snippet reads needed to render
@@ -605,22 +622,17 @@ interface SideResolved {
   annotated: boolean;
 }
 
-function targetLabel(target: ParsedSource): string {
-  if (target.id !== undefined) return `@${target.id}`;
-  if (target.kind === 'glob') return target.glob;
-  if (target.kind === 'endpoint') return target.endpoint;
-  return `<${target.kind}>`;
-}
-
 function anonymousUpstream(
   target: ParsedSource,
   side: 'left' | 'right',
 ): SourceSpecInput {
   if (target.kind === 'glob') return target.glob;
   if (target.kind === 'endpoint') return target.endpoint;
-  throw new Error(
-    `--query/--query-file/--${side}-query scope a glob or SPARQL endpoint upstream; ${side} target ${targetLabel(target)} is a ${target.kind} source — drop the inline scope (it already has a query) or point at a glob/endpoint`,
-  );
+  throw new DiffErrorSignal({
+    kind: 'inline-upstream-kind',
+    side,
+    targetKind: target.kind,
+  });
 }
 
 async function resolveSide(
@@ -650,17 +662,21 @@ async function resolveSide(
   }
 
   if (target.kind === 'endpoint') {
-    throw new Error(
-      `SPARQL endpoint ${target.endpoint} cannot be diffed directly on the ${side} side (diff materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly diff\`)`,
-    );
+    throw new DiffErrorSignal({
+      kind: 'endpoint-as-diff-target',
+      side,
+      endpoint: target.endpoint,
+    });
   }
 
   const registry = parseSourceSpecs(config.sources ?? []);
   const sources = await resolveSource(target, { registry, logger });
   if (sources.mode === 'pass-through') {
-    throw new Error(
-      `SPARQL endpoint ${sources.endpoint.endpoint} cannot be diffed directly on the ${side} side (diff materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly diff\`)`,
-    );
+    throw new DiffErrorSignal({
+      kind: 'endpoint-as-diff-target',
+      side,
+      endpoint: sources.endpoint.endpoint,
+    });
   }
   const transforms = target.kind === 'glob' ? target.transforms : undefined;
   return {
@@ -725,9 +741,11 @@ function detectTabularDispatch(
   if (left.shape !== right.shape) {
     const tuplesSide = left.shape === 'tuples' ? 'left' : 'right';
     const triplesSide = tuplesSide === 'left' ? 'right' : 'left';
-    throw new Error(
-      `mixed-shape diff: ${triplesSide}-side query is triples-shape (CONSTRUCT or SELECT-{?s,?p,?o[,?g]}) while ${tuplesSide}-side query is tuples-shape (arbitrary SELECT). Either project triples on both sides (graph diff) or arbitrary tuples on both sides (tabular diff) — pick one shape and align both queries.`,
-    );
+    throw new DiffErrorSignal({
+      kind: 'mixed-shape',
+      triplesSide,
+      tuplesSide,
+    });
   }
   return { left, right };
 }
@@ -771,13 +789,11 @@ async function runTabularDiff(args: RunTabularDiffArgs): Promise<void> {
     leftSet.size === rightSet.size &&
     [...leftSet].every((v) => rightSet.has(v));
   if (!setsMatch) {
-    const fmt = (s: ReadonlySet<string>): string =>
-      `{${[...s].sort().map((v) => `?${v}`).join(', ')}}`;
-    throw new Error(
-      `tabular diff requires matching projected variable-name sets: left=${fmt(
-        leftSet,
-      )}, right=${fmt(rightSet)}`,
-    );
+    throw new DiffErrorSignal({
+      kind: 'set-mismatch',
+      left: [...leftSet],
+      right: [...rightSet],
+    });
   }
 
   if (leftShape.warnLimitOffsetWithoutOrderBy) {
@@ -814,10 +830,7 @@ async function runTabularDiff(args: RunTabularDiffArgs): Promise<void> {
     ...rightShape.variables,
   ]);
   if (tabResult.isErr()) {
-    // Slice 1 (ADR-0024) keeps CLI consumption out of scope: surface the
-    // structured error by re-throwing with the formatter so existing exit
-    // behavior is preserved. CLI Result-consumption lands in a later slice.
-    throw new Error(formatDiffError(tabResult.error));
+    throw new DiffErrorSignal(tabResult.error);
   }
   const tab = tabResult.value;
   const body = formatTabularDiff(tab, format, {

@@ -167,7 +167,7 @@ describe('sparqly diff — tabular mode (arbitrary SELECT)', () => {
       rightPath,
     ]);
 
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(12);
     expect(result.stderr).toMatch(/mixed-shape|shape mismatch/i);
     expect(result.stderr).toMatch(/left/);
     expect(result.stderr).toMatch(/right/);
@@ -188,7 +188,7 @@ describe('sparqly diff — tabular mode (arbitrary SELECT)', () => {
       rightPath,
     ]);
 
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(12);
     expect(result.stderr).toMatch(/mixed-shape|shape mismatch/i);
   });
 
@@ -213,7 +213,7 @@ describe('sparqly diff — tabular mode (arbitrary SELECT)', () => {
       rightPath,
     ]);
 
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(13);
     expect(result.stderr).toMatch(/variable-name set/);
   });
 
@@ -288,7 +288,7 @@ describe('sparqly diff — tabular mode (arbitrary SELECT)', () => {
       rightPath,
     ]);
 
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(10);
     expect(result.stderr).toMatch(/blank node/i);
     expect(result.stderr).toMatch(/\?item/);
   });
