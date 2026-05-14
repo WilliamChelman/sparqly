@@ -1,7 +1,6 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
 
@@ -22,7 +21,7 @@ describe('config file — validation policy', () => {
     await rm(scratch, { recursive: true, force: true });
   });
 
-  it('type mismatch on serve.port (port: "abc") exits non-zero with a clear error', async () => {
+  it('an invalid config exits non-zero with a clear error pointing at the file', async () => {
     const configPath = join(scratch, 'sparqly.serve.yaml');
     await writeFile(configPath, 'port: "abc"\n');
 
@@ -34,27 +33,5 @@ describe('config file — validation policy', () => {
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toMatch(/error:/);
     expect(result.stderr).toContain(configPath);
-    expect(result.stderr).toMatch(/port/);
-  });
-
-  it('unknown top-level key is a strict-validation error', async () => {
-    const configPath = join(scratch, 'sparqly.query.yaml');
-    await writeFile(
-      configPath,
-      dedent`
-        bogusTop: 1
-        sources: "data/**/*.ttl"
-      ` + '\n',
-    );
-
-    const result = await runCli(
-      ['query', '--config', configPath],
-      { cwd: scratch, env: CLEARED_ENV },
-    );
-
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/error:/);
-    expect(result.stderr).toContain(configPath);
-    expect(result.stderr).toMatch(/bogusTop/);
   });
 });

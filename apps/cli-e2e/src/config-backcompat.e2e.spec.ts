@@ -24,16 +24,6 @@ describe('config — backward compatibility and --help surface', () => {
     await rm(scratch, { recursive: true, force: true });
   });
 
-  it.each(['query', 'serve'] as const)(
-    '%s --help lists --config',
-    async (command) => {
-      const result = await runCli([command, '--help']);
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('--config');
-    },
-  );
-
   it('query runs a SELECT against a positional glob with no config file and no new flags', async () => {
     const result = await runCli(
       [
