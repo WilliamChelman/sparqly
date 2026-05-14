@@ -1,5 +1,10 @@
 import type { z } from 'zod';
-import type { SourceSpecInput } from 'core';
+import {
+  defaultGlobWalker,
+  expandSplitGlobs,
+  parseSourceSpecs,
+  type SourceSpecInput,
+} from 'core';
 import { configureLogger } from '../../logging';
 import {
   DiffErrorSignal,
@@ -139,8 +144,13 @@ async function runDiff(config: DiffConfig): Promise<void> {
     ),
   ]);
 
-  const leftTarget = resolveDiffSide(config, 'left');
-  const rightTarget = resolveDiffSide(config, 'right');
+  const registry = await expandSplitGlobs(
+    parseSourceSpecs(config.sources ?? []),
+    { walkGlob: defaultGlobWalker, logger },
+  );
+
+  const leftTarget = resolveDiffSide(config, 'left', registry);
+  const rightTarget = resolveDiffSide(config, 'right', registry);
 
   const tabularDispatch = detectTabularDispatch(
     leftInlineQuery,
@@ -171,5 +181,6 @@ async function runDiff(config: DiffConfig): Promise<void> {
     rightTarget,
     leftInlineQuery,
     rightInlineQuery,
+    registry,
   });
 }

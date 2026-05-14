@@ -6,6 +6,8 @@ import { z } from 'zod';
 import type { SparqlyLogger } from 'common';
 import {
   canonicalizeStore,
+  defaultGlobWalker,
+  expandSplitGlobs,
   extractAnnotationPredicates,
   parseSourceSpecs,
   resolveAnonymousViewResult,
@@ -144,21 +146,21 @@ const jsonField: FieldDescriptor = {
 
 export function resolveHashTargetResult(
   config: HashConfig,
+  registry?: ReadonlyArray<ParsedSource>,
 ): Result<ParsedSource, TargetError> {
-  const registry = parseSourceSpecs(config.sources ?? []);
+  const effective = registry ?? parseSourceSpecs(config.sources ?? []);
   const targetArg =
     typeof config.source === 'string' ? config.source : undefined;
   if (config.source !== undefined && targetArg === undefined) {
     return ok(parseSourceSpecs([config.source])[0]);
   }
-  return selectTargetResult(registry, targetArg);
+  return selectTargetResult(effective, targetArg);
 }
 
 function resolveCompareTargetResult(
-  config: HashConfig,
   compareWith: string,
+  registry: ReadonlyArray<ParsedSource>,
 ): Result<ParsedSource, TargetError> {
-  const registry = parseSourceSpecs(config.sources ?? []);
   return selectTargetResult(registry, compareWith);
 }
 
@@ -241,17 +243,27 @@ export const hashSpec: CommandSpec<HashConfig> = {
     const inlineQuery = await loadInlineScopeQuery(config);
     const compareInlineQuery = await loadCompareInlineScopeQuery(config);
 
+    const registry = await expandSplitGlobs(
+      parseSourceSpecs(config.sources ?? []),
+      { walkGlob: defaultGlobWalker, logger },
+    );
+
     if (isCompareMode) {
       const compareSpec = config.compareWith as string;
-      const pair = await resolveHashTargetResult(config)
+      const pair = await resolveHashTargetResult(config, registry)
         .asyncAndThen<HashedPair, SourceError | TargetError>((primaryTarget) =>
-          resolveCompareTargetResult(config, compareSpec).asyncAndThen(
+          resolveCompareTargetResult(compareSpec, registry).asyncAndThen(
             (secondaryTarget) =>
               ResultAsync.combine([
-                hashTargetResult(primaryTarget, config, inlineQuery, logger),
+                hashTargetResult(
+                  primaryTarget,
+                  registry,
+                  inlineQuery,
+                  logger,
+                ),
                 hashTargetResult(
                   secondaryTarget,
-                  config,
+                  registry,
                   compareInlineQuery,
                   logger,
                 ),
@@ -277,10 +289,10 @@ export const hashSpec: CommandSpec<HashConfig> = {
       return;
     }
 
-    const single = await resolveHashTargetResult(config).asyncAndThen<
+    const single = await resolveHashTargetResult(config, registry).asyncAndThen<
       { source: string; hash: string },
       SourceError | TargetError
-    >((target) => hashTargetResult(target, config, inlineQuery, logger));
+    >((target) => hashTargetResult(target, registry, inlineQuery, logger));
 
     await single.match(
       async (result) => {
@@ -328,7 +340,7 @@ function targetLabel(target: ParsedSource): string {
 
 function hashTargetResult(
   target: ParsedSource,
-  config: HashConfig,
+  registry: ReadonlyArray<ParsedSource>,
   inlineQuery: string | undefined,
   logger: SparqlyLogger,
 ): ResultAsync<{ source: string; hash: string }, SourceError> {
@@ -367,7 +379,6 @@ function hashTargetResult(
     );
   }
 
-  const registry = parseSourceSpecs(config.sources ?? []);
   return resolveSourceResult(target, { registry, logger }).andThen<
     { source: string; hash: string },
     SourceError
