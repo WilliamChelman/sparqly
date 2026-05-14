@@ -1,12 +1,13 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Logger } from '@nestjs/common';
+import { HttpException, Logger } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { errAsync, okAsync } from 'neverthrow';
+import type { DescribeTopLevelError } from 'core';
 import { createServer, type CreatedServer } from '../bootstrap';
 import { DescribeController } from './describe.controller';
 import type {
-  DescribeResponse,
   DescribeResult,
   DescribeService,
 } from './describe.service';
@@ -155,7 +156,7 @@ describe('POST /api/describe — tracer-bullet (single glob source)', () => {
   });
 });
 
-describe('DescribeController — service-status to HTTP mapping', () => {
+describe('DescribeController — result routing through describe-http-errors mapper', () => {
   interface FakeRes {
     status(code: number): FakeRes;
     setHeader(name: string, value: string): FakeRes;
@@ -180,42 +181,85 @@ describe('DescribeController — service-status to HTTP mapping', () => {
     return { res, calls };
   }
 
-  function controllerWith(result: DescribeResult): DescribeController {
+  function controllerWithOk(value: DescribeResult): DescribeController {
     const service = {
-      runDescribe: async () => result,
+      runDescribe: () => okAsync(value),
     } as unknown as DescribeService;
     return new DescribeController(service);
   }
 
-  it("maps status 'all-sources-failed' to HTTP 502 with the per-source error map as the body", async () => {
-    const response: DescribeResponse = {
-      iri: 'http://example.org/alice',
-      quads: '',
-      total: 0,
-      perSource: { alpha: { count: 0, truncated: false, error: 'boom' } },
-    };
-    const { res, calls } = fakeRes();
-    await controllerWith({ status: 'all-sources-failed', response }).post(
-      { iri: 'http://example.org/alice' },
-      res,
-    );
-    expect(calls.status).toBe(502);
-    expect(JSON.parse(calls.body)).toEqual(response);
-  });
+  function controllerWithErr(
+    error: DescribeTopLevelError,
+  ): DescribeController {
+    const service = {
+      runDescribe: () => errAsync(error),
+    } as unknown as DescribeService;
+    return new DescribeController(service);
+  }
 
-  it("maps status 'ok' to HTTP 200", async () => {
-    const response: DescribeResponse = {
+  it('returns 200 on the ok branch with the structured payload as the body', async () => {
+    const value: DescribeResult = {
       iri: 'http://example.org/alice',
       quads: '',
       total: 0,
       perSource: { alpha: { count: 0, truncated: false } },
     };
     const { res, calls } = fakeRes();
-    await controllerWith({ status: 'ok', response }).post(
+    await controllerWithOk(value).post(
       { iri: 'http://example.org/alice' },
       res,
     );
     expect(calls.status).toBe(200);
-    expect(JSON.parse(calls.body)).toEqual(response);
+    expect(JSON.parse(calls.body)).toEqual(value);
+  });
+
+  it('routes all-sources-failed through the mapper as a 502 HttpException', async () => {
+    const ctl = controllerWithErr({
+      kind: 'all-sources-failed',
+      perSource: {
+        alpha: {
+          kind: 'endpoint-describe',
+          endpoint: 'http://ex/sparql',
+          message: 'down',
+        },
+      },
+    });
+    let caught: HttpException | undefined;
+    try {
+      await ctl.post({ iri: 'http://example.org/alice' }, fakeRes().res);
+    } catch (e) {
+      caught = e as HttpException;
+    }
+    expect(caught).toBeInstanceOf(HttpException);
+    expect(caught?.getStatus()).toBe(502);
+    expect(caught?.getResponse()).toEqual({
+      kind: 'all-sources-failed',
+      perSource: {
+        alpha: {
+          kind: 'endpoint-describe',
+          endpoint: 'http://ex/sparql',
+          message: 'down',
+        },
+      },
+    });
+  });
+
+  it('routes the three precondition variants through the mapper as 400 HttpExceptions', async () => {
+    const variants: DescribeTopLevelError[] = [
+      { kind: 'empty-target' },
+      { kind: 'seed-not-iri', value: 'x' },
+      { kind: 'reference-target' },
+    ];
+    for (const error of variants) {
+      const ctl = controllerWithErr(error);
+      let caught: HttpException | undefined;
+      try {
+        await ctl.post({ iri: 'http://example.org/alice' }, fakeRes().res);
+      } catch (e) {
+        caught = e as HttpException;
+      }
+      expect(caught).toBeInstanceOf(HttpException);
+      expect(caught?.getStatus()).toBe(400);
+    }
   });
 });

@@ -8,7 +8,8 @@ import {
   Res,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { DescribeService, type DescribeResult } from './describe.service';
+import { DescribeService } from './describe.service';
+import { mapDescribeHttpError } from './describe-http-errors';
 import { SPARQL_DESCRIBE_SERVICE } from '../bootstrap';
 
 const PATH_STEP_SCHEMA = z
@@ -52,14 +53,13 @@ export class DescribeController {
         })),
       });
     }
-    const result: DescribeResult = await this.service.runDescribe(parsed.data);
-    const httpStatus =
-      result.status === 'all-sources-failed'
-        ? HttpStatus.BAD_GATEWAY
-        : HttpStatus.OK;
+    const result = await this.service.runDescribe(parsed.data);
+    if (result.isErr()) {
+      throw mapDescribeHttpError(result.error);
+    }
     res
-      .status(httpStatus)
+      .status(HttpStatus.OK)
       .setHeader('Content-Type', 'application/json')
-      .send(JSON.stringify(result.response));
+      .send(JSON.stringify(result.value));
   }
 }

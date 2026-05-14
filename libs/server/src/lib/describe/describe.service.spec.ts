@@ -10,17 +10,27 @@ import { Parser, Store, type Quad } from 'n3';
 import {
   DescribeService,
   type DescribeRequest,
-  type DescribeResponse,
+  type DescribeResult,
 } from './describe.service';
 
 const FROM_SOURCE = 'urn:sparqly:fromSource';
 
-/** Most tests only care about the response body, not the ok/all-failed status. */
+/**
+ * Most tests only care about the ok payload, not the precondition / all-failed
+ * branches. Unwraps the ResultAsync and asserts the ok branch so each test
+ * stays focused on the aggregation/payload concern under test.
+ */
 async function describeResponse(
   svc: DescribeService,
   req: DescribeRequest,
-): Promise<DescribeResponse> {
-  return (await svc.runDescribe(req)).response;
+): Promise<DescribeResult> {
+  const result = await svc.runDescribe(req);
+  if (result.isErr()) {
+    throw new Error(
+      `expected ok result; got err: ${JSON.stringify(result.error)}`,
+    );
+  }
+  return result.value;
 }
 
 interface RegistryPaths {
@@ -296,14 +306,15 @@ describe('DescribeService — multi-source aggregation', () => {
     expect(out.perSource).not.toHaveProperty('beta');
   });
 
-  it('returns an empty result with zero per-source entries when `sources` is empty', async () => {
-    const out = await describeResponse(svc, {
+  it('errs with empty-target when `sources` is explicitly empty (ADR-0025 precondition)', async () => {
+    const result = await svc.runDescribe({
       iri: 'http://example.org/alice',
       sources: [],
     });
-    expect(out.total).toBe(0);
-    expect(out.quads.trim()).toBe('');
-    expect(Object.keys(out.perSource)).toEqual([]);
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      expect(result.error.kind).toBe('empty-target');
+    }
   });
 
   it('dedupes IRI-only quads across sources (alice knows bob counted once in total) but counts each source under perSource.count', async () => {
@@ -467,23 +478,25 @@ describe('DescribeService — multi-source aggregation', () => {
       return new DescribeService(registry);
     }
 
-    it('does not fail the whole describe when one source throws; other sources still contribute', async () => {
+    it('does not fail the whole describe when one source fails; other sources still contribute (ADR-0025 user story 5)', async () => {
       const out = await describeResponse(registryWithBadSource(), {
         iri: 'http://example.org/alice',
       });
       expect(out.perSource.alpha.count).toBeGreaterThan(0);
       expect(out.perSource.bad.count).toBe(0);
-      expect(out.perSource.bad.error).toBeTruthy();
+      // Per-source error is a structured `DescribeError`, not an opaque string.
+      expect(out.perSource.bad.error).toBeDefined();
+      expect(out.perSource.bad.error?.kind).toBe('source');
     });
 
-    it("reports status 'ok' when at least one source succeeded", async () => {
+    it('returns an ok result when at least one source succeeded (top-level ok)', async () => {
       const result = await registryWithBadSource().runDescribe({
         iri: 'http://example.org/alice',
       });
-      expect(result.status).toBe('ok');
+      expect(result.isOk()).toBe(true);
     });
 
-    it("reports status 'all-sources-failed' with the per-source error map when every selected source threw", async () => {
+    it('errs with all-sources-failed carrying per-source attribution when every selected source failed (ADR-0025 user story 6)', async () => {
       const registry = parseSourceSpecs([
         { id: 'bad1', glob: join(paths.dir, 'nope1', '*.ttl') },
         { id: 'bad2', glob: join(paths.dir, 'nope2', '*.ttl') },
@@ -491,19 +504,26 @@ describe('DescribeService — multi-source aggregation', () => {
       const result = await new DescribeService(registry).runDescribe({
         iri: 'http://example.org/alice',
       });
-      expect(result.status).toBe('all-sources-failed');
-      expect(result.response.total).toBe(0);
-      expect(result.response.quads.trim()).toBe('');
-      expect(result.response.perSource.bad1.error).toBeTruthy();
-      expect(result.response.perSource.bad2.error).toBeTruthy();
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) {
+        expect(result.error.kind).toBe('all-sources-failed');
+        if (result.error.kind === 'all-sources-failed') {
+          expect(Object.keys(result.error.perSource).sort()).toEqual([
+            'bad1',
+            'bad2',
+          ]);
+          expect(result.error.perSource.bad1.kind).toBe('source');
+          expect(result.error.perSource.bad2.kind).toBe('source');
+        }
+      }
     });
 
-    it("reports status 'ok' (not all-failed) when zero sources are selected", async () => {
-      const result = await svc.runDescribe({
+    it('all-sources-ok aggregation matrix: every source contributes, no per-source error fields set (ADR-0025 user story 4)', async () => {
+      const out = await describeResponse(svc, {
         iri: 'http://example.org/alice',
-        sources: [],
       });
-      expect(result.status).toBe('ok');
+      expect(out.perSource.alpha.error).toBeUndefined();
+      expect(out.perSource.beta.error).toBeUndefined();
     });
   });
 
@@ -576,7 +596,7 @@ describe('DescribeService — multi-source aggregation', () => {
       }
     });
 
-    it('surfaces an unreachable endpoint as a per-source error while a sibling glob still contributes', async () => {
+    it('surfaces an unreachable endpoint as a per-source endpoint-describe error while a sibling glob still contributes', async () => {
       const registry = parseSourceSpecs([
         { id: 'alpha', glob: paths.alphaTtl },
         { id: 'remote', endpoint: 'http://127.0.0.1:1/sparql' },
@@ -584,12 +604,19 @@ describe('DescribeService — multi-source aggregation', () => {
       const result = await new DescribeService(registry).runDescribe({
         iri: 'http://example.org/alice',
       });
-      expect(result.status).toBe('ok');
-      expect(result.response.perSource.alpha.count).toBeGreaterThan(0);
-      expect(result.response.perSource.remote.error).toBeTruthy();
+      expect(result.isOk()).toBe(true);
+      if (result.isOk()) {
+        expect(result.value.perSource.alpha.count).toBeGreaterThan(0);
+        const remoteErr = result.value.perSource.remote.error;
+        expect(remoteErr).toBeDefined();
+        expect(remoteErr?.kind).toBe('endpoint-describe');
+        if (remoteErr?.kind === 'endpoint-describe') {
+          expect(remoteErr.endpoint).toBe('http://127.0.0.1:1/sparql');
+        }
+      }
     });
 
-    it('rejects an empty source with guidance pointing at a scoping view', async () => {
+    it('rejects an empty source as a structured empty-source per-source error', async () => {
       const registry = parseSourceSpecs([
         { id: 'alpha', glob: paths.alphaTtl },
         { id: 'placeholder', empty: true },
@@ -598,13 +625,15 @@ describe('DescribeService — multi-source aggregation', () => {
         iri: 'http://example.org/alice',
       });
       expect(out.perSource.placeholder.count).toBe(0);
-      expect(out.perSource.placeholder.error).toMatch(/empty source/i);
-      expect(out.perSource.placeholder.error).toMatch(/view/i);
+      expect(out.perSource.placeholder.error?.kind).toBe('empty-source');
+      if (out.perSource.placeholder.error?.kind === 'empty-source') {
+        expect(out.perSource.placeholder.error.id).toBe('placeholder');
+      }
       // The sibling glob is unaffected.
       expect(out.perSource.alpha.count).toBeGreaterThan(0);
     });
 
-    it('rejects a reference (alias) source with a per-source error', async () => {
+    it('rejects a reference (alias) source with a structured reference-source per-source error', async () => {
       const registry: ParsedSource[] = [
         { kind: 'glob', glob: paths.alphaTtl, id: 'alpha' },
         { kind: 'reference', ref: 'alpha', id: 'aliasy' },
@@ -612,8 +641,38 @@ describe('DescribeService — multi-source aggregation', () => {
       const out = await describeResponse(new DescribeService(registry), {
         iri: 'http://example.org/alice',
       });
-      expect(out.perSource.aliasy.error).toMatch(/reference/i);
+      expect(out.perSource.aliasy.error?.kind).toBe('reference-source');
+      if (out.perSource.aliasy.error?.kind === 'reference-source') {
+        expect(out.perSource.aliasy.error.id).toBe('aliasy');
+        expect(out.perSource.aliasy.error.ref).toBe('alpha');
+      }
       expect(out.perSource.alpha.count).toBeGreaterThan(0);
+    });
+  });
+
+  describe('top-level precondition errors (ADR-0025)', () => {
+    it('errs with seed-not-iri when iri does not look like an IRI', async () => {
+      const result = await svc.runDescribe({ iri: 'not-an-iri' });
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) {
+        expect(result.error.kind).toBe('seed-not-iri');
+        if (result.error.kind === 'seed-not-iri') {
+          expect(result.error.value).toBe('not-an-iri');
+        }
+      }
+    });
+
+    it('errs with reference-target when every selected source resolves to a reference', async () => {
+      const registry: ParsedSource[] = [
+        { kind: 'glob', glob: paths.alphaTtl, id: 'alpha' },
+        { kind: 'reference', ref: 'alpha', id: 'aliasy' },
+      ];
+      const result = await new DescribeService(registry).runDescribe({
+        iri: 'http://example.org/alice',
+        sources: ['aliasy'],
+      });
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) expect(result.error.kind).toBe('reference-target');
     });
   });
 

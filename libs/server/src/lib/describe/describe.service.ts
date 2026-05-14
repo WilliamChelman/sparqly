@@ -1,13 +1,27 @@
 import { Injectable } from '@nestjs/common';
 import { describeProvenance, serializeDescribeWire, type PathStep } from 'common';
 import {
-  describeEndpoint,
+  describeEndpointResult,
   describeStore,
   relabelBnodes,
-  resolveSource,
+  resolveSourceResult,
+  type DescribeEndpointResult,
+  type DescribeError,
+  type DescribeTopLevelError,
+  type EndpointDescribeError,
   type ParsedSource,
+  type QuerySources,
+  type SourceError,
 } from 'core';
 import { DataFactory, type NamedNode, type Quad, type Term } from 'n3';
+import {
+  ResultAsync,
+  errAsync,
+  okAsync,
+  type Result,
+  err,
+  ok,
+} from 'neverthrow';
 
 export const DEFAULT_DESCRIBE_CONFIG: DescribeConfig = {
   perSourceSoftLimit: 10000,
@@ -33,9 +47,9 @@ export interface DescribeRequest {
   /**
    * UI-driven blank-node expansion paths per source id (ADR-0019). For each
    * `endpoint` source, `expandedPaths[id]` is forwarded as `paths` to
-   * {@link describeEndpoint}; `glob`/`view` sources ignore it (already fully
-   * expanded). Paths longer than {@link MAX_EXPANSION_PATH_STEPS} are clamped
-   * and the affected source is reported `truncated`.
+   * {@link describeEndpointResult}; `glob`/`view` sources ignore it (already
+   * fully expanded). Paths longer than {@link MAX_EXPANSION_PATH_STEPS} are
+   * clamped and the affected source is reported `truncated`.
    */
   expandedPaths?: Record<string, PathStep[][]>;
 }
@@ -46,24 +60,24 @@ export const MAX_EXPANSION_PATH_STEPS = 12;
 export interface DescribePerSourceEntry {
   count: number;
   truncated: boolean;
-  /** Present when this source's describe run failed; the source contributed
-   * no quads but the request still succeeds if any other source did. */
-  error?: string;
+  /**
+   * Present when this source's describe run failed; the source contributed
+   * no quads but the request still succeeds if any other source did. Carries
+   * a structured `DescribeError` (ADR-0024 + ADR-0025).
+   */
+  error?: DescribeError;
 }
 
-export interface DescribeResponse {
+/**
+ * The describe service's ok payload (ADR-0025). The top-level `Result` errs
+ * only on precondition violations or when every selected source failed;
+ * per-source failures travel as data inside `perSource[id].error?`.
+ */
+export interface DescribeResult {
   iri: string;
   quads: string;
   total: number;
   perSource: Record<string, DescribePerSourceEntry>;
-}
-
-export interface DescribeResult {
-  /** `'all-sources-failed'` when every selected source threw — the controller
-   * maps that to HTTP 502. `'ok'` otherwise (including zero sources selected
-   * and partial failures). The per-source error map is on `response` either way. */
-  status: 'ok' | 'all-sources-failed';
-  response: DescribeResponse;
 }
 
 @Injectable()
@@ -82,7 +96,17 @@ export class DescribeService {
     this.resolutionRegistry = resolutionRegistry;
   }
 
-  async runDescribe(req: DescribeRequest): Promise<DescribeResult> {
+  runDescribe(
+    req: DescribeRequest,
+  ): ResultAsync<DescribeResult, DescribeTopLevelError> {
+    const seedResult = parseSeed(req.iri);
+    if (seedResult.isErr()) return errAsync(seedResult.error);
+    const seed = seedResult.value;
+
+    const selection = this.selectSources(req.sources);
+    if (selection.isErr()) return errAsync(selection.error);
+    const selected = selection.value;
+
     const predicate =
       req.fromSourcePredicate ?? this.config.fromSourcePredicate;
     const withProvenance = req.withProvenance !== false;
@@ -93,38 +117,39 @@ export class DescribeService {
       this.config.perSourceHardLimit,
     );
 
-    const selected = this.selectSources(req.sources);
-    const seed = DataFactory.namedNode(req.iri);
-
-    type SourceRun = {
-      id: string;
-      quads: Quad[];
-      truncated: boolean;
-      error?: string;
-    };
-    const runs: SourceRun[] = [];
-    for (const target of selected) {
+    // Aggregator (ADR-0025): each per-source resolution is folded into an
+    // `Ok<SourceRun>` whose `error` field carries the per-source failure as
+    // data. Combining never short-circuits — a single failing source does
+    // not fail the request. The all-failed terminal case is checked below
+    // after every source has resolved.
+    const folded = selected.map((target) => {
       const id = target.id ?? 'source';
-      try {
-        const raw = await this.describeOne(
-          target,
-          id,
-          seed,
-          perSourceLimit,
-          req.expandedPaths?.[id] ?? [],
+      const requestedPaths = req.expandedPaths?.[id] ?? [];
+      return this.describeOneResult(target, id, seed, perSourceLimit, requestedPaths)
+        .map(
+          (raw): SourceRun => ({
+            id,
+            quads: relabelBnodes(raw.quads, id),
+            truncated: raw.truncated,
+          }),
+        )
+        .orElse(
+          (error): ResultAsync<SourceRun, never> =>
+            okAsync({ id, quads: [], truncated: false, error }),
         );
-        const relabelled = relabelBnodes(raw.quads, id);
-        runs.push({ id, quads: relabelled, truncated: raw.truncated });
-      } catch (err) {
-        runs.push({
-          id,
-          quads: [],
-          truncated: false,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
+    });
 
+    return ResultAsync.combine(folded).andThen((runs) =>
+      this.assembleResult(req.iri, runs, withProvenance, predicate),
+    );
+  }
+
+  private assembleResult(
+    iri: string,
+    runs: ReadonlyArray<SourceRun>,
+    withProvenance: boolean,
+    predicate: string,
+  ): ResultAsync<DescribeResult, DescribeTopLevelError> {
     // Merge with lexical (s, p, o, g) dedup. Track per-source membership so
     // we can both report perSource.count and inject one annotation per
     // (quad, origin) pair on the wire.
@@ -160,46 +185,50 @@ export class DescribeService {
       for (const [key, q] of merged) {
         const origins = originsByQuad.get(key) ?? [];
         for (const origin of origins) {
-          annotations.push(...describeProvenance.inject([q], origin, predicate).slice(1));
+          annotations.push(
+            ...describeProvenance.inject([q], origin, predicate).slice(1),
+          );
         }
       }
       wire = [...wire, ...annotations];
     }
 
     const quads = serializeDescribeWire(wire);
-    const response: DescribeResponse = {
-      iri: req.iri,
-      quads,
-      total,
-      perSource,
-    };
+    const result: DescribeResult = { iri, quads, total, perSource };
 
-    // 502 only when sources were configured-and-attempted and every one failed.
-    // Zero sources selected is not a failure (honest empty result).
+    // All-failed terminal case (ADR-0025): only fires when sources were
+    // attempted AND every one of them failed. Zero attempted sources is
+    // caught earlier as `empty-target`, so `attempted > 0` always holds when
+    // we get here.
     const attempted = runs.length;
     const failed = runs.filter((r) => r.error !== undefined).length;
-    const status: DescribeResult['status'] =
-      attempted > 0 && failed === attempted ? 'all-sources-failed' : 'ok';
-
-    return { status, response };
+    if (attempted > 0 && failed === attempted) {
+      const failures: Record<string, DescribeError> = {};
+      for (const run of runs) {
+        if (run.error !== undefined) failures[run.id] = run.error;
+      }
+      return errAsync({ kind: 'all-sources-failed', perSource: failures });
+    }
+    return okAsync(result);
   }
 
   /**
    * Per-source dispatch (ADR-0015, issues #189/#190). `glob` and `view` resolve
-   * via {@link resolveSource} to an in-memory materialized store — a view's
+   * via {@link resolveSourceResult} to an in-memory materialized store — a view's
    * upstream (glob, endpoint, or another view) is snapshotted first — then run
    * {@link describeStore} against that stable store. `endpoint` runs
-   * {@link describeEndpoint} over the wire. `empty` and `reference` sources have
-   * no describable graph of their own — they reject with guidance, which
-   * `runDescribe` surfaces as a per-source error rather than a global failure.
+   * {@link describeEndpointResult} over the wire. `empty` and `reference`
+   * sources have no describable graph of their own — they resolve to their
+   * respective {@link DescribeError} variants and {@link runDescribe} surfaces
+   * them as per-source errors rather than global failures.
    */
-  private async describeOne(
+  private describeOneResult(
     target: ParsedSource,
     id: string,
     seed: NamedNode,
     perSourceLimit: number,
     requestedPaths: ReadonlyArray<PathStep[]>,
-  ): Promise<{ quads: Quad[]; truncated: boolean }> {
+  ): ResultAsync<{ quads: Quad[]; truncated: boolean }, DescribeError> {
     if (target.kind === 'endpoint') {
       const paths = requestedPaths.map((p) =>
         p.slice(0, MAX_EXPANSION_PATH_STEPS),
@@ -207,45 +236,58 @@ export class DescribeService {
       const clamped = requestedPaths.some(
         (p) => p.length > MAX_EXPANSION_PATH_STEPS,
       );
-      const raw = await describeEndpoint({
+      return describeEndpointResult({
         endpoint: target,
         seed,
         perSourceLimit,
         paths,
-      });
-      return { quads: raw.quads, truncated: raw.truncated || clamped };
+      })
+        .map((raw: DescribeEndpointResult) => ({
+          quads: raw.quads,
+          truncated: raw.truncated || clamped,
+        }))
+        // Surface as `endpoint-describe` (a DescribeError variant) — the
+        // failure is the describe-endpoint flow itself, not a view's
+        // upstream fetch (which would arrive via resolveSourceResult and
+        // wrap as `SourceWrappedError`).
+        .mapErr(
+          (e: EndpointDescribeError): DescribeError => ({
+            kind: 'endpoint-describe',
+            endpoint: e.endpoint,
+            message: e.message,
+          }),
+        );
     }
     if (target.kind === 'empty') {
-      throw new Error(
-        `source '${id}' is an empty source with no data of its own; ` +
-          'to describe over it, describe a view that scopes this empty ' +
-          "source's `SERVICE` composition",
-      );
+      return errAsync({ kind: 'empty-source', id });
     }
     if (target.kind === 'reference') {
-      throw new Error(
-        `source '${id}' is a \`reference\` alias to '${target.ref}'; ` +
-          'describe that source directly',
-      );
+      return errAsync({ kind: 'reference-source', id, ref: target.ref });
     }
-    // `glob` and `view` both land here; `resolveSource` materializes a view's
-    // upstream chain into an in-memory store before we describe over it.
-    const resolved = await resolveSource(target, {
+    // `glob` and `view` both land here; `resolveSourceResult` materializes a
+    // view's upstream chain into an in-memory store before we describe over it.
+    return resolveSourceResult(target, {
       registry: this.resolutionRegistry,
-    });
-    if (resolved.mode !== 'materialized') {
-      // A declared glob/view always resolves to a materialized store; anything
-      // else here is a guard against an unexpected resolver outcome.
-      return { quads: [], truncated: false };
-    }
-    const raw = describeStore({ store: resolved.store, seed, perSourceLimit });
-    return { quads: raw.quads, truncated: raw.truncated };
+    })
+      .mapErr((source: SourceError): DescribeError => ({ kind: 'source', source }))
+      .map((resolved: QuerySources) => {
+        if (resolved.mode !== 'materialized') {
+          // A declared glob/view always resolves to a materialized store;
+          // anything else here is a guard against an unexpected resolver
+          // outcome.
+          return { quads: [] as Quad[], truncated: false };
+        }
+        const raw = describeStore({ store: resolved.store, seed, perSourceLimit });
+        return { quads: raw.quads, truncated: raw.truncated };
+      });
   }
 
   private selectSources(
     requested: ReadonlyArray<string> | undefined,
-  ): ParsedSource[] {
-    if (requested !== undefined && requested.length === 0) return [];
+  ): Result<ParsedSource[], DescribeTopLevelError> {
+    if (requested !== undefined && requested.length === 0) {
+      return err({ kind: 'empty-target' });
+    }
     const requestedSet = requested
       ? new Set(requested.map((s) => (s.startsWith('@') ? s.slice(1) : s)))
       : undefined;
@@ -257,13 +299,24 @@ export class DescribeService {
       if (requestedSet && !requestedSet.has(id)) continue;
       out.push(src);
     }
-    return out;
+    if (out.length === 0) return err({ kind: 'empty-target' });
+    if (out.every((s) => s.kind === 'reference')) {
+      return err({ kind: 'reference-target' });
+    }
+    return ok(out);
   }
 }
 
+interface SourceRun {
+  id: string;
+  quads: Quad[];
+  truncated: boolean;
+  error?: DescribeError;
+}
+
 function isSupportedKind(src: ParsedSource): boolean {
-  // `glob`, `endpoint` and `view` produce a describable graph; `empty` and
-  // `reference` are surfaced so the caller gets an explanatory per-source error
+  // `glob`, `endpoint`, `view`, `empty`, and `reference` are all surfaced so
+  // the caller gets an explanatory per-source error (for `empty`/`reference`)
   // rather than a silent omission.
   return (
     src.kind === 'glob' ||
@@ -272,6 +325,24 @@ function isSupportedKind(src: ParsedSource): boolean {
     src.kind === 'empty' ||
     src.kind === 'reference'
   );
+}
+
+/**
+ * Reject anything that doesn't look like an IRI before we hand it to source
+ * resolution. Cheap shape check — a non-empty value with a scheme-style
+ * `scheme:` prefix (per RFC 3987 §2.2). Full IRI validation is deferred to
+ * the underlying engines; this gate just catches obvious junk (empty strings,
+ * paths, plain words) at the request boundary so it surfaces as a 400
+ * precondition violation rather than a 502 endpoint failure.
+ */
+function parseSeed(value: string): Result<NamedNode, DescribeTopLevelError> {
+  if (typeof value !== 'string' || value.length === 0) {
+    return err({ kind: 'seed-not-iri', value: String(value) });
+  }
+  if (!/^[A-Za-z][A-Za-z0-9+\-.]*:/.test(value)) {
+    return err({ kind: 'seed-not-iri', value });
+  }
+  return ok(DataFactory.namedNode(value));
 }
 
 function countMembership(
@@ -295,4 +366,3 @@ function termKey(t: Term): string {
   }
   return `${t.termType}:${t.value}`;
 }
-

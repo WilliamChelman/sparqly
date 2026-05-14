@@ -7,8 +7,10 @@ import {
   type Quad,
   type Term,
 } from 'n3';
+import { ResultAsync } from 'neverthrow';
 import { describeStore } from './describe-store';
 import { buildPathExpansionQuery } from './build-path-expansion-query';
+import type { EndpointDescribeError } from './errors';
 import {
   DEFAULT_ENDPOINT_TIMEOUT_MS,
   collectInjectedHeaders,
@@ -68,50 +70,92 @@ export interface DescribeEndpointResult {
  * (one extra query per path). The result is `truncated` when the cap fired, an
  * edge direction or path query failed, or any dangling blank node remains.
  */
-export async function describeEndpoint(
+/**
+ * Primary `Result`-typed implementation of {@link describeEndpoint}. The
+ * legacy throw-flavored entry point is a thin `unwrapOrThrow` adapter around
+ * this function (ADR-0024). Only the double-failure case (both outgoing and
+ * incoming edge queries reject) produces an `err`; partial failures are
+ * folded into `truncated: true` on the ok branch, matching pre-conversion
+ * semantics.
+ */
+export function describeEndpointResult(
   options: DescribeEndpointOptions,
-): Promise<DescribeEndpointResult> {
+): ResultAsync<DescribeEndpointResult, EndpointDescribeError> {
   const { endpoint, seed, perSourceLimit, paths = [] } = options;
   const selectRows = makeRunner(endpoint, SELECT_ACCEPT, parseSparqlResultsJson);
   const construct = makeRunner(endpoint, CONSTRUCT_ACCEPT, parseDescribeWire);
   const s = `<${seed.value}>`;
 
-  const direct = await fetchBothDirections(
-    selectRows(
-      `SELECT ?p ?o ?g WHERE { { ${s} ?p ?o } UNION { GRAPH ?g { ${s} ?p ?o } } }`,
-    ).then((rows) =>
-      rows.flatMap((r) =>
-        r['p'] && r['o'] ? [quadOf(seed, r['p'], r['o'], r['g'])] : [],
+  return ResultAsync.fromPromise(
+    fetchBothDirections(
+      selectRows(
+        `SELECT ?p ?o ?g WHERE { { ${s} ?p ?o } UNION { GRAPH ?g { ${s} ?p ?o } } }`,
+      ).then((rows) =>
+        rows.flatMap((r) =>
+          r['p'] && r['o'] ? [quadOf(seed, r['p'], r['o'], r['g'])] : [],
+        ),
+      ),
+      selectRows(
+        `SELECT ?s ?p ?g WHERE { { ?s ?p ${s} } UNION { GRAPH ?g { ?s ?p ${s} } } }`,
+      ).then((rows) =>
+        rows.flatMap((r) =>
+          r['s'] && r['p'] ? [quadOf(r['s'], r['p'], seed, r['g'])] : [],
+        ),
       ),
     ),
-    selectRows(
-      `SELECT ?s ?p ?g WHERE { { ?s ?p ${s} } UNION { GRAPH ?g { ?s ?p ${s} } } }`,
-    ).then((rows) =>
-      rows.flatMap((r) =>
-        r['s'] && r['p'] ? [quadOf(r['s'], r['p'], seed, r['g'])] : [],
-      ),
+    (raw): EndpointDescribeError => ({
+      kind: 'endpoint-describe',
+      endpoint: endpoint.endpoint,
+      message: raw instanceof Error ? raw.message : String(raw),
+    }),
+  ).andThen((direct) =>
+    // After `fetchBothDirections` resolves, the remaining work is
+    // best-effort already: `fetchPathExpansions` and `fetchAnnotations` each
+    // wrap their probes in `Promise.allSettled` and degrade to `truncated:
+    // true` / empty annotations, never reject. `describeStore` is pure. So
+    // the rest of the pipeline cannot fail and stays in the ok channel.
+    ResultAsync.fromSafePromise(
+      (async (): Promise<DescribeEndpointResult> => {
+        const expanded = await fetchPathExpansions(
+          selectRows,
+          seed.value,
+          paths,
+        );
+
+        const store = new Store();
+        store.addQuads(preferNamedGraphs([...direct.quads, ...expanded.quads]));
+        let desc = describeStore({ store, seed, perSourceLimit });
+
+        const annotations = await fetchAnnotations(construct, desc.quads);
+        if (annotations.length > 0) {
+          const merged = new Store();
+          merged.addQuads(desc.quads);
+          merged.addQuads(annotations);
+          desc = describeStore({ store: merged, seed, perSourceLimit });
+        }
+
+        const truncated =
+          desc.truncated ||
+          direct.partial ||
+          expanded.partial ||
+          hasBlankNode(desc.quads);
+        return { quads: desc.quads, truncated };
+      })(),
     ),
   );
-  const expanded = await fetchPathExpansions(selectRows, seed.value, paths);
+}
 
-  const store = new Store();
-  store.addQuads(preferNamedGraphs([...direct.quads, ...expanded.quads]));
-  let desc = describeStore({ store, seed, perSourceLimit });
-
-  const annotations = await fetchAnnotations(construct, desc.quads);
-  if (annotations.length > 0) {
-    const merged = new Store();
-    merged.addQuads(desc.quads);
-    merged.addQuads(annotations);
-    desc = describeStore({ store: merged, seed, perSourceLimit });
-  }
-
-  const truncated =
-    desc.truncated ||
-    direct.partial ||
-    expanded.partial ||
-    hasBlankNode(desc.quads);
-  return { quads: desc.quads, truncated };
+/**
+ * @deprecated Use {@link describeEndpointResult}. Kept as a throw-wrapping
+ * adapter so non-converted callers can migrate at their own pace (ADR-0024
+ * coexistence rule).
+ */
+export async function describeEndpoint(
+  options: DescribeEndpointOptions,
+): Promise<DescribeEndpointResult> {
+  const result = await describeEndpointResult(options);
+  if (result.isOk()) return result.value;
+  throw new Error(`endpoint ${result.error.endpoint}: ${result.error.message}`);
 }
 
 /** Build a quad from `SELECT` bindings, defaulting an unbound graph to the default graph. */
