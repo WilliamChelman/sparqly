@@ -2,7 +2,10 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { resolveAnonymousSelectBindings } from './resolve-anonymous-select-bindings';
+import {
+  resolveAnonymousSelectBindings,
+  resolveAnonymousSelectBindingsResult,
+} from './resolve-anonymous-select-bindings';
 import {
   startFakeSparqlEndpoint,
   type FakeSparqlEndpoint,
@@ -252,5 +255,79 @@ describe('resolveAnonymousSelectBindings', () => {
         queryFile: 'q.rq',
       }),
     ).rejects.toThrow(/mutually exclusive/);
+  });
+});
+
+describe('resolveAnonymousSelectBindingsResult', () => {
+  let dataDir: string;
+
+  beforeEach(async () => {
+    dataDir = await mkdtemp(join(tmpdir(), 'sparqly-tab-result-data-'));
+  });
+
+  afterEach(async () => {
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  it('returns Result.ok with bindings for a valid SELECT against a glob upstream', async () => {
+    const a = join(dataDir, 'a.ttl');
+    await writeFile(
+      a,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:p1 ex:id "1" .',
+        'ex:p2 ex:id "2" .',
+      ].join('\n'),
+    );
+    const result = await resolveAnonymousSelectBindingsResult({
+      source: { glob: a },
+      query: 'PREFIX ex: <http://example.org/> SELECT ?id WHERE { ?p ex:id ?id }',
+    });
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.variables).toEqual(['id']);
+    expect(result.value.rows).toHaveLength(2);
+  });
+
+  it('returns Result.err with view-validation when neither query nor queryFile is supplied', async () => {
+    const result = await resolveAnonymousSelectBindingsResult({
+      source: { glob: 'whatever.ttl' },
+    });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('view-validation');
+  });
+
+  it('returns Result.err with view-validation when both query and queryFile are supplied', async () => {
+    const result = await resolveAnonymousSelectBindingsResult({
+      source: { glob: 'whatever.ttl' },
+      query: 'SELECT ?s WHERE { ?s ?p ?o }',
+      queryFile: 'q.rq',
+    });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('view-validation');
+  });
+
+  it('returns Result.err with view-validation when the upstream is a `@id` reference', async () => {
+    const result = await resolveAnonymousSelectBindingsResult({
+      source: '@some-id',
+      query: 'SELECT ?s WHERE { ?s ?p ?o }',
+    });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('view-validation');
+  });
+
+  it('returns Result.err with view-validation when the query is ASK/DESCRIBE/UPDATE', async () => {
+    const a = join(dataDir, 'a.ttl');
+    await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
+    const result = await resolveAnonymousSelectBindingsResult({
+      source: { glob: a },
+      query: 'ASK { ?s ?p ?o }',
+    });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('view-validation');
   });
 });

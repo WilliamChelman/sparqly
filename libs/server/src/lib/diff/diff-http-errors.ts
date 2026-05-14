@@ -78,6 +78,26 @@ export function mapDiffHttpError(error: TransportError): HttpException {
         endpoint: error.endpoint,
         message: error.message,
       });
+    case 'view-validation':
+      return new BadRequestException({
+        kind: 'view-validation',
+        viewId: error.viewId,
+        message: error.message,
+      });
+    case 'view-reference':
+      return new BadRequestException({
+        kind: 'view-reference',
+        viewId: error.viewId,
+        ref: error.ref,
+        reason: error.reason,
+        message: error.message,
+      });
+    case 'cache-io':
+      return new InternalServerErrorException({
+        kind: 'cache-io',
+        cachePath: error.cachePath,
+        message: error.message,
+      });
     case 'legacy-message':
       return new InternalServerErrorException({
         kind: 'legacy-message',

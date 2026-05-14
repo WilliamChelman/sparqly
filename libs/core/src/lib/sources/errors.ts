@@ -13,6 +13,9 @@ export type SourceError =
   | GlobLoadError
   | QueryExecutionError
   | EndpointFetchError
+  | ViewValidationError
+  | ViewReferenceError
+  | CacheIoError
   | LegacySourceError;
 
 export interface ReferenceTargetError {
@@ -53,6 +56,41 @@ export interface EndpointFetchError {
   message: string;
 }
 
+/**
+ * Failure validating a view query — wrong query type (UPDATE/ASK/DESCRIBE),
+ * SELECT projection mismatch, missing `query`/`queryFile`, or a syntactically
+ * invalid query body. The view id is carried when known; anonymous-view
+ * call sites that have no id may omit it.
+ */
+export interface ViewValidationError {
+  kind: 'view-validation';
+  viewId?: string;
+  message: string;
+}
+
+/**
+ * Failure resolving a view's `from:` reference — the ref doesn't exist in the
+ * registry, the chain has a cycle, or the ref points at a `reference` entry
+ * (an alias, not data). The view id and the offending ref are always present.
+ */
+export interface ViewReferenceError {
+  kind: 'view-reference';
+  viewId: string;
+  ref: string;
+  reason: 'unknown' | 'cycle' | 'reference-upstream';
+  message: string;
+}
+
+/**
+ * Failure reading, writing, parsing, or evicting a view cache entry. The
+ * absolute cache path is always present.
+ */
+export interface CacheIoError {
+  kind: 'cache-io';
+  cachePath: string;
+  message: string;
+}
+
 export interface LegacySourceError {
   kind: 'legacy-message';
   message: string;
@@ -71,6 +109,14 @@ export function formatSourceError(error: SourceError): string {
       return `query execution failed: ${error.message}`;
     case 'endpoint-fetch':
       return `endpoint ${error.endpoint}: ${error.message}`;
+    case 'view-validation':
+      return error.viewId !== undefined
+        ? `view "${error.viewId}": ${error.message}`
+        : error.message;
+    case 'view-reference':
+      return `view "${error.viewId}": ${error.message}`;
+    case 'cache-io':
+      return `cache ${error.cachePath}: ${error.message}`;
     case 'legacy-message':
       return error.message;
   }

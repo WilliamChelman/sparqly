@@ -2,7 +2,10 @@ import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { resolveAnonymousView } from './anonymous-view-builder';
+import {
+  resolveAnonymousView,
+  resolveAnonymousViewResult,
+} from './anonymous-view-builder';
 
 describe('resolveAnonymousView — cache bypass (regression for #83)', () => {
   let dataDir: string;
@@ -51,5 +54,62 @@ describe('resolveAnonymousView — cache bypass (regression for #83)', () => {
       query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
     });
     await expect(stat(join(cwdSandbox, '.sparqly'))).rejects.toThrow();
+  });
+});
+
+describe('resolveAnonymousViewResult', () => {
+  let dataDir: string;
+
+  beforeEach(async () => {
+    dataDir = await mkdtemp(join(tmpdir(), 'sparqly-anon-result-data-'));
+  });
+
+  afterEach(async () => {
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  it('returns Result.ok with the scoped Store for a valid anonymous view', async () => {
+    const a = join(dataDir, 'a.ttl');
+    await writeFile(
+      a,
+      '@prefix ex: <http://example.org/> . ex:keep ex:p ex:v .',
+    );
+    const result = await resolveAnonymousViewResult({
+      source: { glob: a },
+      query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+    });
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.size).toBe(1);
+  });
+
+  it('returns Result.err with a view-validation variant when neither query nor queryFile is supplied', async () => {
+    const result = await resolveAnonymousViewResult({
+      source: { glob: 'whatever.ttl' },
+    });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('view-validation');
+  });
+
+  it('returns Result.err with a view-validation variant when both query and queryFile are supplied', async () => {
+    const result = await resolveAnonymousViewResult({
+      source: { glob: 'whatever.ttl' },
+      query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      queryFile: 'whatever.rq',
+    });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('view-validation');
+  });
+
+  it('returns Result.err with a view-validation variant when the upstream is a `@id` reference', async () => {
+    const result = await resolveAnonymousViewResult({
+      source: '@some-id',
+      query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+    });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('view-validation');
   });
 });

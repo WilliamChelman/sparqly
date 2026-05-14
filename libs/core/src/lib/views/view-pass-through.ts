@@ -1,5 +1,6 @@
 import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { DataFactory, Store, type Quad } from 'n3';
+import { ResultAsync } from 'neverthrow';
 import type { SparqlyLogger } from 'common';
 import {
   buildEndpointContext,
@@ -8,6 +9,7 @@ import {
 } from '../engine';
 import { detectQueryType } from '../canonical/immutability';
 import type { ParsedEndpointSource } from '../sources';
+import type { EndpointFetchError } from '../sources/errors';
 
 /** Identifies a view's SPARQL execution for the `query` log event (ADR-0020). */
 export interface ViewQueryLogMeta {
@@ -23,7 +25,39 @@ export interface ResolveViewPassThroughOptions {
   meta?: ViewQueryLogMeta;
 }
 
+/**
+ * Primary `Result`-typed pass-through resolver. Wraps the bindings/quads
+ * streamed back from the endpoint into a Store on success and collapses any
+ * transport / non-bindings failure into an {@link EndpointFetchError} carrying
+ * the endpoint URL (ADR-0024).
+ */
+export function resolveViewPassThroughResult(
+  options: ResolveViewPassThroughOptions,
+): ResultAsync<Store, EndpointFetchError> {
+  return ResultAsync.fromPromise(executePassThrough(options), (err) => ({
+    kind: 'endpoint-fetch' as const,
+    endpoint: options.endpoint.endpoint,
+    message: describeEndpointError(err),
+  }));
+}
+
+/**
+ * @deprecated Use {@link resolveViewPassThroughResult} (ADR-0024). Retained as
+ * a thin throw-based adapter for callers that have not migrated yet.
+ */
 export async function resolveViewPassThrough(
+  options: ResolveViewPassThroughOptions,
+): Promise<Store> {
+  const result = await resolveViewPassThroughResult(options);
+  if (result.isErr()) {
+    throw new Error(
+      `endpoint ${options.endpoint.endpoint}: ${result.error.message}`,
+    );
+  }
+  return result.value;
+}
+
+async function executePassThrough(
   options: ResolveViewPassThroughOptions,
 ): Promise<Store> {
   const engine = options.engine ?? new ComunicaQueryEngine();
@@ -83,9 +117,6 @@ export async function resolveViewPassThrough(
     }
     return out;
   } catch (err) {
-    const wrapped = new Error(
-      `endpoint ${options.endpoint.endpoint}: ${describeEndpointError(err)}`,
-    );
     if (options.meta) {
       emitQueryEvent(options.meta.logger, {
         source: options.meta.source,
@@ -93,9 +124,11 @@ export async function resolveViewPassThrough(
         query: options.viewQuery,
         type,
         ms: Date.now() - started,
-        err: wrapped,
+        err: new Error(
+          `endpoint ${options.endpoint.endpoint}: ${describeEndpointError(err)}`,
+        ),
       });
     }
-    throw wrapped;
+    throw err;
   }
 }

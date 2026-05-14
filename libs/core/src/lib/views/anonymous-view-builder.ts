@@ -1,4 +1,5 @@
 import { Store } from 'n3';
+import { ResultAsync, errAsync } from 'neverthrow';
 import type { SparqlyLogger } from 'common';
 import {
   parseSourceSpec,
@@ -6,7 +7,15 @@ import {
   type ParsedViewSource,
   type SourceSpecInput,
 } from '../sources';
-import { resolveView } from './view-resolver';
+import type {
+  CacheIoError,
+  EndpointFetchError,
+  GlobLoadError,
+  QueryExecutionError,
+  ViewReferenceError,
+  ViewValidationError,
+} from '../sources/errors';
+import { resolveViewResult } from './view-resolver';
 
 export interface AnonymousViewInput {
   source: SourceSpecInput;
@@ -15,6 +24,14 @@ export interface AnonymousViewInput {
   /** Forwarded to view resolution so the SPARQL run emits a `query` event. */
   logger?: SparqlyLogger;
 }
+
+export type ResolveAnonymousViewError =
+  | ViewValidationError
+  | ViewReferenceError
+  | CacheIoError
+  | EndpointFetchError
+  | QueryExecutionError
+  | GlobLoadError;
 
 const ANON_UPSTREAM_ID = '__sparqly_anon_upstream__';
 const ANON_VIEW_ID = '__sparqly_anon_view__';
@@ -31,27 +48,37 @@ function anonViewLabel(upstream: ParsedSource): string {
   return label === (upstream.id ?? ANON_UPSTREAM_ID) ? ANON_VIEW_ID : label;
 }
 
-export async function resolveAnonymousView(
+/**
+ * Primary `Result`-typed anonymous-view resolver. Surface failures (no/both
+ * `query`/`queryFile`, `@id` reference upstream) become {@link ViewValidationError}
+ * variants; downstream view-resolution failures pass through unchanged
+ * (ADR-0024).
+ */
+export function resolveAnonymousViewResult(
   input: AnonymousViewInput,
-): Promise<Store> {
+): ResultAsync<Store, ResolveAnonymousViewError> {
   const hasQuery = input.query !== undefined;
   const hasQueryFile = input.queryFile !== undefined;
   if (hasQuery && hasQueryFile) {
-    throw new Error(
-      '`query` and `queryFile` are mutually exclusive on an anonymous view',
-    );
+    return errAsync({
+      kind: 'view-validation',
+      message:
+        '`query` and `queryFile` are mutually exclusive on an anonymous view',
+    });
   }
   if (!hasQuery && !hasQueryFile) {
-    throw new Error(
-      'an anonymous view requires exactly one of `query` or `queryFile`',
-    );
+    return errAsync({
+      kind: 'view-validation',
+      message: 'an anonymous view requires exactly one of `query` or `queryFile`',
+    });
   }
 
   const upstream = parseSourceSpec(input.source);
   if (upstream.kind === 'reference') {
-    throw new Error(
-      'anonymous view: `@id` reference upstreams are not supported here',
-    );
+    return errAsync({
+      kind: 'view-validation',
+      message: 'anonymous view: `@id` reference upstreams are not supported here',
+    });
   }
   const upstreamId = upstream.id ?? ANON_UPSTREAM_ID;
   const upstreamWithId: ParsedSource = { ...upstream, id: upstreamId };
@@ -64,9 +91,24 @@ export async function resolveAnonymousView(
     ...(hasQueryFile ? { queryFile: input.queryFile } : {}),
   };
 
-  return resolveView({
+  return resolveViewResult({
     view,
     registry: [upstreamWithId, view],
     logger: input.logger,
   });
 }
+
+/**
+ * @deprecated Use {@link resolveAnonymousViewResult} (ADR-0024). Retained as a
+ * thin throw-based adapter for callers that have not migrated yet.
+ */
+export async function resolveAnonymousView(
+  input: AnonymousViewInput,
+): Promise<Store> {
+  const result = await resolveAnonymousViewResult(input);
+  if (result.isErr()) {
+    throw new Error(result.error.message);
+  }
+  return result.value;
+}
+

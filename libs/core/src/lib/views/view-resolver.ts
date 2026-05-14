@@ -2,8 +2,9 @@ import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
 import { DataFactory, Store, type Quad } from 'n3';
+import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import type { SparqlyLogger } from 'common';
-import { emitQueryEvent, loadRdf } from '../engine';
+import { emitQueryEvent, loadRdfResult } from '../engine';
 import { detectQueryType } from '../canonical/immutability';
 import { applyTransformPipeline } from '../sources';
 import {
@@ -11,16 +12,24 @@ import {
   type ParsedSource,
   type ParsedViewSource,
 } from '../sources';
+import type {
+  CacheIoError,
+  EndpointFetchError,
+  GlobLoadError,
+  QueryExecutionError,
+  ViewReferenceError,
+  ViewValidationError,
+} from '../sources/errors';
 import {
-  lookup as cacheLookup,
-  storeView as cacheStore,
+  lookupResult as cacheLookupResult,
+  storeViewResult as cacheStoreViewResult,
   type ViewCacheBinding,
 } from './view-cache';
 import {
-  resolveViewPassThrough,
+  resolveViewPassThroughResult,
   type ViewQueryLogMeta,
 } from './view-pass-through';
-import { validateViewQuery } from './view-query-validate';
+import { validateViewQueryResult } from './view-query-validate';
 
 export interface ResolveViewOptions {
   view: ParsedViewSource;
@@ -43,8 +52,31 @@ export interface ResolveViewOptions {
   logger?: SparqlyLogger;
 }
 
-export async function resolveView(opts: ResolveViewOptions): Promise<Store> {
-  return resolveViewWithCache(
+/**
+ * Union of every variant a view resolution can produce. Each variant carries
+ * structured fields per ADR-0024; the `view-reference` reason discriminates
+ * between an unknown ref, a cycle on the `from:` DAG, and a reference-kind
+ * upstream entry (which is an alias, not data).
+ */
+export type ResolveViewError =
+  | ViewValidationError
+  | ViewReferenceError
+  | CacheIoError
+  | EndpointFetchError
+  | QueryExecutionError
+  | GlobLoadError;
+
+/**
+ * Primary `Result`-typed view resolver. Returns the same `Store` payload as
+ * the legacy `resolveView` on success, and a tagged {@link ResolveViewError}
+ * on failure. The legacy `resolveView` is a thin throw-wrapping adapter that
+ * preserves the historical message shape for downstream `legacy-message`
+ * consumers until they migrate (ADR-0024).
+ */
+export function resolveViewResult(
+  opts: ResolveViewOptions,
+): ResultAsync<Store, ResolveViewError> {
+  return resolveViewWithCacheResult(
     opts.view,
     opts.registry,
     [opts.view.id],
@@ -55,7 +87,58 @@ export async function resolveView(opts: ResolveViewOptions): Promise<Store> {
   );
 }
 
-async function resolveViewWithCache(
+/**
+ * @deprecated Use {@link resolveViewResult} (ADR-0024). Retained as a thin
+ * throw-based adapter for callers that have not migrated yet.
+ */
+export async function resolveView(opts: ResolveViewOptions): Promise<Store> {
+  const result = await resolveViewResult(opts);
+  if (result.isErr()) {
+    throw new Error(result.error.message);
+  }
+  return result.value;
+}
+
+function resolveViewWithCacheResult(
+  view: ParsedViewSource,
+  registry: ReadonlyArray<ParsedSource>,
+  stack: ReadonlyArray<string>,
+  cacheDir: string | undefined,
+  now: (() => number) | undefined,
+  engine: ComunicaQueryEngine | undefined,
+  logger: SparqlyLogger | undefined,
+): ResultAsync<Store, ResolveViewError> {
+  if (!view.cache || !cacheDir) {
+    return resolveViewInternal(view, registry, stack, cacheDir, now, engine, logger);
+  }
+  const upstream = collectCacheUpstream(view, registry);
+  const binding: ViewCacheBinding = {
+    view,
+    upstream,
+    cacheDir,
+    now,
+    registry,
+    loadProbeStore:
+      view.cache.strategy === 'freshness'
+        ? () => loadUpstreamPromise(view, registry, stack, cacheDir, now, engine, logger)
+        : undefined,
+  };
+  return cacheLookupResult(binding).andThen<Store, ResolveViewError>((hit) => {
+    if (hit.freshness === 'fresh' && hit.store) {
+      return okAsync(hit.store);
+    }
+    return resolveViewInternal(view, registry, stack, cacheDir, now, engine, logger).andThen(
+      (fresh) => cacheStoreViewResult(binding, fresh).map(() => fresh),
+    );
+  });
+}
+
+/**
+ * Bridges the cache freshness-ASK probe back to a `Promise<Store>` for the
+ * binding contract. Throws to match the binding's existing shape; failures
+ * surface as caught errors that get mapped by the cache layer.
+ */
+async function loadUpstreamPromise(
   view: ParsedViewSource,
   registry: ReadonlyArray<ParsedSource>,
   stack: ReadonlyArray<string>,
@@ -64,45 +147,9 @@ async function resolveViewWithCache(
   engine: ComunicaQueryEngine | undefined,
   logger: SparqlyLogger | undefined,
 ): Promise<Store> {
-  if (view.cache && cacheDir) {
-    const upstream = collectCacheUpstream(view, registry);
-    const binding: ViewCacheBinding = {
-      view,
-      upstream,
-      cacheDir,
-      now,
-      registry,
-      loadProbeStore:
-        view.cache.strategy === 'freshness'
-          ? () =>
-              loadUpstream(view, registry, stack, cacheDir, now, engine, logger)
-          : undefined,
-    };
-    const hit = await cacheLookup(binding);
-    if (hit.freshness === 'fresh' && hit.store) {
-      return hit.store;
-    }
-    const fresh = await resolveViewInternal(
-      view,
-      registry,
-      stack,
-      cacheDir,
-      now,
-      engine,
-      logger,
-    );
-    await cacheStore(binding, fresh);
-    return fresh;
-  }
-  return resolveViewInternal(
-    view,
-    registry,
-    stack,
-    cacheDir,
-    now,
-    engine,
-    logger,
-  );
+  const result = await loadUpstreamResult(view, registry, stack, cacheDir, now, engine, logger);
+  if (result.isErr()) throw new Error(result.error.message);
+  return result.value;
 }
 
 function collectCacheUpstream(
@@ -118,7 +165,7 @@ function collectCacheUpstream(
   return upstream ? [upstream] : [];
 }
 
-async function resolveViewInternal(
+function resolveViewInternal(
   view: ParsedViewSource,
   registry: ReadonlyArray<ParsedSource>,
   stack: ReadonlyArray<string>,
@@ -126,29 +173,34 @@ async function resolveViewInternal(
   now: (() => number) | undefined,
   engine: ComunicaQueryEngine | undefined,
   logger: SparqlyLogger | undefined,
-): Promise<Store> {
-  const query = await loadViewQuery(view);
-  validateViewQuery(query);
-  const meta = { source: view.id, logger };
-  const singleEndpoint = singleEndpointUpstream(view, registry);
-  if (singleEndpoint) {
-    return resolveViewPassThrough({
-      endpoint: singleEndpoint,
-      viewQuery: query,
-      engine,
-      meta,
-    });
-  }
-  const upstreamStore = await loadUpstream(
-    view,
-    registry,
-    stack,
-    cacheDir,
-    now,
-    engine,
-    logger,
+): ResultAsync<Store, ResolveViewError> {
+  return loadViewQueryResult(view).andThen<Store, ResolveViewError>((query) =>
+    validateViewQueryResult(query, { viewId: view.id })
+      .map(() => query)
+      .asyncAndThen<Store, ResolveViewError>((validQuery) => {
+        const meta = { source: view.id, logger };
+        const singleEndpoint = singleEndpointUpstream(view, registry);
+        if (singleEndpoint) {
+          return resolveViewPassThroughResult({
+            endpoint: singleEndpoint,
+            viewQuery: validQuery,
+            engine,
+            meta,
+          });
+        }
+        return loadUpstreamResult(
+          view,
+          registry,
+          stack,
+          cacheDir,
+          now,
+          engine,
+          logger,
+        ).andThen((upstreamStore) =>
+          runViewQueryResult(upstreamStore, validQuery, engine, meta),
+        );
+      }),
   );
-  return runViewQuery(upstreamStore, query, engine, meta);
 }
 
 function singleEndpointUpstream(
@@ -161,18 +213,26 @@ function singleEndpointUpstream(
   return upstream;
 }
 
-async function loadViewQuery(view: ParsedViewSource): Promise<string> {
-  if (view.query !== undefined) return view.query;
+function loadViewQueryResult(
+  view: ParsedViewSource,
+): ResultAsync<string, ViewValidationError> {
+  if (view.query !== undefined) return okAsync(view.query);
   if (view.queryFile !== undefined) {
     const path = resolvePath(process.cwd(), view.queryFile);
-    return readFile(path, 'utf8');
+    return ResultAsync.fromPromise(readFile(path, 'utf8'), (err) => ({
+      kind: 'view-validation' as const,
+      viewId: view.id,
+      message: err instanceof Error ? err.message : String(err),
+    }));
   }
-  throw new Error(
-    `view "${view.id}": exactly one of \`query\` or \`queryFile\` is required`,
-  );
+  return errAsync({
+    kind: 'view-validation',
+    viewId: view.id,
+    message: `exactly one of \`query\` or \`queryFile\` is required`,
+  });
 }
 
-async function loadUpstream(
+function loadUpstreamResult(
   view: ParsedViewSource,
   registry: ReadonlyArray<ParsedSource>,
   stack: ReadonlyArray<string>,
@@ -180,32 +240,44 @@ async function loadUpstream(
   now: (() => number) | undefined,
   engine: ComunicaQueryEngine | undefined,
   logger: SparqlyLogger | undefined,
-): Promise<Store> {
+): ResultAsync<Store, ResolveViewError> {
   const refId = view.from;
   const byId = buildRegistryById(registry);
   if (stack.includes(refId)) {
-    throw new Error(
-      `view "${view.id}": cycle detected on \`from:\` ref @${refId} (chain: ${stack
+    return errAsync({
+      kind: 'view-reference',
+      viewId: view.id,
+      ref: refId,
+      reason: 'cycle',
+      message: `cycle detected on \`from:\` ref @${refId} (chain: ${stack
         .map((id) => `@${id}`)
         .join(' -> ')} -> @${refId})`,
-    );
+    });
   }
   const upstream = byId.get(refId);
   if (!upstream) {
     const known = [...byId.keys()];
     const list =
       known.length === 0 ? '<none>' : known.map((k) => `@${k}`).join(', ');
-    throw new Error(
-      `view "${view.id}": unknown @id reference "@${refId}"; defined ids: ${list}`,
-    );
+    return errAsync({
+      kind: 'view-reference',
+      viewId: view.id,
+      ref: refId,
+      reason: 'unknown',
+      message: `unknown @id reference "@${refId}"; defined ids: ${list}`,
+    });
   }
   if (upstream.kind === 'reference') {
-    throw new Error(
-      `view "${view.id}": reference upstream "@${refId}" is not yet supported`,
-    );
+    return errAsync({
+      kind: 'view-reference',
+      viewId: view.id,
+      ref: refId,
+      reason: 'reference-upstream',
+      message: `reference upstream "@${refId}" is not yet supported`,
+    });
   }
   if (upstream.kind === 'view') {
-    return resolveViewWithCache(
+    return resolveViewWithCacheResult(
       upstream,
       registry,
       [...stack, refId],
@@ -216,19 +288,27 @@ async function loadUpstream(
     );
   }
   if (upstream.kind === 'empty') {
-    return new Store();
+    return okAsync(new Store());
   }
   if (upstream.kind !== 'glob') {
     // Endpoint upstreams are routed via pass-through above; this branch is
     // unreachable for the current source kinds.
-    throw new Error(
-      `view "${view.id}": unexpected upstream kind "${(upstream as { kind: string }).kind}" for ref @${refId}`,
-    );
+    return errAsync({
+      kind: 'view-reference',
+      viewId: view.id,
+      ref: refId,
+      reason: 'unknown',
+      message: `unexpected upstream kind "${
+        (upstream as { kind: string }).kind
+      }" for ref @${refId}`,
+    });
   }
-  const sub = await loadRdf({ sources: upstream.glob });
-  return applyTransformPipeline(sub.store, upstream.transforms ?? [], {
-    perFileRecords: sub.perFileRecords,
-  });
+  const globUpstream = upstream;
+  return loadRdfResult({ sources: globUpstream.glob }).map((sub) =>
+    applyTransformPipeline(sub.store, globUpstream.transforms ?? [], {
+      perFileRecords: sub.perFileRecords,
+    }),
+  );
 }
 
 function buildRegistryById(
@@ -241,6 +321,19 @@ function buildRegistryById(
     map.set(src.id, src);
   }
   return map;
+}
+
+function runViewQueryResult(
+  source: Store,
+  query: string,
+  engine: ComunicaQueryEngine | undefined,
+  meta: ViewQueryLogMeta,
+): ResultAsync<Store, QueryExecutionError> {
+  return ResultAsync.fromPromise(runViewQuery(source, query, engine, meta), (err) => ({
+    kind: 'query-execution',
+    query,
+    message: err instanceof Error ? err.message : String(err),
+  }));
 }
 
 async function runViewQuery(

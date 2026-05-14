@@ -12,7 +12,7 @@ import {
   type FakeSparqlEndpoint,
 } from '../test/fake-sparql-endpoint';
 import { recordingLogger } from '../test/recording-logger';
-import { resolveView } from './view-resolver';
+import { resolveView, resolveViewResult } from './view-resolver';
 
 const SPARQL_JSON_TWO_BINDINGS = JSON.stringify({
   head: { vars: ['s', 'p', 'o'] },
@@ -716,6 +716,106 @@ describe('resolveView — query event logging (ADR-0020)', () => {
     // Should not throw — exercises the no-op default path.
     await resolveView({ view, registry });
   });
+});
+
+describe('resolveViewResult — per-leaf parallel-name impl', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-resolve-view-result-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('returns Result.ok with the materialized Store for a valid view over a glob upstream', async () => {
+    const a = join(dir, 'a.ttl');
+    await writeFile(
+      a,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:keep ex:p ex:v1 .',
+        'ex:drop ex:p ex:v2 .',
+      ].join('\n'),
+    );
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: a },
+      {
+        id: 'kept',
+        from: '@raw',
+        query:
+          'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }',
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+
+    const result = await resolveViewResult({ view, registry });
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.size).toBe(1);
+  });
+
+  it('returns Result.err with a view-validation variant for a syntactically invalid query', async () => {
+    const a = join(dir, 'a.ttl');
+    await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: a },
+      { id: 'bad', from: '@raw', query: 'NOT A QUERY' },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+
+    const result = await resolveViewResult({ view, registry });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('view-validation');
+    if (result.error.kind !== 'view-validation') throw new Error('unreachable');
+    expect(result.error.viewId).toBe('bad');
+  });
+
+  it('returns Result.err with a view-reference variant when the `from:` ref is unknown', async () => {
+    const registry = parseSourceSpecs([
+      {
+        id: 'v',
+        from: '@nope',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+    ]);
+    const view = registry[0] as ParsedViewSource;
+
+    const result = await resolveViewResult({ view, registry });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('view-reference');
+    if (result.error.kind !== 'view-reference') throw new Error('unreachable');
+    expect(result.error.viewId).toBe('v');
+    expect(result.error.ref).toBe('nope');
+    expect(result.error.reason).toBe('unknown');
+  });
+
+  it('returns Result.err with a view-reference variant on a self-cycle', async () => {
+    const registry = parseSourceSpecs([
+      {
+        id: 'loop',
+        from: '@loop',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+    ]);
+    const view = registry[0] as ParsedViewSource;
+
+    const result = await resolveViewResult({ view, registry });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('view-reference');
+    if (result.error.kind !== 'view-reference') throw new Error('unreachable');
+    expect(result.error.reason).toBe('cycle');
+    expect(result.error.ref).toBe('loop');
+  });
+
 });
 
 describe('resolveView — view-cache integration', () => {

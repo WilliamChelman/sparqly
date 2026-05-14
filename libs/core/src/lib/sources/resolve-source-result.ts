@@ -1,7 +1,7 @@
 import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import { Store } from 'n3';
 import { loadRdfResult, type GraphMode, type LoadResult } from '../engine';
-import { resolveView, type ResolveViewOptions } from '../views';
+import { resolveViewResult, type ResolveViewOptions } from '../views';
 import type { SourceError } from './errors';
 import { parseGraphNameTransform } from './graph-name-transform';
 import type { QuerySources } from './resolve-source';
@@ -56,23 +56,22 @@ export function resolveSourceResult(
       materialized(loaded.store, loaded.files, loaded.prefixes),
     );
   }
-  return ResultAsync.fromPromise(resolveViewTarget(target, options), legacy);
+  return resolveViewTargetResult(target, options);
 }
 
-async function resolveViewTarget(
+function resolveViewTargetResult(
   view: ParsedViewSource,
   options: ResolveSourceResultOptions,
-): Promise<QuerySources> {
+): ResultAsync<QuerySources, SourceError> {
   const registry = options.registry ?? [view];
-  const store = await resolveView({
+  return resolveViewResult({
     view,
     registry,
     cacheDir: options.cacheDir,
     now: options.now,
     engine: options.engine,
     logger: options.logger,
-  });
-  return materialized(store, [], {});
+  }).map((store) => materialized(store, [], {}));
 }
 
 function loadGlobIntoStore(
@@ -104,13 +103,6 @@ function effectiveTransforms(
   return [
     { key: 'graphName', apply: parseGraphNameTransform(defaultGraphMode) },
   ];
-}
-
-function legacy(err: unknown): SourceError {
-  return {
-    kind: 'legacy-message',
-    message: err instanceof Error ? err.message : String(err),
-  };
 }
 
 function materialized(

@@ -1,4 +1,6 @@
+import { Result, err, ok } from 'neverthrow';
 import { Parser as SparqlParser } from 'sparqljs';
+import type { ViewValidationError } from '../sources/errors';
 
 export type ViewQueryMode = 'strict' | 'tabular-anon';
 
@@ -13,40 +15,77 @@ export interface ValidateViewQueryOptions {
    * projected-variable list).
    */
   mode?: ViewQueryMode;
+  /**
+   * Forwarded into the {@link ViewValidationError} when supplied so callers
+   * can attribute the failure to a specific view. Anonymous-view validation
+   * sites omit it.
+   */
+  viewId?: string;
 }
 
+/**
+ * Primary `Result`-typed validator. Returns `Result.ok(undefined)` on success
+ * and a {@link ViewValidationError} carrying the supplied `viewId` (when any)
+ * and the underlying message on failure (ADR-0024).
+ */
+export function validateViewQueryResult(
+  query: string,
+  options: ValidateViewQueryOptions = {},
+): Result<void, ViewValidationError> {
+  const mode = options.mode ?? 'strict';
+  try {
+    const parsed = new SparqlParser().parse(query);
+    if (parsed.type === 'update') {
+      return err(
+        toError(options.viewId, 'UPDATE queries are not allowed for a view query; use SELECT or CONSTRUCT.'),
+      );
+    }
+    if (parsed.type === 'query') {
+      if (parsed.queryType === 'ASK') {
+        return err(
+          toError(options.viewId, 'ASK queries are not allowed for a view query; use SELECT or CONSTRUCT.'),
+        );
+      }
+      if (parsed.queryType === 'DESCRIBE') {
+        return err(
+          toError(options.viewId, 'DESCRIBE queries are not allowed for a view query; use SELECT or CONSTRUCT.'),
+        );
+      }
+      if (parsed.queryType === 'SELECT') {
+        const projection = checkSelectProjection(parsed.variables, mode);
+        if (projection !== undefined) return err(toError(options.viewId, projection));
+      }
+    }
+    return ok(undefined);
+  } catch (e) {
+    return err(toError(options.viewId, e instanceof Error ? e.message : String(e)));
+  }
+}
+
+/**
+ * @deprecated Use {@link validateViewQueryResult} (ADR-0024). Retained as a
+ * thin throw-based adapter for callers that have not migrated yet.
+ */
 export function validateViewQuery(
   query: string,
   options: ValidateViewQueryOptions = {},
 ): void {
-  const mode = options.mode ?? 'strict';
-  const parsed = new SparqlParser().parse(query);
-  if (parsed.type === 'update') {
-    throw new Error(
-      'UPDATE queries are not allowed for a view query; use SELECT or CONSTRUCT.',
-    );
-  }
-  if (parsed.type === 'query') {
-    if (parsed.queryType === 'ASK') {
-      throw new Error(
-        'ASK queries are not allowed for a view query; use SELECT or CONSTRUCT.',
-      );
-    }
-    if (parsed.queryType === 'DESCRIBE') {
-      throw new Error(
-        'DESCRIBE queries are not allowed for a view query; use SELECT or CONSTRUCT.',
-      );
-    }
-    if (parsed.queryType === 'SELECT') {
-      assertSelectProjection(parsed.variables, mode);
-    }
+  const result = validateViewQueryResult(query, options);
+  if (result.isErr()) {
+    throw new Error(result.error.message);
   }
 }
 
-function assertSelectProjection(
+function toError(viewId: string | undefined, message: string): ViewValidationError {
+  return viewId !== undefined
+    ? { kind: 'view-validation', viewId, message }
+    : { kind: 'view-validation', message };
+}
+
+function checkSelectProjection(
   variables: ReadonlyArray<unknown>,
   mode: ViewQueryMode,
-): void {
+): string | undefined {
   const names: string[] = [];
   for (const v of variables) {
     const term = v as {
@@ -58,10 +97,6 @@ function assertSelectProjection(
       names.push(term.value);
       continue;
     }
-    // Aliased projections like `(str(?x) AS ?y)` parse as
-    // `{ expression, variable: <Variable> }`. Tabular-anon accepts them
-    // (the alias names the column); strict mode rejects them — they can't
-    // satisfy the {?s,?p,?o[,?g]} projection contract.
     const alias = term?.variable;
     if (
       mode === 'tabular-anon' &&
@@ -71,17 +106,14 @@ function assertSelectProjection(
       names.push(alias.value);
       continue;
     }
-    throw new Error(
-      mode === 'tabular-anon'
-        ? 'SELECT must project named variables or aliased expressions (no `SELECT *`).'
-        : 'SELECT view query must project exactly {?s, ?p, ?o} or {?s, ?p, ?o, ?g} (no SELECT *, no expressions).',
-    );
+    return mode === 'tabular-anon'
+      ? 'SELECT must project named variables or aliased expressions (no `SELECT *`).'
+      : 'SELECT view query must project exactly {?s, ?p, ?o} or {?s, ?p, ?o, ?g} (no SELECT *, no expressions).';
   }
-  if (mode === 'tabular-anon') return;
+  if (mode === 'tabular-anon') return undefined;
   const sorted = [...names].sort().join(',');
   if (sorted !== 'o,p,s' && sorted !== 'g,o,p,s') {
-    throw new Error(
-      'SELECT view query must project exactly {?s, ?p, ?o} or {?s, ?p, ?o, ?g}.',
-    );
+    return 'SELECT view query must project exactly {?s, ?p, ?o} or {?s, ?p, ?o, ?g}.';
   }
+  return undefined;
 }
