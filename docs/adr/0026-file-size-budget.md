@@ -96,7 +96,7 @@ Both splits were byte-identical refactors — existing golden tests passed uncha
 ## Consequences
 
 - **Lint enforces 500 from now on.** New code cannot regress; the override block is the only escape.
-- **Three grandfathered offenders remain** as of this writing: `bootstrap/create-server.ts` (678), `common/formatter.ts` (615), `sources/source-spec.ts` (556). Each gets a sweep PR per the parent migration; the override block deletes when empty.
+- **One grandfathered offender remains** as of this writing: `bootstrap/create-server.ts` (678). The next sweep PR per the parent migration deletes the override block entirely.
 - **The soft target shapes review.** Reviewers can point at the 300 line and ask "what's the split?" without needing to invoke this ADR each time.
 - **`*.spec.ts` files stay unbounded.** Test setup is allowed to be verbose; the budget targets production code where readers pay the cost.
 - **Coding agents benefit downstream.** Files under 500 lines fit comfortably in context; the `explorer` subagent has finer-grained slices to read. `CLAUDE.md`'s "Agent navigation" section codifies the workflow (barrels first, `explorer` for ≥400-line files).
