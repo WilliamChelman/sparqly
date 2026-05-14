@@ -2,15 +2,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { parseSourceSpecs, type DiffError } from 'core';
+import { parseSourceSpecs } from 'core';
 import { DiffService } from './diff.service';
-
-function expectLegacyMessage(e: DiffError | undefined): string {
-  expect(e).toBeDefined();
-  expect(e?.kind).toBe('legacy-message');
-  if (e?.kind !== 'legacy-message') throw new Error('unreachable');
-  return e.message;
-}
 
 const TRIPLES_CONSTRUCT =
   'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:p ?o } WHERE { ?s ex:p ?o }';
@@ -155,7 +148,7 @@ describe('DiffService — tabular mode', () => {
     ]);
   });
 
-  it('returns kind=error with a top-level message on mismatched variable-name sets', async () => {
+  it('returns kind=error with a structured set-mismatch top-level variant on mismatched variable-name sets', async () => {
     const leftSelect =
       'PREFIX ex: <http://example.org/> SELECT ?o WHERE { ?s ex:p ?o }';
     const rightSelect =
@@ -170,7 +163,10 @@ describe('DiffService — tabular mode', () => {
 
     expect(out.kind).toBe('error');
     if (out.kind !== 'error') return;
-    expect(expectLegacyMessage(out.errors.top)).toMatch(/variable/i);
+    expect(out.errors.top?.kind).toBe('set-mismatch');
+    if (out.errors.top?.kind !== 'set-mismatch') return;
+    expect([...out.errors.top.left].sort()).toEqual(['o']);
+    expect([...out.errors.top.right].sort()).toEqual(['subject']);
   });
 
   it('returns the structured tabular-blank-node variant inline when a right-side SELECT projects a blank-node column', async () => {
@@ -258,7 +254,7 @@ describe('DiffService — error packaging', () => {
     await rm(paths.dir, { recursive: true, force: true });
   });
 
-  it('returns kind=error with a top-level message on mixed-shape (one triples, one tuples)', async () => {
+  it('returns kind=error with a structured mixed-shape top-level variant when one side is triples and the other tuples', async () => {
     const out = await svc.runDiff({
       left: '@alpha',
       right: '@beta',
@@ -268,21 +264,31 @@ describe('DiffService — error packaging', () => {
 
     expect(out.kind).toBe('error');
     if (out.kind !== 'error') return;
-    expect(expectLegacyMessage(out.errors.top)).toMatch(
-      /mixed.*shape|shape mismatch/i,
-    );
+    expect(out.errors.top).toEqual({
+      kind: 'mixed-shape',
+      triplesSide: 'left',
+      tuplesSide: 'right',
+    });
   });
 
-  it('returns kind=error with per-side messages when an `@id` is unknown on both sides', async () => {
+  it('returns kind=error with structured unknown-source-id variants on both sides when both @ids are unknown', async () => {
     const out = await svc.runDiff({ left: '@nope-l', right: '@nope-r' });
 
     expect(out.kind).toBe('error');
     if (out.kind !== 'error') return;
-    expect(expectLegacyMessage(out.errors.left)).toMatch(/nope-l/);
-    expect(expectLegacyMessage(out.errors.right)).toMatch(/nope-r/);
+    expect(out.errors.left).toMatchObject({
+      kind: 'unknown-source-id',
+      side: 'left',
+      id: 'nope-l',
+    });
+    expect(out.errors.right).toMatchObject({
+      kind: 'unknown-source-id',
+      side: 'right',
+      id: 'nope-r',
+    });
   });
 
-  it('returns kind=error with per-side messages surfacing both parse failures together', async () => {
+  it('returns kind=error with per-side anonymous-view-execution variants wrapping the underlying parse failures', async () => {
     const out = await svc.runDiff({
       left: '@alpha',
       right: '@beta',
@@ -292,7 +298,7 @@ describe('DiffService — error packaging', () => {
 
     expect(out.kind).toBe('error');
     if (out.kind !== 'error') return;
-    expect(out.errors.left).toBeDefined();
-    expect(out.errors.right).toBeDefined();
+    expect(out.errors.left?.kind).toBe('anonymous-view-execution');
+    expect(out.errors.right?.kind).toBe('anonymous-view-execution');
   });
 });
