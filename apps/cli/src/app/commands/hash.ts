@@ -319,6 +319,7 @@ function emitHashError(err: SourceError | TargetError): void {
 function targetLabel(target: ParsedSource): string {
   if (target.id !== undefined) return `@${target.id}`;
   if (target.kind === 'glob') return target.glob;
+  if (target.kind === 'file') return target.path;
   if (target.kind === 'endpoint') return target.endpoint;
   if (target.kind === 'empty') return `@${target.id ?? 'empty'}`;
   if (target.kind === 'view') return `@${target.id}`;
@@ -379,7 +380,9 @@ function hashTargetResult(
     return ResultAsync.fromSafePromise(
       canonicalizeStore(sources.store, {
         annotationPredicates: extractAnnotationPredicates(
-          target.kind === 'glob' ? target.transforms : undefined,
+          target.kind === 'glob' || target.kind === 'file'
+            ? target.transforms
+            : undefined,
         ),
       }),
     ).map(({ canonicalText }) => {
@@ -398,9 +401,10 @@ function hashTargetResult(
 
 function anonymousUpstream(target: ParsedSource): SourceSpecInput {
   if (target.kind === 'glob') return target.glob;
+  if (target.kind === 'file') return target.path;
   if (target.kind === 'endpoint') return target.endpoint;
   throw new Error(
-    `--query/--query-file scope a glob or SPARQL endpoint upstream; target ${targetLabel(target)} is a ${target.kind} source — drop the inline scope (it already has a query) or point at a glob/endpoint`,
+    `--query/--query-file scope a glob, file, or SPARQL endpoint upstream; target ${targetLabel(target)} is a ${target.kind} source — drop the inline scope (it already has a query) or point at a glob/file/endpoint`,
   );
 }
 

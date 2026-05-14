@@ -43,6 +43,7 @@ export function anonymousUpstream(
   side: 'left' | 'right',
 ): SourceSpecInput {
   if (target.kind === 'glob') return target.glob;
+  if (target.kind === 'file') return target.path;
   if (target.kind === 'endpoint') return target.endpoint;
   throw new DiffErrorSignal({
     kind: 'inline-upstream-kind',
@@ -94,7 +95,10 @@ export async function resolveSide(
       endpoint: sources.endpoint.endpoint,
     });
   }
-  const transforms = target.kind === 'glob' ? target.transforms : undefined;
+  const transforms =
+    target.kind === 'glob' || target.kind === 'file'
+      ? target.transforms
+      : undefined;
   return {
     fileCount: sources.files.length,
     store: sources.store,

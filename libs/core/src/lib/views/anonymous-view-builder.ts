@@ -40,9 +40,11 @@ function anonViewLabel(upstream: ParsedSource): string {
   const label =
     upstream.kind === 'glob'
       ? upstream.glob
-      : upstream.kind === 'endpoint'
-        ? upstream.endpoint
-        : (upstream.id ?? ANON_VIEW_ID);
+      : upstream.kind === 'file'
+        ? upstream.path
+        : upstream.kind === 'endpoint'
+          ? upstream.endpoint
+          : (upstream.id ?? ANON_VIEW_ID);
   // Keep the synthetic view id distinct from its upstream's so cycle
   // detection on the `from:` chain never false-positives.
   return label === (upstream.id ?? ANON_UPSTREAM_ID) ? ANON_VIEW_ID : label;

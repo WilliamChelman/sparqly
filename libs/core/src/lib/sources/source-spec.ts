@@ -35,6 +35,27 @@ export interface ParsedGlobSource
   glob: string;
   /** Parsed source-transformation pipeline (omitted when not declared). */
   transforms?: ParsedTransform[];
+  /**
+   * Opt-in flag for split-glob expansion (ADR-0027). When `true`, a downstream
+   * pass (`expandSplitGlobs`) walks the filesystem and synthesizes one
+   * `kind: 'file'` child per matched file alongside this meta. Parsing alone
+   * never performs the expansion; this field is only carried through.
+   */
+  splitByFile?: true;
+}
+
+/**
+ * Synthesized child source representing one file matched by a split-glob meta
+ * (ADR-0027). Never produced by `parseSourceSpec`/`parseSourceSpecs` — only by
+ * `expandSplitGlobs`. The `id` is `<parentId>/<glob-relative-path>` and matches
+ * {@link SYNTHESIZED_SOURCE_ID_REGEX}, not the stricter user-id regex.
+ */
+export interface ParsedFileSource extends SourceSpecCommonFields {
+  kind: 'file';
+  id: string;
+  path: string;
+  parentId: string;
+  transforms?: ParsedTransform[];
 }
 
 export interface ParsedEndpointSource
@@ -71,7 +92,8 @@ export type ParsedSource =
   | ParsedEndpointSource
   | ParsedReferenceSource
   | ParsedViewSource
-  | ParsedEmptySource;
+  | ParsedEmptySource
+  | ParsedFileSource;
 
 export interface SourceSpecObjectInput
   extends SourceSpecCommonFields,
@@ -85,6 +107,8 @@ export interface SourceSpecObjectInput
   cache?: ViewCacheInput;
   default?: true;
   transforms?: ReadonlyArray<unknown>;
+  /** Opt-in split-glob expansion flag — only valid on glob inputs (ADR-0027). */
+  splitByFile?: true;
 }
 
 export type SourceSpecInput = string | SourceSpecObjectInput;
@@ -92,6 +116,13 @@ export type SourceSpecInput = string | SourceSpecObjectInput;
 const HTTP_PREFIX = /^https?:\/\//;
 const REFERENCE_PREFIX = /^@(.+)$/;
 export const SOURCE_ID_REGEX = /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/;
+/**
+ * Looser id regex for synthesized file children (ADR-0027): one parent
+ * segment matching {@link SOURCE_ID_REGEX}, followed by one or more
+ * `/`-joined segments. User-declared ids must still match {@link SOURCE_ID_REGEX}.
+ */
+export const SYNTHESIZED_SOURCE_ID_REGEX =
+  /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*(?:\/[a-zA-Z0-9_-][a-zA-Z0-9_.-]*)+$/;
 
 const COMMON_FIELD_KEYS = [
   'id',
@@ -103,6 +134,29 @@ function pickDefault(input: SourceSpecObjectInput): DefaultMarkerField {
     throw new Error('`default` must be `true` (omit the field otherwise)');
   }
   return { default: true };
+}
+
+function pickSplitByFile(
+  input: SourceSpecObjectInput,
+): { splitByFile?: true } {
+  if (input.splitByFile === undefined) return {};
+  if (input.splitByFile !== true) {
+    throw new Error(
+      '`splitByFile` must be `true` (omit the field otherwise)',
+    );
+  }
+  return { splitByFile: true };
+}
+
+function rejectSplitByFileOn(
+  input: SourceSpecObjectInput,
+  kind: 'endpoint' | 'view' | 'empty',
+): void {
+  if (input.splitByFile !== undefined) {
+    throw new Error(
+      `\`splitByFile\` is only valid on glob sources (got a ${kind} source)`,
+    );
+  }
 }
 
 const LEGACY_GLOB_GRAPH_FIELD_KEYS = ['graphMode', 'graph'] as const;
@@ -171,9 +225,11 @@ export function parseSourceSpec(
   if (input.id !== undefined) validateSourceId(input.id);
   if (hasFrom) {
     rejectTransformsOn(input, 'view');
+    rejectSplitByFileOn(input, 'view');
     return parseView(input);
   }
   if (hasEmpty) {
+    rejectSplitByFileOn(input, 'empty');
     return parseEmpty(input);
   }
   if (input.cache !== undefined) {
@@ -191,16 +247,19 @@ export function parseSourceSpec(
       input.transforms === undefined
         ? {}
         : { transforms: parseTransformList(input.transforms, registry) };
+    const splitByFileField = pickSplitByFile(input);
     return {
       kind: 'glob',
       glob: input.glob as string,
       ...common,
       ...transformsField,
+      ...splitByFileField,
       ...defaultMarker,
     };
   }
   rejectLegacyEndpointGraphFields(input);
   rejectTransformsOn(input, 'endpoint');
+  rejectSplitByFileOn(input, 'endpoint');
   const http = pickEndpointHttp(input);
   return {
     kind: 'endpoint',
@@ -409,4 +468,25 @@ export function parseSourceSpecs(
     );
   }
   return parsed;
+}
+
+/**
+ * Synthesis-bug guard for split-glob children (ADR-0027). The expansion pass
+ * (`expandSplitGlobs`) calls this on every synthesized {@link ParsedFileSource}
+ * to assert the child's shape never carries a `default: true` marker and that
+ * its id matches {@link SYNTHESIZED_SOURCE_ID_REGEX}. A failure here is a bug
+ * in the synthesizer, not user error.
+ */
+export function validateSynthesizedFileSource(source: ParsedFileSource): void {
+  const withDefault = source as ParsedFileSource & { default?: unknown };
+  if (withDefault.default !== undefined) {
+    throw new Error(
+      `synthesis bug: a synthesized file child must never carry \`default\` (id ${JSON.stringify(source.id)})`,
+    );
+  }
+  if (!SYNTHESIZED_SOURCE_ID_REGEX.test(source.id)) {
+    throw new Error(
+      `synthesis bug: synthesized file child id ${JSON.stringify(source.id)} must match ${SYNTHESIZED_SOURCE_ID_REGEX}`,
+    );
+  }
 }
