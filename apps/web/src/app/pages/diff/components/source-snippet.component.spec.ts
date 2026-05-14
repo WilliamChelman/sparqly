@@ -105,8 +105,8 @@ describe('SourceSnippetComponent', () => {
     }
   });
 
-  it('renders "(source file unavailable)" when the snippet result is unavailable', () => {
-    setup({ kind: 'unavailable', reason: 'beyond-eof' });
+  it('renders "(source file unavailable)" when the snippet result is the fallback unavailable variant', () => {
+    setup({ kind: 'unavailable', reason: 'missing' });
     const fixture = render({ file: 'file:///tmp/missing.ttl', focalStart: 1, context: 2 });
 
     const root = fixture.nativeElement as HTMLElement;
@@ -114,6 +114,29 @@ describe('SourceSnippetComponent', () => {
     expect(
       root.querySelector('[data-testid=snippet-unavailable]')?.textContent,
     ).toContain('(source file unavailable)');
+  });
+
+  it('renders a structured file-read failure showing the path and reason (user story 7)', () => {
+    setup({ kind: 'file-read', file: '/abs/path/gone.ttl', reason: 'missing' });
+    const fixture = render({ file: 'file:///abs/path/gone.ttl', focalStart: 1, context: 0 });
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('pre')).toBeFalsy();
+    const fileRead = root.querySelector('[data-testid=snippet-file-read]');
+    expect(fileRead).toBeTruthy();
+    expect(fileRead?.textContent).toContain('/abs/path/gone.ttl');
+    expect(fileRead?.textContent).toContain('missing');
+  });
+
+  it('renders a structured range-out-of-bounds failure quoting the offending spec', () => {
+    setup({ kind: 'range-out-of-bounds', spec: '999' });
+    const fixture = render({ file: 'file:///tmp/x.ttl', focalStart: 999, context: 0 });
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('pre')).toBeFalsy();
+    const oob = root.querySelector('[data-testid=snippet-range-out-of-bounds]');
+    expect(oob).toBeTruthy();
+    expect(oob?.textContent).toContain('999');
   });
 
   it('shows neither the <pre> nor the unavailable note until the result arrives', () => {

@@ -6,7 +6,12 @@ import {
   OnInit,
   signal,
 } from '@angular/core';
-import { SnippetService, type SnippetPayload } from '../services/snippet.service';
+import {
+  SnippetService,
+  type SnippetFileReadError,
+  type SnippetPayload,
+  type SnippetRangeOutOfBoundsError,
+} from '../services/snippet.service';
 
 @Component({
   selector: 'app-source-snippet',
@@ -68,6 +73,20 @@ import { SnippetService, type SnippetPayload } from '../services/snippet.service
           >
         </div>
       </div>
+    } @else if (fileRead(); as fr) {
+      <p
+        data-testid="snippet-file-read"
+        class="px-3 py-2.5 font-serif italic text-[13px] text-foreground-faint break-all"
+      >
+        (source file unavailable: {{ fr.file }} — {{ fr.reason }})
+      </p>
+    } @else if (rangeOutOfBounds(); as oob) {
+      <p
+        data-testid="snippet-range-out-of-bounds"
+        class="px-3 py-2.5 font-serif italic text-[13px] text-foreground-faint"
+      >
+        (range {{ oob.spec }} is past end of file)
+      </p>
     } @else if (unavailable()) {
       <p
         data-testid="snippet-unavailable"
@@ -87,6 +106,8 @@ export class SourceSnippetComponent implements OnInit {
   readonly context = input.required<number>();
 
   readonly snippet = signal<SnippetPayload | null>(null);
+  readonly fileRead = signal<SnippetFileReadError | null>(null);
+  readonly rangeOutOfBounds = signal<SnippetRangeOutOfBoundsError | null>(null);
   readonly unavailable = signal<boolean>(false);
 
   ngOnInit(): void {
@@ -97,8 +118,20 @@ export class SourceSnippetComponent implements OnInit {
         this.context(),
       )
       .subscribe((result) => {
-        if (result.kind === 'snippet') this.snippet.set(result);
-        else this.unavailable.set(true);
+        switch (result.kind) {
+          case 'snippet':
+            this.snippet.set(result);
+            return;
+          case 'file-read':
+            this.fileRead.set(result);
+            return;
+          case 'range-out-of-bounds':
+            this.rangeOutOfBounds.set(result);
+            return;
+          case 'unavailable':
+            this.unavailable.set(true);
+            return;
+        }
       });
   }
 

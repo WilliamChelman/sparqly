@@ -108,20 +108,28 @@ describe('GET /api/source-snippet', () => {
     });
   });
 
-  it('returns 400 when a range spec has end < start', async () => {
+  it('returns 400 with a structured range-malformed body when a range spec has end < start', async () => {
     const fileUri = pathToFileURL(dataPath).href;
     const resp = await fetch(
       snippetUrl({ file: fileUri, ranges: ['4-2'], context: 0 }),
     );
     expect(resp.status).toBe(400);
+    const body = (await resp.json()) as { kind?: string; spec?: string; reason?: string };
+    expect(body.kind).toBe('range-malformed');
+    expect(body.spec).toBe('4-2');
+    expect(body.reason).toBe('end-before-start');
   });
 
-  it('returns 400 when a range spec is not a line/line-range', async () => {
+  it('returns 400 with a structured range-malformed body when a range spec is not a line/line-range', async () => {
     const fileUri = pathToFileURL(dataPath).href;
     const resp = await fetch(
       snippetUrl({ file: fileUri, ranges: ['banana'], context: 0 }),
     );
     expect(resp.status).toBe(400);
+    const body = (await resp.json()) as { kind?: string; spec?: string; reason?: string };
+    expect(body.kind).toBe('range-malformed');
+    expect(body.spec).toBe('banana');
+    expect(body.reason).toBe('shape');
   });
 
   it('returns 400 when no `range` is provided', async () => {
@@ -169,7 +177,7 @@ describe('GET /api/source-snippet', () => {
     expect(resp.status).toBe(400);
   });
 
-  it('returns 200 with an `unavailable: missing` entry per range when the allow-listed file disappears', async () => {
+  it('returns 500 with a structured file-read body when the allow-listed file disappears', async () => {
     // File was loaded once (so it is allow-listed) but is gone at request time.
     const goneDir = await mkdtemp(join(tmpdir(), 'sparqly-snippet-gone-'));
     const gonePath = join(goneDir, 'gone.ttl');
@@ -189,9 +197,15 @@ describe('GET /api/source-snippet', () => {
             snippetContext: '0',
           }).toString(),
       );
-      expect(resp.status).toBe(200);
-      const json = (await resp.json()) as { snippets: SnippetEntry[] };
-      expect(json.snippets).toEqual([{ kind: 'unavailable', reason: 'missing' }]);
+      expect(resp.status).toBe(500);
+      const body = (await resp.json()) as {
+        kind?: string;
+        file?: string;
+        reason?: string;
+      };
+      expect(body.kind).toBe('file-read');
+      expect(body.file).toBe(gonePath);
+      expect(body.reason).toBe('missing');
     } finally {
       await goneServer.close();
       await rm(goneDir, { recursive: true, force: true });
