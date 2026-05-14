@@ -17,14 +17,40 @@ describe('diffErrorExitCode — per-variant stable exit code map', () => {
       code: 10,
     },
     {
-      name: 'unknown-source-id',
+      name: 'target/unknown-ref',
       error: {
-        kind: 'unknown-source-id',
+        kind: 'target',
         side: 'left',
-        id: 'nope',
-        availableIds: [],
+        target: { kind: 'unknown-ref', ref: '@nope', availableIds: [] },
       },
-      code: 11,
+      code: 53,
+    },
+    {
+      name: 'target/ref-as-target',
+      error: {
+        kind: 'target',
+        side: 'right',
+        target: { kind: 'ref-as-target' },
+      },
+      code: 50,
+    },
+    {
+      name: 'target/empty-registry',
+      error: {
+        kind: 'target',
+        side: 'left',
+        target: { kind: 'empty-registry' },
+      },
+      code: 51,
+    },
+    {
+      name: 'target/no-default-multi',
+      error: {
+        kind: 'target',
+        side: 'right',
+        target: { kind: 'no-default-multi', availableIds: ['a', 'b'] },
+      },
+      code: 52,
     },
     {
       name: 'mixed-shape',

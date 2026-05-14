@@ -355,6 +355,41 @@ describe('DiffPage', () => {
     expect(stub?.getAttribute('data-context')).toBe('7');
   });
 
+  it('renders a structured target/unknown-ref inline-error on the left panel when DiffService surfaces a transport-level 400', async () => {
+    const { fixture, diffStub } = await setup(TWO);
+    const root = fixture.nativeElement as HTMLElement;
+    const { left, right } = pickerStubs(fixture);
+    left.valueChange.emit('nope');
+    right.valueChange.emit('b');
+    fixture.detectChanges();
+
+    (root.querySelector('button[data-testid=run-diff]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    diffStub.calls[0].responses.error({
+      error: {
+        kind: 'target',
+        side: 'left',
+        target: {
+          kind: 'unknown-ref',
+          ref: '@nope',
+          availableIds: ['a', 'b'],
+        },
+      },
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const leftPanel = root.querySelector(
+      '[data-testid=error-left]',
+    ) as HTMLElement | null;
+    expect(leftPanel).toBeTruthy();
+    expect(leftPanel?.textContent).toContain('@nope');
+    expect(leftPanel?.textContent).toContain('@a');
+    expect(leftPanel?.textContent).toContain('@b');
+    expect(root.querySelector('[data-testid=error-right]')).toBeFalsy();
+  });
+
   it('renders both per-side errors at once when DiffService returns an error response', async () => {
     const { fixture, diffStub } = await setup(TWO);
     const root = fixture.nativeElement as HTMLElement;

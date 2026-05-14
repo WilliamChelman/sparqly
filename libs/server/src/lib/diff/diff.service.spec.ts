@@ -271,20 +271,20 @@ describe('DiffService — error packaging', () => {
     });
   });
 
-  it('returns kind=error with structured unknown-source-id variants on both sides when both @ids are unknown', async () => {
+  it('returns kind=error with structured target/unknown-ref variants on both sides when both @ids are unknown', async () => {
     const out = await svc.runDiff({ left: '@nope-l', right: '@nope-r' });
 
     expect(out.kind).toBe('error');
     if (out.kind !== 'error') return;
     expect(out.errors.left).toMatchObject({
-      kind: 'unknown-source-id',
+      kind: 'target',
       side: 'left',
-      id: 'nope-l',
+      target: { kind: 'unknown-ref', ref: '@nope-l' },
     });
     expect(out.errors.right).toMatchObject({
-      kind: 'unknown-source-id',
+      kind: 'target',
       side: 'right',
-      id: 'nope-r',
+      target: { kind: 'unknown-ref', ref: '@nope-r' },
     });
   });
 

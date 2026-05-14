@@ -1,4 +1,5 @@
 import { formatSourceError, type SourceError } from '../sources/resolve-source-result';
+import { formatTargetError, type TargetError } from '../target/errors';
 
 /**
  * The diff feature folder's error union. Every variant is a tagged object so
@@ -10,10 +11,15 @@ import { formatSourceError, type SourceError } from '../sources/resolve-source-r
  * thrown messages. As of slice 2 (#240) the diff service itself produces only
  * structured variants; this variant is retained for downstream callers and
  * older fixtures and is the no-op-on-arrival mapping for unexpected throws.
+ *
+ * `target` wraps the cross-feature `TargetError` per ADR-0024's wrap-don't-
+ * duplicate rule. Registry-selection failures (unknown `@id`, empty registry,
+ * etc.) live in `target/errors.ts` and are rendered here by delegation to
+ * `formatTargetError`.
  */
 export type DiffError =
   | TabularBlankNodeError
-  | UnknownSourceIdError
+  | TargetWrappedError
   | MixedShapeError
   | SetMismatchError
   | EndpointAsDiffTargetError
@@ -29,11 +35,10 @@ export interface TabularBlankNodeError {
   column: string;
 }
 
-export interface UnknownSourceIdError {
-  kind: 'unknown-source-id';
+export interface TargetWrappedError {
+  kind: 'target';
   side: 'left' | 'right';
-  id: string;
-  availableIds: ReadonlyArray<string>;
+  target: TargetError;
 }
 
 export interface MixedShapeError {
@@ -87,13 +92,8 @@ export function formatDiffError(error: DiffError): string {
   switch (error.kind) {
     case 'tabular-blank-node':
       return `tabular diff cannot key a row with a blank-node-valued column ?${error.column}: blank nodes have no cross-side identity. Project a stable IRI or literal in your SELECT (e.g. via a deterministic IRI mint or by selecting an identifying property) instead.`;
-    case 'unknown-source-id': {
-      const available =
-        error.availableIds.length === 0
-          ? '(none)'
-          : error.availableIds.map((id) => `@${id}`).join(', ');
-      return `unknown @id "${error.id}" on ${error.side} side; available: ${available}`;
-    }
+    case 'target':
+      return formatTargetError(error.target);
     case 'mixed-shape':
       return `mixed-shape diff: ${error.triplesSide}-side query is triples-shape (CONSTRUCT or SELECT-{?s,?p,?o[,?g]}) while ${error.tuplesSide}-side query is tuples-shape (arbitrary SELECT). Either project triples on both sides (graph diff) or arbitrary tuples on both sides (tabular diff) — pick one shape and align both queries.`;
     case 'set-mismatch': {

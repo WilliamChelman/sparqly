@@ -246,16 +246,36 @@ export class DiffPage implements OnInit {
           this.result.set(res);
           if (res.kind === 'error') this.errors.set(res.errors);
         },
-        error: (err: { error?: DiffErrorResponse; message?: string }) => {
+        error: (
+          err: {
+            error?: DiffErrorResponse | DiffError;
+            message?: string;
+          },
+        ) => {
           this.running.set(false);
-          if (err?.error?.kind === 'error') {
-            this.errors.set(err.error.errors);
-            this.result.set(err.error);
-          } else {
-            this.errors.set({
-              top: { kind: 'legacy-message', message: err?.message ?? 'request failed' },
-            });
+          const body = err?.error;
+          if (body !== undefined && 'kind' in body && body.kind === 'error') {
+            this.errors.set(body.errors);
+            this.result.set(body);
+            return;
           }
+          if (
+            body !== undefined &&
+            'kind' in body &&
+            body.kind === 'target'
+          ) {
+            // Transport-level TargetWrappedError (e.g. unknown @id): unwrap into
+            // the matching side slot so the inline-error renderer dispatches on
+            // `target.kind` (ADR-0024 wrap-don't-duplicate).
+            const errors: DiffErrorResponse['errors'] =
+              body.side === 'left' ? { left: body } : { right: body };
+            this.errors.set(errors);
+            this.result.set({ kind: 'error', errors });
+            return;
+          }
+          this.errors.set({
+            top: { kind: 'legacy-message', message: err?.message ?? 'request failed' },
+          });
         },
       });
   }

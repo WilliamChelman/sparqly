@@ -103,8 +103,9 @@ describe('sparqly serve — --source as a scope filter (ADR-0016 / #197)', () =>
     };
     expect(Object.keys(describeJson.perSource)).toEqual(['alpha']);
 
-    // /api/diff cannot name a filtered-out @id; per ADR-0024 / #241 this is a
-    // transport-level 400 carrying the structured unknown-source-id body.
+    // /api/diff cannot name a filtered-out @id; per ADR-0024 / #248 this is a
+    // transport-level 400 carrying a structured TargetWrappedError body whose
+    // nested target is `unknown-ref` (wrap-don't-duplicate).
     const diffRes = await fetch(`${handle.baseUrl}/api/diff`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -113,12 +114,14 @@ describe('sparqly serve — --source as a scope filter (ADR-0016 / #197)', () =>
     expect(diffRes.status).toBe(400);
     const diffJson = (await diffRes.json()) as {
       kind?: string;
-      id?: string;
-      availableIds?: string[];
+      side?: string;
+      target?: { kind?: string; ref?: string; availableIds?: string[] };
     };
-    expect(diffJson.kind).toBe('unknown-source-id');
-    expect(diffJson.id).toBe('beta');
-    const available = diffJson.availableIds ?? [];
+    expect(diffJson.kind).toBe('target');
+    expect(diffJson.side).toBe('left');
+    expect(diffJson.target?.kind).toBe('unknown-ref');
+    expect(diffJson.target?.ref).toBe('@beta');
+    const available = diffJson.target?.availableIds ?? [];
     expect(available).toContain('alpha');
     expect(available).not.toContain('beta');
   });

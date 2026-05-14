@@ -70,21 +70,20 @@ describe('POST /api/diff', () => {
     expect(resp.status).toBe(400);
   });
 
-  it('returns 400 with a structured unknown-source-id body when a referenced @id is not served', async () => {
+  it('returns 400 with a structured target/unknown-ref body when a referenced @id is not served', async () => {
     const resp = await postJson({ left: '@nope', right: '@beta' });
     expect(resp.status).toBe(400);
     const json = (await resp.json()) as {
       kind?: string;
       side?: string;
-      id?: string;
-      availableIds?: string[];
+      target?: { kind?: string; ref?: string; availableIds?: string[] };
     };
     expect(json).toMatchObject({
-      kind: 'unknown-source-id',
+      kind: 'target',
       side: 'left',
-      id: 'nope',
+      target: { kind: 'unknown-ref', ref: '@nope' },
     });
-    expect(json.availableIds).toEqual(
+    expect(json.target?.availableIds).toEqual(
       expect.arrayContaining(['alpha', 'beta']),
     );
   });

@@ -2,9 +2,11 @@ import {
   BadGatewayException,
   BadRequestException,
   HttpException,
+  HttpStatus,
   InternalServerErrorException,
 } from '@nestjs/common';
-import type { DiffError, SourceError } from 'core';
+import type { DiffError, SourceError, TargetError } from 'core';
+import { targetErrorToStatus } from '../shared';
 
 /**
  * DiffError variants that the diff controller forwards to the mapper instead
@@ -14,7 +16,7 @@ export type TransportDiffError = Extract<
   DiffError,
   {
     kind:
-      | 'unknown-source-id'
+      | 'target'
       | 'anonymous-view-execution'
       | 'anonymous-select-execution'
       | 'source';
@@ -32,13 +34,15 @@ export type TransportError = TransportDiffError | SourceError;
  */
 export function mapDiffHttpError(error: TransportError): HttpException {
   switch (error.kind) {
-    case 'unknown-source-id':
-      return new BadRequestException({
-        kind: 'unknown-source-id',
+    case 'target': {
+      const status = targetErrorToStatus(error.target);
+      const body = {
+        kind: 'target' as const,
         side: error.side,
-        id: error.id,
-        availableIds: [...error.availableIds],
-      });
+        target: cloneTargetError(error.target),
+      };
+      return statusToHttpException(status, body);
+    }
     case 'anonymous-view-execution':
       return new BadGatewayException({
         kind: 'anonymous-view-execution',
@@ -104,5 +108,35 @@ export function mapDiffHttpError(error: TransportError): HttpException {
         transformKey: error.transformKey,
         message: error.message,
       });
+  }
+}
+
+function cloneTargetError(error: TargetError): TargetError {
+  switch (error.kind) {
+    case 'ref-as-target':
+    case 'empty-registry':
+      return { kind: error.kind };
+    case 'no-default-multi':
+      return { kind: 'no-default-multi', availableIds: [...error.availableIds] };
+    case 'unknown-ref':
+      return {
+        kind: 'unknown-ref',
+        ref: error.ref,
+        availableIds: [...error.availableIds],
+      };
+  }
+}
+
+function statusToHttpException(
+  status: HttpStatus,
+  body: object,
+): HttpException {
+  switch (status) {
+    case HttpStatus.BAD_REQUEST:
+      return new BadRequestException(body);
+    case HttpStatus.BAD_GATEWAY:
+      return new BadGatewayException(body);
+    default:
+      return new InternalServerErrorException(body);
   }
 }
