@@ -100,7 +100,11 @@ describe('formatDiffError', () => {
     const message = formatDiffError({
       kind: 'source',
       side: 'left',
-      source: { kind: 'legacy-message', message: 'cannot read file foo.ttl' },
+      source: {
+        kind: 'glob-load',
+        glob: ['/tmp/*.ttl'],
+        message: 'cannot read file foo.ttl',
+      },
     });
     expect(message).toBe('cannot read file foo.ttl');
   });

@@ -98,9 +98,10 @@ export function mapDiffHttpError(error: TransportError): HttpException {
         cachePath: error.cachePath,
         message: error.message,
       });
-    case 'legacy-message':
-      return new InternalServerErrorException({
-        kind: 'legacy-message',
+    case 'transform-parse':
+      return new BadRequestException({
+        kind: 'transform-parse',
+        transformKey: error.transformKey,
         message: error.message,
       });
   }

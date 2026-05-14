@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   GRAPH_NAME_TRANSFORM,
   parseGraphNameTransform,
+  parseGraphNameTransformResult,
 } from './graph-name-transform';
 import type { RdfRecord } from '../engine';
 
@@ -265,6 +266,57 @@ describe('graphName transform behaviour — fillDefault', () => {
     const out = apply(storeOf([r]), ctxOf({ [file]: [r] }));
     const [q] = out.getQuads(null, null, null, null);
     expect(q.graph.value).toBe('urn:my:graph');
+  });
+});
+
+describe('parseGraphNameTransformResult — Result-typed primary impl', () => {
+  it('returns ok with an apply function for a valid shorthand mode', () => {
+    const result = parseGraphNameTransformResult('forceAll');
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(typeof result.value).toBe('function');
+  });
+
+  it('returns err with a transform-parse variant naming the transform key for an unknown mode', () => {
+    const result = parseGraphNameTransformResult('bogus');
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('transform-parse');
+    expect(result.error.transformKey).toBe('graphName');
+    expect(result.error.message).toMatch(/unknown mode "bogus"/);
+  });
+
+  it('returns err with transform-parse for a non-string non-object value', () => {
+    const result = parseGraphNameTransformResult(42 as unknown);
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('transform-parse');
+    expect(result.error.transformKey).toBe('graphName');
+  });
+
+  it('returns err with transform-parse for long form missing mode', () => {
+    const result = parseGraphNameTransformResult({ graph: 'urn:g' } as unknown);
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('transform-parse');
+    expect(result.error.message).toMatch(/`mode`.*required/);
+  });
+
+  it('returns err with transform-parse for graph override on a mode that forbids it', () => {
+    const result = parseGraphNameTransformResult({
+      mode: 'preserve',
+      graph: 'urn:g',
+    });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('transform-parse');
+    expect(result.error.message).toMatch(/`graph`.*preserve/);
+  });
+});
+
+describe('parseGraphNameTransform — legacy throw-wrapping adapter', () => {
+  it('still throws on a bad mode, preserving the legacy message shape', () => {
+    expect(() => parseGraphNameTransform('bogus')).toThrow(/unknown mode/);
   });
 });
 

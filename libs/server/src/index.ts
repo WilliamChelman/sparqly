@@ -4,3 +4,4 @@ export * from './lib/config';
 export * from './lib/diff';
 export * from './lib/describe';
 export * from './lib/snippet';
+export * from './lib/shared';

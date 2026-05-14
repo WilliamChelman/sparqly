@@ -3,10 +3,11 @@
  * variant is one edit here plus one new case in `formatSourceError`. See
  * ADR-0024 for the surrounding convention.
  *
- * `legacy-message` is a transitional bucket holding messages thrown by
- * downstream leaves that have not yet been converted to `Result`. It will
- * shrink as those leaves are converted in subsequent slices and be deleted
- * entirely once the migration finishes (#243).
+ * The 7-variant taxonomy is the complete set of distinct user-facing failure
+ * modes on Surface A (runtime source resolution). Spec/config parse-time
+ * throws (`source-spec.ts`, `transform-spec.ts`, `load-sources.ts`,
+ * `resolve-source-references.ts`) are explicitly Surface B and remain throws
+ * for now (#243).
  */
 export type SourceError =
   | ReferenceTargetError
@@ -16,7 +17,7 @@ export type SourceError =
   | ViewValidationError
   | ViewReferenceError
   | CacheIoError
-  | LegacySourceError;
+  | TransformParseError;
 
 export interface ReferenceTargetError {
   kind: 'reference-target';
@@ -91,8 +92,15 @@ export interface CacheIoError {
   message: string;
 }
 
-export interface LegacySourceError {
-  kind: 'legacy-message';
+/**
+ * Failure parsing a transform spec at runtime resolution — e.g. an unknown
+ * `graphName` mode or an `annotateSource` IRI override that is empty. The
+ * transform key (`graphName`, `annotateSource`, …) is always present so
+ * surfaces can attribute the failure to a specific transform.
+ */
+export interface TransformParseError {
+  kind: 'transform-parse';
+  transformKey: string;
   message: string;
 }
 
@@ -117,7 +125,7 @@ export function formatSourceError(error: SourceError): string {
       return `view "${error.viewId}": ${error.message}`;
     case 'cache-io':
       return `cache ${error.cachePath}: ${error.message}`;
-    case 'legacy-message':
-      return error.message;
+    case 'transform-parse':
+      return `\`${error.transformKey}\`: ${error.message}`;
   }
 }

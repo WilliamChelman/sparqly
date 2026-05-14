@@ -23,6 +23,7 @@ import type {
   EndpointFetchError,
   GlobLoadError,
   QueryExecutionError,
+  TransformParseError,
   ViewReferenceError,
   ViewValidationError,
 } from '../sources/errors';
@@ -65,7 +66,8 @@ export type ResolveAnonymousSelectBindingsError =
   | CacheIoError
   | EndpointFetchError
   | QueryExecutionError
-  | GlobLoadError;
+  | GlobLoadError
+  | TransformParseError;
 
 function upstreamLabel(upstream: ParsedSource): string {
   if (upstream.kind === 'glob') return upstream.glob;
@@ -257,21 +259,19 @@ export async function resolveAnonymousSelectBindings(
 
 /**
  * `resolveSourceResult` returns the full `SourceError` union, which includes
- * variants this leaf can't actually produce: `reference-target` is filtered
- * out at the start of {@link resolveAnonymousSelectBindingsResult}, and
- * `legacy-message` is the now-empty transitional bucket. Both are mapped to a
- * `view-validation` entry to keep the public error union narrow.
+ * `reference-target` — filtered out at the start of
+ * {@link resolveAnonymousSelectBindingsResult}, so it cannot reach this
+ * mapper in practice; we map it to a `view-validation` entry defensively so
+ * the public error union stays narrow.
  */
 function narrowUpstreamError(
   err: SourceError,
 ): ResolveAnonymousSelectBindingsError {
-  if (err.kind === 'reference-target' || err.kind === 'legacy-message') {
+  if (err.kind === 'reference-target') {
     return {
       kind: 'view-validation',
       message:
-        err.kind === 'legacy-message'
-          ? err.message
-          : "anonymous select-bindings: `kind: 'reference'` entries cannot be resolved as a target",
+        "anonymous select-bindings: `kind: 'reference'` entries cannot be resolved as a target",
     };
   }
   return err;

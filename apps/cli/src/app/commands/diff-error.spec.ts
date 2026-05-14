@@ -86,13 +86,17 @@ describe('diffErrorExitCode — per-variant stable exit code map', () => {
       code: 30,
     },
     {
-      name: 'source/legacy-message',
+      name: 'source/transform-parse',
       error: {
         kind: 'source',
         side: 'left',
-        source: { kind: 'legacy-message', message: 'fs read failed' },
+        source: {
+          kind: 'transform-parse',
+          transformKey: 'graphName',
+          message: 'unknown mode "bogus"',
+        },
       },
-      code: 31,
+      code: 38,
     },
     {
       name: 'legacy-message',
