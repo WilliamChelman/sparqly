@@ -47,10 +47,14 @@ describe('formatSourceError', () => {
     expect(message).toMatch(/ECONNREFUSED/);
   });
 
-  it('formats legacy-message by passing the wrapped message through verbatim', () => {
-    expect(
-      formatSourceError({ kind: 'legacy-message', message: 'boom' }),
-    ).toBe('boom');
+  it('formats transform-parse naming the transform key and wrapping the underlying message', () => {
+    const message = formatSourceError({
+      kind: 'transform-parse',
+      transformKey: 'graphName',
+      message: 'unknown mode "bogus"',
+    });
+    expect(message).toMatch(/graphName/);
+    expect(message).toMatch(/unknown mode "bogus"/);
   });
 
   it('formats view-validation naming the view id and wrapping the underlying message', () => {
@@ -106,7 +110,8 @@ describe('formatSourceError', () => {
       { kind: 'view-reference', viewId: 'v', ref: 'r', reason: 'cycle', message: 'm' },
       { kind: 'view-reference', viewId: 'v', ref: 'r', reason: 'reference-upstream', message: 'm' },
       { kind: 'cache-io', cachePath: '/c', message: 'm' },
-      { kind: 'legacy-message', message: 'm' },
+      { kind: 'transform-parse', transformKey: 'graphName', message: 'm' },
+      { kind: 'transform-parse', transformKey: 'annotateSource', message: 'm' },
     ];
     for (const v of variants) {
       expect(formatSourceError(v).length).toBeGreaterThan(0);

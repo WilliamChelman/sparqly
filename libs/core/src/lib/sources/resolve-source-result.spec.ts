@@ -96,6 +96,37 @@ describe('resolveSourceResult — glob target', () => {
   });
 });
 
+describe('resolveSourceResult — transform-parse on glob target', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-rsr-xform-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('returns Result.err with a transform-parse variant naming the transform key when graphMode is invalid', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const target = parseSourceSpec(join(dir, '*.ttl'));
+
+    const result = await resolveSourceResult(target, {
+      graphMode: 'bogus' as unknown as 'forceAll',
+    });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('transform-parse');
+    if (result.error.kind !== 'transform-parse') throw new Error('unreachable');
+    expect(result.error.transformKey).toBe('graphName');
+    expect(formatSourceError(result.error)).toMatch(/graphName/);
+  });
+});
+
 describe('resolveSourceResult — empty target', () => {
   it('materializes an empty target into a fresh empty Store', async () => {
     const target = parseSourceSpec({ id: 'host', empty: true });

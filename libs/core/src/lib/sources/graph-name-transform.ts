@@ -1,5 +1,7 @@
 import { DataFactory, Store, type DefaultGraph, type NamedNode, type Quad } from 'n3';
+import { err, ok, type Result } from 'neverthrow';
 import { GRAPH_MODES, type GraphMode } from '../engine';
+import type { TransformParseError } from './errors';
 import type {
   TransformApply,
   TransformContext,
@@ -15,9 +17,29 @@ interface GraphNameSpec {
   graph?: NamedNode;
 }
 
+/**
+ * Primary `Result`-typed impl of the `graphName` transform parser. Invalid
+ * specs surface as a `TransformParseError` carrying the `graphName` key and
+ * the legacy thrown message (ADR-0024).
+ */
+export function parseGraphNameTransformResult(
+  raw: unknown,
+): Result<TransformApply, TransformParseError> {
+  return parseGraphNameSpecResult(raw).map(buildApply);
+}
+
+/**
+ * @deprecated Use {@link parseGraphNameTransformResult} (ADR-0024). Retained
+ * as a thin throw-wrapping adapter for the `transform-spec.ts` registry path,
+ * which still surfaces parse failures as throws (Surface B, out of scope for
+ * the #243 conversion).
+ */
 export function parseGraphNameTransform(raw: unknown): TransformApply {
-  const spec = parseGraphNameSpec(raw);
-  return buildApply(spec);
+  const result = parseGraphNameTransformResult(raw);
+  if (result.isErr()) {
+    throw new Error(result.error.message);
+  }
+  return result.value;
 }
 
 export const GRAPH_NAME_TRANSFORM: TransformDefinition = {
@@ -25,48 +47,67 @@ export const GRAPH_NAME_TRANSFORM: TransformDefinition = {
   parse: parseGraphNameTransform,
 };
 
-function parseGraphNameSpec(raw: unknown): GraphNameSpec {
+function transformParseErr(message: string): TransformParseError {
+  return { kind: 'transform-parse', transformKey: KEY, message };
+}
+
+function parseGraphNameSpecResult(
+  raw: unknown,
+): Result<GraphNameSpec, TransformParseError> {
   if (typeof raw === 'string') {
-    return { mode: parseMode(raw) };
+    return parseModeResult(raw).map((mode) => ({ mode }));
   }
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new Error(
-      `\`${KEY}\` must be a mode string or an object \`{ mode, graph? }\``,
+    return err(
+      transformParseErr(
+        `\`${KEY}\` must be a mode string or an object \`{ mode, graph? }\``,
+      ),
     );
   }
   const obj = raw as Record<string, unknown>;
   for (const key of Object.keys(obj)) {
     if (!KNOWN_KEYS.has(key)) {
-      throw new Error(`\`${KEY}\`: unknown key "${key}" (known: mode, graph)`);
+      return err(
+        transformParseErr(
+          `\`${KEY}\`: unknown key "${key}" (known: mode, graph)`,
+        ),
+      );
     }
   }
   const rawMode = obj['mode'];
   if (rawMode === undefined) {
-    throw new Error(`\`${KEY}\`: \`mode\` is required in the long form`);
+    return err(transformParseErr(`\`${KEY}\`: \`mode\` is required in the long form`));
   }
   if (typeof rawMode !== 'string') {
-    throw new Error(`\`${KEY}\`: \`mode\` must be a string`);
+    return err(transformParseErr(`\`${KEY}\`: \`mode\` must be a string`));
   }
-  const mode = parseMode(rawMode);
-  const rawGraph = obj['graph'];
-  if (rawGraph === undefined) return { mode };
-  if (typeof rawGraph !== 'string' || rawGraph.length === 0) {
-    throw new Error(`\`${KEY}\`: \`graph\` must be a non-empty IRI string`);
-  }
-  if (GRAPH_OVERRIDE_FORBIDDEN.has(mode)) {
-    throw new Error(
-      `\`${KEY}\`: \`graph\` is meaningless with mode "${mode}" (only forceAll and fillDefault accept an override)`,
-    );
-  }
-  return { mode, graph: DataFactory.namedNode(rawGraph) };
+  return parseModeResult(rawMode).andThen((mode) => {
+    const rawGraph = obj['graph'];
+    if (rawGraph === undefined) return ok({ mode });
+    if (typeof rawGraph !== 'string' || rawGraph.length === 0) {
+      return err(
+        transformParseErr(`\`${KEY}\`: \`graph\` must be a non-empty IRI string`),
+      );
+    }
+    if (GRAPH_OVERRIDE_FORBIDDEN.has(mode)) {
+      return err(
+        transformParseErr(
+          `\`${KEY}\`: \`graph\` is meaningless with mode "${mode}" (only forceAll and fillDefault accept an override)`,
+        ),
+      );
+    }
+    return ok({ mode, graph: DataFactory.namedNode(rawGraph) });
+  });
 }
 
-function parseMode(raw: string): GraphMode {
+function parseModeResult(raw: string): Result<GraphMode, TransformParseError> {
   if ((GRAPH_MODES as ReadonlyArray<string>).includes(raw)) {
-    return raw as GraphMode;
+    return ok(raw as GraphMode);
   }
-  throw new Error(
-    `\`${KEY}\`: unknown mode "${raw}" (valid: preserve, fillDefault, forceAll, flatten)`,
+  return err(
+    transformParseErr(
+      `\`${KEY}\`: unknown mode "${raw}" (valid: preserve, fillDefault, forceAll, flatten)`,
+    ),
   );
 }
 

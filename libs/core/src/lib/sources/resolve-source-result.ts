@@ -1,9 +1,9 @@
-import { ResultAsync, errAsync, okAsync } from 'neverthrow';
+import { ResultAsync, errAsync, ok, okAsync, type Result } from 'neverthrow';
 import { Store } from 'n3';
 import { loadRdfResult, type GraphMode, type LoadResult } from '../engine';
 import { resolveViewResult, type ResolveViewOptions } from '../views';
-import type { SourceError } from './errors';
-import { parseGraphNameTransform } from './graph-name-transform';
+import type { SourceError, TransformParseError } from './errors';
+import { parseGraphNameTransformResult } from './graph-name-transform';
 import type { QuerySources } from './resolve-source';
 import type {
   ParsedGlobSource,
@@ -17,10 +17,10 @@ export {
   formatSourceError,
   type EndpointFetchError,
   type GlobLoadError,
-  type LegacySourceError,
   type QueryExecutionError,
   type ReferenceTargetError,
   type SourceError,
+  type TransformParseError,
 } from './errors';
 
 export interface ResolveSourceResultOptions {
@@ -52,7 +52,10 @@ export function resolveSourceResult(
     return okAsync(materialized(new Store(), [], {}));
   }
   if (target.kind === 'glob') {
-    return loadGlobIntoStore(target, options.graphMode).map((loaded) =>
+    const transformsResult = effectiveTransforms(target, options.graphMode);
+    if (transformsResult.isErr()) return errAsync(transformsResult.error);
+    const transforms = transformsResult.value;
+    return loadGlobIntoStore(target, transforms).map((loaded) =>
       materialized(loaded.store, loaded.files, loaded.prefixes),
     );
   }
@@ -76,10 +79,9 @@ function resolveViewTargetResult(
 
 function loadGlobIntoStore(
   source: ParsedGlobSource,
-  defaultGraphMode: GraphMode | undefined,
+  transforms: ReadonlyArray<ParsedTransform>,
 ): ResultAsync<LoadResult, SourceError> {
   return loadRdfResult({ sources: source.glob }).map((sub) => {
-    const transforms = effectiveTransforms(source, defaultGraphMode);
     const transformed = applyTransformPipeline(sub.store, transforms, {
       perFileRecords: sub.perFileRecords,
     });
@@ -95,14 +97,14 @@ function loadGlobIntoStore(
 function effectiveTransforms(
   source: ParsedGlobSource,
   defaultGraphMode: GraphMode | undefined,
-): ReadonlyArray<ParsedTransform> {
-  if (source.transforms !== undefined) return source.transforms;
+): Result<ReadonlyArray<ParsedTransform>, TransformParseError> {
+  if (source.transforms !== undefined) return ok(source.transforms);
   if (defaultGraphMode === undefined || defaultGraphMode === 'preserve') {
-    return [];
+    return ok([]);
   }
-  return [
-    { key: 'graphName', apply: parseGraphNameTransform(defaultGraphMode) },
-  ];
+  return parseGraphNameTransformResult(defaultGraphMode).map((apply) => [
+    { key: 'graphName', apply },
+  ]);
 }
 
 function materialized(

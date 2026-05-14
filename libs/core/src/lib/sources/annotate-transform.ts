@@ -1,4 +1,6 @@
 import { Store } from 'n3';
+import { err, ok, type Result } from 'neverthrow';
+import type { TransformParseError } from './errors';
 import {
   buildSourceRecord,
   DEFAULT_ANNOTATION_PREDICATE_IRIS,
@@ -15,22 +17,43 @@ import type {
 const KEY = 'annotateSource';
 const KNOWN_KEYS = new Set(['source', 'file', 'line', 'endLine']);
 
-export function parseAnnotateTransform(raw: unknown): TransformApply {
-  const predicates = parseAnnotateSpec(raw);
-  return (store, ctx) => applyAnnotate(store, ctx, predicates);
-}
-
-function parseAnnotateForRegistry(raw: unknown): ParsedTransformResult {
-  const predicates = parseAnnotateSpec(raw);
-  return {
+/**
+ * Primary `Result`-typed impl of the `annotateSource` transform parser.
+ * Invalid specs surface as a `TransformParseError` carrying the
+ * `annotateSource` key and the legacy thrown message (ADR-0024).
+ */
+export function parseAnnotateTransformResult(
+  raw: unknown,
+): Result<ParsedTransformResult, TransformParseError> {
+  return parseAnnotateSpecResult(raw).map((predicates) => ({
     apply: (store, ctx) => applyAnnotate(store, ctx, predicates),
     config: predicates,
-  };
+  }));
+}
+
+/**
+ * @deprecated Use {@link parseAnnotateTransformResult} (ADR-0024). Retained
+ * as a thin throw-wrapping adapter for the `transform-spec.ts` registry path,
+ * which still surfaces parse failures as throws (Surface B, out of scope for
+ * the #243 conversion).
+ */
+export function parseAnnotateTransform(raw: unknown): TransformApply {
+  const result = parseAnnotateTransformResult(raw);
+  if (result.isErr()) {
+    throw new Error(result.error.message);
+  }
+  return result.value.apply;
 }
 
 export const ANNOTATE_SOURCE_TRANSFORM: TransformDefinition = {
   key: KEY,
-  parse: parseAnnotateForRegistry,
+  parse: (raw) => {
+    const result = parseAnnotateTransformResult(raw);
+    if (result.isErr()) {
+      throw new Error(result.error.message);
+    }
+    return result.value;
+  },
 };
 
 /**
@@ -78,43 +101,61 @@ function isPredicateIris(value: unknown): value is AnnotationPredicateIris {
   );
 }
 
-function parseAnnotateSpec(raw: unknown): AnnotationPredicateIris {
+function transformParseErr(message: string): TransformParseError {
+  return { kind: 'transform-parse', transformKey: KEY, message };
+}
+
+function parseAnnotateSpecResult(
+  raw: unknown,
+): Result<AnnotationPredicateIris, TransformParseError> {
   if (raw === undefined || raw === null) {
-    return { ...DEFAULT_ANNOTATION_PREDICATE_IRIS };
+    return ok({ ...DEFAULT_ANNOTATION_PREDICATE_IRIS });
   }
   if (typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new Error(
-      `\`${KEY}\` must be omitted, \`null\`, or an object \`{ source?, file?, line?, endLine? }\``,
+    return err(
+      transformParseErr(
+        `\`${KEY}\` must be omitted, \`null\`, or an object \`{ source?, file?, line?, endLine? }\``,
+      ),
     );
   }
   const obj = raw as Record<string, unknown>;
   for (const key of Object.keys(obj)) {
     if (!KNOWN_KEYS.has(key)) {
-      throw new Error(
-        `\`${KEY}\`: unknown key "${key}" (known: source, file, line, endLine)`,
+      return err(
+        transformParseErr(
+          `\`${KEY}\`: unknown key "${key}" (known: source, file, line, endLine)`,
+        ),
       );
     }
   }
-  return {
-    source: pickIri(obj, 'source') ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.source,
-    file: pickIri(obj, 'file') ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.file,
-    line: pickIri(obj, 'line') ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.line,
-    endLine: pickIri(obj, 'endLine') ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.endLine,
-  };
+  const source = pickIriResult(obj, 'source');
+  if (source.isErr()) return err(source.error);
+  const file = pickIriResult(obj, 'file');
+  if (file.isErr()) return err(file.error);
+  const line = pickIriResult(obj, 'line');
+  if (line.isErr()) return err(line.error);
+  const endLine = pickIriResult(obj, 'endLine');
+  if (endLine.isErr()) return err(endLine.error);
+  return ok({
+    source: source.value ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.source,
+    file: file.value ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.file,
+    line: line.value ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.line,
+    endLine: endLine.value ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.endLine,
+  });
 }
 
-function pickIri(
+function pickIriResult(
   obj: Record<string, unknown>,
   key: 'source' | 'file' | 'line' | 'endLine',
-): string | undefined {
+): Result<string | undefined, TransformParseError> {
   const v = obj[key];
-  if (v === undefined) return undefined;
+  if (v === undefined) return ok(undefined);
   if (typeof v !== 'string' || v.length === 0) {
-    throw new Error(
-      `\`${KEY}\`: \`${key}\` must be a non-empty IRI string`,
+    return err(
+      transformParseErr(`\`${KEY}\`: \`${key}\` must be a non-empty IRI string`),
     );
   }
-  return v;
+  return ok(v);
 }
 
 function applyAnnotate(

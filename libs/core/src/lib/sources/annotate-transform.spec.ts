@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ANNOTATE_SOURCE_TRANSFORM,
   parseAnnotateTransform,
+  parseAnnotateTransformResult,
 } from './annotate-transform';
 import { DEFAULT_ANNOTATION_PREDICATE_IRIS } from './source-record-builder';
 import type { RdfRecord } from '../engine';
@@ -132,6 +133,58 @@ describe('annotate transform behaviour — apply', () => {
       null,
     );
     expect(lineQuads).toHaveLength(0);
+  });
+});
+
+describe('parseAnnotateTransformResult — Result-typed primary impl', () => {
+  it('returns ok with a ParsedTransformResult for null/undefined (all defaults)', () => {
+    const result = parseAnnotateTransformResult(undefined);
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(typeof result.value.apply).toBe('function');
+    expect(result.value.config).toEqual(DEFAULT_ANNOTATION_PREDICATE_IRIS);
+  });
+
+  it('returns ok with overridden config when a partial IRI map is supplied', () => {
+    const result = parseAnnotateTransformResult({ source: 'urn:my:source' });
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect((result.value.config as { source: string }).source).toBe(
+      'urn:my:source',
+    );
+  });
+
+  it('returns err with a transform-parse variant naming the transform key for an unknown field', () => {
+    const result = parseAnnotateTransformResult({ bogus: 'x' });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('transform-parse');
+    expect(result.error.transformKey).toBe('annotateSource');
+    expect(result.error.message).toMatch(/unknown key.*bogus/);
+  });
+
+  it('returns err with transform-parse for a non-object non-null value', () => {
+    const result = parseAnnotateTransformResult(42 as unknown);
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('transform-parse');
+    expect(result.error.transformKey).toBe('annotateSource');
+  });
+
+  it('returns err with transform-parse for an empty-string IRI override', () => {
+    const result = parseAnnotateTransformResult({ source: '' });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('transform-parse');
+    expect(result.error.message).toMatch(/`source`.*non-empty IRI/);
+  });
+});
+
+describe('parseAnnotateTransform — legacy throw-wrapping adapter', () => {
+  it('still throws on a bad field, preserving the legacy message shape', () => {
+    expect(() => parseAnnotateTransform({ bogus: 'x' } as unknown)).toThrow(
+      /unknown key.*bogus/,
+    );
   });
 });
 

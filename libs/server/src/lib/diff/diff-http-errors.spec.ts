@@ -61,17 +61,25 @@ describe('mapDiffHttpError', () => {
     });
   });
 
-  it('maps source-wrapped legacy-message to 500 carrying the underlying message', () => {
+  it('maps source-wrapped transform-parse to 500 carrying transform-key + message', () => {
     const ex = mapDiffHttpError({
       kind: 'source',
       side: 'right',
-      source: { kind: 'legacy-message', message: 'fs read failed' },
+      source: {
+        kind: 'transform-parse',
+        transformKey: 'graphName',
+        message: 'unknown mode "bogus"',
+      },
     });
     expect(ex.getStatus()).toBe(HttpStatus.INTERNAL_SERVER_ERROR);
     expect(ex.getResponse()).toEqual({
       kind: 'source',
       side: 'right',
-      source: { kind: 'legacy-message', message: 'fs read failed' },
+      source: {
+        kind: 'transform-parse',
+        transformKey: 'graphName',
+        message: 'unknown mode "bogus"',
+      },
     });
   });
 });
