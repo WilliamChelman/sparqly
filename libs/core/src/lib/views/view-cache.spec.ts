@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DataFactory, Store } from 'n3';
@@ -13,9 +13,11 @@ import {
   invalidate,
   listCachedEntries,
   lookup,
+  lookupResult,
   removeCacheEntry,
   resolveViewCacheDir,
   storeView,
+  storeViewResult,
   viewCacheKey,
 } from './view-cache';
 
@@ -878,5 +880,107 @@ describe('view-cache — removeCacheEntry', () => {
     await expect(removeCacheEntry(cacheDir, 'zzz')).rejects.toThrow(
       /no cached entry with id "zzz".*known: a/i,
     );
+  });
+});
+
+describe('view-cache — lookupResult / storeViewResult', () => {
+  let cacheDir: string;
+
+  beforeEach(async () => {
+    cacheDir = await mkdtemp(join(tmpdir(), 'sparqly-view-cache-result-'));
+  });
+
+  afterEach(async () => {
+    await rm(cacheDir, { recursive: true, force: true });
+  });
+
+  it('storeViewResult.ok writes the snapshot and lookupResult.ok returns fresh', async () => {
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: 'data/*.ttl' },
+      {
+        id: 'cached',
+        from: '@raw',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+    ]);
+    const binding = cachedViewBinding({
+      cacheDir,
+      registry,
+      viewIndex: 1,
+      upstreamIndices: [0],
+    });
+
+    const stored = await storeViewResult(
+      binding,
+      makeStore([
+        ['http://example.org/a', 'http://example.org/p', 'http://example.org/b'],
+      ]),
+    );
+    expect(stored.isOk()).toBe(true);
+
+    const result = await lookupResult(binding);
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.freshness).toBe('fresh');
+    expect(result.value.store?.size).toBe(1);
+  });
+
+  it('lookupResult returns Result.err with a cache-io variant naming the meta path on a corrupted meta file', async () => {
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: 'data/*.ttl' },
+      {
+        id: 'cached',
+        from: '@raw',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+    ]);
+    const binding = cachedViewBinding({
+      cacheDir,
+      registry,
+      viewIndex: 1,
+      upstreamIndices: [0],
+    });
+    const key = viewCacheKey(binding);
+    await writeFile(join(cacheDir, `${key}.nq`), '');
+    await writeFile(join(cacheDir, `${key}.meta.json`), 'not json');
+
+    const result = await lookupResult(binding);
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('cache-io');
+    if (result.error.kind !== 'cache-io') throw new Error('unreachable');
+    expect(result.error.cachePath).toBe(join(cacheDir, `${key}.meta.json`));
+    expect(result.error.message.length).toBeGreaterThan(0);
+  });
+
+  it('storeViewResult returns Result.err with a cache-io variant when the cache file cannot be written', async () => {
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: 'data/*.ttl' },
+      {
+        id: 'cached',
+        from: '@raw',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+    ]);
+    // Pre-create a file where the cache dir is expected — mkdir will fail
+    // with ENOTDIR.
+    const blockingPath = join(cacheDir, 'blocked');
+    await writeFile(blockingPath, '');
+    const binding = cachedViewBinding({
+      cacheDir: join(blockingPath, 'nested'),
+      registry,
+      viewIndex: 1,
+      upstreamIndices: [0],
+    });
+
+    const result = await storeViewResult(binding, new Store());
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('cache-io');
+    if (result.error.kind !== 'cache-io') throw new Error('unreachable');
+    expect(result.error.message.length).toBeGreaterThan(0);
   });
 });

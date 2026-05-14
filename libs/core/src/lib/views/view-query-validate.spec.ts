@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { validateViewQuery } from './view-query-validate';
+import {
+  validateViewQuery,
+  validateViewQueryResult,
+} from './view-query-validate';
 
 describe('validateViewQuery — accepted shapes', () => {
   it('accepts a SELECT projecting ?s ?p ?o', () => {
@@ -162,5 +165,58 @@ describe("validateViewQuery — mode 'tabular-anon'", () => {
         'SELECT (str(?x) AS ?y) ?z WHERE { ?x <urn:p> ?z }',
       ),
     ).toThrow(/SELECT.*project.*\?s.*\?p.*\?o/i);
+  });
+});
+
+describe('validateViewQueryResult', () => {
+  it('returns Result.ok for a valid CONSTRUCT', () => {
+    const result = validateViewQueryResult(
+      'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+    );
+    expect(result.isOk()).toBe(true);
+  });
+
+  it('returns Result.err with a view-validation variant for UPDATE', () => {
+    const result = validateViewQueryResult(
+      'INSERT DATA { <http://example.org/a> <http://example.org/p> <http://example.org/b> }',
+    );
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('view-validation');
+    expect(result.error.message).toMatch(/UPDATE.*not.*allowed/i);
+  });
+
+  it('returns Result.err with a view-validation variant for SELECT projection mismatch', () => {
+    const result = validateViewQueryResult('SELECT ?s ?p WHERE { ?s ?p ?o }');
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('view-validation');
+    expect(result.error.message).toMatch(/SELECT.*project.*\?s.*\?p.*\?o/i);
+  });
+
+  it('returns Result.err for syntactically invalid SPARQL', () => {
+    const result = validateViewQueryResult('not a query');
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('view-validation');
+    expect(result.error.message.length).toBeGreaterThan(0);
+  });
+
+  it('forwards the supplied viewId in the error variant when given', () => {
+    const result = validateViewQueryResult('ASK { ?s ?p ?o }', {
+      viewId: 'kept',
+    });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('view-validation');
+    expect(result.error.viewId).toBe('kept');
+  });
+
+  it('respects tabular-anon mode (relaxed projection contract)', () => {
+    const result = validateViewQueryResult(
+      'SELECT ?id ?status WHERE { ?p <urn:id> ?id ; <urn:status> ?status }',
+      { mode: 'tabular-anon' },
+    );
+    expect(result.isOk()).toBe(true);
   });
 });

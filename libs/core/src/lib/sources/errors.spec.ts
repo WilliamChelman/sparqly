@@ -53,6 +53,46 @@ describe('formatSourceError', () => {
     ).toBe('boom');
   });
 
+  it('formats view-validation naming the view id and wrapping the underlying message', () => {
+    const message = formatSourceError({
+      kind: 'view-validation',
+      viewId: 'kept',
+      message: 'SELECT view query must project exactly {?s, ?p, ?o}.',
+    });
+    expect(message).toMatch(/view "kept"/);
+    expect(message).toMatch(/project exactly/);
+  });
+
+  it('formats view-validation without a view id when the failure is on an anonymous view', () => {
+    const message = formatSourceError({
+      kind: 'view-validation',
+      message: 'UPDATE queries are not allowed for a view query; use SELECT or CONSTRUCT.',
+    });
+    expect(message).toMatch(/UPDATE.*not allowed/i);
+  });
+
+  it('formats view-reference naming the view, the missing @id ref, and the reason', () => {
+    const message = formatSourceError({
+      kind: 'view-reference',
+      viewId: 'kept',
+      ref: 'nope',
+      reason: 'unknown',
+      message: 'unknown @id reference "@nope"; defined ids: @raw',
+    });
+    expect(message).toMatch(/view "kept"/);
+    expect(message).toMatch(/@nope/);
+  });
+
+  it('formats cache-io naming the cache path and wrapping the underlying message', () => {
+    const message = formatSourceError({
+      kind: 'cache-io',
+      cachePath: '/tmp/sparqly-cache/abc.nq',
+      message: 'EACCES: permission denied',
+    });
+    expect(message).toMatch(/\/tmp\/sparqly-cache\/abc\.nq/);
+    expect(message).toMatch(/EACCES/);
+  });
+
   it('produces a non-empty string for every SourceError variant', () => {
     const variants: ReadonlyArray<SourceError> = [
       { kind: 'reference-target' },
@@ -60,6 +100,12 @@ describe('formatSourceError', () => {
       { kind: 'glob-load', glob: ['x'], file: 'y', message: 'm' },
       { kind: 'query-execution', query: 'SELECT', message: 'm' },
       { kind: 'endpoint-fetch', endpoint: 'http://e', message: 'm' },
+      { kind: 'view-validation', message: 'm' },
+      { kind: 'view-validation', viewId: 'v', message: 'm' },
+      { kind: 'view-reference', viewId: 'v', ref: 'r', reason: 'unknown', message: 'm' },
+      { kind: 'view-reference', viewId: 'v', ref: 'r', reason: 'cycle', message: 'm' },
+      { kind: 'view-reference', viewId: 'v', ref: 'r', reason: 'reference-upstream', message: 'm' },
+      { kind: 'cache-io', cachePath: '/c', message: 'm' },
       { kind: 'legacy-message', message: 'm' },
     ];
     for (const v of variants) {

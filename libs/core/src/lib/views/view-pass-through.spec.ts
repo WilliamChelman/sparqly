@@ -7,7 +7,10 @@ import {
   startFakeSparqlEndpoint,
   type FakeSparqlEndpoint,
 } from '../test/fake-sparql-endpoint';
-import { resolveViewPassThrough } from './view-pass-through';
+import {
+  resolveViewPassThrough,
+  resolveViewPassThroughResult,
+} from './view-pass-through';
 
 const SPARQL_JSON_TWO_BINDINGS = JSON.stringify({
   head: { vars: ['s', 'p', 'o'] },
@@ -190,3 +193,51 @@ describe('resolveViewPassThrough', () => {
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+
+describe('resolveViewPassThroughResult', () => {
+  let endpoint: FakeSparqlEndpoint | undefined;
+
+  afterEach(async () => {
+    if (endpoint) await endpoint.close();
+    endpoint = undefined;
+  });
+
+  it('returns Result.ok with a Store built from the endpoint bindings', async () => {
+    endpoint = await startFakeSparqlEndpoint(() => ({
+      body: SPARQL_JSON_KEEP_ONLY,
+    }));
+    const source = endpointSource(endpoint.url);
+
+    const result = await resolveViewPassThroughResult({
+      endpoint: source,
+      viewQuery: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
+    });
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    const subjects = result.value
+      .getQuads(null, null, null, null)
+      .map((q) => q.subject.value);
+    expect(subjects).toEqual(['http://example.org/keep']);
+  });
+
+  it('returns Result.err with an endpoint-fetch variant naming the endpoint when the remote 500s', async () => {
+    endpoint = await startFakeSparqlEndpoint(() => ({
+      status: 500,
+      body: 'boom',
+    }));
+    const source = endpointSource(endpoint.url);
+
+    const result = await resolveViewPassThroughResult({
+      endpoint: source,
+      viewQuery: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
+    });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('endpoint-fetch');
+    if (result.error.kind !== 'endpoint-fetch') throw new Error('unreachable');
+    expect(result.error.endpoint).toBe(source.endpoint);
+    expect(result.error.message.length).toBeGreaterThan(0);
+  });
+});

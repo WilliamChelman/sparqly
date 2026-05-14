@@ -156,7 +156,7 @@ describe('resolveSourceResult — view target', () => {
     expect(predicates.has('http://example.org/r')).toBe(true);
   });
 
-  it('wraps downstream throws as a legacy-message SourceError variant', async () => {
+  it('surfaces an unknown @from reference as a view-reference SourceError variant', async () => {
     const registry = parseSourceSpecs([
       {
         id: 'derived',
@@ -171,10 +171,101 @@ describe('resolveSourceResult — view target', () => {
 
     expect(result.isErr()).toBe(true);
     if (!result.isErr()) throw new Error('unreachable');
-    expect(result.error.kind).toBe('legacy-message');
-    if (result.error.kind !== 'legacy-message') throw new Error('unreachable');
-    expect(result.error.message.length).toBeGreaterThan(0);
-    // format echoes the wrapped message verbatim.
-    expect(formatSourceError(result.error)).toBe(result.error.message);
+    expect(result.error.kind).toBe('view-reference');
+    if (result.error.kind !== 'view-reference') throw new Error('unreachable');
+    expect(result.error.viewId).toBe('derived');
+    expect(result.error.ref).toBe('missing');
+    expect(result.error.reason).toBe('unknown');
+    expect(formatSourceError(result.error)).toContain('view "derived"');
+  });
+
+  it('surfaces a cycle on the from: chain as a view-reference cycle variant', async () => {
+    const registry = parseSourceSpecs([
+      {
+        id: 'self',
+        from: '@self',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+    ]);
+    const target = registry.find((s) => s.id === 'self');
+    if (!target) throw new Error('self view missing from registry');
+
+    const result = await resolveSourceResult(target, { registry });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('view-reference');
+    if (result.error.kind !== 'view-reference') throw new Error('unreachable');
+    expect(result.error.reason).toBe('cycle');
+  });
+
+  it('surfaces an invalid view query as a view-validation SourceError variant', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: join(dir, '*.ttl') },
+      {
+        id: 'derived',
+        from: '@raw',
+        // ASK is invalid for a materialized view query
+        query: 'ASK { ?s ?p ?o }',
+      },
+    ]);
+    const target = registry.find((s) => s.id === 'derived');
+    if (!target) throw new Error('derived view missing from registry');
+
+    const result = await resolveSourceResult(target, { registry });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('view-validation');
+    if (result.error.kind !== 'view-validation') throw new Error('unreachable');
+    expect(result.error.viewId).toBe('derived');
+    expect(formatSourceError(result.error)).toContain('view "derived"');
+  });
+
+  it('surfaces a corrupted cache entry as a cache-io SourceError variant', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const cacheDir = await mkdtemp(join(tmpdir(), 'sparqly-rsr-cache-'));
+    try {
+      const registry = parseSourceSpecs([
+        { id: 'raw', glob: join(dir, '*.ttl') },
+        {
+          id: 'derived',
+          from: '@raw',
+          query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+          cache: { everlasting: true },
+        },
+      ]);
+      const target = registry.find((s) => s.id === 'derived');
+      if (!target) throw new Error('derived view missing from registry');
+
+      // Prime the cache by resolving once.
+      const first = await resolveSourceResult(target, { registry, cacheDir });
+      expect(first.isOk()).toBe(true);
+
+      const { readdir, writeFile: wf } = await import('node:fs/promises');
+      const entries = await readdir(cacheDir);
+      const metaName = entries.find((n) => n.endsWith('.meta.json'));
+      if (!metaName) throw new Error('cache meta file not found after prime');
+      const metaPath = join(cacheDir, metaName);
+      await wf(metaPath, '{ not valid json');
+
+      const result = await resolveSourceResult(target, { registry, cacheDir });
+
+      expect(result.isErr()).toBe(true);
+      if (!result.isErr()) throw new Error('unreachable');
+      expect(result.error.kind).toBe('cache-io');
+      if (result.error.kind !== 'cache-io') throw new Error('unreachable');
+      expect(result.error.cachePath).toBe(metaPath);
+      expect(formatSourceError(result.error)).toContain('cache');
+    } finally {
+      await rm(cacheDir, { recursive: true, force: true });
+    }
   });
 });

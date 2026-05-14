@@ -3,10 +3,12 @@ import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve as resolvePath } from 'node:path';
 import { Parser, Store, Writer, type Quad } from 'n3';
+import { ResultAsync } from 'neverthrow';
 import {
   type ParsedSource,
   type ParsedViewSource,
 } from '../sources';
+import type { CacheIoError } from '../sources/errors';
 
 export type CacheFreshness = 'fresh' | 'stale' | 'miss';
 
@@ -148,6 +150,41 @@ function upstreamContribsViaRegistry(
     return [`view:${refId}:${subKey}`];
   }
   return [stableStringify(upstream)];
+}
+
+/**
+ * Primary `Result`-typed cache lookup. Returns the structured
+ * {@link ViewCacheLookup} on success and a {@link CacheIoError} carrying the
+ * meta-file path on any fs / parse failure (ADR-0024).
+ */
+export function lookupResult(
+  binding: ViewCacheBinding,
+): ResultAsync<ViewCacheLookup, CacheIoError> {
+  return ResultAsync.fromPromise(lookup(binding), (err) =>
+    toCacheIoError(entryMetaPath(binding), err),
+  );
+}
+
+/**
+ * Primary `Result`-typed cache writer. Returns `ok(undefined)` on success and
+ * a {@link CacheIoError} carrying the data-file path on any fs failure under
+ * the cache directory (ADR-0024).
+ */
+export function storeViewResult(
+  binding: ViewCacheBinding,
+  store: Store,
+): ResultAsync<void, CacheIoError> {
+  return ResultAsync.fromPromise(storeView(binding, store), (err) =>
+    toCacheIoError(entryDataPath(binding), err),
+  );
+}
+
+function toCacheIoError(cachePath: string, err: unknown): CacheIoError {
+  return {
+    kind: 'cache-io',
+    cachePath,
+    message: err instanceof Error ? err.message : String(err),
+  };
 }
 
 export async function lookup(
