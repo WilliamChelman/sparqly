@@ -62,7 +62,7 @@ describe('sparqly query — logging', () => {
 });
 
 describe('sparqly query — error paths (US 22)', () => {
-  it('a glob that matches nothing exits non-zero with a clear error', async () => {
+  it('a glob that matches nothing exits with the glob-load code and a clear error', async () => {
     const result = await runCli([
       'query',
       '/tmp/sparqly-e2e-does-not-exist/*.ttl',
@@ -70,12 +70,11 @@ describe('sparqly query — error paths (US 22)', () => {
       SELECT_ALL,
     ]);
 
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/error:/);
+    expect(result.exitCode).toBe(32);
     expect(result.stderr).toMatch(/No files matched/);
   });
 
-  it('a syntactically invalid query exits non-zero with a clear error', async () => {
+  it('a syntactically invalid query exits with the query-execution code and a clear error', async () => {
     const result = await runCli([
       'query',
       SOURCES,
@@ -83,8 +82,8 @@ describe('sparqly query — error paths (US 22)', () => {
       'this is not sparql',
     ]);
 
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/error:/);
+    expect(result.exitCode).toBe(33);
+    expect(result.stderr).toMatch(/query execution failed/);
   });
 
   it('a missing --query-file path exits non-zero with a clear error', async () => {

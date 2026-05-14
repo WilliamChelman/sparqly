@@ -57,7 +57,7 @@ describe('sparqly hash --compare-with', () => {
     ['primary', 'bad', 'good'],
     ['compare-with', 'good', 'bad'],
   ] as const)(
-    'exits 2 and writes nothing to stdout when the %s source fails to parse',
+    'exits with the glob-load code and writes nothing to stdout when the %s source fails to parse',
     async (_label, primaryKind, compareKind) => {
       const bad = join(scratch, 'broken.ttl');
       await writeFile(bad, 'this is not valid turtle <<<');
@@ -73,13 +73,13 @@ describe('sparqly hash --compare-with', () => {
         compare,
       ]);
 
-      expect(result.exitCode).toBe(2);
+      expect(result.exitCode).toBe(32);
       expect(result.stdout).toBe('');
       expect(result.stderr).toMatch(/broken\.ttl/);
     },
   );
 
-  it('exits 2 when no primary source is provided', async () => {
+  it('exits with the empty-registry code when no primary source is provided', async () => {
     const good = hashFixture('domain.ttl');
 
     const result = await runCli([
@@ -89,7 +89,7 @@ describe('sparqly hash --compare-with', () => {
       good,
     ]);
 
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(51);
     expect(result.stdout).toBe('');
     expect(result.stderr).toMatch(/registry is empty|no target source/i);
   });

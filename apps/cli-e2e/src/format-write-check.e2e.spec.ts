@@ -80,7 +80,7 @@ describe('sparqly format --check', () => {
     expect(result.stdout).toBe('');
   });
 
-  it('exits 2 when a matched file fails to parse', async () => {
+  it('exits with the glob-load code when a matched file fails to parse', async () => {
     const file = join(dir, 'broken.ttl');
     await writeFile(file, 'this is not valid turtle <<<\n');
 
@@ -88,8 +88,8 @@ describe('sparqly format --check', () => {
       cwd: dir,
     });
 
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toMatch(/error:/);
+    expect(result.exitCode).toBe(32);
+    expect(result.stderr).toMatch(/Failed to parse/);
   });
 
   it('exits 1, lists unformatted file paths to stdout, and does not mutate files', async () => {

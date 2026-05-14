@@ -1,19 +1,31 @@
 import { readFile } from 'node:fs/promises';
+import { ok, type Result, type ResultAsync } from 'neverthrow';
 import { z } from 'zod';
 import { formatRdf, parseRdfString } from 'common';
 import {
   parseSourceSpecs,
   parseSparqlPrefixes,
   QueryEngine,
-  resolveSource,
-  selectTarget,
+  resolveSourceResult,
+  selectTargetResult,
   SUPPORTED_FORMATS,
+  type EndpointFetchError,
+  type ExecuteResult,
   type ParsedSource,
+  type QueryExecutionError,
+  type QuerySources,
+  type SourceError,
   type SourceSpecInput,
   type SparqlFormat,
+  type TargetError,
 } from 'core';
 import { configureLogger } from '../logging';
 import { writeOutputToFile } from '../output';
+import {
+  QueryErrorSignal,
+  decorateQueryError,
+  queryErrorExitCode,
+} from './query-error';
 import type { FieldDescriptor } from '../runner/fields/field';
 import {
   contextBaseField,
@@ -80,14 +92,16 @@ const formatField: FieldDescriptor = {
   ],
 };
 
-export function resolveQueryTarget(config: QueryConfig): ParsedSource {
+export function resolveQueryTargetResult(
+  config: QueryConfig,
+): Result<ParsedSource, TargetError> {
   const registry = parseSourceSpecs(config.sources ?? []);
   const targetArg =
     typeof config.source === 'string' ? config.source : undefined;
   if (config.source !== undefined && targetArg === undefined) {
-    return parseSourceSpecs([config.source])[0];
+    return ok(parseSourceSpecs([config.source])[0]);
   }
-  return selectTarget(registry, targetArg);
+  return selectTargetResult(registry, targetArg);
 }
 
 export const querySpec: CommandSpec<QueryConfig> = {
@@ -107,7 +121,10 @@ export const querySpec: CommandSpec<QueryConfig> = {
   ],
   positionals: [{ field: 'source', name: 'glob' }],
   configScope: { sources: true },
-  exitCode: () => 1,
+  exitCode: (err) => {
+    if (err instanceof QueryErrorSignal) return queryErrorExitCode(err.queryError);
+    return 1;
+  },
   handler: async (config) => {
     const boundaryLog = configureLogger({
       verbose: config.verbose === true,
@@ -146,57 +163,102 @@ export const querySpec: CommandSpec<QueryConfig> = {
 
     const format = config.format;
     const mutable = config.mutable === true;
-
-    const target = resolveQueryTarget(config);
     const registry = parseSourceSpecs(config.sources ?? []);
 
-    const loadStart = Date.now();
-    const sources = await resolveSource(target, { registry, logger: boundaryLog });
-    const loadMs = Date.now() - loadStart;
-    let engine: QueryEngine;
-    if (sources.mode === 'pass-through') {
-      boundaryLog.debug('source-loaded', {
-        mode: sources.mode,
-        endpoint: sources.endpoint.endpoint,
-        ms: loadMs,
+    const pipeline: ResultAsync<ExecuteResult, SourceError | TargetError> =
+      resolveQueryTargetResult(config).asyncAndThen<
+        ExecuteResult,
+        SourceError | TargetError
+      >((target) => {
+        const loadStart = Date.now();
+        return resolveSourceResult(target, { registry, logger: boundaryLog })
+          .map((sources) => {
+            logSourceLoaded(boundaryLog, sources, Date.now() - loadStart);
+            return sources;
+          })
+          .andThen((sources) =>
+            executeAgainstSources(
+              sources,
+              target,
+              query,
+              format,
+              mutable,
+              boundaryLog,
+            ),
+          );
       });
-      engine = new QueryEngine(sources.endpoint, {
-        id: sources.endpoint.endpoint,
-        mode: 'pass-through',
-        logger: boundaryLog,
-      });
-    } else {
-      boundaryLog.debug('source-loaded', {
-        mode: sources.mode,
-        files: sources.files.length,
-        quads: sources.store.size,
-        ms: loadMs,
-      });
-      engine = new QueryEngine(sources.store, {
-        id: target.id ?? (target.kind === 'glob' ? target.glob : '(target)'),
-        mode: 'materialized',
-        logger: boundaryLog,
-      });
-    }
 
-    const result = await engine.execute(query, { format, mutable });
+    const outcome = await pipeline;
 
-    const rendered =
-      result.format === 'turtle'
-        ? formatTurtleResult(result.body, query, config)
-        : result.body;
-    const body = rendered.endsWith('\n') ? rendered : `${rendered}\n`;
-    if (config.out !== undefined) {
-      await writeOutputToFile({
-        out: config.out,
-        cwd: process.cwd(),
-        body,
-      });
-    } else {
-      process.stdout.write(body);
-    }
+    await outcome.match(
+      async (result) => {
+        const rendered =
+          result.format === 'turtle'
+            ? formatTurtleResult(result.body, query, config)
+            : result.body;
+        const body = rendered.endsWith('\n') ? rendered : `${rendered}\n`;
+        if (config.out !== undefined) {
+          await writeOutputToFile({
+            out: config.out,
+            cwd: process.cwd(),
+            body,
+          });
+        } else {
+          process.stdout.write(body);
+        }
+      },
+      async (err) => {
+        const color = process.stderr.isTTY === true;
+        process.stderr.write(`${decorateQueryError(err, { color })}\n`);
+        throw new QueryErrorSignal(err);
+      },
+    );
   },
 };
+
+function executeAgainstSources(
+  sources: QuerySources,
+  target: ParsedSource,
+  query: string,
+  format: SparqlFormat | undefined,
+  mutable: boolean,
+  logger: ReturnType<typeof configureLogger>,
+): ResultAsync<ExecuteResult, QueryExecutionError | EndpointFetchError> {
+  const engine =
+    sources.mode === 'pass-through'
+      ? new QueryEngine(sources.endpoint, {
+          id: sources.endpoint.endpoint,
+          mode: 'pass-through',
+          logger,
+        })
+      : new QueryEngine(sources.store, {
+          id: target.id ?? (target.kind === 'glob' ? target.glob : '(target)'),
+          mode: 'materialized',
+          logger,
+        });
+  return engine.executeResult(query, { format, mutable });
+}
+
+function logSourceLoaded(
+  logger: ReturnType<typeof configureLogger>,
+  sources: QuerySources,
+  loadMs: number,
+): void {
+  if (sources.mode === 'pass-through') {
+    logger.debug('source-loaded', {
+      mode: sources.mode,
+      endpoint: sources.endpoint.endpoint,
+      ms: loadMs,
+    });
+    return;
+  }
+  logger.debug('source-loaded', {
+    mode: sources.mode,
+    files: sources.files.length,
+    quads: sources.store.size,
+    ms: loadMs,
+  });
+}
 
 function formatTurtleResult(
   body: string,

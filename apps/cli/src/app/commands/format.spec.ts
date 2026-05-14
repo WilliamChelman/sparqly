@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { blockSchemaFromFields } from '../runner/fields/field';
 import { formatSpec } from './format';
+import { FormatErrorSignal } from './format-error';
 
 describe('formatSpec', () => {
   it('declares one positional bound to sources', () => {
@@ -64,6 +65,18 @@ describe('formatSpec', () => {
       }),
     ).toBe(2);
     expect(formatSpec.exitCode(new Error('x'))).toBe(1);
+  });
+
+  it('exitCode routes FormatErrorSignal through formatErrorExitCode (per-variant)', () => {
+    const signal = new FormatErrorSignal({
+      kind: 'glob-load',
+      glob: ['data/*.ttl'],
+      message: 'no files matched',
+    });
+    expect(formatSpec.exitCode(signal)).toBe(32);
+    expect(
+      formatSpec.exitCode(signal, { rawConfig: { check: true } }),
+    ).toBe(32);
   });
 
   it('rejects a SPARQL endpoint source via spec.refine, suggesting the query→format pipe', () => {

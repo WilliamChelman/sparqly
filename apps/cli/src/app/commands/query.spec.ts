@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { blockSchemaFromFields, defaultsFromFields } from '../runner/fields/field';
-import { querySpec, resolveQueryTarget } from './query';
+import { QueryErrorSignal } from './query-error';
+import { querySpec, resolveQueryTargetResult } from './query';
 
 describe('querySpec — single-target shape', () => {
   it('binds a single positional to the `source` field', () => {
@@ -65,8 +66,17 @@ describe('querySpec — single-target shape', () => {
     }
   });
 
-  it('exitCode returns 1 by default', () => {
+  it('exitCode returns 1 by default for non-signal errors', () => {
     expect(querySpec.exitCode(new Error('boom'))).toBe(1);
+  });
+
+  it('exitCode routes QueryErrorSignal through queryErrorExitCode (per-variant)', () => {
+    const signal = new QueryErrorSignal({
+      kind: 'endpoint-fetch',
+      endpoint: 'https://example.org/sparql',
+      message: 'down',
+    });
+    expect(querySpec.exitCode(signal)).toBe(34);
   });
 });
 
@@ -84,58 +94,76 @@ describe('querySpec — array `--source` rejection', () => {
   });
 });
 
-describe('resolveQueryTarget — selection precedence', () => {
+describe('resolveQueryTargetResult — selection precedence', () => {
   it('auto-picks the sole registry entry when no positional/--source is given', () => {
-    const target = resolveQueryTarget({
+    const result = resolveQueryTargetResult({
       sources: [{ id: 'files', glob: 'data/*.ttl' }],
     });
-    expect(target).toMatchObject({ kind: 'glob', id: 'files' });
+    expect(result.isOk()).toBe(true);
+    expect(result._unsafeUnwrap()).toMatchObject({ kind: 'glob', id: 'files' });
   });
 
   it('falls back to the `default: true` entry when no positional/--source is given', () => {
-    const target = resolveQueryTarget({
+    const result = resolveQueryTargetResult({
       sources: [
         { id: 'files', glob: 'data/*.ttl' },
         { id: 'live', endpoint: 'https://example.com/sparql', default: true },
       ],
     });
-    expect(target).toMatchObject({ kind: 'endpoint', id: 'live' });
+    expect(result._unsafeUnwrap()).toMatchObject({ kind: 'endpoint', id: 'live' });
   });
 
-  it('errors with the available `@ids` when the registry is ambiguous and no --source is given', () => {
-    expect(() =>
-      resolveQueryTarget({
-        sources: [
-          { id: 'files', glob: 'data/*.ttl' },
-          { id: 'live', endpoint: 'https://example.com/sparql' },
-        ],
-      }),
-    ).toThrow(/@files.*@live/s);
+  it('errs `no-default-multi` with the available ids when the registry is ambiguous', () => {
+    const result = resolveQueryTargetResult({
+      sources: [
+        { id: 'files', glob: 'data/*.ttl' },
+        { id: 'live', endpoint: 'https://example.com/sparql' },
+      ],
+    });
+    expect(result.isErr()).toBe(true);
+    const err = result._unsafeUnwrapErr();
+    expect(err.kind).toBe('no-default-multi');
+    if (err.kind === 'no-default-multi') {
+      expect([...err.availableIds]).toEqual(['files', 'live']);
+    }
+  });
+
+  it('errs `unknown-ref` when the explicit ref does not match any registry entry', () => {
+    const result = resolveQueryTargetResult({
+      sources: [{ id: 'files', glob: 'data/*.ttl' }],
+      source: '@nope',
+    });
+    expect(result.isErr()).toBe(true);
+    const err = result._unsafeUnwrapErr();
+    expect(err.kind).toBe('unknown-ref');
+    if (err.kind === 'unknown-ref') {
+      expect(err.ref).toBe('@nope');
+    }
   });
 
   it('inline positional wins over a `default: true` entry', () => {
-    const target = resolveQueryTarget({
+    const result = resolveQueryTargetResult({
       sources: [
         { id: 'live', endpoint: 'https://example.com/sparql', default: true },
       ],
       source: 'adhoc/*.ttl',
     });
-    expect(target).toEqual({ kind: 'glob', glob: 'adhoc/*.ttl' });
+    expect(result._unsafeUnwrap()).toEqual({ kind: 'glob', glob: 'adhoc/*.ttl' });
   });
 
   it('explicit `@id` ref wins over a `default: true` entry', () => {
-    const target = resolveQueryTarget({
+    const result = resolveQueryTargetResult({
       sources: [
         { id: 'files', glob: 'data/*.ttl' },
         { id: 'live', endpoint: 'https://example.com/sparql', default: true },
       ],
       source: '@files',
     });
-    expect(target).toMatchObject({ kind: 'glob', id: 'files' });
+    expect(result._unsafeUnwrap()).toMatchObject({ kind: 'glob', id: 'files' });
   });
 
   it('does not require any `sources` registry when an inline source is provided', () => {
-    const target = resolveQueryTarget({ source: 'adhoc/*.ttl' });
-    expect(target).toEqual({ kind: 'glob', glob: 'adhoc/*.ttl' });
+    const result = resolveQueryTargetResult({ source: 'adhoc/*.ttl' });
+    expect(result._unsafeUnwrap()).toEqual({ kind: 'glob', glob: 'adhoc/*.ttl' });
   });
 });
