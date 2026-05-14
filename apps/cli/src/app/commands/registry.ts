@@ -1,5 +1,5 @@
 import { cacheClearSpec, cacheListSpec } from './cache';
-import { diffSpec } from './diff';
+import { diffSpec } from './diff/diff';
 import { formatSpec } from './format';
 import { hashSpec } from './hash';
 import { querySpec } from './query';
