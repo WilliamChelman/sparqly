@@ -24,7 +24,8 @@
     "rdf-parse": "^5.0.0",
     "sparqljs": "^3.7.4",
     "tinyglobby": "^0.2.16",
-    "tslib": "^2.3.0"
+    "tslib": "^2.3.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/sparqljs": "^3.1.12"
