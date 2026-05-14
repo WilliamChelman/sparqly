@@ -93,7 +93,7 @@ function classifyDiffResponse(
 
 function isTransportVariant(e: DiffError): e is TransportDiffError {
   return (
-    e.kind === 'unknown-source-id' ||
+    e.kind === 'target' ||
     e.kind === 'anonymous-view-execution' ||
     e.kind === 'anonymous-select-execution' ||
     e.kind === 'source'

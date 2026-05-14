@@ -1,4 +1,9 @@
-import { formatDiffError, type DiffError, type SourceError } from 'core';
+import {
+  formatDiffError,
+  type DiffError,
+  type SourceError,
+  type TargetError,
+} from 'core';
 
 /**
  * Per-variant exit-code map. Stable across releases — scripts grep on these.
@@ -7,7 +12,6 @@ import { formatDiffError, type DiffError, type SourceError } from 'core';
  *   1   diff present (DiffPresentSignal — see diff.ts)
  *   2   unknown error (fallthrough)
  *  10   tabular-blank-node               (shape)
- *  11   unknown-source-id                (registry lookup)
  *  12   mixed-shape                      (shape)
  *  13   set-mismatch                     (shape)
  *  14   endpoint-as-diff-target          (shape)
@@ -23,13 +27,17 @@ import { formatDiffError, type DiffError, type SourceError } from 'core';
  *  37   source: cache-io                 (view cache read/write/parse failure)
  *  38   source: transform-parse          (transform spec parse failure)
  *  40   legacy-message                   (top-level unconverted throw)
+ *  50   target: ref-as-target            (reference alias picked as data)
+ *  51   target: empty-registry           (registry has no entries)
+ *  52   target: no-default-multi         (ambiguous registry, no default)
+ *  53   target: unknown-ref              (registry lookup miss)
  */
 export function diffErrorExitCode(error: DiffError): number {
   switch (error.kind) {
     case 'tabular-blank-node':
       return 10;
-    case 'unknown-source-id':
-      return 11;
+    case 'target':
+      return targetErrorExitCode(error.target);
     case 'mixed-shape':
       return 12;
     case 'set-mismatch':
@@ -46,6 +54,19 @@ export function diffErrorExitCode(error: DiffError): number {
       return sourceErrorExitCode(error.source);
     case 'legacy-message':
       return 40;
+  }
+}
+
+function targetErrorExitCode(error: TargetError): number {
+  switch (error.kind) {
+    case 'ref-as-target':
+      return 50;
+    case 'empty-registry':
+      return 51;
+    case 'no-default-multi':
+      return 52;
+    case 'unknown-ref':
+      return 53;
   }
 }
 

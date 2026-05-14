@@ -15,12 +15,55 @@ export interface DiffRequest {
  * structured fields so the renderer can highlight the offending SELECT chip
  * for `tabular-blank-node`; `legacy-message` is the transitional bucket for
  * un-converted thrown messages (ADR-0024).
+ *
+ * `target` follows the wrap-don't-duplicate rule: registry-selection failures
+ * live in their own `TargetError` union and are rendered here by dispatching
+ * on `target.kind` rather than duplicating variants per consumer.
  */
-export type DiffError = TabularBlankNodeError | LegacyMessageError;
+export type DiffError =
+  | TabularBlankNodeError
+  | TargetWrappedError
+  | LegacyMessageError;
 
 export interface TabularBlankNodeError {
   kind: 'tabular-blank-node';
   column: string;
+}
+
+export interface TargetWrappedError {
+  kind: 'target';
+  side: 'left' | 'right';
+  target: TargetError;
+}
+
+/**
+ * Wire mirror of `libs/core/src/lib/target/errors.ts`. The webapp inline-error
+ * renderer dispatches on `kind` to render structured registry-selection
+ * failures (e.g. `unknown @id` with the list of available ids).
+ */
+export type TargetError =
+  | RefAsTargetError
+  | EmptyRegistryError
+  | NoDefaultMultiError
+  | UnknownRefError;
+
+export interface RefAsTargetError {
+  kind: 'ref-as-target';
+}
+
+export interface EmptyRegistryError {
+  kind: 'empty-registry';
+}
+
+export interface NoDefaultMultiError {
+  kind: 'no-default-multi';
+  availableIds: ReadonlyArray<string>;
+}
+
+export interface UnknownRefError {
+  kind: 'unknown-ref';
+  ref: string;
+  availableIds: ReadonlyArray<string>;
 }
 
 export interface LegacyMessageError {
@@ -37,9 +80,29 @@ export function formatDiffError(error: DiffError): string {
   switch (error.kind) {
     case 'tabular-blank-node':
       return `tabular diff cannot key a row with a blank-node-valued column ?${error.column}: blank nodes have no cross-side identity. Project a stable IRI or literal in your SELECT (e.g. via a deterministic IRI mint or by selecting an identifying property) instead.`;
+    case 'target':
+      return formatTargetError(error.target);
     case 'legacy-message':
       return error.message;
   }
+}
+
+export function formatTargetError(error: TargetError): string {
+  switch (error.kind) {
+    case 'ref-as-target':
+      return "`kind: 'reference'` entries are aliases, not data, and cannot be used as a target source";
+    case 'empty-registry':
+      return 'registry is empty; no target source to select';
+    case 'no-default-multi':
+      return `registry has multiple entries and no \`default: true\`; pass an explicit target. Available: ${formatAvailable(error.availableIds)}`;
+    case 'unknown-ref':
+      return `no source matches ${error.ref}. Available: ${formatAvailable(error.availableIds)}`;
+  }
+}
+
+function formatAvailable(ids: ReadonlyArray<string>): string {
+  if (ids.length === 0) return '<none>';
+  return ids.map((id) => `@${id}`).join(', ');
 }
 
 export interface SourceRecord {

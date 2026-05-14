@@ -12,27 +12,32 @@ describe('formatDiffError', () => {
     expect(message).toMatch(/cross-side|identity/i);
   });
 
-  it('formats unknown-source-id naming the offending id, side, and available list', () => {
+  it('formats target by delegating to formatTargetError (unknown-ref carries the offending ref and available list)', () => {
     const message = formatDiffError({
-      kind: 'unknown-source-id',
+      kind: 'target',
       side: 'left',
-      id: 'nope',
-      availableIds: ['alpha', 'beta'],
+      target: {
+        kind: 'unknown-ref',
+        ref: '@nope',
+        availableIds: ['alpha', 'beta'],
+      },
     });
-    expect(message).toMatch(/"nope"/);
-    expect(message).toMatch(/left side/);
+    expect(message).toMatch(/@nope/);
     expect(message).toMatch(/@alpha/);
     expect(message).toMatch(/@beta/);
   });
 
-  it('formats unknown-source-id with "(none)" when registry is empty', () => {
+  it('formats target/unknown-ref with "<none>" when registry is empty (delegates verbatim to formatTargetError)', () => {
     const message = formatDiffError({
-      kind: 'unknown-source-id',
+      kind: 'target',
       side: 'right',
-      id: 'x',
-      availableIds: [],
+      target: {
+        kind: 'unknown-ref',
+        ref: '@x',
+        availableIds: [],
+      },
     });
-    expect(message).toMatch(/\(none\)/);
+    expect(message).toMatch(/<none>/);
   });
 
   it('formats mixed-shape calling out which side is triples and which is tuples', () => {

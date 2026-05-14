@@ -111,10 +111,13 @@ export class DiffService {
     );
     if (!found) {
       return err({
-        kind: 'unknown-source-id',
+        kind: 'target',
         side,
-        id,
-        availableIds: availableIds(this.servedRegistry),
+        target: {
+          kind: 'unknown-ref',
+          ref: ref.startsWith('@') ? ref : `@${ref}`,
+          availableIds: availableIds(this.servedRegistry),
+        },
       });
     }
     return ok(found);
