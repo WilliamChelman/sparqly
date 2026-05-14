@@ -74,7 +74,6 @@ export default [
   // ESLint runs from the repo root or from an Nx project root.
   {
     files: [
-      '**/app/commands/diff.ts',
       '**/lib/diff/group-rdf-diff-by-entity.ts',
       '**/lib/bootstrap/create-server.ts',
       '**/lib/formatter.ts',

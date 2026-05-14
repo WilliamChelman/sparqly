@@ -1,14 +1,15 @@
+import { withAutoSourceAnnotation } from 'core';
 import { describe, expect, it } from 'vitest';
-import { blockSchemaFromFields, defaultsFromFields } from '../runner/fields/field';
 import {
-  collectSnippetKeysForHunkedDiff,
-  detectTabularDispatch,
-  diffSpec,
-  inferDiffFormatFromOut,
-  resolveDiffSide,
-  withAutoSourceAnnotation,
-} from './diff';
-import { DiffErrorSignal } from './diff-error';
+  blockSchemaFromFields,
+  defaultsFromFields,
+} from '../../runner/fields/field';
+import { DiffErrorSignal } from '../diff-error';
+import { diffSpec } from './diff';
+import { inferDiffFormatFromOut } from './fields';
+import { collectSnippetKeysForHunkedDiff } from './graph-runner';
+import { resolveDiffSide } from './side';
+import { detectTabularDispatch } from './tabular-runner';
 
 const TRIPLES_CONSTRUCT =
   'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:p ?o } WHERE { ?s ex:p ?o }';
