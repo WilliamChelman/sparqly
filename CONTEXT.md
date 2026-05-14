@@ -5,10 +5,22 @@ A CLI for querying, hashing, diffing, formatting, and serving RDF, built around 
 ## Language
 
 **Source**:
-A declared input that produces RDF. One of: `glob`, `endpoint`, `empty`, `view`, `reference`.
+A declared input that produces RDF. One of: `glob`, `file`, `endpoint`, `empty`, `view`, `reference`. `file` sources are never user-declared — they exist only as the children of a **split glob**.
 
 **Glob source**:
 A `kind: 'glob'` source that matches RDF files on disk via a glob pattern.
+
+**File source**:
+A `kind: 'file'` source resolving exactly one RDF file at a path. Synthesized by **registry expansion** as the child of a **split glob**; carries a `parentId` linking back to that meta. Never user-declared. Resolves like a one-file glob (materialized) and may carry an inherited **Source transformation pipeline**.
+_Avoid_: "single-file glob", "leaf source"
+
+**Split glob**:
+A **Glob source** declared with `splitByFile: true`. Opt-in. The meta retains its union-of-files semantics; **registry expansion** additionally synthesizes one **File source** per matched file as a peer registry entry with id `<parentId>/<glob-relative-path>`. Empty matches warn; they do not error (see also the same behaviour on plain globs).
+_Avoid_: "exploded glob", "fan-out glob"
+
+**Registry expansion**:
+A second pass after `parseSourceSpecs`, run once at startup before scope/target resolution. Walks the filesystem for every **split glob** and emits its **File source** children alongside the meta. Sync `parseSourceSpecs` stays pure (shape-only); expansion is async and owns filesystem-error surfacing. The watcher re-runs expansion per-meta when files enter or leave a split-glob's match set.
+_Avoid_: "glob resolution", "registry hydration"
 
 **Endpoint source**:
 A `kind: 'endpoint'` source whose value is the URL of a remote SPARQL HTTP endpoint.
@@ -23,7 +35,7 @@ A `kind: 'view'` source that scopes exactly one upstream (`from: '@ref'`) with a
 A view synthesized at command time from `--query`/`--query-file` (or per-side `--left-query`/`--right-query` on `diff`) on `hash` or `diff`; never cached. In `diff`, an anonymous view's query may project an arbitrary SELECT tuple, which selects **tabular diff** over **graph diff**; declared views and `hash` retain the triple-only restriction.
 
 **Upstream**:
-The single source a view references via `from:`. May be a glob, endpoint, empty, or another view (in which case resolution recurses).
+The single source a view references via `from:`. May be a glob, file, endpoint, empty, or another view (in which case resolution recurses). A **File source** is a valid upstream just like the meta **Glob source** it was split from.
 
 **Materialized resolution**:
 Loading the upstream into a local in-memory `Store`, then executing the view query against that Store. The default for glob, empty, and view upstreams.
@@ -65,7 +77,7 @@ The `diff` mode taken when both sides' queries are arbitrary SELECTs projecting 
 _Avoid_: "bindings diff", "result-set diff", "row diff"
 
 **Source transformation pipeline**:
-An ordered list of declared transforms attached to a **Glob source** under `transforms:`, applied to its loaded Store before it is handed to any consumer. The registry of available transform keys is closed (only sparqly-known transforms).
+An ordered list of declared transforms attached to a **Glob source** under `transforms:`, applied to its loaded Store before it is handed to any consumer. The registry of available transform keys is closed (only sparqly-known transforms). When a glob is a **split glob**, each synthesized **File source** child inherits a full copy of the pipeline — children behave identically whether targeted directly or through the meta.
 _Avoid_: "post-processors", "loader plugins"
 
 **Graph-name transformation** (`graphName`):
@@ -141,7 +153,8 @@ _Avoid_: "format block", "display config", "prefix block"
 - **`serve`** exposes the **served registry**; resolution per source follows the same rules as `query`.
 - **`hash`** picks one **target source** and always **canonicalizes** the resolved Store; it refuses raw endpoints (must be wrapped in a view) and refuses arbitrary-SELECT views.
 - **`diff`** picks one **target source** per side and dispatches by query shape: **graph diff** when both sides produce triples; **tabular diff** when both sides project arbitrary SELECT tuples with matching variable names. Mixed-shape pairs are rejected. Both modes refuse a raw endpoint as target.
-- A **Glob source** may declare a **Source transformation pipeline**; transforms run in array order at load time before the Store is exposed to resolution.
+- A **Glob source** may declare a **Source transformation pipeline**; transforms run in array order at load time before the Store is exposed to resolution. A **split glob**'s synthesized **File source** children inherit the pipeline.
+- A **split glob** is targetable as the union (`@meta`) and as any of its children (`@meta/<relative-path>`); a child may serve as a CLI target, an `@id` in `view.from:`, or a selection in the webapp picker. The single-target rule (ADR-0005) is preserved — both the meta and any one child are single targets; the picker remains single-select on `query`/`hash`/`diff`.
 - The **Annotate-source transformation** populates **Source records** on the glob's own asserted triples; annotations do not propagate through a downstream **View** unless that view's query explicitly references them, and they are stripped by **Canonicalization**.
 - `diff` injects **Auto source annotation** by default for any glob target in **graph-diff** mode; an explicit `annotateSource` declaration in config takes precedence.
 - `diff` (in **graph-diff** mode) extracts **Source records** per side after **Canonicalization** and surfaces them across every graph output format; the `html` format additionally renders a **Source-file snippet** per record.
