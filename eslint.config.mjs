@@ -76,7 +76,6 @@ export default [
     files: [
       '**/lib/bootstrap/create-server.ts',
       '**/lib/formatter.ts',
-      '**/lib/sources/source-spec.ts',
     ],
     rules: {
       'max-lines': 'off',
