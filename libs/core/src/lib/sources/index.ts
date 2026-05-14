@@ -1,4 +1,6 @@
 export * from './source-spec';
+export * from './view-cache-spec';
+export * from './transform-registry';
 export * from './transform-spec';
 export * from './transform-pipeline';
 export * from './annotate-transform';
