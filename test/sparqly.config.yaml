@@ -12,6 +12,14 @@ sources:
     glob: ./data/diffs/diff-02.ttl
   - id: fedlex
     endpoint: https://fedlex.data.admin.ch/sparqlendpoint
+  - id: era-new-cs
+    glob: ../tmp/era-cs/new-era-cs.ttl
+  - id: era-old-cs
+    glob: ../tmp/era-cs/old-era-cs.ttl
+  - id: era-new-onto
+    glob: ../tmp/era-onto/era-onto-3-3-0.ttl
+  - id: era-old-onto
+    glob: ../tmp/era-onto/era-onto-3-2-2.ttl
 
 serve:
   port: 3000
@@ -21,9 +29,14 @@ context:
   prefixes:
     ex: 'http://example.org/'
     sh: 'http://www.w3.org/ns/shacl#'
-    xsd: 'http://www.w3.org/2001/XMLSchema#i'
+    xsd: 'http://www.w3.org/2001/XMLSchema#'
     rdf: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#'
     rdfs: 'http://www.w3.org/2000/01/rdf-schema#'
+    fedlex: 'https://fedlex.data.admin.ch/eli/'
+    era-sh: 'http://data.europa.eu/949/shapes/'
+    era-skos: 'http://data.europa.eu/949/concepts/'
+    era: 'http://data.europa.eu/949#'
+    jolux: 'http://data.legilux.public.lu/resource/ontology/jolux#'
     owl: 'http://www.w3.org/2002/07/owl#'
     dct: 'http://purl.org/dc/terms/'
     dcat: 'http://www.w3.org/ns/dcat#'
