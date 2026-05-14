@@ -10,53 +10,28 @@ import {
   Res,
 } from '@nestjs/common';
 import { z } from 'zod';
-import {
-  readSourceSnippets,
-  type FocalRange,
-  type SnippetReadResult,
-} from 'core';
 import { SnippetAllowList } from './snippet-allow-list';
+import { mapSnippetHttpError } from './snippet-http-errors';
+import { SnippetService } from './snippet.service';
 import { SPARQL_SNIPPET_ALLOW_LIST } from '../bootstrap';
-
-const RANGE_SPEC = /^([1-9][0-9]*)(?:-([1-9][0-9]*))?$/;
-
-const RANGES = z
-  .union([z.string(), z.array(z.string())])
-  .transform((raw, ctx): FocalRange[] => {
-    const specs = Array.isArray(raw) ? raw : [raw];
-    if (specs.length === 0) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'at least one `range` is required' });
-      return z.NEVER;
-    }
-    const ranges: FocalRange[] = [];
-    for (const spec of specs) {
-      const m = RANGE_SPEC.exec(spec);
-      if (m === null) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `\`range\` must be "<line>" or "<startLine>-<endLine>" (got "${spec}")`,
-        });
-        return z.NEVER;
-      }
-      const focalStart = Number(m[1]);
-      const focalEnd = m[2] === undefined ? focalStart : Number(m[2]);
-      if (focalEnd < focalStart) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `\`range\` end must be >= start (got "${spec}")`,
-        });
-        return z.NEVER;
-      }
-      ranges.push({ focalStart, focalEnd });
-    }
-    return ranges;
-  });
 
 const SNIPPET_QUERY_SCHEMA = z
   .object({
     file: z.string().min(1),
     snippetContext: z.coerce.number().int().nonnegative(),
-    range: RANGES,
+    range: z
+      .union([z.string(), z.array(z.string())])
+      .transform((raw, ctx): string[] => {
+        const specs = Array.isArray(raw) ? raw : [raw];
+        if (specs.length === 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'at least one `range` is required',
+          });
+          return z.NEVER;
+        }
+        return specs;
+      }),
   })
   .strict();
 
@@ -71,6 +46,7 @@ export class SnippetController {
   constructor(
     @Inject(SPARQL_SNIPPET_ALLOW_LIST)
     private readonly allowList: SnippetAllowList,
+    private readonly service: SnippetService,
   ) {}
 
   @Get()
@@ -106,15 +82,22 @@ export class SnippetController {
       });
     }
 
-    const snippets: SnippetReadResult[] = await readSourceSnippets(
-      absPath,
-      parsed.data.range,
-      parsed.data.snippetContext,
-    );
+    const result = await this.service.readSnippets({
+      file: absPath,
+      rangeSpecs: parsed.data.range,
+      context: parsed.data.snippetContext,
+    });
 
-    res
-      .status(HttpStatus.OK)
-      .setHeader('Content-Type', 'application/json')
-      .send(JSON.stringify({ snippets }));
+    result.match(
+      ({ snippets }) => {
+        res
+          .status(HttpStatus.OK)
+          .setHeader('Content-Type', 'application/json')
+          .send(JSON.stringify({ snippets }));
+      },
+      (error) => {
+        throw mapSnippetHttpError(error);
+      },
+    );
   }
 }

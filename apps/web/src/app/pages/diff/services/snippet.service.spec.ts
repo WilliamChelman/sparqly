@@ -25,7 +25,7 @@ const snippetReq = (http: HttpTestingController) =>
   http.expectOne((r) => r.url.split('?')[0] === '/api/source-snippet');
 
 describe('SnippetService', () => {
-  it('coalesces same-file fetches in a microtask into one GET with one `range` param per call, aligned results', async () => {
+  it('coalesces same-file fetches in a microtask into one GET with one `range` param per call, aligned snippet results', async () => {
     const { service, http } = setup();
     const a: SnippetReadResult[] = [];
     const b: SnippetReadResult[] = [];
@@ -47,14 +47,16 @@ describe('SnippetService', () => {
     req.flush({
       snippets: [
         { kind: 'snippet', startLine: 1, focalStart: 3, focalEnd: 3, lines: ['L1', 'L2', 'L3', 'L4', 'L5'] },
-        { kind: 'unavailable', reason: 'beyond-eof' },
+        { kind: 'snippet', startLine: 8, focalStart: 10, focalEnd: 12, lines: ['L8', 'L9', 'L10', 'L11', 'L12'] },
       ],
     });
 
     expect(a).toEqual([
       { kind: 'snippet', startLine: 1, focalStart: 3, focalEnd: 3, lines: ['L1', 'L2', 'L3', 'L4', 'L5'] },
     ]);
-    expect(b).toEqual([{ kind: 'unavailable', reason: 'beyond-eof' }]);
+    expect(b).toEqual([
+      { kind: 'snippet', startLine: 8, focalStart: 10, focalEnd: 12, lines: ['L8', 'L9', 'L10', 'L11', 'L12'] },
+    ]);
     http.verify();
   });
 
@@ -71,11 +73,17 @@ describe('SnippetService', () => {
       'file:///a.ttl',
       'file:///b.ttl',
     ]);
-    for (const r of reqs) r.flush({ snippets: [{ kind: 'unavailable', reason: 'empty' }] });
+    for (const r of reqs) {
+      r.flush({
+        snippets: [
+          { kind: 'snippet', startLine: 1, focalStart: 1, focalEnd: 1, lines: ['only'] },
+        ],
+      });
+    }
     http.verify();
   });
 
-  it('resolves every pending fetch to `unavailable: missing` when the GET fails', async () => {
+  it('resolves every pending fetch to a structured `file-read` error carrying path + reason when the server returns 500 with a SnippetError body', async () => {
     const { service, http } = setup();
     const got: SnippetReadResult[] = [];
     service.fetch('file:///x.ttl', { focalStart: 1, focalEnd: 1 }, 0).subscribe((r) => got.push(r));
@@ -83,12 +91,44 @@ describe('SnippetService', () => {
 
     await tick();
 
-    snippetReq(http).flush('boom', { status: 500, statusText: 'Server Error' });
+    snippetReq(http).flush(
+      { kind: 'file-read', file: '/abs/x.ttl', reason: 'missing' },
+      { status: 500, statusText: 'Server Error' },
+    );
 
     expect(got).toEqual([
-      { kind: 'unavailable', reason: 'missing' },
-      { kind: 'unavailable', reason: 'missing' },
+      { kind: 'file-read', file: '/abs/x.ttl', reason: 'missing' },
+      { kind: 'file-read', file: '/abs/x.ttl', reason: 'missing' },
     ]);
+    http.verify();
+  });
+
+  it('resolves every pending fetch to a structured `range-out-of-bounds` error when the server returns 400 with that body', async () => {
+    const { service, http } = setup();
+    const got: SnippetReadResult[] = [];
+    service.fetch('file:///x.ttl', { focalStart: 999, focalEnd: 999 }, 0).subscribe((r) => got.push(r));
+
+    await tick();
+
+    snippetReq(http).flush(
+      { kind: 'range-out-of-bounds', spec: '999' },
+      { status: 400, statusText: 'Bad Request' },
+    );
+
+    expect(got).toEqual([{ kind: 'range-out-of-bounds', spec: '999' }]);
+    http.verify();
+  });
+
+  it('falls back to `unavailable: missing` when the GET fails without a structured SnippetError body', async () => {
+    const { service, http } = setup();
+    const got: SnippetReadResult[] = [];
+    service.fetch('file:///x.ttl', { focalStart: 1, focalEnd: 1 }, 0).subscribe((r) => got.push(r));
+
+    await tick();
+
+    snippetReq(http).flush('boom', { status: 502, statusText: 'Bad Gateway' });
+
+    expect(got).toEqual([{ kind: 'unavailable', reason: 'missing' }]);
     http.verify();
   });
 
@@ -96,13 +136,17 @@ describe('SnippetService', () => {
     const { service, http } = setup();
     service.fetch('file:///x.ttl', { focalStart: 1, focalEnd: 1 }, 0).subscribe();
     await tick();
-    snippetReq(http).flush({ snippets: [{ kind: 'unavailable', reason: 'empty' }] });
+    snippetReq(http).flush({
+      snippets: [{ kind: 'snippet', startLine: 1, focalStart: 1, focalEnd: 1, lines: ['only'] }],
+    });
 
     service.fetch('file:///x.ttl', { focalStart: 2, focalEnd: 2 }, 0).subscribe();
     await tick();
     const second = snippetReq(http);
     expect(second.request.params.getAll('range')).toEqual(['2']);
-    second.flush({ snippets: [{ kind: 'unavailable', reason: 'empty' }] });
+    second.flush({
+      snippets: [{ kind: 'snippet', startLine: 2, focalStart: 2, focalEnd: 2, lines: ['L2'] }],
+    });
     http.verify();
   });
 });

@@ -9,7 +9,13 @@ import {
 import { DiffController, DiffService } from '../diff';
 import type { EngineMap } from './engine-map';
 import { RegistrySparqlController } from '../sparql';
-import { SnippetAllowList, SnippetController } from '../snippet';
+import {
+  SnippetAllowList,
+  SnippetController,
+  SnippetService,
+  SNIPPET_READER,
+  createDefaultSnippetReader,
+} from '../snippet';
 import {
   SPARQL_CONFIG,
   SPARQL_CONTEXT,
@@ -86,6 +92,8 @@ export class ServerModule {
             options.resolutionRegistry,
           ),
         },
+        { provide: SNIPPET_READER, useValue: createDefaultSnippetReader() },
+        SnippetService,
       ],
     };
   }
