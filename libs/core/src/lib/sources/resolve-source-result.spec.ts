@@ -65,6 +65,35 @@ describe('resolveSourceResult — glob target', () => {
     expect(result.value.store.size).toBe(1);
     expect(result.value.files).toHaveLength(1);
   });
+
+  it('returns Result.err with a glob-load variant naming the glob when no files match', async () => {
+    const pattern = join(dir, 'nope-*.ttl');
+    const target = parseSourceSpec(pattern);
+
+    const result = await resolveSourceResult(target);
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('glob-load');
+    if (result.error.kind !== 'glob-load') throw new Error('unreachable');
+    expect(result.error.glob).toEqual([pattern]);
+    expect(result.error.file).toBeUndefined();
+  });
+
+  it('returns Result.err with a glob-load variant naming the offending file on parse failure', async () => {
+    const bad = join(dir, 'broken.ttl');
+    await writeFile(bad, 'this is not valid turtle <<<');
+    const pattern = join(dir, '*.ttl');
+    const target = parseSourceSpec(pattern);
+
+    const result = await resolveSourceResult(target);
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('glob-load');
+    if (result.error.kind !== 'glob-load') throw new Error('unreachable');
+    expect(result.error.file).toBe(bad);
+  });
 });
 
 describe('resolveSourceResult — empty target', () => {

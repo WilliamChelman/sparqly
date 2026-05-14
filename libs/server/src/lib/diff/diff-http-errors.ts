@@ -59,6 +59,25 @@ export function mapDiffHttpError(error: TransportError): HttpException {
       });
     case 'reference-target':
       return new InternalServerErrorException({ kind: 'reference-target' });
+    case 'glob-load':
+      return new InternalServerErrorException({
+        kind: 'glob-load',
+        glob: [...error.glob],
+        file: error.file,
+        message: error.message,
+      });
+    case 'query-execution':
+      return new BadGatewayException({
+        kind: 'query-execution',
+        query: error.query,
+        message: error.message,
+      });
+    case 'endpoint-fetch':
+      return new BadGatewayException({
+        kind: 'endpoint-fetch',
+        endpoint: error.endpoint,
+        message: error.message,
+      });
     case 'legacy-message':
       return new InternalServerErrorException({
         kind: 'legacy-message',

@@ -16,6 +16,9 @@ import { formatDiffError, type DiffError, type SourceError } from 'core';
  *  21   anonymous-select-execution       (transport / upstream)
  *  30   source: reference-target         (config invariant — bug)
  *  31   source: legacy-message           (unconverted leaf throw)
+ *  32   source: glob-load                (file/glob load failure)
+ *  33   source: query-execution          (SPARQL execution failure)
+ *  34   source: endpoint-fetch           (remote endpoint failure)
  *  40   legacy-message                   (top-level unconverted throw)
  */
 export function diffErrorExitCode(error: DiffError): number {
@@ -49,6 +52,12 @@ function sourceErrorExitCode(error: SourceError): number {
       return 30;
     case 'legacy-message':
       return 31;
+    case 'glob-load':
+      return 32;
+    case 'query-execution':
+      return 33;
+    case 'endpoint-fetch':
+      return 34;
   }
 }
 

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { loadRdf } from './rdf-loader';
+import { loadRdf, loadRdfResult } from './rdf-loader';
 import { QueryEngine } from './query-engine';
 
 const FIXTURES_DIR = resolve(__dirname, '../../../../../test/data/formats');
@@ -241,5 +241,70 @@ describe('loadRdf', () => {
     expect(records).toBeDefined();
     expect(records).toHaveLength(1);
     expect(records?.[0].quad.subject.value).toBe('http://example.org/a');
+  });
+});
+
+describe('loadRdfResult', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-loader-result-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('returns Result.ok with files + store when the glob matches', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const result = await loadRdfResult({ sources: join(dir, '*.ttl') });
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.files).toHaveLength(1);
+    expect(result.value.store.size).toBe(1);
+  });
+
+  it('returns Result.err with a glob-load variant naming the glob when no files match', async () => {
+    const pattern = join(dir, 'nope-*.ttl');
+    const result = await loadRdfResult({ sources: pattern });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('glob-load');
+    if (result.error.kind !== 'glob-load') throw new Error('unreachable');
+    expect(result.error.glob).toEqual([pattern]);
+    expect(result.error.file).toBeUndefined();
+    expect(result.error.message).toMatch(/no files matched/i);
+  });
+
+  it('returns Result.err with a glob-load variant naming the offending file on parse failure', async () => {
+    const bad = join(dir, 'broken.ttl');
+    await writeFile(bad, 'this is not valid turtle <<<');
+    const pattern = join(dir, '*.ttl');
+
+    const result = await loadRdfResult({ sources: pattern });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('glob-load');
+    if (result.error.kind !== 'glob-load') throw new Error('unreachable');
+    expect(result.error.glob).toEqual([pattern]);
+    expect(result.error.file).toBe(bad);
+  });
+
+  it('accepts an array glob and preserves it in the err variant', async () => {
+    const patterns = [join(dir, 'nope-a*.ttl'), join(dir, 'nope-b*.ttl')];
+
+    const result = await loadRdfResult({ sources: patterns });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    if (result.error.kind !== 'glob-load') throw new Error('unreachable');
+    expect(result.error.glob).toEqual(patterns);
   });
 });
