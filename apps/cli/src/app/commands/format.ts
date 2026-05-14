@@ -7,9 +7,22 @@ import {
   parseRdfString,
   type FormatSerialization,
 } from 'common';
-import { loadRdf, parseSourceSpec, type SourceSpecInput } from 'core';
+import {
+  loadRdfResult,
+  parseSourceSpec,
+  type LoadResult,
+  type SourceError,
+  type SourceSpecInput,
+  type TargetError,
+} from 'core';
+import type { ResultAsync } from 'neverthrow';
 import { configureLogger } from '../logging';
 import { writeOutputToFile } from '../output';
+import {
+  FormatErrorSignal,
+  decorateFormatError,
+  formatErrorExitCode,
+} from './format-error';
 import type { FieldDescriptor } from '../runner/fields/field';
 import {
   coercedBooleanSchema,
@@ -59,7 +72,7 @@ const checkField: FieldDescriptor = {
     {
       spec: '--check',
       description:
-        'Print the paths of unformatted files to stdout and exit non-zero (0 = all formatted, 1 = needs format, 2 = error). Does not mutate files. Mutually exclusive with --write.',
+        'Print the paths of unformatted files to stdout and exit non-zero (0 = all formatted, 1 = needs format, 30-53 = per-variant source/target error per format-error.ts). Does not mutate files. Mutually exclusive with --write.',
     },
   ],
 };
@@ -136,6 +149,8 @@ export const formatSpec: CommandSpec<FormatConfig> = {
     ),
   exitCode: (err, ctx) => {
     if (err instanceof FormatCheckMismatchSignal) return 1;
+    if (err instanceof FormatErrorSignal)
+      return formatErrorExitCode(err.formatError);
     return ctx?.rawConfig?.check === true ? 2 : 1;
   },
   handler: async (config) => {
@@ -174,7 +189,9 @@ export const formatSpec: CommandSpec<FormatConfig> = {
 
     if (positional.length > 0) {
       const start = Date.now();
-      const { store, files, prefixes } = await loadRdf({ sources: positional });
+      const { store, files, prefixes } = await loadOrThrowFormatError(
+        loadRdfResult({ sources: positional }),
+      );
       logger.log(
         `Loaded ${files.length} file(s) (${store.size} quads) in ${
           Date.now() - start
@@ -260,14 +277,16 @@ async function processPerFile(args: {
   objectAnchoredPredicates: string[] | undefined;
   logger: Logger;
 }): Promise<void> {
-  const { files, prefixes: perFilePrefixes } = await loadRdf({
-    sources: args.glob,
-  });
+  const { files, prefixes: perFilePrefixes } = await loadOrThrowFormatError(
+    loadRdfResult({ sources: args.glob }),
+  );
   args.logger.log(`Loaded ${files.length} file(s) in --${args.mode} mode`);
 
   const unformatted: string[] = [];
   for (const file of files) {
-    const { store: fileStore } = await loadRdf({ sources: file });
+    const { store: fileStore } = await loadOrThrowFormatError(
+      loadRdfResult({ sources: file }),
+    );
     const serialization = inferSerialization([file]);
     const fileMerged = mergePrefixes(
       { [file]: perFilePrefixes[file] ?? {} },
@@ -344,6 +363,26 @@ async function readStdin(): Promise<string | null> {
   }
   const text = Buffer.concat(chunks).toString('utf8').trim();
   return text.length > 0 ? text : null;
+}
+
+/**
+ * Top-level `result.match` per ADR-0024: on success unwrap the `LoadResult`,
+ * on failure render the shared `format*Error` body to stderr (red when the
+ * terminal supports it) and re-throw as `FormatErrorSignal` so the runner
+ * stays silent and `formatSpec.exitCode` can route the variant.
+ */
+async function loadOrThrowFormatError(
+  result: ResultAsync<LoadResult, SourceError | TargetError>,
+): Promise<LoadResult> {
+  const settled = await result;
+  return settled.match(
+    (value) => value,
+    (err) => {
+      const color = process.stderr.isTTY === true;
+      process.stderr.write(`${decorateFormatError(err, { color })}\n`);
+      throw new FormatErrorSignal(err);
+    },
+  );
 }
 
 export { FormatCheckMismatchSignal };

@@ -4,8 +4,9 @@ import {
   hashSpec,
   HashCompareError,
   HashMismatchSignal,
-  resolveHashTarget,
+  resolveHashTargetResult,
 } from './hash';
+import { HashErrorSignal } from './hash-error';
 
 describe('hashSpec — single-target shape', () => {
   it('binds a single positional to the `source` field', () => {
@@ -84,6 +85,18 @@ describe('hashSpec — single-target shape', () => {
     ).toBe(2);
     expect(hashSpec.exitCode(new Error('boom'))).toBe(1);
   });
+
+  it('exitCode routes HashErrorSignal through hashErrorExitCode (per-variant)', () => {
+    const signal = new HashErrorSignal({
+      kind: 'endpoint-fetch',
+      endpoint: 'https://example.org/sparql',
+      message: 'down',
+    });
+    expect(hashSpec.exitCode(signal)).toBe(34);
+    expect(
+      hashSpec.exitCode(signal, { rawConfig: { compareWith: 'b.ttl' } }),
+    ).toBe(34);
+  });
 });
 
 describe('hashSpec — array `--source` rejection', () => {
@@ -100,58 +113,62 @@ describe('hashSpec — array `--source` rejection', () => {
   });
 });
 
-describe('resolveHashTarget — selection precedence', () => {
+describe('resolveHashTargetResult — selection precedence', () => {
   it('auto-picks the sole registry entry when no positional/--source is given', () => {
-    const target = resolveHashTarget({
+    const result = resolveHashTargetResult({
       sources: [{ id: 'files', glob: 'data/*.ttl' }],
     });
-    expect(target).toMatchObject({ kind: 'glob', id: 'files' });
+    expect(result._unsafeUnwrap()).toMatchObject({ kind: 'glob', id: 'files' });
   });
 
   it('falls back to the `default: true` entry when no positional/--source is given', () => {
-    const target = resolveHashTarget({
+    const result = resolveHashTargetResult({
       sources: [
         { id: 'files', glob: 'data/*.ttl' },
         { id: 'live', endpoint: 'https://example.com/sparql', default: true },
       ],
     });
-    expect(target).toMatchObject({ kind: 'endpoint', id: 'live' });
+    expect(result._unsafeUnwrap()).toMatchObject({ kind: 'endpoint', id: 'live' });
   });
 
-  it('errors with the available `@ids` when the registry is ambiguous and no --source is given', () => {
-    expect(() =>
-      resolveHashTarget({
-        sources: [
-          { id: 'files', glob: 'data/*.ttl' },
-          { id: 'live', endpoint: 'https://example.com/sparql' },
-        ],
-      }),
-    ).toThrow(/@files.*@live/s);
+  it('errs `no-default-multi` with the available ids when the registry is ambiguous', () => {
+    const result = resolveHashTargetResult({
+      sources: [
+        { id: 'files', glob: 'data/*.ttl' },
+        { id: 'live', endpoint: 'https://example.com/sparql' },
+      ],
+    });
+    expect(result.isErr()).toBe(true);
+    const err = result._unsafeUnwrapErr();
+    expect(err.kind).toBe('no-default-multi');
+    if (err.kind === 'no-default-multi') {
+      expect([...err.availableIds]).toEqual(['files', 'live']);
+    }
   });
 
   it('inline positional wins over a `default: true` entry', () => {
-    const target = resolveHashTarget({
+    const result = resolveHashTargetResult({
       sources: [
         { id: 'live', endpoint: 'https://example.com/sparql', default: true },
       ],
       source: 'adhoc/*.ttl',
     });
-    expect(target).toEqual({ kind: 'glob', glob: 'adhoc/*.ttl' });
+    expect(result._unsafeUnwrap()).toEqual({ kind: 'glob', glob: 'adhoc/*.ttl' });
   });
 
   it('explicit `@id` ref wins over a `default: true` entry', () => {
-    const target = resolveHashTarget({
+    const result = resolveHashTargetResult({
       sources: [
         { id: 'files', glob: 'data/*.ttl' },
         { id: 'live', endpoint: 'https://example.com/sparql', default: true },
       ],
       source: '@files',
     });
-    expect(target).toMatchObject({ kind: 'glob', id: 'files' });
+    expect(result._unsafeUnwrap()).toMatchObject({ kind: 'glob', id: 'files' });
   });
 
   it('does not require any `sources` registry when an inline source is provided', () => {
-    const target = resolveHashTarget({ source: 'adhoc/*.ttl' });
-    expect(target).toEqual({ kind: 'glob', glob: 'adhoc/*.ttl' });
+    const result = resolveHashTargetResult({ source: 'adhoc/*.ttl' });
+    expect(result._unsafeUnwrap()).toEqual({ kind: 'glob', glob: 'adhoc/*.ttl' });
   });
 });

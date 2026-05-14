@@ -36,5 +36,8 @@
   ],
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "neverthrow": "^8.2.0"
   }
 }

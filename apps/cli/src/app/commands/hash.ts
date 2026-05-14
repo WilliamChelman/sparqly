@@ -1,20 +1,28 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
+import { ResultAsync, ok, type Result } from 'neverthrow';
 import { z } from 'zod';
 import type { SparqlyLogger } from 'common';
 import {
   canonicalizeStore,
   extractAnnotationPredicates,
   parseSourceSpecs,
-  resolveAnonymousView,
-  resolveSource,
-  selectTarget,
+  resolveAnonymousViewResult,
+  resolveSourceResult,
+  selectTargetResult,
   type ParsedSource,
+  type SourceError,
   type SourceSpecInput,
+  type TargetError,
 } from 'core';
 import { configureLogger } from '../logging';
 import { writeOutputToFile } from '../output';
+import {
+  HashErrorSignal,
+  decorateHashError,
+  hashErrorExitCode,
+} from './hash-error';
 import type { FieldDescriptor } from '../runner/fields/field';
 import {
   coercedBooleanSchema,
@@ -68,7 +76,7 @@ const compareWithField: FieldDescriptor = {
     {
       spec: '--compare-with <source>',
       description:
-        "Hash a second target source (an `@id` ref into the registry, or an inline glob/URL) with the same loader options and compare against the primary target. Exit 0 on match (stdout 'match: <hash>'), 1 on mismatch (stdout shows both labeled hashes), 2 on error. SPARQL endpoint targets are rejected on this side (use a `view` source kind to scope an endpoint, or pass --compare-with-query/--compare-with-query-file).",
+        "Hash a second target source (an `@id` ref into the registry, or an inline glob/URL) with the same loader options and compare against the primary target. Exit 0 on match (stdout 'match: <hash>'), 1 on mismatch (stdout shows both labeled hashes), 30-53 on error per the per-variant source/target map in hash-error.ts. SPARQL endpoint targets are rejected on this side (use a `view` source kind to scope an endpoint, or pass --compare-with-query/--compare-with-query-file).",
     },
   ],
 };
@@ -134,22 +142,24 @@ const jsonField: FieldDescriptor = {
   ],
 };
 
-export function resolveHashTarget(config: HashConfig): ParsedSource {
+export function resolveHashTargetResult(
+  config: HashConfig,
+): Result<ParsedSource, TargetError> {
   const registry = parseSourceSpecs(config.sources ?? []);
   const targetArg =
     typeof config.source === 'string' ? config.source : undefined;
   if (config.source !== undefined && targetArg === undefined) {
-    return parseSourceSpecs([config.source])[0];
+    return ok(parseSourceSpecs([config.source])[0]);
   }
-  return selectTarget(registry, targetArg);
+  return selectTargetResult(registry, targetArg);
 }
 
-function resolveCompareTarget(
+function resolveCompareTargetResult(
   config: HashConfig,
   compareWith: string,
-): ParsedSource {
+): Result<ParsedSource, TargetError> {
   const registry = parseSourceSpecs(config.sources ?? []);
-  return selectTarget(registry, compareWith);
+  return selectTargetResult(registry, compareWith);
 }
 
 export const hashSpec: CommandSpec<HashConfig> = {
@@ -209,6 +219,7 @@ export const hashSpec: CommandSpec<HashConfig> = {
     ),
   exitCode: (err, ctx) => {
     if (err instanceof HashMismatchSignal) return 1;
+    if (err instanceof HashErrorSignal) return hashErrorExitCode(err.hashError);
     const isCompareMode = ctx?.rawConfig?.compareWith !== undefined;
     return isCompareMode ? 2 : 1;
   },
@@ -232,55 +243,78 @@ export const hashSpec: CommandSpec<HashConfig> = {
 
     if (isCompareMode) {
       const compareSpec = config.compareWith as string;
-      let primary: { source: string; hash: string };
-      let secondary: { source: string; hash: string };
-      try {
-        const primaryTarget = resolveHashTarget(config);
-        const secondaryTarget = resolveCompareTarget(config, compareSpec);
-        primary = await hashTarget(
-          primaryTarget,
-          config,
-          inlineQuery,
-          logger,
+      const pair = await resolveHashTargetResult(config)
+        .asyncAndThen<HashedPair, SourceError | TargetError>((primaryTarget) =>
+          resolveCompareTargetResult(config, compareSpec).asyncAndThen(
+            (secondaryTarget) =>
+              ResultAsync.combine([
+                hashTargetResult(primaryTarget, config, inlineQuery, logger),
+                hashTargetResult(
+                  secondaryTarget,
+                  config,
+                  compareInlineQuery,
+                  logger,
+                ),
+              ]).map(([primary, secondary]) => ({ primary, secondary })),
+          ),
         );
-        secondary = await hashTarget(
-          secondaryTarget,
-          config,
-          compareInlineQuery,
-          logger,
-        );
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new HashCompareError(message);
-      }
 
-      if (primary.hash === secondary.hash) {
-        process.stdout.write(`match: ${primary.hash}\n`);
-        return;
-      }
-      process.stdout.write(`${primary.hash}  ${primary.source}\n`);
-      process.stdout.write(`${secondary.hash}  ${secondary.source}\n`);
-      throw new HashMismatchSignal('hash mismatch');
+      await pair.match(
+        ({ primary, secondary }) => {
+          if (primary.hash === secondary.hash) {
+            process.stdout.write(`match: ${primary.hash}\n`);
+            return;
+          }
+          process.stdout.write(`${primary.hash}  ${primary.source}\n`);
+          process.stdout.write(`${secondary.hash}  ${secondary.source}\n`);
+          throw new HashMismatchSignal('hash mismatch');
+        },
+        (err) => {
+          emitHashError(err);
+          throw new HashErrorSignal(err);
+        },
+      );
+      return;
     }
 
-    const target = resolveHashTarget(config);
-    const result = await hashTarget(target, config, inlineQuery, logger);
+    const single = await resolveHashTargetResult(config).asyncAndThen<
+      { source: string; hash: string },
+      SourceError | TargetError
+    >((target) => hashTargetResult(target, config, inlineQuery, logger));
 
-    const body = config.json
-      ? `${JSON.stringify(result)}\n`
-      : `${result.hash}  ${result.source}\n`;
+    await single.match(
+      async (result) => {
+        const body = config.json
+          ? `${JSON.stringify(result)}\n`
+          : `${result.hash}  ${result.source}\n`;
 
-    if (config.out !== undefined) {
-      await writeOutputToFile({
-        out: config.out,
-        cwd: process.cwd(),
-        body,
-      });
-    } else {
-      process.stdout.write(body);
-    }
+        if (config.out !== undefined) {
+          await writeOutputToFile({
+            out: config.out,
+            cwd: process.cwd(),
+            body,
+          });
+        } else {
+          process.stdout.write(body);
+        }
+      },
+      async (err) => {
+        emitHashError(err);
+        throw new HashErrorSignal(err);
+      },
+    );
   },
 };
+
+interface HashedPair {
+  primary: { source: string; hash: string };
+  secondary: { source: string; hash: string };
+}
+
+function emitHashError(err: SourceError | TargetError): void {
+  const color = process.stderr.isTTY === true;
+  process.stderr.write(`${decorateHashError(err, { color })}\n`);
+}
 
 function targetLabel(target: ParsedSource): string {
   if (target.id !== undefined) return `@${target.id}`;
@@ -291,31 +325,39 @@ function targetLabel(target: ParsedSource): string {
   return '<unknown>';
 }
 
-async function hashTarget(
+function hashTargetResult(
   target: ParsedSource,
   config: HashConfig,
   inlineQuery: string | undefined,
   logger: SparqlyLogger,
-): Promise<{ source: string; hash: string }> {
+): ResultAsync<{ source: string; hash: string }, SourceError> {
   const label = targetLabel(target);
   const start = Date.now();
 
   if (inlineQuery !== undefined) {
     const upstreamSpec = anonymousUpstream(target);
-    const store = await resolveAnonymousView({
+    return resolveAnonymousViewResult({
       source: upstreamSpec,
       query: inlineQuery,
       logger,
-    });
-    const { canonicalText } = await canonicalizeStore(store);
-    const hash = createHash('sha256').update(canonicalText).digest('hex');
-    logger.debug('source-loaded', {
-      mode: 'view',
-      source: label,
-      quads: store.size,
-      ms: Date.now() - start,
-    });
-    return { source: label, hash };
+    })
+      .map((store) => {
+        logger.debug('source-loaded', {
+          mode: 'view',
+          source: label,
+          quads: store.size,
+          ms: Date.now() - start,
+        });
+        return store;
+      })
+      .andThen((store) =>
+        ResultAsync.fromSafePromise(canonicalizeStore(store)).map(
+          ({ canonicalText }) => ({
+            source: label,
+            hash: createHash('sha256').update(canonicalText).digest('hex'),
+          }),
+        ),
+      );
   }
 
   if (target.kind === 'endpoint') {
@@ -325,26 +367,33 @@ async function hashTarget(
   }
 
   const registry = parseSourceSpecs(config.sources ?? []);
-  const sources = await resolveSource(target, { registry, logger });
-  if (sources.mode === 'pass-through') {
-    throw new Error(
-      `SPARQL endpoint ${sources.endpoint.endpoint} cannot be hashed directly (hash materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
-    );
-  }
-  const { canonicalText } = await canonicalizeStore(sources.store, {
-    annotationPredicates: extractAnnotationPredicates(
-      target.kind === 'glob' ? target.transforms : undefined,
-    ),
+  return resolveSourceResult(target, { registry, logger }).andThen<
+    { source: string; hash: string },
+    SourceError
+  >((sources) => {
+    if (sources.mode === 'pass-through') {
+      throw new Error(
+        `SPARQL endpoint ${sources.endpoint.endpoint} cannot be hashed directly (hash materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
+      );
+    }
+    return ResultAsync.fromSafePromise(
+      canonicalizeStore(sources.store, {
+        annotationPredicates: extractAnnotationPredicates(
+          target.kind === 'glob' ? target.transforms : undefined,
+        ),
+      }),
+    ).map(({ canonicalText }) => {
+      const hash = createHash('sha256').update(canonicalText).digest('hex');
+      logger.debug('source-loaded', {
+        mode: 'materialized',
+        source: label,
+        files: sources.files.length,
+        quads: sources.store.size,
+        ms: Date.now() - start,
+      });
+      return { source: label, hash };
+    });
   });
-  const hash = createHash('sha256').update(canonicalText).digest('hex');
-  logger.debug('source-loaded', {
-    mode: 'materialized',
-    source: label,
-    files: sources.files.length,
-    quads: sources.store.size,
-    ms: Date.now() - start,
-  });
-  return { source: label, hash };
 }
 
 function anonymousUpstream(target: ParsedSource): SourceSpecInput {
