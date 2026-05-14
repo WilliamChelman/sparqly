@@ -79,10 +79,8 @@ async function waitForReady(
       const res = await fetch(
         `${baseUrl}/api/sparql?query=${encodeURIComponent('ASK { ?s ?p ?o }')}`,
       );
-      if (res.status < 500) {
-        await res.arrayBuffer();
-        return;
-      }
+      await res.arrayBuffer();
+      return;
     } catch {
       /* not ready yet */
     }

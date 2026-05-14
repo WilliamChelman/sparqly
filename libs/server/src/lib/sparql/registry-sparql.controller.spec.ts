@@ -70,7 +70,7 @@ describe('RegistrySparqlController — /api/sparql alias', () => {
     ]);
   });
 
-  it('returns 404 with the available routes when 2+ sources are served with no default', async () => {
+  it('returns 400 with a structured no-default-multi body when 2+ sources are served with no default', async () => {
     server = await createServer({
       sources: [
         { id: 'alpha', glob: join(dirA, '*.ttl') },
@@ -83,13 +83,37 @@ describe('RegistrySparqlController — /api/sparql alias', () => {
         SELECT_S,
       )}`,
     );
-    expect(resp.status).toBe(404);
-    const body = JSON.stringify(await resp.json());
-    expect(body).toContain('/api/sparql/alpha');
-    expect(body).toContain('/api/sparql/beta');
+    expect(resp.status).toBe(400);
+    const json = (await resp.json()) as {
+      kind?: string;
+      availableIds?: string[];
+    };
+    expect(json.kind).toBe('no-default-multi');
+    expect(json.availableIds).toEqual(expect.arrayContaining(['alpha', 'beta']));
   });
 
-  it('still routes /api/sparql/:id and 404s an unknown @id', async () => {
+  it('returns 502 with a structured query-execution body when the SPARQL query is malformed', async () => {
+    server = await createServer({
+      sources: [{ id: 'alpha', glob: join(dirA, '*.ttl'), default: true }],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sparql/alpha?query=${encodeURIComponent(
+        'SELECT ?s WHERE { ?s ?p',
+      )}`,
+    );
+    expect(resp.status).toBe(502);
+    const json = (await resp.json()) as {
+      kind?: string;
+      query?: string;
+      message?: string;
+    };
+    expect(json.kind).toBe('query-execution');
+    expect(json.query).toBe('SELECT ?s WHERE { ?s ?p');
+    expect(typeof json.message).toBe('string');
+  });
+
+  it('still routes /api/sparql/:id and returns 400 with a structured unknown-ref body for an unknown @id', async () => {
     server = await createServer({
       sources: [
         { id: 'alpha', glob: join(dirA, '*.ttl') },
@@ -108,6 +132,14 @@ describe('RegistrySparqlController — /api/sparql alias', () => {
         SELECT_S,
       )}`,
     );
-    expect(missing.status).toBe(404);
+    expect(missing.status).toBe(400);
+    const json = (await missing.json()) as {
+      kind?: string;
+      ref?: string;
+      availableIds?: string[];
+    };
+    expect(json.kind).toBe('unknown-ref');
+    expect(json.ref).toBe('@nope');
+    expect(json.availableIds).toEqual(expect.arrayContaining(['alpha', 'beta']));
   });
 });
