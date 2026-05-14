@@ -70,16 +70,14 @@ describe('sparqly hash — argv and flag validation', () => {
     await rm(scratch, { recursive: true, force: true });
   });
 
-  it('exits non-zero when the glob matches no files (no stdout)', async () => {
+  it('hashes the empty store and exits 0 when the glob matches no files (ADR-0028)', async () => {
     const result = await runCli([
       'hash',
-      '--quiet',
       join(scratch, 'nope-*.ttl'),
     ]);
 
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toMatch(/no files/i);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toMatch(/^[0-9a-f]{64} {2}/);
   });
 
   it('rejects --graph-mode as an unknown option (#135 — graph-name semantics live on transforms)', async () => {

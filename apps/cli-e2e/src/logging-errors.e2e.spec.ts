@@ -62,7 +62,7 @@ describe('sparqly query — logging', () => {
 });
 
 describe('sparqly query — error paths (US 22)', () => {
-  it('a glob that matches nothing exits with the glob-load code and a clear error', async () => {
+  it('a glob that matches nothing succeeds with empty results and a warn line (ADR-0028)', async () => {
     const result = await runCli([
       'query',
       '/tmp/sparqly-e2e-does-not-exist/*.ttl',
@@ -70,7 +70,7 @@ describe('sparqly query — error paths (US 22)', () => {
       SELECT_ALL,
     ]);
 
-    expect(result.exitCode).toBe(32);
+    expect(result.exitCode).toBe(0);
     expect(result.stderr).toMatch(/No files matched/);
   });
 

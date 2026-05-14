@@ -165,12 +165,17 @@ describe('EngineMap', () => {
     }
   });
 
-  it('fails loudly at boot when a materialized source matches no files', async () => {
+  it('boots successfully with an empty store when a materialized source matches no files (ADR-0028)', async () => {
     const registry = parseSourceSpecs([
       { id: 'missing', glob: join(dir, '*.does-not-exist') },
     ]);
 
-    await expect(EngineMap.create(registry)).rejects.toThrow(/No files matched/);
+    const map = await EngineMap.create(registry);
+    try {
+      expect(map.allIds()).toEqual(['missing']);
+    } finally {
+      await map.close();
+    }
   });
 
   it('pass-through endpoint sources do not block boot when the remote is unreachable', async () => {

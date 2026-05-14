@@ -66,18 +66,18 @@ describe('resolveSourceResult — glob target', () => {
     expect(result.value.files).toHaveLength(1);
   });
 
-  it('returns Result.err with a glob-load variant naming the glob when no files match', async () => {
+  it('returns Result.ok with an empty materialized store when the glob matches no files (ADR-0028)', async () => {
     const pattern = join(dir, 'nope-*.ttl');
     const target = parseSourceSpec(pattern);
 
     const result = await resolveSourceResult(target);
 
-    expect(result.isErr()).toBe(true);
-    if (!result.isErr()) throw new Error('unreachable');
-    expect(result.error.kind).toBe('glob-load');
-    if (result.error.kind !== 'glob-load') throw new Error('unreachable');
-    expect(result.error.glob).toEqual([pattern]);
-    expect(result.error.file).toBeUndefined();
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.mode).toBe('materialized');
+    if (result.value.mode !== 'materialized') throw new Error('unreachable');
+    expect(result.value.store.size).toBe(0);
+    expect(result.value.files).toEqual([]);
   });
 
   it('returns Result.err with a glob-load variant naming the offending file on parse failure', async () => {
