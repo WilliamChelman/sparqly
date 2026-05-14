@@ -104,11 +104,11 @@ Match the test command to the loop's radius. Running the whole workspace on ever
 
 Always go through `nx`, never call `vitest` directly — the bare binary skips Nx's cache, so a re-run that should be free re-executes from scratch.
 
-| Moment in the loop                          | What to run                                                | How                                                                       |
-| ------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Moment in the loop                          | What to run                                                 | How                                                                                   |
+| ------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | Inner RED→GREEN (most cycles)               | Just the spec file you're editing, optionally one `-t` name | `pnpm exec nx test <project> -- run <spec-path-relative-to-project> -t "<test name>"` |
-| Finished a vertical slice / before refactor | The affected project(s) only                               | `pnpm exec nx affected -t test`                                           |
-| Before commit                               | Full validation                                            | `pnpm run check`                                                          |
+| Finished a vertical slice / before refactor | The affected project(s) only                                | `pnpm exec nx affected -t test`                                                       |
+| Before commit                               | Full validation                                             | `pnpm run check`                                                                      |
 
 The spec path in the inner-loop command is relative to the project root (the target's cwd), e.g. `src/lib/canonical/canonicalize.spec.ts`, not `libs/core/src/...`. The `run` token is required so vitest does a single pass instead of entering watch mode. Args after `--` are part of Nx's cache key, so a repeated identical run is served from cache.
 
