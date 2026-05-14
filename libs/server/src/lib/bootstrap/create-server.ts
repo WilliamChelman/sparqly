@@ -12,18 +12,18 @@ import {
   expandSplitGlobs,
   type GraphMode,
   parseSourceSpecs,
-  type ParsedSource,
   resolveServeScope,
   type SourceSpecInput,
 } from 'core';
 import { DEFAULT_DESCRIBE_CONFIG, type DescribeConfig } from '../describe';
 import { EngineMap } from './engine-map';
+import { MetaChildrenCache } from './meta-children-cache';
 import { maybeStartWatcher } from './multi-source-watcher';
 import { RequestLoggingInterceptor } from './request-logging.interceptor';
 import { ServerModule } from './server.module';
 import { SnippetAllowList } from '../snippet';
 import { sparqlQueryBodyParser } from './sparql-query-body-parser';
-import type { SourceListingEntry, SparqlContext } from './tokens';
+import type { SparqlContext } from './tokens';
 
 export interface CreateServerOptions {
   sources: SourceSpecInput | ReadonlyArray<SourceSpecInput>;
@@ -92,7 +92,10 @@ export async function createServer(
     logger: boundaryLogger,
   });
 
-  const listing = buildListing(scope.servedRegistry);
+  const metaChildrenCache = new MetaChildrenCache(scope.servedRegistry, {
+    walkGlob: defaultGlobWalker,
+    logger: boundaryLogger,
+  });
 
   const snippetAllowList = new SnippetAllowList();
   snippetAllowList.update(engineMap.allFiles());
@@ -102,7 +105,7 @@ export async function createServer(
       engineMap,
       servedRegistry: scope.servedRegistry,
       resolutionRegistry: scope.resolutionRegistry,
-      listing,
+      metaChildrenCache,
       defaultId: scope.defaultId,
       config: { mutable: options.mutable === true },
       context: options.context ?? { prefixes: {} },
@@ -149,6 +152,7 @@ export async function createServer(
         debounceMs: options.watchDebounceMs ?? DEFAULT_DEBOUNCE_MS,
         pollMs: options.watchPollMs ?? DEFAULT_POLL_MS,
         snippetAllowList,
+        metaChildrenCache,
       })
     : undefined;
   if (watcher) {
@@ -181,25 +185,6 @@ function resolveDescribeConfig(
       partial?.fromSourcePredicate ??
       DEFAULT_DESCRIBE_CONFIG.fromSourcePredicate,
   };
-}
-
-function buildListing(
-  servedRegistry: ReadonlyArray<ParsedSource>,
-): SourceListingEntry[] {
-  const out: SourceListingEntry[] = [];
-  for (const src of servedRegistry) {
-    if (src.kind === 'reference') continue;
-    if (src.id === undefined) continue;
-    const entry: SourceListingEntry = {
-      id: src.id,
-      kind: src.kind,
-      label: src.id,
-    };
-    if ((src as { default?: true }).default === true) entry.default = true;
-    if (src.kind === 'file') entry.parentId = src.parentId;
-    out.push(entry);
-  }
-  return out;
 }
 
 function toSourceArray(

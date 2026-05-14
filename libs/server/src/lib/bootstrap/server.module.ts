@@ -8,6 +8,7 @@ import {
 } from '../describe';
 import { DiffController, DiffService } from '../diff';
 import type { EngineMap } from './engine-map';
+import type { MetaChildrenCache } from './meta-children-cache';
 import { RegistrySparqlController } from '../sparql';
 import {
   SnippetAllowList,
@@ -24,10 +25,9 @@ import {
   SPARQL_DESCRIBE_SERVICE,
   SPARQL_DIFF_SERVICE,
   SPARQL_ENGINE_MAP,
-  SPARQL_REGISTRY_LISTING,
+  SPARQL_META_CHILDREN_CACHE,
   SPARQL_SERVED_REGISTRY,
   SPARQL_SNIPPET_ALLOW_LIST,
-  type SourceListingEntry,
   type SparqlContext,
   type SparqlServerConfig,
 } from './tokens';
@@ -46,8 +46,12 @@ export interface ServerModuleOptions {
    * chains (e.g. a scoped `@view`'s upstreams that are otherwise unlisted).
    */
   resolutionRegistry: ReadonlyArray<ParsedSource>;
-  /** The served registry's `/api/config` listing. */
-  listing: ReadonlyArray<SourceListingEntry>;
+  /**
+   * Per-meta children cache for `splitByFile: true` globs (ADR-0027). Drives
+   * the dynamic `/api/config` listing: watcher events invalidate per parent,
+   * and the next request re-walks the meta's glob to refresh children.
+   */
+  metaChildrenCache: MetaChildrenCache;
   /** `@id` the unparameterized `/api/sparql` forwards to, or `undefined` if none. */
   defaultId: string | undefined;
   config: SparqlServerConfig;
@@ -74,7 +78,10 @@ export class ServerModule {
         { provide: SPARQL_DESCRIBE_CONFIG, useValue: options.describe },
         { provide: SPARQL_SNIPPET_ALLOW_LIST, useValue: options.snippetAllowList },
         { provide: SPARQL_ENGINE_MAP, useValue: options.engineMap },
-        { provide: SPARQL_REGISTRY_LISTING, useValue: options.listing },
+        {
+          provide: SPARQL_META_CHILDREN_CACHE,
+          useValue: options.metaChildrenCache,
+        },
         { provide: SPARQL_DEFAULT_ID, useValue: options.defaultId },
         { provide: SPARQL_SERVED_REGISTRY, useValue: options.servedRegistry },
         {
