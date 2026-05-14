@@ -68,16 +68,4 @@ export default [
       'max-lines': 'off',
     },
   },
-  // Grandfathered offenders for the max-lines rule. Each entry is the
-  // migration backlog for issue #253 — sweep PRs delete entries from this list.
-  // Patterns use trailing-segment matching so they resolve correctly whether
-  // ESLint runs from the repo root or from an Nx project root.
-  {
-    files: [
-      '**/lib/bootstrap/create-server.ts',
-    ],
-    rules: {
-      'max-lines': 'off',
-    },
-  },
 ];
