@@ -1,7 +1,8 @@
 import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import { Store } from 'n3';
-import { loadRdf, type GraphMode, type LoadResult } from '../engine';
+import { loadRdfResult, type GraphMode, type LoadResult } from '../engine';
 import { resolveView, type ResolveViewOptions } from '../views';
+import type { SourceError } from './errors';
 import { parseGraphNameTransform } from './graph-name-transform';
 import type { QuerySources } from './resolve-source';
 import type {
@@ -12,35 +13,15 @@ import type {
 import { applyTransformPipeline } from './transform-pipeline';
 import type { ParsedTransform } from './transform-spec';
 
-/**
- * Tagged-union error type owned by the `sources` feature folder. Adding a
- * variant is one edit here plus one new case in `formatSourceError`. See
- * ADR-0024 for the surrounding convention.
- *
- * `legacy-message` is a transitional bucket holding messages thrown by
- * downstream leaves (`loadRdf`, `resolveView`, transform-pipeline parsing)
- * that have not yet been converted to `Result`. It will shrink as those
- * leaves are converted in subsequent slices.
- */
-export type SourceError = ReferenceTargetError | LegacySourceError;
-
-export interface ReferenceTargetError {
-  kind: 'reference-target';
-}
-
-export interface LegacySourceError {
-  kind: 'legacy-message';
-  message: string;
-}
-
-export function formatSourceError(error: SourceError): string {
-  switch (error.kind) {
-    case 'reference-target':
-      return "resolveSource: `kind: 'reference'` entries are aliases, not data, and cannot be resolved as a target";
-    case 'legacy-message':
-      return error.message;
-  }
-}
+export {
+  formatSourceError,
+  type EndpointFetchError,
+  type GlobLoadError,
+  type LegacySourceError,
+  type QueryExecutionError,
+  type ReferenceTargetError,
+  type SourceError,
+} from './errors';
 
 export interface ResolveSourceResultOptions {
   graphMode?: GraphMode;
@@ -71,10 +52,9 @@ export function resolveSourceResult(
     return okAsync(materialized(new Store(), [], {}));
   }
   if (target.kind === 'glob') {
-    return ResultAsync.fromPromise(
-      loadGlobIntoStore(target, options.graphMode),
-      legacy,
-    ).map((loaded) => materialized(loaded.store, loaded.files, loaded.prefixes));
+    return loadGlobIntoStore(target, options.graphMode).map((loaded) =>
+      materialized(loaded.store, loaded.files, loaded.prefixes),
+    );
   }
   return ResultAsync.fromPromise(resolveViewTarget(target, options), legacy);
 }
@@ -95,21 +75,22 @@ async function resolveViewTarget(
   return materialized(store, [], {});
 }
 
-async function loadGlobIntoStore(
+function loadGlobIntoStore(
   source: ParsedGlobSource,
   defaultGraphMode: GraphMode | undefined,
-): Promise<LoadResult> {
-  const sub = await loadRdf({ sources: source.glob });
-  const transforms = effectiveTransforms(source, defaultGraphMode);
-  const transformed = applyTransformPipeline(sub.store, transforms, {
-    perFileRecords: sub.perFileRecords,
+): ResultAsync<LoadResult, SourceError> {
+  return loadRdfResult({ sources: source.glob }).map((sub) => {
+    const transforms = effectiveTransforms(source, defaultGraphMode);
+    const transformed = applyTransformPipeline(sub.store, transforms, {
+      perFileRecords: sub.perFileRecords,
+    });
+    return {
+      store: transformed,
+      files: [...sub.files],
+      prefixes: { ...sub.prefixes },
+      perFileRecords: sub.perFileRecords,
+    };
   });
-  return {
-    store: transformed,
-    files: [...sub.files],
-    prefixes: { ...sub.prefixes },
-    perFileRecords: sub.perFileRecords,
-  };
 }
 
 function effectiveTransforms(

@@ -1,5 +1,6 @@
 import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { Parser, type Store } from 'n3';
+import { ResultAsync } from 'neverthrow';
 import { noopLogger, type SparqlyLogger } from 'common';
 import {
   buildEndpointContext,
@@ -16,6 +17,10 @@ import {
   detectQueryType,
   type QueryType,
 } from '../canonical/immutability';
+import type {
+  EndpointFetchError,
+  QueryExecutionError,
+} from '../sources/errors';
 import type { ParsedEndpointSource } from '../sources';
 
 export const SUPPORTED_FORMATS = ['json', 'turtle'] as const;
@@ -80,6 +85,24 @@ export class QueryEngine {
     }
   }
 
+  /**
+   * Primary `Result`-typed execute. On failure, the underlying throw is
+   * collapsed into either an {@link EndpointFetchError} (when the engine was
+   * configured with a remote endpoint) or a {@link QueryExecutionError}
+   * (materialized store path, including format/result-type mismatches and
+   * Comunica parse failures). The mutability guard and other "this can't
+   * happen" invariants still throw — see ADR-0024's pragmatic throw policy.
+   */
+  executeResult(
+    query: string,
+    options: ExecuteOptions = {},
+  ): ResultAsync<ExecuteResult, QueryExecutionError | EndpointFetchError> {
+    return ResultAsync.fromPromise(
+      this.execute(query, options),
+      (err) => this.toExecuteError(query, err),
+    );
+  }
+
   async execute(query: string, options: ExecuteOptions = {}): Promise<ExecuteResult> {
     const queryType = detectQueryType(query);
     assertImmutable(queryType, { mutable: options.mutable });
@@ -125,6 +148,25 @@ export class QueryEngine {
       this.emitQueryEvent(query, queryType, Date.now() - started, { err });
       throw err;
     }
+  }
+
+  private toExecuteError(
+    query: string,
+    err: unknown,
+  ): QueryExecutionError | EndpointFetchError {
+    const message = err instanceof Error ? err.message : String(err);
+    if (this.endpointSource) {
+      const prefix = `endpoint ${this.endpointSource.endpoint}: `;
+      const trimmed = message.startsWith(prefix)
+        ? message.slice(prefix.length)
+        : message;
+      return {
+        kind: 'endpoint-fetch',
+        endpoint: this.endpointSource.endpoint,
+        message: trimmed,
+      };
+    }
+    return { kind: 'query-execution', query, message };
   }
 
   private emitQueryEvent(

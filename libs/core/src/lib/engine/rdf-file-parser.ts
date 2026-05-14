@@ -1,7 +1,9 @@
 import { createReadStream } from 'node:fs';
 import { extname } from 'node:path';
 import { Parser, type Quad } from 'n3';
+import { ResultAsync } from 'neverthrow';
 import { rdfParser } from 'rdf-parse';
+import type { GlobLoadError } from '../sources/errors';
 
 export interface RdfRecord {
   quad: Quad;
@@ -135,6 +137,26 @@ class LineTrackingParser extends N3ParserBase {
   }
 }
 
+/**
+ * Primary `Result`-typed parser. Failures collapse into a single
+ * {@link GlobLoadError} variant carrying the offending file path and the
+ * wrapped underlying message (ADR-0024).
+ */
+export function parseRdfFileResult(
+  path: string,
+): ResultAsync<ParseFileResult, GlobLoadError> {
+  return ResultAsync.fromPromise(parseRdfFile(path), (err) => ({
+    kind: 'glob-load' as const,
+    glob: [path],
+    file: path,
+    message: err instanceof Error ? err.message : String(err),
+  }));
+}
+
+/**
+ * @deprecated Use {@link parseRdfFileResult} (ADR-0024). Retained as a thin
+ * throw-based adapter for callers that have not migrated yet.
+ */
 export async function parseRdfFile(path: string): Promise<ParseFileResult> {
   const ext = extname(path).toLowerCase();
   if (ext in N3_FORMAT_BY_EXT) return parseWithN3(path, N3_FORMAT_BY_EXT[ext]);

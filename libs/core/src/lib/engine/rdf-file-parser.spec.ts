@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { parseRdfFile } from './rdf-file-parser';
+import { parseRdfFile, parseRdfFileResult } from './rdf-file-parser';
 
 describe('parseRdfFile', () => {
   let dir: string;
@@ -369,5 +369,56 @@ describe('parseRdfFile', () => {
     expect(records[midIndex].line).toBe(midIndex + 1);
     expect(records[totalLines - 1].quad.subject.value).toBe(`http://example.org/s${totalLines}`);
     expect(records[totalLines - 1].line).toBe(totalLines);
+  });
+});
+
+describe('parseRdfFileResult', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-parser-result-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('returns Result.ok with the parsed records for a valid turtle file', async () => {
+    const file = join(dir, 'a.ttl');
+    await writeFile(file, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
+
+    const result = await parseRdfFileResult(file);
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.records).toHaveLength(1);
+  });
+
+  it('returns Result.err with a glob-load variant naming the offending file for an unsupported extension', async () => {
+    const file = join(dir, 'a.unknown');
+    await writeFile(file, 'irrelevant');
+
+    const result = await parseRdfFileResult(file);
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('glob-load');
+    if (result.error.kind !== 'glob-load') throw new Error('unreachable');
+    expect(result.error.file).toBe(file);
+    expect(result.error.message).toMatch(/unsupported file extension/i);
+  });
+
+  it('returns Result.err with a glob-load variant naming the offending file for a parse failure', async () => {
+    const file = join(dir, 'broken.ttl');
+    await writeFile(file, 'this is not valid turtle <<<');
+
+    const result = await parseRdfFileResult(file);
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('glob-load');
+    if (result.error.kind !== 'glob-load') throw new Error('unreachable');
+    expect(result.error.file).toBe(file);
+    expect(result.error.message.length).toBeGreaterThan(0);
   });
 });

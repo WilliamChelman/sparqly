@@ -1,6 +1,8 @@
 import { Store } from 'n3';
+import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import { glob } from 'tinyglobby';
-import { parseRdfFile, type RdfRecord } from './rdf-file-parser';
+import { parseRdfFileResult, type RdfRecord } from './rdf-file-parser';
+import type { GlobLoadError } from '../sources/errors';
 
 export const GRAPH_MODES = [
   'preserve',
@@ -30,36 +32,77 @@ export interface LoadResult {
   perFileRecords?: ReadonlyMap<string, ReadonlyArray<RdfRecord>>;
 }
 
-export async function loadRdf(options: LoadOptions): Promise<LoadResult> {
-  const files = await glob(options.sources, { absolute: true });
+/**
+ * Primary `Result`-typed loader. Returns a {@link LoadResult} on success and a
+ * {@link GlobLoadError} on failure — the variant carries the glob pattern(s),
+ * the offending file path when the failure is file-specific, and the wrapped
+ * underlying message (ADR-0024).
+ */
+export function loadRdfResult(
+  options: LoadOptions,
+): ResultAsync<LoadResult, GlobLoadError> {
+  const globs = normalizeGlobs(options.sources);
+  return ResultAsync.fromSafePromise(
+    glob(options.sources, { absolute: true }),
+  ).andThen((files) => {
+    if (files.length === 0) {
+      return errAsync<LoadResult, GlobLoadError>({
+        kind: 'glob-load',
+        glob: globs,
+        message: `No files matched sources: ${globs.join(', ')}`,
+      });
+    }
+    return parseFiles(files, globs);
+  });
+}
 
-  if (files.length === 0) {
-    throw new Error(
-      `No files matched sources: ${
-        Array.isArray(options.sources)
-          ? options.sources.join(', ')
-          : options.sources
-      }`,
-    );
-  }
-
+function parseFiles(
+  files: string[],
+  globs: ReadonlyArray<string>,
+): ResultAsync<LoadResult, GlobLoadError> {
   const store = new Store();
   const prefixes: Record<string, Record<string, string>> = {};
   const perFileRecords = new Map<string, ReadonlyArray<RdfRecord>>();
 
-  for (const file of files) {
-    try {
-      const result = await parseRdfFile(file);
-      for (const { quad } of result.records) {
-        store.addQuad(quad);
-      }
-      prefixes[file] = result.prefixes;
-      perFileRecords.set(file, result.records);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      throw new Error(`Failed to parse ${file}: ${message}`);
-    }
-  }
+  const seed: ResultAsync<void, GlobLoadError> = okAsync(undefined);
+  const chain = files.reduce<ResultAsync<void, GlobLoadError>>(
+    (prev, file) =>
+      prev.andThen(() =>
+        parseRdfFileResult(file)
+          .map((result) => {
+            for (const { quad } of result.records) store.addQuad(quad);
+            prefixes[file] = result.prefixes;
+            perFileRecords.set(file, result.records);
+          })
+          .mapErr<GlobLoadError>((err) => ({
+            kind: 'glob-load',
+            glob: globs,
+            file,
+            message: err.message,
+          })),
+      ),
+    seed,
+  );
 
-  return { store, files, prefixes, perFileRecords };
+  return chain.map(() => ({ store, files, prefixes, perFileRecords }));
+}
+
+function normalizeGlobs(sources: string | string[]): ReadonlyArray<string> {
+  return Array.isArray(sources) ? [...sources] : [sources];
+}
+
+/**
+ * @deprecated Use {@link loadRdfResult} (ADR-0024). Retained as a thin
+ * throw-based adapter for callers that have not migrated yet.
+ */
+export async function loadRdf(options: LoadOptions): Promise<LoadResult> {
+  const result = await loadRdfResult(options);
+  if (result.isErr()) {
+    const e = result.error;
+    if (e.file !== undefined) {
+      throw new Error(`Failed to parse ${e.file}: ${e.message}`);
+    }
+    throw new Error(e.message);
+  }
+  return result.value;
 }

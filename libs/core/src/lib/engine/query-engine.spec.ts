@@ -291,3 +291,72 @@ describe('QueryEngine — query event logging', () => {
     }
   });
 });
+
+describe('QueryEngine.executeResult', () => {
+  it('returns Result.ok with the same payload as execute on the happy path', async () => {
+    const engine = new QueryEngine(exampleStore());
+
+    const result = await engine.executeResult(
+      'SELECT ?s WHERE { ?s ?p ?o }',
+    );
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.format).toBe('json');
+    expect(result.value.contentType).toBe('application/sparql-results+json');
+    JSON.parse(result.value.body);
+  });
+
+  it('returns Result.err with a query-execution variant on a malformed SPARQL string', async () => {
+    const engine = new QueryEngine(exampleStore());
+
+    const result = await engine.executeResult('SELECT ?s WHERE { ?s ?p');
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('query-execution');
+    if (result.error.kind !== 'query-execution') throw new Error('unreachable');
+    expect(result.error.query).toBe('SELECT ?s WHERE { ?s ?p');
+    expect(result.error.message.length).toBeGreaterThan(0);
+  });
+
+  it('returns Result.err with a query-execution variant when format conflicts with result type', async () => {
+    const engine = new QueryEngine(exampleStore());
+
+    const result = await engine.executeResult(
+      'SELECT ?s WHERE { ?s ?p ?o }',
+      { format: 'turtle' },
+    );
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('query-execution');
+    if (result.error.kind !== 'query-execution') throw new Error('unreachable');
+    expect(result.error.message).toMatch(/turtle|incompatible/i);
+  });
+
+  it('returns Result.err with an endpoint-fetch variant naming the endpoint URL when the remote 500s', async () => {
+    const endpoint = await startFakeSparqlEndpoint(() => ({
+      status: 500,
+      body: 'boom',
+    }));
+    try {
+      const engine = new QueryEngine({
+        kind: 'endpoint',
+        endpoint: endpoint.url,
+      });
+
+      const result = await engine.executeResult(
+        'SELECT ?s WHERE { ?s ?p ?o }',
+      );
+
+      expect(result.isErr()).toBe(true);
+      if (!result.isErr()) throw new Error('unreachable');
+      expect(result.error.kind).toBe('endpoint-fetch');
+      if (result.error.kind !== 'endpoint-fetch') throw new Error('unreachable');
+      expect(result.error.endpoint).toBe(endpoint.url);
+    } finally {
+      await endpoint.close();
+    }
+  });
+});
