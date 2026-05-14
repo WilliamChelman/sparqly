@@ -8,10 +8,28 @@ import {
   Res,
 } from '@nestjs/common';
 import { z } from 'zod';
+import { ok, err, type Result } from 'neverthrow';
+import {
+  safeParseResult,
+  type DiffError,
+  type SafeParseIssue,
+} from 'core';
 import { DiffService, type DiffResponse } from './diff.service';
+import {
+  mapDiffHttpError,
+  type TransportDiffError,
+} from './diff-http-errors';
 import { SPARQL_DIFF_SERVICE } from '../bootstrap';
 
-const DIFF_REQUEST_SCHEMA = z
+interface DiffRequestBody {
+  left: string;
+  right: string;
+  leftQuery?: string;
+  rightQuery?: string;
+  skipAutoSourceAnnotation?: boolean;
+}
+
+const DIFF_REQUEST_SCHEMA: z.ZodType<DiffRequestBody> = z
   .object({
     left: z.string().min(1),
     right: z.string().min(1),
@@ -35,20 +53,49 @@ export class DiffController {
 
   @Post()
   async post(@Body() body: unknown, @Res() res: ResLike): Promise<void> {
-    const parsed = DIFF_REQUEST_SCHEMA.safeParse(body);
-    if (!parsed.success) {
+    const parsed = safeParseResult<DiffRequestBody>(DIFF_REQUEST_SCHEMA, body);
+    if (parsed.isErr()) {
       throw new BadRequestException({
-        kind: 'validation-error',
-        issues: parsed.error.issues.map((i) => ({
+        kind: 'zod-validation',
+        issues: parsed.error.issues.map((i: SafeParseIssue) => ({
           path: i.path,
           message: i.message,
         })),
       });
     }
-    const result: DiffResponse = await this.service.runDiff(parsed.data);
-    res
-      .status(HttpStatus.OK)
-      .setHeader('Content-Type', 'application/json')
-      .send(JSON.stringify(result));
+    const response = await this.service.runDiff(parsed.value);
+    classifyDiffResponse(response).match(
+      (payload: DiffResponse) => {
+        res
+          .status(HttpStatus.OK)
+          .setHeader('Content-Type', 'application/json')
+          .send(JSON.stringify(payload));
+      },
+      (transport: TransportDiffError) => {
+        throw mapDiffHttpError(transport);
+      },
+    );
   }
+}
+
+function classifyDiffResponse(
+  response: DiffResponse,
+): Result<DiffResponse, TransportDiffError> {
+  if (response.kind !== 'error') return ok(response);
+  for (const slot of ['left', 'right', 'top'] as const) {
+    const e = response.errors[slot];
+    if (e !== undefined && isTransportVariant(e)) {
+      return err(e);
+    }
+  }
+  return ok(response);
+}
+
+function isTransportVariant(e: DiffError): e is TransportDiffError {
+  return (
+    e.kind === 'unknown-source-id' ||
+    e.kind === 'anonymous-view-execution' ||
+    e.kind === 'anonymous-select-execution' ||
+    e.kind === 'source'
+  );
 }

@@ -103,23 +103,22 @@ describe('sparqly serve — --source as a scope filter (ADR-0016 / #197)', () =>
     };
     expect(Object.keys(describeJson.perSource)).toEqual(['alpha']);
 
-    // /api/diff cannot name a filtered-out @id; the error lists only the served set.
+    // /api/diff cannot name a filtered-out @id; per ADR-0024 / #241 this is a
+    // transport-level 400 carrying the structured unknown-source-id body.
     const diffRes = await fetch(`${handle.baseUrl}/api/diff`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ left: '@beta', right: '@alpha' }),
     });
-    expect(diffRes.status).toBe(200);
+    expect(diffRes.status).toBe(400);
     const diffJson = (await diffRes.json()) as {
-      kind: string;
-      errors?: {
-        left?: { kind: string; id?: string; availableIds?: string[] };
-      };
+      kind?: string;
+      id?: string;
+      availableIds?: string[];
     };
-    expect(diffJson.kind).toBe('error');
-    expect(diffJson.errors?.left?.kind).toBe('unknown-source-id');
-    expect(diffJson.errors?.left?.id).toBe('beta');
-    const available = diffJson.errors?.left?.availableIds ?? [];
+    expect(diffJson.kind).toBe('unknown-source-id');
+    expect(diffJson.id).toBe('beta');
+    const available = diffJson.availableIds ?? [];
     expect(available).toContain('alpha');
     expect(available).not.toContain('beta');
   });

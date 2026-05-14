@@ -70,6 +70,43 @@ describe('POST /api/diff', () => {
     expect(resp.status).toBe(400);
   });
 
+  it('returns 400 with a structured unknown-source-id body when a referenced @id is not served', async () => {
+    const resp = await postJson({ left: '@nope', right: '@beta' });
+    expect(resp.status).toBe(400);
+    const json = (await resp.json()) as {
+      kind?: string;
+      side?: string;
+      id?: string;
+      availableIds?: string[];
+    };
+    expect(json).toMatchObject({
+      kind: 'unknown-source-id',
+      side: 'left',
+      id: 'nope',
+    });
+    expect(json.availableIds).toEqual(
+      expect.arrayContaining(['alpha', 'beta']),
+    );
+  });
+
+  it('returns 502 with a structured anonymous-view-execution body when an inline graph-mode query fails to execute', async () => {
+    const resp = await postJson({
+      left: '@alpha',
+      right: '@beta',
+      leftQuery: 'SELECT ?s WHERE { ?s ?p',
+      rightQuery: 'SELECT ?s WHERE { ?s ?p',
+    });
+    expect(resp.status).toBe(502);
+    const json = (await resp.json()) as {
+      kind?: string;
+      side?: string;
+      message?: string;
+    };
+    expect(json.kind).toBe('anonymous-view-execution');
+    expect(['left', 'right']).toContain(json.side);
+    expect(typeof json.message).toBe('string');
+  });
+
   it('returns kind=grouped carrying a HunkedRdfDiff (one anchor-sorted hunk list + totals) on a glob×glob pair', async () => {
     const resp = await postJson({ left: '@alpha', right: '@beta' });
     expect(resp.status).toBe(200);
