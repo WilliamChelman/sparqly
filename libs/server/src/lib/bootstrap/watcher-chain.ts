@@ -82,6 +82,10 @@ function buildSourcePlan(
       globs.push(node.glob);
       return;
     }
+    if (node.kind === 'file') {
+      globs.push(node.path);
+      return;
+    }
     if (node.kind === 'view') {
       views.push(node);
       const cache = node.cache;

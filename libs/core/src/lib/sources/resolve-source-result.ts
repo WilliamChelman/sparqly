@@ -6,6 +6,7 @@ import type { SourceError, TransformParseError } from './errors';
 import { parseGraphNameTransformResult } from './graph-name-transform';
 import type { QuerySources } from './resolve-source';
 import type {
+  ParsedFileSource,
   ParsedGlobSource,
   ParsedSource,
   ParsedViewSource,
@@ -59,6 +60,12 @@ export function resolveSourceResult(
       materialized(loaded.store, loaded.files, loaded.prefixes),
     );
   }
+  if (target.kind === 'file') {
+    return loadFileIntoStore(target, target.transforms ?? [], options).map(
+      (loaded) =>
+        materialized(loaded.store, loaded.files, loaded.prefixes),
+    );
+  }
   return resolveViewTargetResult(target, options);
 }
 
@@ -93,6 +100,28 @@ function loadGlobIntoStore(
       perFileRecords: sub.perFileRecords,
     };
   });
+}
+
+function loadFileIntoStore(
+  source: ParsedFileSource,
+  transforms: ReadonlyArray<ParsedTransform>,
+  options: ResolveSourceResultOptions,
+): ResultAsync<LoadResult, SourceError> {
+  // A synthesized file child resolves like a one-file glob — same loader,
+  // same transform pipeline (ADR-0027).
+  return loadRdfResult({ sources: source.path, logger: options.logger }).map(
+    (sub) => {
+      const transformed = applyTransformPipeline(sub.store, transforms, {
+        perFileRecords: sub.perFileRecords,
+      });
+      return {
+        store: transformed,
+        files: [...sub.files],
+        prefixes: { ...sub.prefixes },
+        perFileRecords: sub.perFileRecords,
+      };
+    },
+  );
 }
 
 function effectiveTransforms(

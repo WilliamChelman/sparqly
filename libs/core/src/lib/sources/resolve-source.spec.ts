@@ -4,7 +4,12 @@ import { join } from 'node:path';
 import { Store } from 'n3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolveSource } from './resolve-source';
-import { parseSourceSpec, parseSourceSpecs } from './source-spec';
+import {
+  parseSourceSpec,
+  parseSourceSpecs,
+  type ParsedFileSource,
+} from './source-spec';
+import type { TransformDefinition } from './transform-spec';
 import {
   startFakeSparqlEndpoint,
   type FakeSparqlEndpoint,
@@ -116,6 +121,66 @@ describe('resolveSource — glob target', () => {
     expect(result.store.size).toBe(0);
     // Files list still reflects what was matched on disk; only the Store content changed.
     expect(result.files).toHaveLength(1);
+  });
+});
+
+describe('resolveSource — file target (synthesized split-glob child)', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-resolve-file-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('materializes a kind:file target into a Store with one file', async () => {
+    const file = join(dir, 'alice.ttl');
+    await writeFile(
+      file,
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const target: ParsedFileSource = {
+      kind: 'file',
+      id: 'docs/alice.ttl',
+      path: file,
+      parentId: 'docs',
+    };
+    const result = await resolveSource(target);
+
+    expect(result.mode).toBe('materialized');
+    if (result.mode !== 'materialized') throw new Error('unreachable');
+    expect(result.store.size).toBe(1);
+    expect(result.files).toEqual([file]);
+  });
+
+  it('applies the transforms pipeline to a kind:file target (mirroring the one-file glob path)', async () => {
+    const file = join(dir, 'alice.ttl');
+    await writeFile(
+      file,
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const dropAll: TransformDefinition = {
+      key: 'stubDropAll',
+      parse: () => () => new Store(),
+    };
+    // Build the file source by hand and stuff in a parsed transform; the
+    // expansion code will copy these from the parent meta at synthesis time.
+    const target: ParsedFileSource = {
+      kind: 'file',
+      id: 'docs/alice.ttl',
+      path: file,
+      parentId: 'docs',
+      transforms: [{ key: 'stubDropAll', apply: dropAll.parse(true) }],
+    };
+    const result = await resolveSource(target);
+
+    if (result.mode !== 'materialized') throw new Error('unreachable');
+    expect(result.store.size).toBe(0);
+    expect(result.files).toEqual([file]);
   });
 });
 

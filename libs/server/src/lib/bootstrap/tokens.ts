@@ -25,7 +25,7 @@ export interface SparqlServerConfig {
   mutable: boolean;
 }
 
-export type SourceKind = 'glob' | 'endpoint' | 'empty' | 'view';
+export type SourceKind = 'glob' | 'endpoint' | 'empty' | 'view' | 'file';
 
 export interface SourceListingEntry {
   id: string;

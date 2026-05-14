@@ -232,7 +232,13 @@ function executeAgainstSources(
           logger,
         })
       : new QueryEngine(sources.store, {
-          id: target.id ?? (target.kind === 'glob' ? target.glob : '(target)'),
+          id:
+            target.id ??
+            (target.kind === 'glob'
+              ? target.glob
+              : target.kind === 'file'
+                ? target.path
+                : '(target)'),
           mode: 'materialized',
           logger,
         });

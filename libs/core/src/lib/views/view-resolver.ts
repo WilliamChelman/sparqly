@@ -290,6 +290,13 @@ function loadUpstreamResult(
   if (upstream.kind === 'empty') {
     return okAsync(new Store());
   }
+  if (upstream.kind === 'file') {
+    return loadRdfResult({ sources: upstream.path, logger }).map((sub) =>
+      applyTransformPipeline(sub.store, upstream.transforms ?? [], {
+        perFileRecords: sub.perFileRecords,
+      }),
+    );
+  }
   if (upstream.kind !== 'glob') {
     // Endpoint upstreams are routed via pass-through above; this branch is
     // unreachable for the current source kinds.

@@ -71,6 +71,7 @@ export type ResolveAnonymousSelectBindingsError =
 
 function upstreamLabel(upstream: ParsedSource): string {
   if (upstream.kind === 'glob') return upstream.glob;
+  if (upstream.kind === 'file') return upstream.path;
   if (upstream.kind === 'endpoint') return upstream.endpoint;
   return upstream.id ?? `(${upstream.kind})`;
 }

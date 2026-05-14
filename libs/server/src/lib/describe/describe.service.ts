@@ -264,8 +264,9 @@ export class DescribeService {
     if (target.kind === 'reference') {
       return errAsync({ kind: 'reference-source', id, ref: target.ref });
     }
-    // `glob` and `view` both land here; `resolveSourceResult` materializes a
-    // view's upstream chain into an in-memory store before we describe over it.
+    // `glob`, `file` (split-glob child), and `view` all land here;
+    // `resolveSourceResult` materializes a view's upstream chain — or a
+    // file/glob's quads — into an in-memory store before we describe over it.
     return resolveSourceResult(target, {
       registry: this.resolutionRegistry,
     })
@@ -315,11 +316,12 @@ interface SourceRun {
 }
 
 function isSupportedKind(src: ParsedSource): boolean {
-  // `glob`, `endpoint`, `view`, `empty`, and `reference` are all surfaced so
-  // the caller gets an explanatory per-source error (for `empty`/`reference`)
-  // rather than a silent omission.
+  // `glob`, `file` (split-glob child, ADR-0027), `endpoint`, `view`, `empty`,
+  // and `reference` are all surfaced so the caller gets an explanatory
+  // per-source error (for `empty`/`reference`) rather than a silent omission.
   return (
     src.kind === 'glob' ||
+    src.kind === 'file' ||
     src.kind === 'endpoint' ||
     src.kind === 'view' ||
     src.kind === 'empty' ||

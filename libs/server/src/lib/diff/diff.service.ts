@@ -258,7 +258,10 @@ function resolveGraphSide(
         endpoint: sources.endpoint.endpoint,
       });
     }
-    const transforms = target.kind === 'glob' ? target.transforms : undefined;
+    const transforms =
+      target.kind === 'glob' || target.kind === 'file'
+        ? target.transforms
+        : undefined;
     return ok<GraphSideOk, DiffError>({
       store: sources.store,
       annotationPredicates: extractAnnotationPredicates(transforms),
@@ -381,6 +384,7 @@ function anonymousUpstream(
   side: 'left' | 'right',
 ): Result<SourceSpecInput, DiffError> {
   if (target.kind === 'glob') return ok(target.glob);
+  if (target.kind === 'file') return ok(target.path);
   if (target.kind === 'endpoint') return ok(target.endpoint);
   return err({ kind: 'inline-upstream-kind', side, targetKind: target.kind });
 }
