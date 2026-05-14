@@ -11,6 +11,7 @@ import {
   resolveSource,
 } from 'core';
 import type { EngineMap } from './engine-map';
+import type { MetaChildrenCache } from './meta-children-cache';
 import type { SnippetAllowList } from '../snippet';
 import type { StoreRef } from './tokens';
 import {
@@ -42,6 +43,12 @@ export interface MaybeStartWatcherOptions {
   debounceMs: number;
   pollMs: number;
   snippetAllowList: SnippetAllowList;
+  /**
+   * Per-meta children cache for `splitByFile: true` globs (ADR-0027). The
+   * watcher calls `invalidate(parentId)` on add/unlink events inside a
+   * split-glob's pattern so the next `/api/config` re-walks the meta.
+   */
+  metaChildrenCache: MetaChildrenCache;
 }
 
 export async function maybeStartWatcher(
@@ -98,6 +105,7 @@ export async function maybeStartWatcher(
     boundaryLogger: opts.boundaryLogger,
     debounceMs: opts.debounceMs,
     pollMs: opts.pollMs,
+    metaChildrenCache: opts.metaChildrenCache,
   });
 }
 
@@ -120,6 +128,7 @@ interface MultiSourceWatcherDeps {
   boundaryLogger: SparqlyLogger;
   debounceMs: number;
   pollMs: number;
+  metaChildrenCache: MetaChildrenCache;
 }
 
 async function startMultiSourceWatcher(
@@ -154,17 +163,30 @@ async function startMultiSourceWatcher(
     sourceRunners.set(t, createSourceRunner(t, deps));
   }
 
-  const onFileEvent = (path: string): void => {
+  const onFileEvent = (
+    path: string,
+    setChanged: boolean,
+  ): void => {
     for (const [t, runner] of sourceRunners) {
       if (!pathBelongsToPlan(path, t.plan)) continue;
+      if (setChanged && isSplitGlobMeta(t.target)) {
+        const parentId = t.plan.id;
+        if (parentId !== undefined && deps.metaChildrenCache.hasParent(parentId)) {
+          deps.metaChildrenCache.invalidate(parentId);
+          deps.boundaryLogger.info('split-children-invalidated', {
+            parentId,
+            path,
+          });
+        }
+      }
       runner.schedule({ kind: 'file-change', path });
     }
   };
 
   if (watcher) {
-    watcher.on('add', onFileEvent);
-    watcher.on('change', onFileEvent);
-    watcher.on('unlink', onFileEvent);
+    watcher.on('add', (p) => onFileEvent(p, true));
+    watcher.on('change', (p) => onFileEvent(p, false));
+    watcher.on('unlink', (p) => onFileEvent(p, true));
   }
 
   // Per-source TTL + freshness handles.
@@ -277,6 +299,10 @@ function createSourceRunner(
       }
     },
   };
+}
+
+function isSplitGlobMeta(src: ParsedSource): boolean {
+  return src.kind === 'glob' && src.splitByFile === true;
 }
 
 function pathBelongsToPlan(
