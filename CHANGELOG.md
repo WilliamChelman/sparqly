@@ -1,3 +1,22 @@
+## [0.23.0](https://github.com/WilliamChelman/sparqly/compare/v0.22.0...v0.23.0) (2026-05-14)
+
+### Features
+
+* **cli:** query/hash/format consume SourceError | TargetError per ADR-0024 ([#250](https://github.com/WilliamChelman/sparqly/issues/250)) ([667572d](https://github.com/WilliamChelman/sparqly/commit/667572db117a0c46fa6feda9f6114759c0a9c9f6))
+* **describe:** per-source-as-data aggregation + HTTP mapper ([#251](https://github.com/WilliamChelman/sparqly/issues/251)) ([5369204](https://github.com/WilliamChelman/sparqly/commit/5369204f2ec5924c75dd3172586a92fd7baa24f5))
+* **diff:** CLI consumes formatDiffError + per-variant exit codes ([#242](https://github.com/WilliamChelman/sparqly/issues/242)) ([6467b49](https://github.com/WilliamChelman/sparqly/commit/6467b49485d3d1c3617a0f03dd0344fa8b57e90f))
+* **diff:** collapse UnknownSourceIdError into TargetWrappedError ([#248](https://github.com/WilliamChelman/sparqly/issues/248)) ([1c628b1](https://github.com/WilliamChelman/sparqly/commit/1c628b1d1660b66772a8477ed79c4a9105017a56))
+* **diff:** diff-http-errors mapper + controller result.match per route + Zod adapter ([#241](https://github.com/WilliamChelman/sparqly/issues/241)) ([eadc110](https://github.com/WilliamChelman/sparqly/commit/eadc1102c3318af12d8b0e43c6b0e8e40e993046))
+* **diff:** remaining DiffError variants + safeTry rewrite of diff.service ([#240](https://github.com/WilliamChelman/sparqly/issues/240)) ([f6e4067](https://github.com/WilliamChelman/sparqly/commit/f6e4067186ecae3d2ed5f07479fa5efaeb2ebe1f))
+* **diff:** typed errors via neverthrow Result — TabularBlankNodeError canary ([#238](https://github.com/WilliamChelman/sparqly/issues/238)) ([7624082](https://github.com/WilliamChelman/sparqly/commit/76240828151ce39462b1595f340b358a176216ed))
+* **snippet:** typed error surface + HTTP mapper + webapp renderer ([#252](https://github.com/WilliamChelman/sparqly/issues/252)) ([dae6e69](https://github.com/WilliamChelman/sparqly/commit/dae6e69a6f318e8102bcb5b452533ca5d470101a))
+* **sources:** engine-leaf SourceError variants + Result primary impls ([fedf03b](https://github.com/WilliamChelman/sparqly/commit/fedf03b25b61c411f8f49bbb3522890fb96ff7da))
+* **sources:** resolveSourceResult primary impl + SourceError union ([#239](https://github.com/WilliamChelman/sparqly/issues/239)) ([2b470d4](https://github.com/WilliamChelman/sparqly/commit/2b470d46ef6b3921e60cf5d850d8402ed05c9492))
+* **sources:** transform-parse SourceError variant + drop legacy-message ([#246](https://github.com/WilliamChelman/sparqly/issues/246)) ([8901246](https://github.com/WilliamChelman/sparqly/commit/89012463b8bb9ff33c44ddecc2add6f0b1288f8b))
+* **sources:** view-leaf SourceError variants + Result primary impls ([#245](https://github.com/WilliamChelman/sparqly/issues/245)) ([440bb1a](https://github.com/WilliamChelman/sparqly/commit/440bb1a7c6747d93b6ee0b3f144db491f328ab3a))
+* **sparql:** controller consumes SourceError | TargetError directly ([#249](https://github.com/WilliamChelman/sparqly/issues/249)) ([bc707dc](https://github.com/WilliamChelman/sparqly/commit/bc707dc11342864636bcd4ee224a568fcec61ad8))
+* **target:** TargetError union + selectTargetResult/resolveServeScopeResult primary impls ([#247](https://github.com/WilliamChelman/sparqly/issues/247)) ([d4391d0](https://github.com/WilliamChelman/sparqly/commit/d4391d0e7d279876c247287442e6037688d29ca9))
+
 ## [0.22.0](https://github.com/WilliamChelman/sparqly/compare/v0.21.0...v0.22.0) (2026-05-13)
 
 ### Features
