@@ -1,15 +1,12 @@
-import { Store } from 'n3';
-import { parseGraphNameTransform } from './graph-name-transform';
-import { loadRdf, type GraphMode, type LoadResult } from '../engine';
+import type { Store } from 'n3';
+import type { GraphMode } from '../engine';
+import type { ParsedEndpointSource, ParsedSource } from './source-spec';
+import type { ResolveViewOptions } from '../views';
 import {
-  type ParsedEndpointSource,
-  type ParsedGlobSource,
-  type ParsedSource,
-  type ParsedViewSource,
-} from './source-spec';
-import { applyTransformPipeline } from './transform-pipeline';
-import type { ParsedTransform } from './transform-spec';
-import { resolveView, type ResolveViewOptions } from '../views';
+  formatSourceError,
+  resolveSourceResult,
+  type ResolveSourceResultOptions,
+} from './resolve-source-result';
 
 export type QuerySources =
   | { mode: 'pass-through'; endpoint: ParsedEndpointSource }
@@ -44,79 +41,20 @@ export interface ResolveSourceOptions {
   logger?: ResolveViewOptions['logger'];
 }
 
+/**
+ * @deprecated Use `resolveSourceResult` (ADR-0024). This is a thin throw-wrapping
+ * adapter that delegates to it; it exists only so non-converted callers
+ * (`describe`, `bootstrap`, `engine-map`, ...) keep compiling until they
+ * migrate. The adapter is deleted when the last `@deprecated` import is gone.
+ */
 export async function resolveSource(
   target: ParsedSource,
   options: ResolveSourceOptions = {},
 ): Promise<QuerySources> {
-  if (target.kind === 'reference') {
-    throw new Error(
-      "resolveSource: `kind: 'reference'` entries are aliases, not data, and cannot be resolved as a target",
-    );
-  }
-  if (target.kind === 'endpoint') {
-    return { mode: 'pass-through', endpoint: target };
-  }
-  if (target.kind === 'empty') {
-    return materialized(new Store(), [], {});
-  }
-  if (target.kind === 'glob') {
-    const loaded = await loadGlobIntoStore(target, options.graphMode);
-    return materialized(loaded.store, loaded.files, loaded.prefixes);
-  }
-  return resolveViewTarget(target, options);
+  const result = await resolveSourceResult(
+    target,
+    options as ResolveSourceResultOptions,
+  );
+  if (result.isErr()) throw new Error(formatSourceError(result.error));
+  return result.value;
 }
-
-async function resolveViewTarget(
-  view: ParsedViewSource,
-  options: ResolveSourceOptions,
-): Promise<QuerySources> {
-  const registry = options.registry ?? [view];
-  const store = await resolveView({
-    view,
-    registry,
-    cacheDir: options.cacheDir,
-    now: options.now,
-    engine: options.engine,
-    logger: options.logger,
-  });
-  return materialized(store, [], {});
-}
-
-async function loadGlobIntoStore(
-  source: ParsedGlobSource,
-  defaultGraphMode: GraphMode | undefined,
-): Promise<LoadResult> {
-  const sub = await loadRdf({ sources: source.glob });
-  const transforms = effectiveTransforms(source, defaultGraphMode);
-  const transformed = applyTransformPipeline(sub.store, transforms, {
-    perFileRecords: sub.perFileRecords,
-  });
-  return {
-    store: transformed,
-    files: [...sub.files],
-    prefixes: { ...sub.prefixes },
-    perFileRecords: sub.perFileRecords,
-  };
-}
-
-function effectiveTransforms(
-  source: ParsedGlobSource,
-  defaultGraphMode: GraphMode | undefined,
-): ReadonlyArray<ParsedTransform> {
-  if (source.transforms !== undefined) return source.transforms;
-  if (defaultGraphMode === undefined || defaultGraphMode === 'preserve') {
-    return [];
-  }
-  return [
-    { key: 'graphName', apply: parseGraphNameTransform(defaultGraphMode) },
-  ];
-}
-
-function materialized(
-  store: Store,
-  files: string[],
-  prefixes: Record<string, Record<string, string>>,
-): QuerySources {
-  return { mode: 'materialized', store, files, prefixes };
-}
-

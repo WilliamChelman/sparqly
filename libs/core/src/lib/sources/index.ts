@@ -7,5 +7,6 @@ export * from './source-record-builder';
 export * from './source-path-display';
 export * from './load-sources';
 export * from './resolve-source';
+export * from './resolve-source-result';
 export * from './resolve-source-references';
 export * from './with-auto-source-annotation';

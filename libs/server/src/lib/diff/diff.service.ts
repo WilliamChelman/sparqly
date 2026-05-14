@@ -3,10 +3,11 @@ import {
   detectSelectShape,
   diffStores,
   extractAnnotationPredicates,
+  formatSourceError,
   groupRdfDiffByEntity,
   resolveAnonymousSelectBindings,
   resolveAnonymousView,
-  resolveSource,
+  resolveSourceResult,
   tabularDiff,
   withAutoSourceAnnotation,
   type DiffError,
@@ -259,7 +260,15 @@ async function resolveGraphSide(
       );
     }
 
-    const sources = await resolveSource(target, { registry });
+    const sourcesResult = await resolveSourceResult(target, { registry });
+    if (sourcesResult.isErr()) {
+      return {
+        kind: 'err',
+        side,
+        message: formatSourceError(sourcesResult.error),
+      };
+    }
+    const sources = sourcesResult.value;
     if (sources.mode === 'pass-through') {
       throw new Error(
         `SPARQL endpoint ${sources.endpoint.endpoint} cannot be diffed directly on the ${side} side (wrap it in a \`view\` source kind, or pass \`${side}Query\`)`,
