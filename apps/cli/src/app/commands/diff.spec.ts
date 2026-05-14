@@ -8,6 +8,7 @@ import {
   resolveDiffSide,
   withAutoSourceAnnotation,
 } from './diff';
+import { DiffErrorSignal } from './diff-error';
 
 const TRIPLES_CONSTRUCT =
   'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:p ?o } WHERE { ?s ex:p ?o }';
@@ -134,6 +135,32 @@ describe('diffSpec', () => {
 
   it('exitCode returns 2 by default for unknown errors', () => {
     expect(diffSpec.exitCode(new Error('boom'))).toBe(2);
+  });
+
+  it('exitCode routes a DiffErrorSignal through diffErrorExitCode (per-variant map)', () => {
+    expect(
+      diffSpec.exitCode(
+        new DiffErrorSignal({ kind: 'tabular-blank-node', column: 'x' }),
+      ),
+    ).toBe(10);
+    expect(
+      diffSpec.exitCode(
+        new DiffErrorSignal({
+          kind: 'anonymous-view-execution',
+          side: 'left',
+          message: 'parse failed',
+        }),
+      ),
+    ).toBe(20);
+    expect(
+      diffSpec.exitCode(
+        new DiffErrorSignal({
+          kind: 'endpoint-as-diff-target',
+          side: 'right',
+          endpoint: 'https://example.org/sparql',
+        }),
+      ),
+    ).toBe(14);
   });
 });
 

@@ -27,7 +27,7 @@ describe('sparqly diff — raw SPARQL endpoint sources are rejected on either si
       diffFixture('domain.ttl'),
     ]);
 
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(14);
     expect(result.stderr).toMatch(/view/i);
     expect(result.stderr).toContain(endpoint.url);
     expect(endpoint.requestCount()).toBe(0);
@@ -46,7 +46,7 @@ describe('sparqly diff — raw SPARQL endpoint sources are rejected on either si
       endpoint.url,
     ]);
 
-    expect(result.exitCode).toBe(2);
+    expect(result.exitCode).toBe(14);
     expect(result.stderr).toMatch(/view/i);
     expect(result.stderr).toContain(endpoint.url);
     expect(endpoint.requestCount()).toBe(0);
