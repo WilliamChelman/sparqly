@@ -535,6 +535,53 @@ describe('view-cache — cache key composition', () => {
     expect(ka).not.toEqual(kb);
   });
 
+  it('changes when the absolute path of a file upstream changes (ADR-0027)', () => {
+    const view = parseSourceSpecs([
+      {
+        id: 'cached',
+        from: '@docs/foo.ttl',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+    ])[0] as ParsedViewSource;
+    const u1: ParsedSource = {
+      kind: 'file',
+      id: 'docs/foo.ttl',
+      path: '/abs/proj/data/foo.ttl',
+      parentId: 'docs',
+    };
+    const u2: ParsedSource = {
+      kind: 'file',
+      id: 'docs/foo.ttl',
+      path: '/abs/proj/data/relocated/foo.ttl',
+      parentId: 'docs',
+    };
+    const k1 = viewCacheKey({ view, upstream: [u1], cacheDir: '/x' });
+    const k2 = viewCacheKey({ view, upstream: [u2], cacheDir: '/x' });
+    expect(k1).not.toEqual(k2);
+  });
+
+  it('is stable across two computations for a view over the same file upstream (ADR-0027)', () => {
+    const view = parseSourceSpecs([
+      {
+        id: 'cached',
+        from: '@docs/foo.ttl',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+    ])[0] as ParsedViewSource;
+    const file: ParsedSource = {
+      kind: 'file',
+      id: 'docs/foo.ttl',
+      path: '/abs/proj/data/foo.ttl',
+      parentId: 'docs',
+    };
+    const k1 = viewCacheKey({ view, upstream: [file], cacheDir: '/x' });
+    const k2 = viewCacheKey({ view, upstream: [file], cacheDir: '/x' });
+    expect(k1).toEqual(k2);
+    expect(k1).toHaveLength(32);
+  });
+
   it('is stable when only cacheDir (an output knob) changes', () => {
     const view = parseSourceSpecs([
       {
