@@ -108,7 +108,7 @@ describe('sparqly serve — Registry mode default (issue #141)', () => {
     expect(res.status).toBe(200);
   });
 
-  it('returns 404 on /api/sparql/<unknown-id>', async () => {
+  it('returns 400 unknown-ref on /api/sparql/<unknown-id>', async () => {
     const alphaPath = join(dir, 'alpha.ttl');
     await writeFile(
       alphaPath,
@@ -131,7 +131,10 @@ describe('sparqly serve — Registry mode default (issue #141)', () => {
         'ASK { ?s ?p ?o }',
       )}`,
     );
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(400);
+    const json = (await res.json()) as { kind?: string; ref?: string };
+    expect(json.kind).toBe('unknown-ref');
+    expect(json.ref).toBe('@nope');
   });
 
   it('logs per-@id load timing on boot', async () => {

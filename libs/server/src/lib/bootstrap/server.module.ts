@@ -19,6 +19,7 @@ import {
   SPARQL_DIFF_SERVICE,
   SPARQL_ENGINE_MAP,
   SPARQL_REGISTRY_LISTING,
+  SPARQL_SERVED_REGISTRY,
   SPARQL_SNIPPET_ALLOW_LIST,
   type SourceListingEntry,
   type SparqlContext,
@@ -69,6 +70,7 @@ export class ServerModule {
         { provide: SPARQL_ENGINE_MAP, useValue: options.engineMap },
         { provide: SPARQL_REGISTRY_LISTING, useValue: options.listing },
         { provide: SPARQL_DEFAULT_ID, useValue: options.defaultId },
+        { provide: SPARQL_SERVED_REGISTRY, useValue: options.servedRegistry },
         {
           provide: SPARQL_DIFF_SERVICE,
           useValue: new DiffService(

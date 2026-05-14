@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   BadRequestException,
   Body,
   Controller,
@@ -7,20 +8,28 @@ import {
   HttpException,
   HttpStatus,
   Inject,
-  NotFoundException,
+  InternalServerErrorException,
   Param,
   Post,
   Query,
   Res,
 } from '@nestjs/common';
-import type { SparqlFormat } from 'core';
+import {
+  selectTargetResult,
+  type ExecuteResult,
+  type ParsedSource,
+  type SourceError,
+  type SparqlFormat,
+  type TargetError,
+} from 'core';
 import {
   EngineMap,
   SPARQL_CONFIG,
-  SPARQL_DEFAULT_ID,
   SPARQL_ENGINE_MAP,
+  SPARQL_SERVED_REGISTRY,
   type SparqlServerConfig,
 } from '../bootstrap';
+import { sourceErrorToStatus, targetErrorToStatus } from '../shared';
 
 const SPARQL_QUERY_CT = 'application/sparql-query';
 const FORM_CT = 'application/x-www-form-urlencoded';
@@ -36,7 +45,8 @@ export class RegistrySparqlController {
   constructor(
     @Inject(SPARQL_ENGINE_MAP) private readonly engineMap: EngineMap,
     @Inject(SPARQL_CONFIG) private readonly config: SparqlServerConfig,
-    @Inject(SPARQL_DEFAULT_ID) private readonly defaultId: string | undefined,
+    @Inject(SPARQL_SERVED_REGISTRY)
+    private readonly servedRegistry: ReadonlyArray<ParsedSource>,
   ) {}
 
   /** Unparameterized alias — forwards to the default source. */
@@ -46,7 +56,8 @@ export class RegistrySparqlController {
     @Headers('accept') accept: string | undefined,
     @Res() res: ResLike,
   ): Promise<void> {
-    await this.get(this.resolveDefaultId(), query, accept, res);
+    this.assertQuery(query);
+    await this.respond(undefined, query, accept, res);
   }
 
   @Post()
@@ -56,7 +67,8 @@ export class RegistrySparqlController {
     @Body() body: unknown,
     @Res() res: ResLike,
   ): Promise<void> {
-    await this.post(this.resolveDefaultId(), contentType, accept, body, res);
+    const query = this.extractPostQuery(contentType, body);
+    await this.respond(undefined, query, accept, res);
   }
 
   @Get(':id')
@@ -66,11 +78,8 @@ export class RegistrySparqlController {
     @Headers('accept') accept: string | undefined,
     @Res() res: ResLike,
   ): Promise<void> {
-    this.assertKnownId(id);
-    if (!query || query.trim() === '') {
-      throw new BadRequestException('Missing required query parameter');
-    }
-    await this.respond(id, query, accept, res);
+    this.assertQuery(query);
+    await this.respond(`@${id}`, query, accept, res);
   }
 
   @Post(':id')
@@ -81,7 +90,20 @@ export class RegistrySparqlController {
     @Body() body: unknown,
     @Res() res: ResLike,
   ): Promise<void> {
-    this.assertKnownId(id);
+    const query = this.extractPostQuery(contentType, body);
+    await this.respond(`@${id}`, query, accept, res);
+  }
+
+  private assertQuery(query: string | undefined): asserts query is string {
+    if (!query || query.trim() === '') {
+      throw new BadRequestException('Missing required query parameter');
+    }
+  }
+
+  private extractPostQuery(
+    contentType: string | undefined,
+    body: unknown,
+  ): string {
     const ct = (contentType ?? '').toLowerCase();
     let query: string | undefined;
     if (ct.includes(SPARQL_QUERY_CT)) {
@@ -97,48 +119,75 @@ export class RegistrySparqlController {
         HttpStatus.UNSUPPORTED_MEDIA_TYPE,
       );
     }
-    if (!query || query.trim() === '') {
-      throw new BadRequestException('Missing required query parameter');
-    }
-    await this.respond(id, query, accept, res);
-  }
-
-  private resolveDefaultId(): string {
-    if (this.defaultId !== undefined) return this.defaultId;
-    throw new NotFoundException({
-      message:
-        'No default source. Address a specific source via /api/sparql/<id>.',
-      routes: this.engineMap.allIds().map((id) => `/api/sparql/${id}`),
-    });
-  }
-
-  private assertKnownId(id: string): void {
-    if (!this.engineMap.allIds().includes(id)) {
-      throw new NotFoundException(`No source with @id "${id}"`);
-    }
+    this.assertQuery(query);
+    return query;
   }
 
   private async respond(
-    id: string,
+    ref: string | undefined,
     query: string,
     accept: string | undefined,
     res: ResLike,
   ): Promise<void> {
     const format = pickFormat(accept);
-    const engine = this.engineMap.get(id);
-    try {
-      const result = await engine.execute(query, {
-        format,
-        mutable: this.config.mutable,
-      });
-      res
-        .status(HttpStatus.OK)
-        .setHeader('Content-Type', result.contentType)
-        .send(result.body);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      throw new BadRequestException(message);
-    }
+    const result = await selectTargetResult(
+      this.servedRegistry,
+      ref,
+    ).asyncAndThen((target: ParsedSource) =>
+      this.engineMap
+        .get(target.id as string)
+        .executeResult(query, { format, mutable: this.config.mutable }),
+    );
+    result.match(
+      (ok: ExecuteResult) => {
+        res
+          .status(HttpStatus.OK)
+          .setHeader('Content-Type', ok.contentType)
+          .send(ok.body);
+      },
+      (error: SourceError | TargetError) => {
+        throw mapError(error);
+      },
+    );
+  }
+}
+
+function mapError(error: SourceError | TargetError): HttpException {
+  if (isTargetError(error)) {
+    return statusToHttpException(targetErrorToStatus(error), cloneError(error));
+  }
+  return statusToHttpException(sourceErrorToStatus(error), cloneError(error));
+}
+
+function isTargetError(
+  error: SourceError | TargetError,
+): error is TargetError {
+  switch (error.kind) {
+    case 'ref-as-target':
+    case 'empty-registry':
+    case 'no-default-multi':
+    case 'unknown-ref':
+      return true;
+    default:
+      return false;
+  }
+}
+
+function cloneError(error: SourceError | TargetError): object {
+  return JSON.parse(JSON.stringify(error)) as object;
+}
+
+function statusToHttpException(
+  status: HttpStatus,
+  body: object,
+): HttpException {
+  switch (status) {
+    case HttpStatus.BAD_REQUEST:
+      return new BadRequestException(body);
+    case HttpStatus.BAD_GATEWAY:
+      return new BadGatewayException(body);
+    default:
+      return new InternalServerErrorException(body);
   }
 }
 

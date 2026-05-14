@@ -49,7 +49,7 @@ describe('sparqly serve — --source as a scope filter (ADR-0016 / #197)', () =>
     expect((await home.text()).toLowerCase()).toContain('<html');
   });
 
-  it('--source @x against a multi-source config serves only @x; filtered ids 404; /api/config lists only the served set', async () => {
+  it('--source @x against a multi-source config serves only @x; filtered ids 400 unknown-ref; /api/config lists only the served set', async () => {
     const alphaPath = join(dir, 'alpha.ttl');
     const betaPath = join(dir, 'beta.ttl');
     await writeFile(
@@ -82,7 +82,13 @@ describe('sparqly serve — --source as a scope filter (ADR-0016 / #197)', () =>
     const filtered = await fetch(
       `${handle.baseUrl}/api/sparql/beta?query=${SELECT_S}`,
     );
-    expect(filtered.status).toBe(404);
+    expect(filtered.status).toBe(400);
+    const filteredJson = (await filtered.json()) as {
+      kind?: string;
+      ref?: string;
+    };
+    expect(filteredJson.kind).toBe('unknown-ref');
+    expect(filteredJson.ref).toBe('@beta');
 
     const cfg = await fetch(`${handle.baseUrl}/api/config`);
     const json = (await cfg.json()) as {
@@ -161,7 +167,13 @@ describe('sparqly serve — --source as a scope filter (ADR-0016 / #197)', () =>
     const upstream = await fetch(
       `${handle.baseUrl}/api/sparql/upstream?query=${SELECT_S}`,
     );
-    expect(upstream.status).toBe(404);
+    expect(upstream.status).toBe(400);
+    const upstreamJson = (await upstream.json()) as {
+      kind?: string;
+      ref?: string;
+    };
+    expect(upstreamJson.kind).toBe('unknown-ref');
+    expect(upstreamJson.ref).toBe('@upstream');
 
     const cfg = await fetch(`${handle.baseUrl}/api/config`);
     const cfgJson = (await cfg.json()) as { sources: Array<{ id: string }> };
@@ -236,7 +248,13 @@ describe('sparqly serve — --source as a scope filter (ADR-0016 / #197)', () =>
     const configured = await fetch(
       `${handle.baseUrl}/api/sparql/configured?query=${SELECT_S}`,
     );
-    expect(configured.status).toBe(404);
+    expect(configured.status).toBe(400);
+    const configuredJson = (await configured.json()) as {
+      kind?: string;
+      ref?: string;
+    };
+    expect(configuredJson.kind).toBe('unknown-ref');
+    expect(configuredJson.ref).toBe('@configured');
     const cfg = await fetch(`${handle.baseUrl}/api/config`);
     const cfgJson = (await cfg.json()) as { sources: Array<{ id: string }> };
     expect(cfgJson.sources.map((s) => s.id)).toEqual(['default']);

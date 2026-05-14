@@ -132,12 +132,15 @@ describe('createServer — served registry', () => {
     ]);
   });
 
-  it('GET /api/sparql/:id returns 404 for an unknown @id', async () => {
+  it('GET /api/sparql/:id returns 400 with a structured unknown-ref body for an unknown @id', async () => {
     const resp = await fetch(
       `${baseUrl}/api/sparql/nope?query=${encodeURIComponent('ASK { ?s ?p ?o }')}`,
     );
 
-    expect(resp.status).toBe(404);
+    expect(resp.status).toBe(400);
+    const json = (await resp.json()) as { kind?: string; ref?: string };
+    expect(json.kind).toBe('unknown-ref');
+    expect(json.ref).toBe('@nope');
   });
 
   it('POST /api/sparql/:id with application/sparql-query body works', async () => {
@@ -174,7 +177,7 @@ describe('createServer — scope filter', () => {
     await rm(dirB, { recursive: true, force: true });
   });
 
-  it('scope `@id` narrows the served/listed set; filtered ids 404', async () => {
+  it('scope `@id` narrows the served/listed set; filtered ids return 400 unknown-ref', async () => {
     const server = await createServer({
       sources: [
         { id: 'alpha', glob: join(dirA, '*.ttl') },
@@ -192,7 +195,10 @@ describe('createServer — scope filter', () => {
       const beta = await fetch(
         `${base}/api/sparql/beta?query=${encodeURIComponent('ASK { ?s ?p ?o }')}`,
       );
-      expect(beta.status).toBe(404);
+      expect(beta.status).toBe(400);
+      const json = (await beta.json()) as { kind?: string; ref?: string };
+      expect(json.kind).toBe('unknown-ref');
+      expect(json.ref).toBe('@beta');
     } finally {
       await server.close();
     }
