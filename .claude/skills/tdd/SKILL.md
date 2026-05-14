@@ -98,6 +98,27 @@ After all tests pass, look for [refactor candidates](refactoring.md):
 
 **Never refactor while RED.** Get to GREEN first.
 
+## Test Scope Per Cycle
+
+Match the test command to the loop's radius. Running the whole workspace on every red→green tick burns time and tokens for no signal — you only need to know whether _this_ behavior flipped from failing to passing.
+
+Always go through `nx`, never call `vitest` directly — the bare binary skips Nx's cache, so a re-run that should be free re-executes from scratch.
+
+| Moment in the loop                          | What to run                                                | How                                                                       |
+| ------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Inner RED→GREEN (most cycles)               | Just the spec file you're editing, optionally one `-t` name | `pnpm exec nx test <project> -- run <spec-path-relative-to-project> -t "<test name>"` |
+| Finished a vertical slice / before refactor | The affected project(s) only                               | `pnpm exec nx affected -t test`                                           |
+| Before commit                               | Full validation                                            | `pnpm run check`                                                          |
+
+The spec path in the inner-loop command is relative to the project root (the target's cwd), e.g. `src/lib/canonical/canonicalize.spec.ts`, not `libs/core/src/...`. The `run` token is required so vitest does a single pass instead of entering watch mode. Args after `--` are part of Nx's cache key, so a repeated identical run is served from cache.
+
+Rules of thumb:
+
+- Default to file-scoped + name-pattern in the tight loop. Widen scope only when you have a reason (touched shared code, finished a slice, about to refactor).
+- Do **not** run `pnpm run check` or `nx run-many -t test` between every red and green. That's the pre-commit gate, not the development heartbeat.
+- If a focused run goes green but you suspect collateral damage (changed a shared helper, touched a type used across packages), widen to `nx affected -t test` before continuing — don't wait for the final gate to find out.
+- Never invoke `vitest` directly. Everything goes through `nx test` / `nx affected -t test` so the cache stays authoritative.
+
 ## Checklist Per Cycle
 
 ```
