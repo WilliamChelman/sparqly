@@ -32,6 +32,7 @@ export interface SourceListingEntry {
   kind: SourceKind;
   label: string;
   default?: boolean;
+  parentId?: string;
 }
 
 export type EngineMapProvider = EngineMap;
