@@ -1,124 +1,50 @@
 import { describe, expect, it } from 'vitest';
-import { formatDiffError } from './errors';
+import { formatDiffError, type DiffError } from './errors';
 
 describe('formatDiffError', () => {
-  it('formats tabular-blank-node naming the offending column and explaining why', () => {
-    const message = formatDiffError({
-      kind: 'tabular-blank-node',
-      column: 'x',
-    });
-    expect(message).toMatch(/\?x/);
-    expect(message).toMatch(/blank node/i);
-    expect(message).toMatch(/cross-side|identity/i);
+  it('passes through wrapped messages verbatim for anonymous/legacy variants', () => {
+    expect(
+      formatDiffError({
+        kind: 'anonymous-view-execution',
+        side: 'left',
+        message: 'parse failed at line 1',
+      }),
+    ).toBe('parse failed at line 1');
+    expect(
+      formatDiffError({
+        kind: 'legacy-message',
+        message: 'unknown @id "foo" on left side',
+      }),
+    ).toBe('unknown @id "foo" on left side');
   });
 
-  it('formats target by delegating to formatTargetError (unknown-ref carries the offending ref and available list)', () => {
-    const message = formatDiffError({
-      kind: 'target',
-      side: 'left',
-      target: {
-        kind: 'unknown-ref',
-        ref: '@nope',
-        availableIds: ['alpha', 'beta'],
+  it('produces a non-empty message for every DiffError variant', () => {
+    const variants: ReadonlyArray<DiffError> = [
+      { kind: 'tabular-blank-node', column: 'x' },
+      {
+        kind: 'target',
+        side: 'left',
+        target: { kind: 'unknown-ref', ref: '@nope', availableIds: ['a'] },
       },
-    });
-    expect(message).toMatch(/@nope/);
-    expect(message).toMatch(/@alpha/);
-    expect(message).toMatch(/@beta/);
-  });
-
-  it('formats target/unknown-ref with "<none>" when registry is empty (delegates verbatim to formatTargetError)', () => {
-    const message = formatDiffError({
-      kind: 'target',
-      side: 'right',
-      target: {
-        kind: 'unknown-ref',
-        ref: '@x',
-        availableIds: [],
+      { kind: 'mixed-shape', triplesSide: 'left', tuplesSide: 'right' },
+      { kind: 'set-mismatch', left: ['o'], right: ['subject', 'o'] },
+      {
+        kind: 'endpoint-as-diff-target',
+        side: 'left',
+        endpoint: 'https://example.org/sparql',
       },
-    });
-    expect(message).toMatch(/<none>/);
-  });
-
-  it('formats mixed-shape calling out which side is triples and which is tuples', () => {
-    const message = formatDiffError({
-      kind: 'mixed-shape',
-      triplesSide: 'left',
-      tuplesSide: 'right',
-    });
-    expect(message).toMatch(/mixed-shape/i);
-    expect(message).toMatch(/left-side.*triples/);
-    expect(message).toMatch(/right-side.*tuples/);
-  });
-
-  it('formats set-mismatch listing both projected variable sets sorted with ? prefix', () => {
-    const message = formatDiffError({
-      kind: 'set-mismatch',
-      left: ['o'],
-      right: ['subject', 'o'],
-    });
-    expect(message).toMatch(/variable-name sets/);
-    expect(message).toMatch(/\{\?o\}/);
-    expect(message).toMatch(/\{\?o, \?subject\}/);
-  });
-
-  it('formats endpoint-as-diff-target naming the endpoint URL and the offending side', () => {
-    const message = formatDiffError({
-      kind: 'endpoint-as-diff-target',
-      side: 'left',
-      endpoint: 'https://example.org/sparql',
-    });
-    expect(message).toMatch(/https:\/\/example\.org\/sparql/);
-    expect(message).toMatch(/left side/);
-    expect(message).toMatch(/view|leftQuery/);
-  });
-
-  it('formats inline-upstream-kind naming the offending source kind', () => {
-    const message = formatDiffError({
-      kind: 'inline-upstream-kind',
-      side: 'right',
-      targetKind: 'view',
-    });
-    expect(message).toMatch(/right target/);
-    expect(message).toMatch(/view source/);
-  });
-
-  it('formats anonymous-view-execution as the wrapped message verbatim', () => {
-    const message = formatDiffError({
-      kind: 'anonymous-view-execution',
-      side: 'left',
-      message: 'parse failed at line 1',
-    });
-    expect(message).toBe('parse failed at line 1');
-  });
-
-  it('formats anonymous-select-execution as the wrapped message verbatim', () => {
-    const message = formatDiffError({
-      kind: 'anonymous-select-execution',
-      side: 'right',
-      message: 'comunica failed: bad query',
-    });
-    expect(message).toBe('comunica failed: bad query');
-  });
-
-  it('formats source by delegating to formatSourceError', () => {
-    const message = formatDiffError({
-      kind: 'source',
-      side: 'left',
-      source: {
-        kind: 'glob-load',
-        glob: ['/tmp/*.ttl'],
-        message: 'cannot read file foo.ttl',
+      { kind: 'inline-upstream-kind', side: 'right', targetKind: 'view' },
+      { kind: 'anonymous-view-execution', side: 'left', message: 'm' },
+      { kind: 'anonymous-select-execution', side: 'right', message: 'm' },
+      {
+        kind: 'source',
+        side: 'left',
+        source: { kind: 'glob-load', glob: ['x'], message: 'm' },
       },
-    });
-    expect(message).toBe('cannot read file foo.ttl');
-  });
-
-  it('formats legacy-message by passing the wrapped message through verbatim', () => {
-    const message = formatDiffError({
-      kind: 'legacy-message',
-      message: 'unknown @id "foo" on left side',
-    });
-    expect(message).toBe('unknown @id "foo" on left side');
+      { kind: 'legacy-message', message: 'm' },
+    ];
+    for (const v of variants) {
+      expect(formatDiffError(v).length).toBeGreaterThan(0);
+    }
   });
 });

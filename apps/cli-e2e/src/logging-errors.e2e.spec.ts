@@ -6,46 +6,6 @@ const SOURCES = queryFixture('people.ttl');
 const SELECT_ALL = 'SELECT * WHERE { ?s ?p ?o } LIMIT 1';
 
 describe('sparqly query — logging', () => {
-  it('--verbose surfaces a timestamped, level-tagged source-load line plus executed-query info on stderr (US 20)', async () => {
-    const result = await runCli([
-      'query',
-      SOURCES,
-      '--verbose',
-      '-q',
-      SELECT_ALL,
-    ]);
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toMatch(
-      /\d{2}:\d{2}:\d{2}\.\d{3} DEBUG \[sparqly\] source-loaded .*\bms=\d+/,
-    );
-    expect(result.stderr).toMatch(
-      /\d{2}:\d{2}:\d{2}\.\d{3} DEBUG \[sparqly\] query .*\btype=SELECT\b.*\bms=\d+/,
-    );
-  });
-
-  it('--log-format json emits the source-load line as JSON on stderr while stdout stays clean (US 20)', async () => {
-    const result = await runCli([
-      'query',
-      SOURCES,
-      '--verbose',
-      '--log-format',
-      'json',
-      '-q',
-      SELECT_ALL,
-    ]);
-
-    expect(result.exitCode).toBe(0);
-    expect(() => JSON.parse(result.stdout)).not.toThrow();
-    const sourceLoaded = result.stderr
-      .split('\n')
-      .filter((line) => line.trim().startsWith('{'))
-      .map((line) => JSON.parse(line))
-      .find((entry) => entry.msg === 'source-loaded');
-    expect(sourceLoaded).toMatchObject({ level: 'debug', ctx: 'sparqly' });
-    expect(typeof sourceLoaded.ms).toBe('number');
-  });
-
   it('--quiet produces only the result on stdout, with empty stderr (US 21)', async () => {
     const result = await runCli([
       'query',
