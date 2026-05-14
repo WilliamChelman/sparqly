@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { Store } from 'n3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  expandSplitGlobs,
   parseSourceSpecs,
   type ParsedViewSource,
 } from '../sources';
@@ -168,6 +169,94 @@ describe('resolveView — glob upstream', () => {
       expect(quads[0].subject.value).toBe('http://example.org/keep');
     } finally {
       process.chdir(cwd);
+    }
+  });
+});
+
+describe('resolveView — file upstream (split-glob child, ADR-0027)', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-view-file-upstream-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('resolves a view whose `from:` targets a synthesized file child id (`@<parent>/<file>`)', async () => {
+    const foo = join(dir, 'foo.ttl');
+    const bar = join(dir, 'bar.ttl');
+    await writeFile(
+      foo,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:keep ex:p ex:v1 .',
+        'ex:drop ex:p ex:v2 .',
+      ].join('\n'),
+    );
+    await writeFile(bar, '@prefix ex: <http://example.org/> . ex:other ex:p ex:v3 .');
+
+    const parsed = parseSourceSpecs([
+      { id: 'docs', glob: join(dir, '*.ttl'), splitByFile: true },
+      {
+        id: 'kept',
+        from: '@docs/foo.ttl',
+        query:
+          'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }',
+      },
+    ]);
+    const registry = await expandSplitGlobs(parsed, {
+      walkGlob: async () => [foo, bar],
+    });
+    const view = registry.find((s) => s.id === 'kept') as ParsedViewSource;
+
+    const store = await resolveView({ view, registry });
+    const quads = store.getQuads(null, null, null, null);
+    expect(quads).toHaveLength(1);
+    expect(quads[0].subject.value).toBe('http://example.org/keep');
+  });
+
+  it('caches a view over a file upstream under ttl: a hit returns the stored snapshot even after the file content changes', async () => {
+    const foo = join(dir, 'foo.ttl');
+    await writeFile(
+      foo,
+      '@prefix ex: <http://example.org/> . ex:one ex:p ex:v .',
+    );
+
+    const parsed = parseSourceSpecs([
+      { id: 'docs', glob: join(dir, '*.ttl'), splitByFile: true },
+      {
+        id: 'cached',
+        from: '@docs/foo.ttl',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+    ]);
+    const registry = await expandSplitGlobs(parsed, {
+      walkGlob: async () => [foo],
+    });
+    const view = registry.find((s) => s.id === 'cached') as ParsedViewSource;
+
+    const cacheDir = await mkdtemp(join(tmpdir(), 'sparqly-view-file-cache-'));
+    try {
+      const first = await resolveView({ view, registry, cacheDir });
+      expect(first.getQuads(null, null, null, null)).toHaveLength(1);
+
+      // Replace file contents — cache must still win within ttl.
+      await writeFile(
+        foo,
+        [
+          '@prefix ex: <http://example.org/> .',
+          'ex:one ex:p ex:v .',
+          'ex:two ex:p ex:v .',
+        ].join('\n'),
+      );
+
+      const second = await resolveView({ view, registry, cacheDir });
+      expect(second.getQuads(null, null, null, null)).toHaveLength(1);
+    } finally {
+      await rm(cacheDir, { recursive: true, force: true });
     }
   });
 });
