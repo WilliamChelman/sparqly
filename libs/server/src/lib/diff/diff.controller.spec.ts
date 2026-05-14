@@ -130,7 +130,7 @@ describe('POST /api/diff', () => {
     ]);
   });
 
-  it('returns kind=error on mixed-shape inputs (one triples, one tuples)', async () => {
+  it('returns kind=error with the structured mixed-shape variant on mixed-shape inputs (one triples, one tuples)', async () => {
     const resp = await postJson({
       left: '@alpha',
       right: '@beta',
@@ -141,11 +141,16 @@ describe('POST /api/diff', () => {
     expect(resp.status).toBe(200);
     const json = (await resp.json()) as {
       kind: string;
-      errors: { top?: { kind: string; message?: string } };
+      errors: {
+        top?: { kind: string; triplesSide?: string; tuplesSide?: string };
+      };
     };
     expect(json.kind).toBe('error');
-    expect(json.errors.top?.kind).toBe('legacy-message');
-    expect(json.errors.top?.message).toMatch(/mixed.*shape|shape mismatch/i);
+    expect(json.errors.top).toEqual({
+      kind: 'mixed-shape',
+      triplesSide: 'left',
+      tuplesSide: 'right',
+    });
   });
 
   it('skipAutoSourceAnnotation in body leaves per-hunk source records empty on glob targets', async () => {

@@ -3,7 +3,6 @@ import {
   detectSelectShape,
   diffStores,
   extractAnnotationPredicates,
-  formatSourceError,
   groupRdfDiffByEntity,
   resolveAnonymousSelectBindings,
   resolveAnonymousView,
@@ -14,22 +13,20 @@ import {
   type HunkedRdfDiff,
   type ParsedSource,
   type SelectShapeReport,
+  type SourceError,
   type SourceSpecInput,
   type TabularDiffResult,
   type TabularRow,
 } from 'core';
+import {
+  ResultAsync,
+  err,
+  ok,
+  safeTry,
+  type Result,
+  type ResultAsync as ResultAsyncT,
+} from 'neverthrow';
 import type { Store } from 'n3';
-
-/**
- * Wrap a legacy throw-derived string into a DiffError envelope variant. Once
- * the source folders (resolveSource, parsing, anonymousUpstream) convert to
- * Result in subsequent slices (ADR-0024), each call here will be replaced
- * with the structured variant the converted leaf returns, and this helper
- * will be deleted.
- */
-function legacy(message: string): DiffError {
-  return { kind: 'legacy-message', message };
-}
 
 export interface DiffRequest {
   left: string;
@@ -73,23 +70,23 @@ export class DiffService {
   async runDiff(req: DiffRequest): Promise<DiffResponse> {
     const leftSel = this.selectFromRegistry(req.left, 'left');
     const rightSel = this.selectFromRegistry(req.right, 'right');
-    if (leftSel.kind === 'err' || rightSel.kind === 'err') {
+    if (leftSel.isErr() || rightSel.isErr()) {
       return packageSideErrors(leftSel, rightSel);
     }
 
-    const tabular = detectTabularDispatchSafe(req.leftQuery, req.rightQuery);
-    if (tabular.kind === 'mixed') {
-      return { kind: 'error', errors: { top: legacy(tabular.message) } };
+    const dispatch = detectTabularDispatch(req.leftQuery, req.rightQuery);
+    if (dispatch.isErr()) {
+      return { kind: 'error', errors: { top: dispatch.error } };
     }
 
-    if (tabular.kind === 'tabular') {
+    if (dispatch.value.kind === 'tabular') {
       return runTabular({
         leftTarget: leftSel.value,
         rightTarget: rightSel.value,
         leftQuery: req.leftQuery as string,
         rightQuery: req.rightQuery as string,
-        leftShape: tabular.left,
-        rightShape: tabular.right,
+        leftShape: dispatch.value.left,
+        rightShape: dispatch.value.right,
         registry: this.resolutionRegistry,
       });
     }
@@ -107,73 +104,72 @@ export class DiffService {
   private selectFromRegistry(
     ref: string,
     side: 'left' | 'right',
-  ): SideSelection {
+  ): Result<ParsedSource, DiffError> {
     const id = ref.startsWith('@') ? ref.slice(1) : ref;
     const found = this.servedRegistry.find(
       (src) => src.kind !== 'reference' && src.id === id,
     );
     if (!found) {
-      return {
-        kind: 'err',
+      return err({
+        kind: 'unknown-source-id',
         side,
-        message: `unknown @id "${id}" on ${side} side; available: ${availableIds(this.servedRegistry)}`,
-      };
+        id,
+        availableIds: availableIds(this.servedRegistry),
+      });
     }
-    return { kind: 'ok', value: found };
+    return ok(found);
   }
 }
 
-type SideSelection =
-  | { kind: 'ok'; value: ParsedSource }
-  | { kind: 'err'; side: 'left' | 'right'; message: string };
-
-function availableIds(registry: ReadonlyArray<ParsedSource>): string {
-  const ids = registry
+function availableIds(
+  registry: ReadonlyArray<ParsedSource>,
+): ReadonlyArray<string> {
+  return registry
     .filter((s) => s.kind !== 'reference' && s.id !== undefined)
-    .map((s) => `@${s.id}`);
-  return ids.length === 0 ? '(none)' : ids.join(', ');
+    .map((s) => s.id as string);
 }
 
 function packageSideErrors(
-  left: SideSelection,
-  right: SideSelection,
+  left: Result<ParsedSource, DiffError>,
+  right: Result<ParsedSource, DiffError>,
 ): DiffErrorResponse {
   const errors: DiffErrorResponse['errors'] = {};
-  if (left.kind === 'err') errors.left = legacy(left.message);
-  if (right.kind === 'err') errors.right = legacy(right.message);
+  if (left.isErr()) errors.left = left.error;
+  if (right.isErr()) errors.right = right.error;
   return { kind: 'error', errors };
 }
 
 type TabularDispatch =
   | { kind: 'graph-mode' }
-  | { kind: 'tabular'; left: SelectShapeReport; right: SelectShapeReport }
-  | { kind: 'mixed'; message: string };
+  | { kind: 'tabular'; left: SelectShapeReport; right: SelectShapeReport };
 
-function detectTabularDispatchSafe(
+function detectTabularDispatch(
   leftQuery: string | undefined,
   rightQuery: string | undefined,
-): TabularDispatch {
-  if (leftQuery === undefined || rightQuery === undefined) return { kind: 'graph-mode' };
+): Result<TabularDispatch, DiffError> {
+  if (leftQuery === undefined || rightQuery === undefined) {
+    return ok({ kind: 'graph-mode' });
+  }
   let left: SelectShapeReport;
   let right: SelectShapeReport;
   try {
     left = detectSelectShape(leftQuery);
     right = detectSelectShape(rightQuery);
   } catch {
-    return { kind: 'graph-mode' };
+    // Parse-error on either query: fall back to graph mode so the offending
+    // query is surfaced downstream as an anonymous-view-execution error
+    // (per-side) rather than a top-level shape error here.
+    return ok({ kind: 'graph-mode' });
   }
   if (left.shape === 'triples' && right.shape === 'triples') {
-    return { kind: 'graph-mode' };
+    return ok({ kind: 'graph-mode' });
   }
   if (left.shape !== right.shape) {
     const tuplesSide = left.shape === 'tuples' ? 'left' : 'right';
     const triplesSide = tuplesSide === 'left' ? 'right' : 'left';
-    return {
-      kind: 'mixed',
-      message: `mixed-shape diff: ${triplesSide}-side query is triples-shape (CONSTRUCT or SELECT-{?s,?p,?o[,?g]}) while ${tuplesSide}-side query is tuples-shape (arbitrary SELECT). Either project triples on both sides (graph diff) or arbitrary tuples on both sides (tabular diff) — pick one shape and align both queries.`,
-    };
+    return err({ kind: 'mixed-shape', triplesSide, tuplesSide });
   }
-  return { kind: 'tabular', left, right };
+  return ok({ kind: 'tabular', left, right });
 }
 
 interface RunGraphArgs {
@@ -185,118 +181,101 @@ interface RunGraphArgs {
   registry: ReadonlyArray<ParsedSource>;
 }
 
+interface GraphSideOk {
+  store: Store;
+  annotationPredicates: ReturnType<typeof extractAnnotationPredicates>;
+}
+
 async function runGraph(args: RunGraphArgs): Promise<DiffResponse> {
-  const left = await resolveGraphSide(
-    args.leftTarget,
-    args.leftQuery,
-    args.skipAuto,
-    args.registry,
-    'left',
-  );
-  const right = await resolveGraphSide(
-    args.rightTarget,
-    args.rightQuery,
-    args.skipAuto,
-    args.registry,
-    'right',
-  );
-  if (left.kind === 'err' || right.kind === 'err') {
-    return packageGraphResolveErrors(left, right);
+  const [left, right] = await Promise.all([
+    resolveGraphSide(args.leftTarget, args.leftQuery, args.skipAuto, args.registry, 'left'),
+    resolveGraphSide(args.rightTarget, args.rightQuery, args.skipAuto, args.registry, 'right'),
+  ]);
+  if (left.isErr() || right.isErr()) {
+    const errors: DiffErrorResponse['errors'] = {};
+    if (left.isErr()) errors.left = left.error;
+    if (right.isErr()) errors.right = right.error;
+    return { kind: 'error', errors };
   }
 
   const result = await diffStores(
     {
-      store: left.store,
-      annotationPredicates: left.annotationPredicates,
+      store: left.value.store,
+      annotationPredicates: left.value.annotationPredicates,
     },
     {
-      store: right.store,
-      annotationPredicates: right.annotationPredicates,
+      store: right.value.store,
+      annotationPredicates: right.value.annotationPredicates,
     },
   );
 
   const hunked = groupRdfDiffByEntity({
     diff: result,
-    left: { store: left.store },
-    right: { store: right.store },
+    left: { store: left.value.store },
+    right: { store: right.value.store },
   });
 
   return { kind: 'grouped', hunked };
 }
 
-type GraphSideResolved =
-  | {
-      kind: 'ok';
-      store: Store;
-      annotationPredicates: ReturnType<typeof extractAnnotationPredicates>;
-    }
-  | { kind: 'err'; side: 'left' | 'right'; message: string };
-
-async function resolveGraphSide(
+function resolveGraphSide(
   rawTarget: ParsedSource,
   inlineQuery: string | undefined,
   skipAuto: boolean,
   registry: ReadonlyArray<ParsedSource>,
   side: 'left' | 'right',
-): Promise<GraphSideResolved> {
-  try {
+): ResultAsyncT<GraphSideOk, DiffError> {
+  return safeTry(async function* () {
     const target = withAutoSourceAnnotation(rawTarget, { skipAuto });
+
     if (inlineQuery !== undefined) {
-      const upstream = anonymousUpstream(target, side);
-      const store = await resolveAnonymousView({
-        source: upstream,
-        query: inlineQuery,
-      });
-      return {
-        kind: 'ok',
+      const upstream = yield* anonymousUpstream(target, side).safeUnwrap();
+      const store = yield* resolveAnonymousViewAsync(upstream, inlineQuery, side).safeUnwrap();
+      return ok<GraphSideOk, DiffError>({
         store,
         annotationPredicates: extractAnnotationPredicates(undefined),
-      };
+      });
     }
 
     if (target.kind === 'endpoint') {
-      throw new Error(
-        `SPARQL endpoint ${target.endpoint} cannot be diffed directly on the ${side} side (wrap the endpoint in a \`view\` source kind to scope it, or pass \`${side}Query\` to scope it inline)`,
-      );
+      return err<GraphSideOk, DiffError>({
+        kind: 'endpoint-as-diff-target',
+        side,
+        endpoint: target.endpoint,
+      });
     }
 
-    const sourcesResult = await resolveSourceResult(target, { registry });
-    if (sourcesResult.isErr()) {
-      return {
-        kind: 'err',
-        side,
-        message: formatSourceError(sourcesResult.error),
-      };
-    }
-    const sources = sourcesResult.value;
+    const sources = yield* resolveSourceResult(target, { registry })
+      .mapErr((source: SourceError): DiffError => ({ kind: 'source', side, source }))
+      .safeUnwrap();
     if (sources.mode === 'pass-through') {
-      throw new Error(
-        `SPARQL endpoint ${sources.endpoint.endpoint} cannot be diffed directly on the ${side} side (wrap it in a \`view\` source kind, or pass \`${side}Query\`)`,
-      );
+      return err<GraphSideOk, DiffError>({
+        kind: 'endpoint-as-diff-target',
+        side,
+        endpoint: sources.endpoint.endpoint,
+      });
     }
     const transforms = target.kind === 'glob' ? target.transforms : undefined;
-    return {
-      kind: 'ok',
+    return ok<GraphSideOk, DiffError>({
       store: sources.store,
       annotationPredicates: extractAnnotationPredicates(transforms),
-    };
-  } catch (err) {
-    return {
-      kind: 'err',
-      side,
-      message: err instanceof Error ? err.message : String(err),
-    };
-  }
+    });
+  });
 }
 
-function packageGraphResolveErrors(
-  left: GraphSideResolved,
-  right: GraphSideResolved,
-): DiffErrorResponse {
-  const errors: DiffErrorResponse['errors'] = {};
-  if (left.kind === 'err') errors.left = legacy(left.message);
-  if (right.kind === 'err') errors.right = legacy(right.message);
-  return { kind: 'error', errors };
+function resolveAnonymousViewAsync(
+  upstream: SourceSpecInput,
+  query: string,
+  side: 'left' | 'right',
+): ResultAsyncT<Store, DiffError> {
+  return ResultAsync.fromPromise(
+    resolveAnonymousView({ source: upstream, query }),
+    (raw): DiffError => ({
+      kind: 'anonymous-view-execution',
+      side,
+      message: raw instanceof Error ? raw.message : String(raw),
+    }),
+  );
 }
 
 interface RunTabularArgs {
@@ -316,43 +295,36 @@ async function runTabular(args: RunTabularArgs): Promise<DiffResponse> {
     leftSet.size === rightSet.size &&
     [...leftSet].every((v) => rightSet.has(v));
   if (!setsMatch) {
-    const fmt = (s: ReadonlySet<string>): string =>
-      `{${[...s].sort().map((v) => `?${v}`).join(', ')}}`;
     return {
       kind: 'error',
       errors: {
-        top: legacy(
-          `tabular diff requires matching projected variable-name sets: left=${fmt(
-            leftSet,
-          )}, right=${fmt(rightSet)}`,
-        ),
+        top: {
+          kind: 'set-mismatch',
+          left: [...leftSet],
+          right: [...rightSet],
+        },
       },
     };
   }
 
-  const leftUpstream = anonymousUpstreamSafe(args.leftTarget, 'left');
-  const rightUpstream = anonymousUpstreamSafe(args.rightTarget, 'right');
-  if (leftUpstream.kind === 'err' || rightUpstream.kind === 'err') {
+  const leftUpstream = anonymousUpstream(args.leftTarget, 'left');
+  const rightUpstream = anonymousUpstream(args.rightTarget, 'right');
+  if (leftUpstream.isErr() || rightUpstream.isErr()) {
     const errors: DiffErrorResponse['errors'] = {};
-    if (leftUpstream.kind === 'err') errors.left = legacy(leftUpstream.message);
-    if (rightUpstream.kind === 'err')
-      errors.right = legacy(rightUpstream.message);
+    if (leftUpstream.isErr()) errors.left = leftUpstream.error;
+    if (rightUpstream.isErr()) errors.right = rightUpstream.error;
     return { kind: 'error', errors };
   }
 
   const sources: SourceSpecInput[] = [...args.registry] as SourceSpecInput[];
-  const [leftBindings, rightBindings] = await resolveTabularSidesSafe(
-    leftUpstream.value,
-    rightUpstream.value,
-    args.leftQuery,
-    args.rightQuery,
-    sources,
-  );
-  if (leftBindings.kind === 'err' || rightBindings.kind === 'err') {
+  const [leftBindings, rightBindings] = await Promise.all([
+    resolveTabularSide(leftUpstream.value, args.leftQuery, sources, 'left'),
+    resolveTabularSide(rightUpstream.value, args.rightQuery, sources, 'right'),
+  ]);
+  if (leftBindings.isErr() || rightBindings.isErr()) {
     const errors: DiffErrorResponse['errors'] = {};
-    if (leftBindings.kind === 'err') errors.left = legacy(leftBindings.message);
-    if (rightBindings.kind === 'err')
-      errors.right = legacy(rightBindings.message);
+    if (leftBindings.isErr()) errors.left = leftBindings.error;
+    if (rightBindings.isErr()) errors.right = rightBindings.error;
     return { kind: 'error', errors };
   }
 
@@ -401,73 +373,32 @@ function firstBlankNodeColumn(
   return undefined;
 }
 
-type AnonymousUpstreamResult =
-  | { kind: 'ok'; value: SourceSpecInput }
-  | { kind: 'err'; side: 'left' | 'right'; message: string };
-
-function anonymousUpstreamSafe(
-  target: ParsedSource,
-  side: 'left' | 'right',
-): AnonymousUpstreamResult {
-  try {
-    return { kind: 'ok', value: anonymousUpstream(target, side) };
-  } catch (err) {
-    return {
-      kind: 'err',
-      side,
-      message: err instanceof Error ? err.message : String(err),
-    };
-  }
-}
-
 function anonymousUpstream(
   target: ParsedSource,
   side: 'left' | 'right',
-): SourceSpecInput {
-  if (target.kind === 'glob') return target.glob;
-  if (target.kind === 'endpoint') return target.endpoint;
-  throw new Error(
-    `inline scoping query targets a glob or endpoint upstream; ${side} target is a ${target.kind} source`,
-  );
+): Result<SourceSpecInput, DiffError> {
+  if (target.kind === 'glob') return ok(target.glob);
+  if (target.kind === 'endpoint') return ok(target.endpoint);
+  return err({ kind: 'inline-upstream-kind', side, targetKind: target.kind });
 }
 
-type TabularSideResult =
-  | { kind: 'ok'; value: { rows: TabularRow[] } }
-  | { kind: 'err'; side: 'left' | 'right'; message: string };
-
-async function resolveTabularSidesSafe(
-  leftUpstream: SourceSpecInput,
-  rightUpstream: SourceSpecInput,
-  leftQuery: string,
-  rightQuery: string,
-  registry: ReadonlyArray<SourceSpecInput>,
-): Promise<[TabularSideResult, TabularSideResult]> {
-  const [left, right] = await Promise.all([
-    resolveTabularSafe(leftUpstream, leftQuery, registry, 'left'),
-    resolveTabularSafe(rightUpstream, rightQuery, registry, 'right'),
-  ]);
-  return [left, right];
-}
-
-async function resolveTabularSafe(
+function resolveTabularSide(
   upstream: SourceSpecInput,
   query: string,
   registry: ReadonlyArray<SourceSpecInput>,
   side: 'left' | 'right',
-): Promise<TabularSideResult> {
-  try {
-    const result = await resolveAnonymousSelectBindings({
+): ResultAsyncT<{ rows: TabularRow[] }, DiffError> {
+  return ResultAsync.fromPromise(
+    resolveAnonymousSelectBindings({
       source: upstream,
       query,
       registry: [...registry],
-    });
-    return { kind: 'ok', value: result };
-  } catch (err) {
-    return {
-      kind: 'err',
+    }),
+    (raw): DiffError => ({
+      kind: 'anonymous-select-execution',
       side,
-      message: err instanceof Error ? err.message : String(err),
-    };
-  }
+      message: raw instanceof Error ? raw.message : String(raw),
+    }),
+  ).map((result) => ({ rows: result.rows }));
 }
 

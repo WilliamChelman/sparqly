@@ -117,7 +117,7 @@ describe('sparqly serve — POST /api/diff (issue #144)', () => {
     ]);
   });
 
-  it('rejects mixed-shape inputs with kind=error and a top-level message', async () => {
+  it('rejects mixed-shape inputs with kind=error and the structured mixed-shape top-level variant', async () => {
     const resp = await fetch(`${handle!.baseUrl}/api/diff`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -132,11 +132,16 @@ describe('sparqly serve — POST /api/diff (issue #144)', () => {
     expect(resp.status).toBe(200);
     const json = (await resp.json()) as {
       kind: string;
-      errors: { top?: { kind: string; message?: string } };
+      errors: {
+        top?: { kind: string; triplesSide?: string; tuplesSide?: string };
+      };
     };
     expect(json.kind).toBe('error');
-    expect(json.errors.top?.kind).toBe('legacy-message');
-    expect(json.errors.top?.message).toMatch(/mixed.*shape|shape mismatch/i);
+    expect(json.errors.top).toEqual({
+      kind: 'mixed-shape',
+      triplesSide: 'left',
+      tuplesSide: 'right',
+    });
   });
 
   it('returns 400 with a structured (not-stack-trace) error on a malformed body', async () => {

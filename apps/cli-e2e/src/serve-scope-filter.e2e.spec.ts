@@ -112,14 +112,16 @@ describe('sparqly serve — --source as a scope filter (ADR-0016 / #197)', () =>
     expect(diffRes.status).toBe(200);
     const diffJson = (await diffRes.json()) as {
       kind: string;
-      errors?: { left?: { kind: string; message?: string } };
+      errors?: {
+        left?: { kind: string; id?: string; availableIds?: string[] };
+      };
     };
     expect(diffJson.kind).toBe('error');
-    expect(diffJson.errors?.left?.kind).toBe('legacy-message');
-    const leftMessage = diffJson.errors?.left?.message ?? '';
-    expect(leftMessage).toMatch(/beta/);
-    expect(leftMessage).toContain('@alpha');
-    expect(leftMessage).not.toContain('@beta');
+    expect(diffJson.errors?.left?.kind).toBe('unknown-source-id');
+    expect(diffJson.errors?.left?.id).toBe('beta');
+    const available = diffJson.errors?.left?.availableIds ?? [];
+    expect(available).toContain('alpha');
+    expect(available).not.toContain('beta');
   });
 
   it('--source @view serves only the view; its `from:` upstream is resolved internally but not listed', async () => {
