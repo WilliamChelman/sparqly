@@ -1,4 +1,5 @@
 export * from './source-spec';
+export * from './address';
 export * from './view-cache-spec';
 export * from './transform-registry';
 export * from './transform-spec';

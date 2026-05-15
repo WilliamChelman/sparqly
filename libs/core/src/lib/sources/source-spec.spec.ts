@@ -260,6 +260,22 @@ describe('parseSourceSpec — view discriminant', () => {
     ).toThrow(/view.*id.*required/i);
   });
 
+  it('parses `from: "@raw:v1.2"` to `{ from: "raw", fromGitRef: "v1.2" }` (ADR-0029, #275)', () => {
+    expect(
+      parseSourceSpec({
+        id: 'filtered',
+        from: '@raw:v1.2',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      }),
+    ).toEqual({
+      kind: 'view',
+      id: 'filtered',
+      from: 'raw',
+      fromGitRef: 'v1.2',
+      query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+    });
+  });
+
   it('rejects a from value that is not a `@id` reference', () => {
     expect(() =>
       parseSourceSpec({

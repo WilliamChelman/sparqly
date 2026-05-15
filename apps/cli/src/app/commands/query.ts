@@ -6,6 +6,7 @@ import {
   createGitTreeWalker,
   defaultGlobWalker,
   expandSplitGlobs,
+  parseSourceAddress,
   parseSourceSpecs,
   parseSparqlPrefixes,
   QueryEngine,
@@ -103,12 +104,29 @@ export function resolveQueryTargetResult(
   registry?: ReadonlyArray<ParsedSource>,
 ): Result<ParsedSource, TargetError> {
   const effective = registry ?? parseSourceSpecs(config.sources ?? []);
-  const targetArg =
-    typeof config.source === 'string' ? config.source : undefined;
-  if (config.source !== undefined && targetArg === undefined) {
+  if (config.source !== undefined && typeof config.source !== 'string') {
     return ok(parseSourceSpecs([config.source])[0]);
   }
-  return selectTargetResult(effective, targetArg);
+  const raw = typeof config.source === 'string' ? config.source : undefined;
+  const { targetArg, positionalRef } = splitPositionalAddress(raw);
+  return selectTargetResult(effective, targetArg).map((target) =>
+    positionalRef === undefined ? target : applyAtOverride(target, positionalRef),
+  );
+}
+
+function splitPositionalAddress(raw: string | undefined): {
+  targetArg: string | undefined;
+  positionalRef: string | undefined;
+} {
+  if (raw === undefined || !raw.startsWith('@')) {
+    return { targetArg: raw, positionalRef: undefined };
+  }
+  const parsed = parseSourceAddress(raw);
+  if (parsed.isErr()) {
+    return { targetArg: raw, positionalRef: undefined };
+  }
+  const { id, ref } = parsed.value;
+  return { targetArg: `@${id}`, positionalRef: ref };
 }
 
 export const querySpec: CommandSpec<QueryConfig> = {

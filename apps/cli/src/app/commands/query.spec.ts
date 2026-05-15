@@ -173,4 +173,30 @@ describe('resolveQueryTargetResult — selection precedence', () => {
     const result = resolveQueryTargetResult({ source: 'adhoc/*.ttl' });
     expect(result._unsafeUnwrap()).toEqual({ kind: 'glob', glob: 'adhoc/*.ttl' });
   });
+
+  it('desugars `@id:ref` positional to the registry entry + `gitRef` (ADR-0029, #275)', () => {
+    const result = resolveQueryTargetResult({
+      sources: [{ id: 'files', glob: 'data/*.ttl' }],
+      source: '@files:v1.2.0',
+    });
+    expect(result._unsafeUnwrap()).toMatchObject({
+      kind: 'glob',
+      id: 'files',
+      glob: 'data/*.ttl',
+      gitRef: 'v1.2.0',
+    });
+  });
+
+  it('errors `unknown-ref` when the id part of `@id:ref` is not in the registry', () => {
+    const result = resolveQueryTargetResult({
+      sources: [{ id: 'files', glob: 'data/*.ttl' }],
+      source: '@nope:v1.2',
+    });
+    expect(result.isErr()).toBe(true);
+    const err = result._unsafeUnwrapErr();
+    expect(err.kind).toBe('unknown-ref');
+    if (err.kind === 'unknown-ref') {
+      expect(err.ref).toBe('@nope');
+    }
+  });
 });

@@ -120,6 +120,9 @@ function resolveViewTargetResult(
         now: options.now,
         engine: options.engine,
         logger: options.logger,
+        configDir: options.configDir ?? process.cwd(),
+        gitPort: options.gitPort ?? new GitCliPort(),
+        repoDiscovery: options.repoDiscovery ?? defaultRepoDiscovery,
       }).map((store) => materialized(store, [], {})),
     );
 }
