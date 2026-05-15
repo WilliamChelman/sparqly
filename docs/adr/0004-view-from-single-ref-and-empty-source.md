@@ -26,3 +26,7 @@ A view's `from:` is narrowed from `ReadonlyArray<string>` to a single `string` r
 - **`SERVICE`-on-pass-through caveat**: when a view's upstream is an endpoint, the entire query (including any `SERVICE` clauses) is forwarded to that endpoint over the SPARQL protocol. Cross-endpoint composition therefore depends on the upstream's own `SERVICE` support; users with non-SERVICE-capable upstreams should host their composition on an `empty` source instead. Documented in `CONTEXT.md`.
 - **Breaking change**: configs that ship `from: [...]` (any length) or that relied on multi-upstream merge stop parsing. No deprecation window — sparqly is in alpha.
 - **Glossary**: `CONTEXT.md` adds **Empty source** and rewrites **View** / **Upstream** for the single-ref model.
+
+## Amendment — ADR-0027 (split globs)
+
+The set of acceptable upstream kinds for a view's single `from:` ref widens from `glob | endpoint | empty | view` to `glob | file | endpoint | empty | view`. A **File source** synthesized as the child of a **split glob** is a valid `from:` ref (e.g. `from: '@docs/foo.ttl'`); resolution is **materialized**, identical to a one-file glob. The "single `@id`" rule is unchanged — a view still references exactly one upstream.

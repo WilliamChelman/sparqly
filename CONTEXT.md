@@ -11,15 +11,15 @@ A declared input that produces RDF. One of: `glob`, `file`, `endpoint`, `empty`,
 A `kind: 'glob'` source that matches RDF files on disk via a glob pattern. Empty matches warn (one `warn`-level log line through the boundary logger) and yield an empty store; they do not error (ADR-0028).
 
 **File source**:
-A `kind: 'file'` source resolving exactly one RDF file at a path. Synthesized by **registry expansion** as the child of a **split glob**; carries a `parentId` linking back to that meta. Never user-declared. Resolves like a one-file glob (materialized) and may carry an inherited **Source transformation pipeline**.
+A `kind: 'file'` source resolving exactly one RDF file at a path. Synthesized by **registry expansion** as the child of a **split glob**; carries a `parentId` linking back to that meta. Addressable as `@<parentId>/<glob-relative-path>` (e.g. `@docs/foo.ttl`, `@docs/people/alice.ttl`) on the CLI, in `view.from:`, and in the webapp picker. Never user-declared. Resolves like a one-file glob (materialized) and may carry an inherited **Source transformation pipeline**.
 _Avoid_: "single-file glob", "leaf source"
 
 **Split glob**:
-A **Glob source** declared with `splitByFile: true`. Opt-in. The meta retains its union-of-files semantics; **registry expansion** additionally synthesizes one **File source** per matched file as a peer registry entry with id `<parentId>/<glob-relative-path>`. Empty matches warn; they do not error (see also the same behaviour on plain globs).
+A **Glob source** declared with `splitByFile: true`. Opt-in. The meta retains its union-of-files semantics; **registry expansion** additionally synthesizes one **File source** per matched file as a peer registry entry. Child id is `<parentId>/<glob-relative-path>` — the file path relative to the wildcard portion of the glob, not the cwd. For parent `@docs` with glob `data/**/*.ttl` matching `data/foo.ttl` and `data/people/alice.ttl`, the children are `@docs/foo.ttl` and `@docs/people/alice.ttl`. Ids are stable across enumeration order and across files entering or leaving the match set: a child's id depends only on its own path. Empty matches warn; they do not error (see also the same behaviour on plain globs).
 _Avoid_: "exploded glob", "fan-out glob"
 
 **Registry expansion**:
-A second pass after `parseSourceSpecs`, run once at startup before scope/target resolution. Walks the filesystem for every **split glob** and emits its **File source** children alongside the meta. Sync `parseSourceSpecs` stays pure (shape-only); expansion is async and owns filesystem-error surfacing. The watcher re-runs expansion per-meta when files enter or leave a split-glob's match set.
+The second phase of the two-phase **parse → expand** pipeline. Phase one is the synchronous, pure `parseSourceSpecs` (shape validation only — no I/O, including for `splitByFile: true` flags). Phase two is the async `expandSplitGlobs` pass: walks the filesystem for every **split glob**, emits its **File source** children alongside the meta, and returns a flat registry. Run once at CLI command setup, once in `createServer` before scope/target resolution, and re-run per-meta by the watcher when files enter or leave a split-glob's match set.
 _Avoid_: "glob resolution", "registry hydration"
 
 **Endpoint source**:

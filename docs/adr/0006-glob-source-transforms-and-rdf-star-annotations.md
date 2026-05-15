@@ -54,3 +54,7 @@ Two initial transforms:
 - **Comunica RDF-star end-to-end support must be verified** before relying on agent-facing SPARQL queries hitting `<<…>>` patterns through `query`/`serve`.
 - **Per-format line-number availability is uneven and v1 must handle it.** rdf-parse's quad event does not surface a line number on the public API. To deliver line numbers in v1 we either wrap rdf-parse to intercept the underlying tokenizer or call n3.js's `Parser` directly for the formats it supports (turtle, nq, nt, trig). For formats without meaningful line semantics (json-ld, rdf/xml), `sparqly:line` is omitted from the source record while `sparqly:file` is still emitted.
 - **Vocabulary lock-in is mitigated by configurability.** The default URNs are the contract most users will rely on, but `annotate.source` / `annotate.file` / `annotate.line` independently override each predicate so users can align with their own published vocabulary even when those predicates do not share a common prefix.
+
+## Amendment — ADR-0027 (split globs)
+
+A **split glob**'s synthesized **File source** children inherit the parent meta's full **Source transformation pipeline** by value — a deep copy of `transforms:` is attached to each child at expansion time. `graphName: 'forceAll'` and an explicit `annotateSource` declaration on the parent apply identically whether the user targets the meta or one child, so per-file output is consistent with per-meta output. Inheritance is full and eager; per-child transform overrides are out of scope.
