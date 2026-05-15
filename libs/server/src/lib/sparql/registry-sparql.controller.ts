@@ -14,10 +14,14 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
+import { ResultAsync } from 'neverthrow';
 import {
+  QueryEngine,
+  resolveSourceResult,
   selectTargetResult,
   type ExecuteResult,
   type ParsedSource,
+  type QuerySources,
   type SourceError,
   type SparqlFormat,
   type TargetError,
@@ -26,6 +30,7 @@ import {
   EngineMap,
   SPARQL_CONFIG,
   SPARQL_ENGINE_MAP,
+  SPARQL_RESOLUTION_REGISTRY,
   SPARQL_SERVED_REGISTRY,
   type SparqlServerConfig,
 } from '../bootstrap';
@@ -47,6 +52,8 @@ export class RegistrySparqlController {
     @Inject(SPARQL_CONFIG) private readonly config: SparqlServerConfig,
     @Inject(SPARQL_SERVED_REGISTRY)
     private readonly servedRegistry: ReadonlyArray<ParsedSource>,
+    @Inject(SPARQL_RESOLUTION_REGISTRY)
+    private readonly resolutionRegistry: ReadonlyArray<ParsedSource>,
   ) {}
 
   /** Unparameterized alias — forwards to the default source. */
@@ -134,9 +141,7 @@ export class RegistrySparqlController {
       this.servedRegistry,
       ref,
     ).asyncAndThen((target: ParsedSource) =>
-      this.engineMap
-        .get(target.id as string)
-        .executeResult(query, { format, mutable: this.config.mutable }),
+      this.executeAgainstTarget(target, query, format),
     );
     result.match(
       (ok: ExecuteResult) => {
@@ -149,6 +154,57 @@ export class RegistrySparqlController {
         throw mapError(error);
       },
     );
+  }
+
+  private executeAgainstTarget(
+    target: ParsedSource,
+    query: string,
+    format: SparqlFormat | undefined,
+  ): ResultAsync<ExecuteResult, SourceError | TargetError> {
+    const id = target.id as string;
+    if (this.isAdHocPin(target)) {
+      return this.executeAdHocPinned(target, query, format);
+    }
+    return this.engineMap
+      .get(id)
+      .executeResult(query, { format, mutable: this.config.mutable });
+  }
+
+  /**
+   * `true` when the target carries a `gitRef`/`fromGitRef` pin that the
+   * pre-built engine for its id was not constructed with — i.e. an incoming
+   * `@id:ref` (or view target with a propagated `fromGitRef`) that asks for a
+   * different variant than the boot-time-registered one. The route resolves
+   * such requests ad-hoc (ADR-0029, issue #278).
+   */
+  private isAdHocPin(target: ParsedSource): boolean {
+    const registered = this.engineMap.getSource(target.id as string);
+    if (!registered) return false;
+    return (
+      pinOf(target).gitRef !== pinOf(registered).gitRef ||
+      pinOf(target).fromGitRef !== pinOf(registered).fromGitRef
+    );
+  }
+
+  private executeAdHocPinned(
+    target: ParsedSource,
+    query: string,
+    format: SparqlFormat | undefined,
+  ): ResultAsync<ExecuteResult, SourceError | TargetError> {
+    return resolveSourceResult(target, {
+      registry: this.resolutionRegistry,
+    }).andThen<ExecuteResult, SourceError | TargetError>((sources: QuerySources) => {
+      if (sources.mode === 'pass-through') {
+        return new QueryEngine(sources.endpoint, {
+          id: target.id as string,
+          mode: 'pass-through',
+        }).executeResult(query, { format, mutable: this.config.mutable });
+      }
+      return new QueryEngine(sources.store, {
+        id: target.id as string,
+        mode: 'materialized',
+      }).executeResult(query, { format, mutable: this.config.mutable });
+    });
   }
 }
 
@@ -193,6 +249,17 @@ function statusToHttpException(
 
 function joinId(id: string | string[]): string {
   return Array.isArray(id) ? id.join('/') : id;
+}
+
+function pinOf(source: ParsedSource): {
+  gitRef: string | undefined;
+  fromGitRef: string | undefined;
+} {
+  const s = source as {
+    gitRef?: string;
+    fromGitRef?: string;
+  };
+  return { gitRef: s.gitRef, fromGitRef: s.fromGitRef };
 }
 
 function pickFormat(accept: string | undefined): SparqlFormat | undefined {

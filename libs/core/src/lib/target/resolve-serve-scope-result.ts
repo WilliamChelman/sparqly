@@ -1,5 +1,6 @@
 import { err, ok, type Result } from 'neverthrow';
 import {
+  parseSourceAddress,
   parseSourceSpec,
   type DefaultMarkerField,
   type ParsedSource,
@@ -57,14 +58,25 @@ function resolveRef(
   candidates: ReadonlyArray<ParsedSource>,
   source: string,
 ): Result<ParsedSource, UnknownRefError> {
-  const ref = source.slice(1);
-  const entry = candidates.find((s) => s.id === ref);
-  if (entry !== undefined) return ok(entry);
-  return err({
-    kind: 'unknown-ref',
-    ref: source,
-    availableIds: collectIds(candidates),
-  });
+  const parsed = parseSourceAddress(source);
+  const id = parsed.isOk() ? parsed.value.id : source.slice(1);
+  const ref = parsed.isOk() ? parsed.value.ref : undefined;
+  const entry = candidates.find((s) => s.id === id);
+  if (entry === undefined) {
+    return err({
+      kind: 'unknown-ref',
+      ref: source,
+      availableIds: collectIds(candidates),
+    });
+  }
+  if (ref === undefined) return ok(entry);
+  return ok(applyAddressPin(entry, ref));
+}
+
+function applyAddressPin(entry: ParsedSource, ref: string): ParsedSource {
+  if (entry.kind === 'glob') return { ...entry, gitRef: ref };
+  if (entry.kind === 'view') return { ...entry, fromGitRef: ref };
+  return entry;
 }
 
 function collectIds(
