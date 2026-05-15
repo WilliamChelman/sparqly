@@ -14,3 +14,4 @@ export * from './resolve-source-references';
 export * from './with-auto-source-annotation';
 export * from './expand-split-globs';
 export * from './derive-file-source-id';
+export * from './git/git-tree-walker-factory';

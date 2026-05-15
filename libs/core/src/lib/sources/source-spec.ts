@@ -80,6 +80,23 @@ export interface ParsedFileSource extends SourceSpecCommonFields {
   path: string;
   parentId: string;
   transforms?: ParsedTransform[];
+  /**
+   * User-facing ref string inherited from the parent split-glob meta when the
+   * meta carries `gitRef:` (ADR-0029). The child's loader uses this to pin its
+   * content-read to the same revision the meta resolved against.
+   */
+  gitRef?: string;
+  /**
+   * Repo root the parent glob discovered, propagated alongside `gitRef` so the
+   * file loader does not re-walk discovery (ADR-0029).
+   */
+  repoRoot?: string;
+  /**
+   * Resolved 40-char commit SHA the parent's `gitRef` mapped to (ADR-0029).
+   * Carried on the child so the loader can shell into the git tree directly
+   * without re-resolving the ref.
+   */
+  resolvedSha?: string;
 }
 
 export interface ParsedEndpointSource

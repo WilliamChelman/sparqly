@@ -25,13 +25,19 @@ interface Entry {
 export class MetaChildrenCache {
   private readonly entries = new Map<string, Entry>();
   private readonly walker: ExpandSplitGlobsDeps['walkGlob'];
+  private readonly gitWalker: ExpandSplitGlobsDeps['walkGitGlob'];
   private readonly logger: SparqlyLogger | undefined;
 
   constructor(
     parsedRegistry: ReadonlyArray<ParsedSource>,
-    deps?: { walkGlob?: ExpandSplitGlobsDeps['walkGlob']; logger?: SparqlyLogger },
+    deps?: {
+      walkGlob?: ExpandSplitGlobsDeps['walkGlob'];
+      walkGitGlob?: ExpandSplitGlobsDeps['walkGitGlob'];
+      logger?: SparqlyLogger;
+    },
   ) {
     this.walker = deps?.walkGlob ?? defaultGlobWalker;
+    this.gitWalker = deps?.walkGitGlob;
     this.logger = deps?.logger;
 
     const childrenByParent = new Map<string, ParsedFileSource[]>();
@@ -70,6 +76,7 @@ export class MetaChildrenCache {
     if (!entry.dirty) return entry.children;
     const expanded = await expandSplitGlobs([entry.meta], {
       walkGlob: this.walker,
+      walkGitGlob: this.gitWalker,
       logger: this.logger,
     });
     entry.children = expanded.filter(

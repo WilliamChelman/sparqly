@@ -23,6 +23,7 @@ function stubPort(
     resolveRefToSha: vi.fn(async () => SHA),
     readFileAtSha: vi.fn(async () => Buffer.from('old-content\n', 'utf8')),
     getRefObjectType: vi.fn(async () => 'tag'),
+    listFilesAtSha: vi.fn(async () => []),
     ...overrides,
   };
 }

@@ -60,4 +60,17 @@ export class GitCliPort implements GitPort {
       return null;
     }
   }
+
+  async listFilesAtSha(
+    repoRoot: string,
+    sha: string,
+  ): Promise<ReadonlyArray<string>> {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['-C', repoRoot, 'ls-tree', '-r', '--name-only', sha],
+      { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
+    );
+    if (stdout.length === 0) return [];
+    return stdout.split('\n').filter((line) => line.length > 0);
+  }
 }

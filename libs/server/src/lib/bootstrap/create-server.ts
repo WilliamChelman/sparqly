@@ -8,6 +8,7 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { noopLogger, type SparqlyLogger } from 'common';
 import {
+  createGitTreeWalker,
   defaultGlobWalker,
   expandSplitGlobs,
   type GraphMode,
@@ -77,7 +78,14 @@ export async function createServer(
   const boundaryLogger = options.logger ?? noopLogger;
   const parsedRegistry = await expandSplitGlobs(
     parseSourceSpecs(toSourceArray(options.sources)),
-    { walkGlob: defaultGlobWalker, logger: boundaryLogger },
+    {
+      walkGlob: defaultGlobWalker,
+      walkGitGlob: createGitTreeWalker({
+        configDir: process.cwd(),
+        logger: boundaryLogger,
+      }),
+      logger: boundaryLogger,
+    },
   );
   const scope = resolveServeScope(parsedRegistry, options.scope);
   if (scope.servedRegistry.length === 0) {
@@ -94,6 +102,10 @@ export async function createServer(
 
   const metaChildrenCache = new MetaChildrenCache(scope.servedRegistry, {
     walkGlob: defaultGlobWalker,
+    walkGitGlob: createGitTreeWalker({
+      configDir: process.cwd(),
+      logger: boundaryLogger,
+    }),
     logger: boundaryLogger,
   });
 
