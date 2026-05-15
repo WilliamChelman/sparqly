@@ -85,6 +85,7 @@ function splitPinnedAddress(value: string): { id: string; ref?: string } {
         <app-sources-picker-overlay
           [sources]="sources() ?? []"
           [initialSelectedId]="parsedValue().id"
+          [initialRef]="parsedValue().ref ?? ''"
           (applied)="onApplied($event)"
           (canceled)="close()"
         />
@@ -123,10 +124,10 @@ export class SourcesPickerComponent implements OnInit {
     this.open.set(false);
   }
 
-  onApplied(id: string): void {
-    if (id !== '' && id !== this.parsedValue().id) {
-      this.selectedId.set(id);
-      this.valueChange.emit(id);
+  onApplied(value: string): void {
+    if (value !== '' && value !== this.selectedId()) {
+      this.selectedId.set(value);
+      this.valueChange.emit(value);
     }
     this.close();
   }
