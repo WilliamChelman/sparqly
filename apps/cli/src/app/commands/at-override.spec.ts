@@ -45,8 +45,14 @@ describe('applyAtOverride', () => {
     expect(() => applyAtOverride(ENDPOINT, 'v1.2.0')).toThrow(/--at applies only to glob/);
   });
 
-  it('throws AtOverrideError for a view target', () => {
-    expect(() => applyAtOverride(VIEW, 'v1.2.0')).toThrow(AtOverrideError);
-    expect(() => applyAtOverride(VIEW, 'v1.2.0')).toThrow(/view/);
+  it('sets fromGitRef on a view target so propagation walks the from: chain', () => {
+    const result = applyAtOverride(VIEW, 'v1.2.0');
+    expect(result).toEqual({ ...VIEW, fromGitRef: 'v1.2.0' });
+  });
+
+  it('overrides any declared fromGitRef on a view target', () => {
+    const declared: ParsedViewSource = { ...VIEW, fromGitRef: 'declared' };
+    const result = applyAtOverride(declared, 'v2.0.0');
+    expect(result).toMatchObject({ kind: 'view', fromGitRef: 'v2.0.0' });
   });
 });

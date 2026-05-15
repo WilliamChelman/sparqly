@@ -37,9 +37,9 @@ import {
 import { validateViewQueryResult } from './view-query-validate';
 import {
   loadPinnedGlobUpstreamResult,
-  nonGlobPinError,
   type PinDeps,
 } from './view-resolver-glob-pin';
+import { propagateViewPin } from './propagate-view-pin';
 
 export interface ResolveViewOptions {
   view: ParsedViewSource;
@@ -142,6 +142,10 @@ function resolveViewWithCacheResult(
   logger: SparqlyLogger | undefined,
   pinDeps: PinDeps,
 ): ResultAsync<Store, ResolveViewError> {
+  if (view.fromGitRef !== undefined) {
+    const propagation = propagateViewPin(view, view.fromGitRef, registry);
+    if (propagation.isErr()) return errAsync(propagation.error);
+  }
   if (!view.cache || !cacheDir) {
     return resolveViewInternal(view, registry, stack, cacheDir, now, engine, logger, pinDeps);
   }
@@ -217,11 +221,6 @@ function resolveViewInternal(
         const meta = { source: view.id, logger };
         const singleEndpoint = singleEndpointUpstream(view, registry);
         if (singleEndpoint) {
-          if (view.fromGitRef !== undefined) {
-            return errAsync<Store, ResolveViewError>(
-              nonGlobPinError(view, 'endpoint', singleEndpoint.id ?? view.from),
-            );
-          }
           return resolveViewPassThroughResult({
             endpoint: singleEndpoint,
             viewQuery: validQuery,
@@ -320,11 +319,12 @@ function loadUpstreamResult(
     });
   }
   if (upstream.kind === 'view') {
-    if (view.fromGitRef !== undefined) {
-      return errAsync(nonGlobPinError(view, 'view', refId));
-    }
+    const innerView: ParsedViewSource =
+      view.fromGitRef !== undefined
+        ? { ...upstream, fromGitRef: view.fromGitRef }
+        : upstream;
     return resolveViewWithCacheResult(
-      upstream,
+      innerView,
       registry,
       [...stack, refId],
       cacheDir,
@@ -335,15 +335,9 @@ function loadUpstreamResult(
     );
   }
   if (upstream.kind === 'empty') {
-    if (view.fromGitRef !== undefined) {
-      return errAsync(nonGlobPinError(view, 'empty', refId));
-    }
     return okAsync(new Store());
   }
   if (upstream.kind === 'file') {
-    if (view.fromGitRef !== undefined) {
-      return errAsync(nonGlobPinError(view, 'file', refId));
-    }
     return loadRdfResult({ sources: upstream.path, logger }).map((sub) =>
       applyTransformPipeline(sub.store, upstream.transforms ?? [], {
         perFileRecords: sub.perFileRecords,

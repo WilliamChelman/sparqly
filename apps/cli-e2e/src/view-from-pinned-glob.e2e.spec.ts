@@ -84,7 +84,7 @@ describe('view.from accepts `@<id>:<ref>` for a glob upstream (ADR-0029, issue #
   });
 });
 
-describe('view.from with `:<ref>` against a non-glob upstream errors (ADR-0029, issue #275)', () => {
+describe('view.from with `:<ref>` against a non-pinnable upstream errors (ADR-0029)', () => {
   let scratch: string;
 
   beforeAll(async () => {
@@ -95,37 +95,10 @@ describe('view.from with `:<ref>` against a non-glob upstream errors (ADR-0029, 
     if (scratch) await rm(scratch, { recursive: true, force: true });
   });
 
-  it('errors with a "not yet supported" message pointing at slice #6 when the upstream is another view', async () => {
-    const configPath = join(scratch, 'view-of-view.yaml');
-    await writeFile(
-      configPath,
-      dedent`
-        sources:
-          - id: foaf
-            glob: "foaf.ttl"
-          - id: inner-view
-            from: "@foaf"
-            query: "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }"
-          - id: outer-view
-            from: "@inner-view:v1.2.0"
-            query: "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }"
-      ` + '\n',
-    );
-    const result = await runCli(
-      [
-        'query',
-        '@outer-view',
-        '--config',
-        configPath,
-        '--quiet',
-        '-q',
-        'SELECT ?s WHERE { ?s ?p ?o }',
-      ],
-      { cwd: scratch },
-    );
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/view-of-view.*not yet supported|slice #6/i);
-  });
+  // View-of-view chains were rejected up-front in slice #275 and now propagate
+  // through to the leaf glob (slice #277). The success path is covered by
+  // `view-pin-propagation.e2e.spec.ts`; the chain-bottom-on-endpoint case is
+  // covered below and in `pinned-errors.e2e.spec.ts`.
 
   it('errors when the upstream is an endpoint with `:<ref>`', async () => {
     const configPath = join(scratch, 'view-of-endpoint.yaml');
