@@ -305,9 +305,10 @@ describe('SourcesPickerOverlayComponent', () => {
     expect(tag.getAttribute('tabindex')).toBe('-1');
   });
 
-  it('arrow keys on the refs panel move the staged ref through the rendered ref order', () => {
+  it('arrow keys on the refs panel move the staged ref through the rendered ref order (alphabetical when no search query)', () => {
+    // flatRefs (empty query → alphabetical within section): HEAD, feat/x, main, v1.0.0
     const { fixture } = mount(TWO_SOURCES, 'right', stubRefsApi(), {
-      initialRef: 'main',
+      initialRef: 'feat/x',
     });
     const root = fixture.nativeElement as HTMLElement;
     const panel = root.querySelector('[data-testid="refs-panel"]') as HTMLElement;
@@ -315,7 +316,7 @@ describe('SourcesPickerOverlayComponent', () => {
       new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }),
     );
     fixture.detectChanges();
-    expect(fixture.componentInstance.stagedRef()).toBe('feat/x');
+    expect(fixture.componentInstance.stagedRef()).toBe('main');
     panel.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }),
     );
@@ -325,7 +326,7 @@ describe('SourcesPickerOverlayComponent', () => {
       new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }),
     );
     fixture.detectChanges();
-    expect(fixture.componentInstance.stagedRef()).toBe('feat/x');
+    expect(fixture.componentInstance.stagedRef()).toBe('main');
   });
 
   it('lazily loads refs only on focus — late-arriving refs do not block the panel from rendering', async () => {
@@ -403,6 +404,38 @@ describe('SourcesPickerOverlayComponent', () => {
     ).click();
     fixture.detectChanges();
     expect(emitted).toEqual(['left']);
+  });
+
+  it('Enter in the refs search with a typed value and no focused row applies the typed string verbatim as the ref', () => {
+    const { fixture } = mount(TWO_SOURCES, 'right');
+    const root = fixture.nativeElement as HTMLElement;
+    const emitted: string[] = [];
+    fixture.componentInstance.applied.subscribe((v: string) => emitted.push(v));
+    const search = root.querySelector(
+      '[data-testid="refs-search"]',
+    ) as HTMLInputElement;
+    search.value = 'HEAD~3';
+    search.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    search.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+    );
+    fixture.detectChanges();
+    expect(emitted).toEqual(['@right:HEAD~3']);
+  });
+
+  it('clicking a different source row clears the ref-search input (refs are per-source)', () => {
+    const { fixture } = mount(TWO_SOURCES, 'right');
+    const root = fixture.nativeElement as HTMLElement;
+    const search = () =>
+      root.querySelector('[data-testid="refs-search"]') as HTMLInputElement;
+    search().value = 'feat';
+    search().dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(search().value).toBe('feat');
+    (root.querySelector('[data-source-id="left"]') as HTMLElement).click();
+    fixture.detectChanges();
+    expect(search().value).toBe('');
   });
 
   it('emits applied with the initial selection when Apply is clicked without picking another row', () => {

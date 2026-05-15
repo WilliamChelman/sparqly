@@ -8,6 +8,7 @@ import {
   Output,
 } from '@angular/core';
 import type { RefEntry, RefsResponse } from './refs-api.client';
+import { searchRefs } from './ref-search';
 
 interface RemoteSection {
   readonly remote: string;
@@ -50,28 +51,44 @@ export type RefsPanelState =
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let s = state();
+    @if (s.kind !== 'no-git-repo') {
+      <div class="border-b border-border p-3">
+        <input
+          data-testid="refs-search"
+          type="text"
+          placeholder="Search refs…"
+          class="w-full rounded-md border border-border bg-surface px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-foreground-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+          [value]="refSearch()"
+          (input)="onSearchInput($event)"
+          (keydown.enter)="onEnter($event)"
+        />
+      </div>
+    }
     @if (s.kind === 'no-git-repo') {
       <p data-testid="refs-panel-no-git">
         No git refs available for this source ({{ s.sourceKind }})
       </p>
     }
     @if (s.kind === 'loaded') {
+      @let view = filtered();
       <div
         data-testid="refs-panel"
         [tabindex]="-1"
         (keydown.arrowdown)="move(1, $event)"
         (keydown.arrowup)="move(-1, $event)"
       >
-        <h3 data-section="head">HEAD</h3>
-        <ul class="list-none">
-          <ng-container
-            *ngTemplateOutlet="row; context: { $implicit: s.refs.head, scope: 'head' }"
-          />
-        </ul>
-        @if (s.refs.branches.length > 0) {
+        @if (view.head; as headRef) {
+          <h3 data-section="head">HEAD</h3>
+          <ul class="list-none">
+            <ng-container
+              *ngTemplateOutlet="row; context: { $implicit: headRef, scope: 'head' }"
+            />
+          </ul>
+        }
+        @if (view.branches.length > 0) {
           <h3 data-section="branches">Branches</h3>
           <ul class="list-none">
-            @for (b of s.refs.branches; track b.ref) {
+            @for (b of view.branches; track b.ref) {
               <ng-container
                 *ngTemplateOutlet="row; context: { $implicit: b, scope: 'local' }"
               />
@@ -90,10 +107,10 @@ export type RefsPanelState =
             }
           </ul>
         }
-        @if (s.refs.tags.length > 0) {
+        @if (view.tags.length > 0) {
           <h3 data-section="tags">Tags</h3>
           <ul class="list-none">
-            @for (t of s.refs.tags; track t.ref) {
+            @for (t of view.tags; track t.ref) {
               <ng-container
                 *ngTemplateOutlet="row; context: { $implicit: t, scope: 'tag' }"
               />
@@ -131,24 +148,33 @@ export type RefsPanelState =
 export class RefsPanelComponent {
   readonly state = input.required<RefsPanelState>();
   readonly stagedRef = input<string>('');
+  readonly refSearch = input<string>('');
 
-  readonly remoteSections = computed<ReadonlyArray<RemoteSection>>(() => {
+  readonly filtered = computed<RefsResponse>(() => {
     const s = this.state();
-    return s.kind === 'loaded' ? groupRemotes(s.refs) : [];
+    if (s.kind !== 'loaded') {
+      return { branches: [], remoteBranches: [], tags: [] };
+    }
+    return searchRefs(s.refs, this.refSearch());
   });
 
+  readonly remoteSections = computed<ReadonlyArray<RemoteSection>>(() =>
+    groupRemotes(this.filtered()),
+  );
+
   readonly flatRefs = computed<ReadonlyArray<string>>(() => {
-    const s = this.state();
-    if (s.kind !== 'loaded') return [];
+    const view = this.filtered();
     return [
-      s.refs.head.ref,
-      ...s.refs.branches.map((b) => b.ref),
+      ...(view.head !== undefined ? [view.head.ref] : []),
+      ...view.branches.map((b) => b.ref),
       ...this.remoteSections().flatMap((g) => g.entries.map((e) => e.ref)),
-      ...s.refs.tags.map((t) => t.ref),
+      ...view.tags.map((t) => t.ref),
     ];
   });
 
   @Output() readonly stagedRefChange = new EventEmitter<string>();
+  @Output() readonly refSearchChange = new EventEmitter<string>();
+  @Output() readonly appliedRef = new EventEmitter<string>();
 
   move(delta: number, ev: Event): void {
     ev.preventDefault();
@@ -175,5 +201,23 @@ export class RefsPanelComponent {
 
   onPick(ref: string): void {
     this.stagedRefChange.emit(ref);
+  }
+
+  onSearchInput(ev: Event): void {
+    const target = ev.target as HTMLInputElement;
+    this.refSearchChange.emit(target.value);
+  }
+
+  onEnter(ev: Event): void {
+    ev.preventDefault();
+    const staged = this.stagedRef();
+    if (staged !== '') {
+      this.appliedRef.emit(staged);
+      return;
+    }
+    const typed = this.refSearch();
+    if (typed !== '') {
+      this.appliedRef.emit(typed);
+    }
   }
 }
