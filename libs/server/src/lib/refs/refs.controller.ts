@@ -3,11 +3,13 @@ import { join } from 'node:path';
 import {
   Controller,
   Get,
+  HttpCode,
   HttpException,
   HttpStatus,
   Inject,
   NotFoundException,
   Param,
+  Post,
 } from '@nestjs/common';
 import {
   discoverRepoRoot,
@@ -15,6 +17,7 @@ import {
   type RepoDiscoveryDeps,
 } from 'core';
 import { SPARQL_SERVED_REGISTRY } from '../bootstrap';
+import { fetchRefs } from './fetch-refs';
 import { listRefs } from './list-refs';
 import type { RefsResponse } from './refs-response';
 import { resolveRefsSource } from './resolve-refs-source';
@@ -40,6 +43,25 @@ export class RefsController {
 
   @Get(':id/refs')
   async list(@Param('id') id: string): Promise<RefsResponse> {
+    const repoRoot = this.resolveRepoRoot(id);
+    return listRefs(repoRoot);
+  }
+
+  @Post(':id/refs/fetch')
+  @HttpCode(HttpStatus.OK)
+  async fetch(@Param('id') id: string): Promise<RefsResponse> {
+    const repoRoot = this.resolveRepoRoot(id);
+    const result = await fetchRefs(repoRoot);
+    if (result.isErr()) {
+      throw new HttpException(
+        { error: 'fetch-failed', kind: result.error.kind },
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+    return result.value;
+  }
+
+  private resolveRepoRoot(id: string): string {
     const resolution = resolveRefsSource(id, this.servedRegistry);
     if (resolution.isErr()) {
       const failure = resolution.error;
@@ -66,6 +88,6 @@ export class RefsController {
         HttpStatus.NOT_FOUND,
       );
     }
-    return listRefs(discovery.value);
+    return discovery.value;
   }
 }
