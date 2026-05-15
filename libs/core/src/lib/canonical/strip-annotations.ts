@@ -20,6 +20,8 @@ export function stripAnnotations(
     predicates.file,
     predicates.line,
     predicates.endLine,
+    predicates.gitRef,
+    predicates.gitSha,
   ]);
   const out = new Store();
   for (const q of store.getQuads(null, null, null, null)) {

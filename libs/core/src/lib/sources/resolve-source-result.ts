@@ -102,6 +102,7 @@ function resolveViewTargetResult(
     configDir: options.configDir ?? process.cwd(),
     port: options.gitPort ?? new GitCliPort(),
     repoDiscovery: options.repoDiscovery ?? defaultRepoDiscovery,
+    logger: options.logger,
   })
     .mapErr<SourceError>((e) => e)
     .andThen<QuerySources, SourceError>((normalizedRegistry) =>
@@ -138,7 +139,10 @@ function pinAndLoadGlob(
   const repoDiscovery = options.repoDiscovery ?? defaultRepoDiscovery;
   const configDir = options.configDir ?? process.cwd();
 
-  return pinGlobSource({ source, configDir }, { port, repoDiscovery })
+  return pinGlobSource(
+    { source, configDir },
+    { port, repoDiscovery, logger: options.logger },
+  )
     .mapErr<SourceError>((e) => e)
     .andThen<LoadResult, SourceError>((pinned) =>
       loadRdfResult({
@@ -146,7 +150,12 @@ function pinAndLoadGlob(
         logger: options.logger,
         contentReader: pinned.contentReader,
       })
-        .map((sub) => applyGlobTransforms(sub, transforms))
+        .map((sub) =>
+          applyGlobTransforms(sub, transforms, {
+            ref: pinned.ref,
+            sha: pinned.resolvedSha,
+          }),
+        )
         .orElse((err) => mapPinnedLoadError(err)),
     );
 }
@@ -154,9 +163,11 @@ function pinAndLoadGlob(
 function applyGlobTransforms(
   sub: LoadResult,
   transforms: ReadonlyArray<ParsedTransform>,
+  pin?: { ref: string; sha: string },
 ): LoadResult {
   const transformed = applyTransformPipeline(sub.store, transforms, {
     perFileRecords: sub.perFileRecords,
+    pin,
   });
   return {
     store: transformed,

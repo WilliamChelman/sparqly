@@ -106,6 +106,75 @@ describe('buildSourceRecord — wire shape without line', () => {
   });
 });
 
+describe('buildSourceRecord — git provenance (ADR-0029, issue #273)', () => {
+  it('emits sparqly:gitRef + sparqly:gitSha quads under the same record blank node when both are provided', () => {
+    const out = buildSourceRecord({
+      asserted: SPO,
+      filePath: '/abs/a.ttl',
+      line: 5,
+      gitRef: 'v1.2.0',
+      gitSha: '0123456789abcdef0123456789abcdef01234567',
+      predicates: DEFAULT_ANNOTATION_PREDICATE_IRIS,
+    });
+
+    const sourceQ = out.find(
+      (q) =>
+        (q.subject.termType as string) === 'Quad' &&
+        q.predicate.value === DEFAULT_ANNOTATION_PREDICATE_IRIS.source,
+    );
+    const record = sourceQ?.object;
+    if (!record) throw new Error('expected source record quad');
+
+    const gitRefQ = out.find(
+      (q) =>
+        q.subject.equals(record) &&
+        q.predicate.value === DEFAULT_ANNOTATION_PREDICATE_IRIS.gitRef,
+    );
+    const gitShaQ = out.find(
+      (q) =>
+        q.subject.equals(record) &&
+        q.predicate.value === DEFAULT_ANNOTATION_PREDICATE_IRIS.gitSha,
+    );
+    expect(gitRefQ?.object.termType).toBe('Literal');
+    expect(gitRefQ?.object.value).toBe('v1.2.0');
+    expect(gitShaQ?.object.termType).toBe('Literal');
+    expect(gitShaQ?.object.value).toBe('0123456789abcdef0123456789abcdef01234567');
+  });
+
+  it('omits both predicates when gitRef and gitSha are absent (unpinned source — byte-for-byte unchanged shape)', () => {
+    const out = buildSourceRecord({
+      asserted: SPO,
+      filePath: '/abs/a.ttl',
+      line: 5,
+      predicates: DEFAULT_ANNOTATION_PREDICATE_IRIS,
+    });
+    const hasGit = out.some(
+      (q) =>
+        q.predicate.value === DEFAULT_ANNOTATION_PREDICATE_IRIS.gitRef ||
+        q.predicate.value === DEFAULT_ANNOTATION_PREDICATE_IRIS.gitSha,
+    );
+    expect(hasGit).toBe(false);
+  });
+
+  it('honours custom gitRef / gitSha predicate IRI overrides', () => {
+    const predicates: AnnotationPredicateIris = {
+      ...DEFAULT_ANNOTATION_PREDICATE_IRIS,
+      gitRef: 'http://my/gitRef',
+      gitSha: 'http://my/gitSha',
+    };
+    const out = buildSourceRecord({
+      asserted: SPO,
+      filePath: '/abs/a.ttl',
+      gitRef: 'main',
+      gitSha: '0123456789abcdef0123456789abcdef01234567',
+      predicates,
+    });
+    const usedPredicates = new Set(out.map((q) => q.predicate.value));
+    expect(usedPredicates.has('http://my/gitRef')).toBe(true);
+    expect(usedPredicates.has('http://my/gitSha')).toBe(true);
+  });
+});
+
 describe('buildSourceRecord — wire shape with line', () => {
   it('emits source/file/line quads under a blank-node record', () => {
     const out = buildSourceRecord({

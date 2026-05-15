@@ -63,6 +63,36 @@ describe('sparqly query --at — pinned glob (ADR-0029, issue #272)', () => {
     expect(objects).toEqual(['http://example.org/old']);
   });
 
+  // ADR-0029, issue #273 — floating refs (branches, HEAD, HEAD~n,
+  // lightweight tags) emit a `<ref> → <sha>` info line on stderr at startup so
+  // the user can see which commit a `main`-style pin actually used. The
+  // matching source-record N-Quads shape (sparqly:gitRef / sparqly:gitSha) is
+  // pinned by libs/core/.../pinned-source-record.golden.spec.ts.
+  it('--at main (floating ref) logs `<ref> → <sha>` to stderr at startup', async () => {
+    const headSha = await git(repo, ['rev-parse', 'HEAD']);
+    const result = await runCli(
+      ['query', 'foaf.ttl', '-q', SELECT_OBJECTS, '--at', 'main'],
+      { cwd: repo },
+    );
+    expect(result.exitCode, `stderr=${result.stderr}`).toBe(0);
+    expect(result.stderr).toContain(`main → ${headSha}`);
+    const json = JSON.parse(result.stdout);
+    const objects = json.results.bindings.map(
+      (b: { o: { value: string } }) => b.o.value,
+    );
+    expect(objects).toEqual(['http://example.org/new']);
+  });
+
+  it('--at <full-sha> (pinned ref) does NOT log a `→` resolution line', async () => {
+    const headSha = await git(repo, ['rev-parse', 'HEAD']);
+    const result = await runCli(
+      ['query', 'foaf.ttl', '-q', SELECT_OBJECTS, '--at', headSha],
+      { cwd: repo },
+    );
+    expect(result.exitCode, `stderr=${result.stderr}`).toBe(0);
+    expect(result.stderr).not.toMatch(/→/);
+  });
+
   it('--at <unknown-ref> exits 39 with a git-pin "unresolvable-ref" message', async () => {
     const result = await runCli(
       ['query', 'foaf.ttl', '-q', SELECT_OBJECTS, '--at', 'v999'],

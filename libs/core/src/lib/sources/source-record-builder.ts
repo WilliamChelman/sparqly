@@ -9,6 +9,10 @@ export interface AnnotationPredicateIris {
   file: string;
   line: string;
   endLine: string;
+  /** Git-pinned-source provenance (ADR-0029, issue #273 slice 2). */
+  gitRef: string;
+  /** Git-pinned-source provenance (ADR-0029, issue #273 slice 2). */
+  gitSha: string;
 }
 
 export const DEFAULT_ANNOTATION_PREDICATE_IRIS: AnnotationPredicateIris = {
@@ -16,6 +20,8 @@ export const DEFAULT_ANNOTATION_PREDICATE_IRIS: AnnotationPredicateIris = {
   file: 'urn:sparqly:file',
   line: 'urn:sparqly:line',
   endLine: 'urn:sparqly:endLine',
+  gitRef: 'urn:sparqly:gitRef',
+  gitSha: 'urn:sparqly:gitSha',
 };
 
 export interface BuildSourceRecordInput {
@@ -23,6 +29,10 @@ export interface BuildSourceRecordInput {
   filePath: string;
   line?: number;
   endLine?: number;
+  /** Pinned-source ref string the triple was loaded from (ADR-0029). */
+  gitRef?: string;
+  /** Pinned-source resolved commit SHA (ADR-0029). */
+  gitSha?: string;
   predicates: AnnotationPredicateIris;
 }
 
@@ -46,6 +56,12 @@ export function buildSourceRecord(input: BuildSourceRecordInput): Quad[] {
     out.push(
       quad(record, namedNode(input.predicates.endLine), literal(String(input.endLine), XSD_INTEGER)),
     );
+  }
+  if (input.gitRef !== undefined) {
+    out.push(quad(record, namedNode(input.predicates.gitRef), literal(input.gitRef)));
+  }
+  if (input.gitSha !== undefined) {
+    out.push(quad(record, namedNode(input.predicates.gitSha), literal(input.gitSha)));
   }
   return out;
 }

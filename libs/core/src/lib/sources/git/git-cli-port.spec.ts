@@ -79,6 +79,37 @@ describe('GitCliPort (integration with real fixture repo)', () => {
     });
   });
 
+  describe('getRefObjectType', () => {
+    it('returns "tag" for an annotated tag', async () => {
+      expect(await port.getRefObjectType(repo, 'v1.2.0')).toBe('tag');
+    });
+
+    it('returns "commit" for HEAD', async () => {
+      expect(await port.getRefObjectType(repo, 'HEAD')).toBe('commit');
+    });
+
+    it('returns "commit" for a branch', async () => {
+      expect(await port.getRefObjectType(repo, 'main')).toBe('commit');
+    });
+
+    it('returns "commit" for HEAD~n', async () => {
+      expect(await port.getRefObjectType(repo, 'HEAD~1')).toBe('commit');
+    });
+
+    it('returns "commit" for a full SHA', async () => {
+      expect(await port.getRefObjectType(repo, commit1Sha)).toBe('commit');
+    });
+
+    it('returns "commit" for a lightweight tag', async () => {
+      await git(repo, ['tag', 'light-1.0', commit1Sha]);
+      expect(await port.getRefObjectType(repo, 'light-1.0')).toBe('commit');
+    });
+
+    it('returns null for an unknown ref', async () => {
+      expect(await port.getRefObjectType(repo, 'v999')).toBeNull();
+    });
+  });
+
   describe('readFileAtSha', () => {
     it("reads the file content from the git tree at the given SHA, ignoring the working tree", async () => {
       const buf = await port.readFileAtSha(repo, commit1Sha, 'foaf.ttl');

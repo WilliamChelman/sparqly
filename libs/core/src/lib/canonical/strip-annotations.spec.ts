@@ -83,6 +83,34 @@ describe('stripAnnotations', () => {
     expect(outCustom.getQuads(null, namedNode(custom.file), null, null)).toHaveLength(0);
   });
 
+  it('strips sparqly:gitRef and sparqly:gitSha quads when a pinned-source record carries them (ADR-0029, #273)', () => {
+    const predicates = DEFAULT_ANNOTATION_PREDICATE_IRIS;
+    const asserted = makeAsserted();
+    const store = new Store();
+    for (const q of asserted) store.addQuad(q);
+    for (const q of asserted) {
+      for (const r of buildSourceRecord({
+        asserted: q,
+        filePath: '/abs/path/file.ttl',
+        line: 1,
+        gitRef: 'v1.2.0',
+        gitSha: '0123456789abcdef0123456789abcdef01234567',
+        predicates,
+      })) {
+        store.addQuad(r);
+      }
+    }
+    const out = stripAnnotations(store, predicates);
+    expect(
+      out.getQuads(null, namedNode(predicates.gitRef), null, null),
+    ).toHaveLength(0);
+    expect(
+      out.getQuads(null, namedNode(predicates.gitSha), null, null),
+    ).toHaveLength(0);
+    // And the asserted triples are preserved.
+    expect(out.size).toBe(asserted.length);
+  });
+
   it('is a no-op on an unannotated store', () => {
     const asserted = makeAsserted();
     const store = new Store();

@@ -10,6 +10,7 @@ function stubPort(overrides: Partial<GitPort> = {}): GitPort {
   return {
     resolveRefToSha: vi.fn(async () => SHA),
     readFileAtSha: vi.fn(async () => Buffer.from('', 'utf8')),
+    getRefObjectType: vi.fn(async () => 'tag'),
     ...overrides,
   };
 }

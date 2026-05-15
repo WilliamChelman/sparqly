@@ -24,6 +24,26 @@ export class GitCliPort implements GitPort {
     }
   }
 
+  async getRefObjectType(
+    repoRoot: string,
+    ref: string,
+  ): Promise<'tag' | 'commit' | 'tree' | 'blob' | null> {
+    try {
+      const { stdout } = await execFileAsync(
+        'git',
+        ['-C', repoRoot, 'cat-file', '-t', ref],
+        { encoding: 'utf8' },
+      );
+      const t = stdout.trim();
+      if (t === 'tag' || t === 'commit' || t === 'tree' || t === 'blob') {
+        return t;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   async readFileAtSha(
     repoRoot: string,
     sha: string,

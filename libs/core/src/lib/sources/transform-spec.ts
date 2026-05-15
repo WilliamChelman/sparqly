@@ -11,6 +11,18 @@ import type { RdfRecord } from '../engine';
 export interface TransformContext {
   /** Per-file ordered records from the most recent glob load, keyed by absolute path. */
   perFileRecords?: ReadonlyMap<string, ReadonlyArray<RdfRecord>>;
+  /**
+   * Git pin in effect for the source being transformed (ADR-0029, issue #273).
+   * Threaded from `pinGlobSource` so the `annotate` transform can emit
+   * `sparqly:gitRef` + `sparqly:gitSha` per-triple provenance. Absent for
+   * working-tree-sourced glob loads — byte-for-byte unchanged.
+   */
+  pin?: {
+    /** User-typed ref string (tag, branch, SHA-as-typed). */
+    ref: string;
+    /** Resolved 40-char commit SHA. */
+    sha: string;
+  };
 }
 
 export type TransformApply = (
