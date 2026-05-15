@@ -21,6 +21,7 @@ import {
 import type {
   CacheIoError,
   EndpointFetchError,
+  GitPinError,
   GlobLoadError,
   QueryExecutionError,
   TransformParseError,
@@ -67,7 +68,8 @@ export type ResolveAnonymousSelectBindingsError =
   | EndpointFetchError
   | QueryExecutionError
   | GlobLoadError
-  | TransformParseError;
+  | TransformParseError
+  | GitPinError;
 
 function upstreamLabel(upstream: ParsedSource): string {
   if (upstream.kind === 'glob') return upstream.glob;

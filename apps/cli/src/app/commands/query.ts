@@ -28,8 +28,10 @@ import {
   decorateQueryError,
   queryErrorExitCode,
 } from './query-error';
+import { applyAtOverride } from './at-override';
 import type { FieldDescriptor } from '../runner/fields/field';
 import {
+  atRefField,
   contextBaseField,
   contextPrefixesField,
   mutableFieldsFor,
@@ -49,6 +51,7 @@ interface QueryConfig {
   prefixes?: Record<string, string>;
   base?: string;
   out?: string;
+  at?: string;
   verbose?: boolean;
   quiet?: boolean;
   logFormat?: 'text' | 'json';
@@ -116,6 +119,7 @@ export const querySpec: CommandSpec<QueryConfig> = {
     queryField,
     queryFileField,
     formatField,
+    atRefField,
     ...mutableFieldsFor('query'),
     contextPrefixesField,
     contextBaseField,
@@ -172,12 +176,15 @@ export const querySpec: CommandSpec<QueryConfig> = {
     );
 
     const pipeline: ResultAsync<ExecuteResult, SourceError | TargetError> =
-      resolveQueryTargetResult(config, registry).asyncAndThen<
-        ExecuteResult,
-        SourceError | TargetError
-      >((target) => {
+      resolveQueryTargetResult(config, registry)
+        .map((target) => applyAtOverride(target, config.at))
+        .asyncAndThen<ExecuteResult, SourceError | TargetError>((target) => {
         const loadStart = Date.now();
-        return resolveSourceResult(target, { registry, logger: boundaryLog })
+        return resolveSourceResult(target, {
+          registry,
+          logger: boundaryLog,
+          configDir: process.cwd(),
+        })
           .map((sources) => {
             logSourceLoaded(boundaryLog, sources, Date.now() - loadStart);
             return sources;

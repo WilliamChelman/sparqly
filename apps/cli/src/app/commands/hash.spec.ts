@@ -71,6 +71,13 @@ describe('hashSpec — single-target shape', () => {
     expect('graphMode' in defaults).toBe(false);
   });
 
+  it('exposes a `--at <ref>` flag bound to the `at` field (ADR-0029)', () => {
+    const at = hashSpec.fields.find((f) => f.key === 'at');
+    expect(at).toBeDefined();
+    const specs = (at?.flags ?? []).map((f) => f.spec);
+    expect(specs).toContain('--at <ref>');
+  });
+
   it('exitCode returns 1 for HashMismatchSignal, 2 in compare mode, 1 otherwise', () => {
     expect(hashSpec.exitCode(new HashMismatchSignal('x'))).toBe(1);
     expect(

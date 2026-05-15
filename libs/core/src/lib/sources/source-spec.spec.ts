@@ -732,6 +732,115 @@ describe('parseSourceSpec — prefilter is removed', () => {
   });
 });
 
+describe('parseSourceSpec — gitRef / gitRoot on glob sources (ADR-0029)', () => {
+  it('carries through gitRef on a glob source', () => {
+    expect(
+      parseSourceSpec({ glob: 'vendor/foaf.ttl', id: 'foaf', gitRef: 'v1.2.0' }),
+    ).toEqual({
+      kind: 'glob',
+      glob: 'vendor/foaf.ttl',
+      id: 'foaf',
+      gitRef: 'v1.2.0',
+    });
+  });
+
+  it('carries through gitRoot on a glob source declared alongside gitRef', () => {
+    expect(
+      parseSourceSpec({
+        glob: 'vendor/foaf.ttl',
+        id: 'foaf',
+        gitRef: 'v1.2.0',
+        gitRoot: '../vendor-onts',
+      }),
+    ).toEqual({
+      kind: 'glob',
+      glob: 'vendor/foaf.ttl',
+      id: 'foaf',
+      gitRef: 'v1.2.0',
+      gitRoot: '../vendor-onts',
+    });
+  });
+
+  it('rejects a non-string gitRef', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'vendor/foaf.ttl',
+        // @ts-expect-error — gitRef must be a string
+        gitRef: 123,
+      }),
+    ).toThrow(/gitRef.*non-empty string/i);
+  });
+
+  it('rejects an empty gitRef', () => {
+    expect(() =>
+      parseSourceSpec({ glob: 'vendor/foaf.ttl', gitRef: '' }),
+    ).toThrow(/gitRef.*non-empty string/i);
+  });
+
+  it('rejects a non-string gitRoot', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'vendor/foaf.ttl',
+        gitRef: 'v1.2.0',
+        // @ts-expect-error — gitRoot must be a string
+        gitRoot: 5,
+      }),
+    ).toThrow(/gitRoot.*non-empty string/i);
+  });
+
+  it('rejects an empty gitRoot', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'vendor/foaf.ttl',
+        gitRef: 'v1.2.0',
+        gitRoot: '',
+      }),
+    ).toThrow(/gitRoot.*non-empty string/i);
+  });
+
+  it('rejects gitRoot declared without gitRef', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'vendor/foaf.ttl',
+        gitRoot: '../vendor-onts',
+      }),
+    ).toThrow(/gitRoot.*only.*gitRef/i);
+  });
+
+  it('rejects gitRef on an endpoint source', () => {
+    expect(() =>
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        // @ts-expect-error — gitRef is glob-only
+        gitRef: 'v1.2.0',
+      }),
+    ).toThrow(/gitRef.*only.*glob.*endpoint/i);
+  });
+
+  it('rejects gitRef on a view source', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'v',
+        from: '@raw',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        // @ts-expect-error — gitRef is glob-only
+        gitRef: 'v1.2.0',
+      }),
+    ).toThrow(/gitRef.*only.*glob.*view/i);
+  });
+
+  it('rejects gitRef on an empty source', () => {
+    expect(() =>
+      parseSourceSpec({
+        id: 'composer',
+        empty: true,
+        // @ts-expect-error — gitRef is glob-only
+        gitRef: 'v1.2.0',
+      }),
+    ).toThrow(/empty source.*gitRef/i);
+  });
+});
+
 describe('parseSourceSpec — source id', () => {
   it.each([
     'a',

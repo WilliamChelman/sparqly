@@ -76,6 +76,18 @@ The default `diff` mode, taken when both sides' queries produce triples (`CONSTR
 The `diff` mode taken when both sides' queries are arbitrary SELECTs projecting the same set of variable names. Bag-differences the result rows under lexical term equality; per distinct row the diff carries a `count` of net occurrences. Mode is auto-detected from the queries; mixed-shape pairs are rejected. **Source records** do not apply. Blank nodes in the projection are rejected.
 _Avoid_: "bindings diff", "result-set diff", "row diff"
 
+**Pinned source**:
+A **Glob source** resolved against a specific git revision. Arises whenever a `gitRef` is declared on the glob, when `--at` / `--left-ref` / `--right-ref` is supplied at the CLI, or when `@id:ref` appears in any reference position (CLI positional, `view.from:`, picker URL, `--source` on `serve`). Not a registry entry — synthesized at resolution time, like an **anonymous view**. Composes with **split globs**: the meta enumerates files from the git tree at the resolved SHA (not the working tree), and synthesized **File source** children inherit the pin.
+_Avoid_: "ad-hoc source", "snapshot source", "git-pinned source"
+
+**Pinned ref**:
+A `gitRef` value pointing at an immutable revision: a full commit SHA or an annotated tag. Resolves to the same commit on every fetch, so a **Pinned source** built from one is reproducible.
+_Avoid_: "frozen ref", "fixed ref"
+
+**Floating ref**:
+A `gitRef` value pointing at a moving revision: a branch, `HEAD`, `HEAD~n`, or a lightweight tag. Resolves at process start (CLI) or at load time (server); the resolved SHA — not the ref string — is the cache key, so a **Pinned source** built from a floating ref is current at fetch time, not reproducible across fetches.
+_Avoid_: "live ref", "mutable ref"
+
 **Source transformation pipeline**:
 An ordered list of declared transforms attached to a **Glob source** under `transforms:`, applied to its loaded Store before it is handed to any consumer. The registry of available transform keys is closed (only sparqly-known transforms). When a glob is a **split glob**, each synthesized **File source** child inherits a full copy of the pipeline — children behave identically whether targeted directly or through the meta.
 _Avoid_: "post-processors", "loader plugins"
@@ -91,7 +103,7 @@ The `diff` command's implicit injection of an `annotateSource` step at the head 
 _Avoid_: "annotate-by-default", "implicit annotate"
 
 **Source record**:
-A blank-node record reached via `sparqly:source` from an RDF-star quoted triple, with `sparqly:file` (the absolute `file://` IRI of the source file) and optionally `sparqly:line` (1-based line). One record per (file, line) instance of a triple; a triple loaded from two files produces two records under the same quoted-triple subject.
+A blank-node record reached via `sparqly:source` from an RDF-star quoted triple, with `sparqly:file` (the absolute `file://` IRI of the source file) and optionally `sparqly:line` (1-based line). When the triple was loaded from a **Pinned source**, the record additionally carries `sparqly:gitRef` (the user-facing ref string) and `sparqly:gitSha` (the resolved SHA), so reports can surface "v1.2 (resolved to abc1234)" per triple. The `sparqly:file` IRI remains the disk path the file would resolve to in the working tree, even when content was fetched from the git tree. One record per (file, line) instance of a triple; a triple loaded from two files produces two records under the same quoted-triple subject.
 _Avoid_: "provenance triple", "lineage record"
 
 **Diff totals**:
@@ -153,6 +165,9 @@ _Avoid_: "format block", "display config", "prefix block"
 - **`serve`** exposes the **served registry**; resolution per source follows the same rules as `query`.
 - **`hash`** picks one **target source** and always **canonicalizes** the resolved Store; it refuses raw endpoints (must be wrapped in a view) and refuses arbitrary-SELECT views.
 - **`diff`** picks one **target source** per side and dispatches by query shape: **graph diff** when both sides produce triples; **tabular diff** when both sides project arbitrary SELECT tuples with matching variable names. Mixed-shape pairs are rejected. Both modes refuse a raw endpoint as target.
+- A **Pinned source** is a **Glob source** resolved against a git revision; the glob's transform pipeline applies unchanged, and when the glob is also a **split glob**, registry expansion walks the git tree at the resolved SHA (not the working tree). Synthesized **File source** children inherit the pin alongside the transform pipeline.
+- A **Pinned source**'s **Result cache** keys on the resolved SHA, never the user-facing ref string. A **Pinned ref** is reproducible across fetches; a **Floating ref** is not, and the resolved SHA is what surfaces in any source records or diff reports.
+- Pinning a **View** target (e.g. `@my-view:v1.2`) leaves the view's query unchanged and propagates the ref down the `from:` chain until it reaches a glob (recursing through intermediate views). Reaching an endpoint or empty source on the way down is a hard error reported at expand time. Cross-source `SERVICE` clauses inside the query are not affected — they reference endpoints by URL, not by `from:`, and remain unpinned.
 - A **Glob source** may declare a **Source transformation pipeline**; transforms run in array order at load time before the Store is exposed to resolution. A **split glob**'s synthesized **File source** children inherit the pipeline.
 - A **split glob** is targetable as the union (`@meta`) and as any of its children (`@meta/<relative-path>`); a child may serve as a CLI target, an `@id` in `view.from:`, or a selection in the webapp picker. The single-target rule (ADR-0005) is preserved — both the meta and any one child are single targets; the picker remains single-select on `query`/`hash`/`diff`.
 - The **Annotate-source transformation** populates **Source records** on the glob's own asserted triples; annotations do not propagate through a downstream **View** unless that view's query explicitly references them, and they are stripped by **Canonicalization**.

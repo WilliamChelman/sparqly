@@ -23,6 +23,14 @@ export interface LoadOptions {
    * absolute base path that was searched (ADR-0028). Defaults to no-op.
    */
   logger?: SparqlyLogger;
+  /**
+   * Per-file content override (ADR-0029). When provided, called for every
+   * absolute file path matched by the glob; if it returns a Buffer, that
+   * Buffer is parsed instead of reading the file from disk. Returning `null`
+   * falls back to disk. Used to source pinned-glob content from the git tree
+   * while keeping enumeration on the working tree.
+   */
+  contentReader?: (absolutePath: string) => Promise<Buffer | null>;
 }
 
 export interface LoadResult {
@@ -67,7 +75,7 @@ export function loadRdfResult(
         perFileRecords: new Map(),
       });
     }
-    return parseFiles(files, globs);
+    return parseFiles(files, globs, options.contentReader);
   });
 }
 
@@ -87,6 +95,7 @@ function staticPrefix(pattern: string): string {
 function parseFiles(
   files: string[],
   globs: ReadonlyArray<string>,
+  contentReader: LoadOptions['contentReader'],
 ): ResultAsync<LoadResult, GlobLoadError> {
   const store = new Store();
   const prefixes: Record<string, Record<string, string>> = {};
@@ -96,18 +105,25 @@ function parseFiles(
   const chain = files.reduce<ResultAsync<void, GlobLoadError>>(
     (prev, file) =>
       prev.andThen(() =>
-        parseRdfFileResult(file)
-          .map((result) => {
-            for (const { quad } of result.records) store.addQuad(quad);
-            prefixes[file] = result.prefixes;
-            perFileRecords.set(file, result.records);
-          })
-          .mapErr<GlobLoadError>((err) => ({
-            kind: 'glob-load',
-            glob: globs,
+        ResultAsync.fromSafePromise(
+          contentReader ? contentReader(file) : Promise.resolve(null),
+        ).andThen((override) =>
+          parseRdfFileResult(
             file,
-            message: err.message,
-          })),
+            override !== null ? { contentOverride: override } : {},
+          )
+            .map((result) => {
+              for (const { quad } of result.records) store.addQuad(quad);
+              prefixes[file] = result.prefixes;
+              perFileRecords.set(file, result.records);
+            })
+            .mapErr<GlobLoadError>((err) => ({
+              kind: 'glob-load',
+              glob: globs,
+              file,
+              message: err.message,
+            })),
+        ),
       ),
     seed,
   );

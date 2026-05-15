@@ -220,3 +220,20 @@ export const contextBaseField: FieldDescriptor = {
   key: 'base',
   schema: z.string(),
 };
+
+/**
+ * Per-invocation `--at <ref>` flag (ADR-0029). Desugars at the handler edge
+ * onto the resolved glob target's `gitRef` (see `applyAtOverride`). Off-target
+ * kinds (endpoint, view, …) produce an error.
+ */
+export const atRefField: FieldDescriptor = {
+  key: 'at',
+  schema: z.string().min(1),
+  flags: [
+    {
+      spec: '--at <ref>',
+      description:
+        'Pin the target glob source to a git ref (full SHA, short SHA, or annotated tag) for this invocation. Overrides any declared `gitRef:` on the source. Only valid for glob sources.',
+    },
+  ],
+};

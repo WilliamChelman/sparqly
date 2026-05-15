@@ -598,6 +598,94 @@ describe('view-cache — cache key composition', () => {
       viewCacheKey({ view, upstream: [upstream], cacheDir: '/a' }),
     ).toEqual(viewCacheKey({ view, upstream: [upstream], cacheDir: '/b' }));
   });
+
+  it('is stable across two pinned-glob upstreams that share resolvedSha but differ in gitRef (ADR-0029)', () => {
+    const view = parseSourceSpecs([
+      {
+        id: 'cached',
+        from: '@raw',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+    ])[0] as ParsedViewSource;
+    const sha = '0123456789abcdef0123456789abcdef01234567';
+    const viaTag: ParsedSource = {
+      kind: 'glob',
+      id: 'raw',
+      glob: 'data/*.ttl',
+      gitRef: 'v1.2.0',
+      resolvedSha: sha,
+    };
+    const viaSha: ParsedSource = {
+      kind: 'glob',
+      id: 'raw',
+      glob: 'data/*.ttl',
+      gitRef: sha,
+      resolvedSha: sha,
+    };
+    const kTag = viewCacheKey({ view, upstream: [viaTag], cacheDir: '/x' });
+    const kSha = viewCacheKey({ view, upstream: [viaSha], cacheDir: '/x' });
+    expect(kTag).toEqual(kSha);
+  });
+
+  it('is stable across two pinned-glob upstreams that share resolvedSha but differ in gitRoot (ADR-0029)', () => {
+    const view = parseSourceSpecs([
+      {
+        id: 'cached',
+        from: '@raw',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+    ])[0] as ParsedViewSource;
+    const sha = '0123456789abcdef0123456789abcdef01234567';
+    const a: ParsedSource = {
+      kind: 'glob',
+      id: 'raw',
+      glob: '/vendor/foaf.ttl',
+      gitRef: 'v1.2.0',
+      gitRoot: './vendor-onts',
+      resolvedSha: sha,
+    };
+    const b: ParsedSource = {
+      kind: 'glob',
+      id: 'raw',
+      glob: '/vendor/foaf.ttl',
+      gitRef: 'v1.2.0',
+      gitRoot: '/abs/path/to/vendor-onts',
+      resolvedSha: sha,
+    };
+    expect(viewCacheKey({ view, upstream: [a], cacheDir: '/x' })).toEqual(
+      viewCacheKey({ view, upstream: [b], cacheDir: '/x' }),
+    );
+  });
+
+  it('changes when resolvedSha differs between pinned-glob upstreams (ADR-0029)', () => {
+    const view = parseSourceSpecs([
+      {
+        id: 'cached',
+        from: '@raw',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        cache: { ttl: '1h' },
+      },
+    ])[0] as ParsedViewSource;
+    const a: ParsedSource = {
+      kind: 'glob',
+      id: 'raw',
+      glob: 'data/*.ttl',
+      gitRef: 'v1.2.0',
+      resolvedSha: '0123456789abcdef0123456789abcdef01234567',
+    };
+    const b: ParsedSource = {
+      kind: 'glob',
+      id: 'raw',
+      glob: 'data/*.ttl',
+      gitRef: 'v1.2.0',
+      resolvedSha: 'fedcba9876543210fedcba9876543210fedcba98',
+    };
+    expect(viewCacheKey({ view, upstream: [a], cacheDir: '/x' })).not.toEqual(
+      viewCacheKey({ view, upstream: [b], cacheDir: '/x' }),
+    );
+  });
 });
 
 describe('view-cache — DAG-walk invalidation', () => {

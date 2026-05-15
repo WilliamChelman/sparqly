@@ -108,8 +108,21 @@ function upstreamKeyContributions(
     return upstreamContribsViaRegistry(binding.view, binding.registry, stack);
   }
   return [...binding.upstream]
-    .map((s) => stableStringify(s))
+    .map((s) => stableStringify(normalizeForFingerprint(s)))
     .sort();
+}
+
+/**
+ * Strip ref-string fields from a pinned glob source so the cache key depends
+ * on the resolved commit SHA rather than the user-typed `gitRef`/`gitRoot`
+ * (ADR-0029). For all other source kinds (and unpinned globs) the source is
+ * returned unchanged.
+ */
+function normalizeForFingerprint(source: ParsedSource): ParsedSource {
+  if (source.kind !== 'glob') return source;
+  if (source.resolvedSha === undefined) return source;
+  const { gitRef: _ref, gitRoot: _root, ...rest } = source;
+  return rest;
 }
 
 function indexRegistryById(
@@ -149,7 +162,7 @@ function upstreamContribsViaRegistry(
     );
     return [`view:${refId}:${subKey}`];
   }
-  return [stableStringify(upstream)];
+  return [stableStringify(normalizeForFingerprint(upstream))];
 }
 
 /**

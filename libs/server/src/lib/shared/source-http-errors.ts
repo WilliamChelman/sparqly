@@ -15,6 +15,7 @@ import type { SourceError } from 'core';
  *   view-reference    400  `from:` ref unknown/cycle/reference-upstream (user-input)
  *   cache-io          500  view cache read/write/parse (server-side)
  *   transform-parse   400  invalid transform spec (user-input)
+ *   git-pin           400  gitRef/--at resolution failure (user-input, ADR-0029)
  */
 export function sourceErrorToStatus(error: SourceError): HttpStatus {
   switch (error.kind) {
@@ -33,6 +34,8 @@ export function sourceErrorToStatus(error: SourceError): HttpStatus {
     case 'cache-io':
       return HttpStatus.INTERNAL_SERVER_ERROR;
     case 'transform-parse':
+      return HttpStatus.BAD_REQUEST;
+    case 'git-pin':
       return HttpStatus.BAD_REQUEST;
   }
 }
