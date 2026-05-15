@@ -136,6 +136,61 @@ describe('annotate transform behaviour — apply', () => {
   });
 });
 
+describe('annotate transform — pin provenance (ADR-0029, #273)', () => {
+  it('emits sparqly:gitRef + sparqly:gitSha quads under each source record when ctx.pin is set', () => {
+    const r: RdfRecord = {
+      quad: quad(namedNode('urn:s'), namedNode('urn:p'), namedNode('urn:o')),
+      line: 3,
+    };
+    const apply = parseAnnotateTransform({});
+    const out = apply(storeOf([r]), {
+      perFileRecords: new Map([['/abs/a.ttl', [r]]]),
+      pin: {
+        ref: 'main',
+        sha: '0123456789abcdef0123456789abcdef01234567',
+      },
+    });
+
+    const gitRefQuads = out.getQuads(
+      null,
+      namedNode(DEFAULT_ANNOTATION_PREDICATE_IRIS.gitRef),
+      null,
+      null,
+    );
+    expect(gitRefQuads).toHaveLength(1);
+    expect(gitRefQuads[0].object.value).toBe('main');
+
+    const gitShaQuads = out.getQuads(
+      null,
+      namedNode(DEFAULT_ANNOTATION_PREDICATE_IRIS.gitSha),
+      null,
+      null,
+    );
+    expect(gitShaQuads).toHaveLength(1);
+    expect(gitShaQuads[0].object.value).toBe(
+      '0123456789abcdef0123456789abcdef01234567',
+    );
+  });
+
+  it('omits both gitRef + gitSha when ctx.pin is absent (unpinned-source byte-for-byte invariant)', () => {
+    const r: RdfRecord = {
+      quad: quad(namedNode('urn:s'), namedNode('urn:p'), namedNode('urn:o')),
+      line: 1,
+    };
+    const apply = parseAnnotateTransform({});
+    const out = apply(
+      storeOf([r]),
+      { perFileRecords: new Map([['/abs/a.ttl', [r]]]) },
+    );
+    expect(
+      out.getQuads(null, namedNode(DEFAULT_ANNOTATION_PREDICATE_IRIS.gitRef), null, null),
+    ).toHaveLength(0);
+    expect(
+      out.getQuads(null, namedNode(DEFAULT_ANNOTATION_PREDICATE_IRIS.gitSha), null, null),
+    ).toHaveLength(0);
+  });
+});
+
 describe('parseAnnotateTransformResult — Result-typed primary impl', () => {
   it('returns ok with a ParsedTransformResult for null/undefined (all defaults)', () => {
     const result = parseAnnotateTransformResult(undefined);
@@ -199,6 +254,8 @@ describe('ANNOTATE_SOURCE_TRANSFORM registry definition', () => {
       file: 'urn:sparqly:file',
       line: 'urn:sparqly:line',
       endLine: 'urn:sparqly:endLine',
+      gitRef: 'urn:sparqly:gitRef',
+      gitSha: 'urn:sparqly:gitSha',
     });
   });
 });

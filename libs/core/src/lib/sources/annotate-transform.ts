@@ -15,7 +15,14 @@ import type {
 } from './transform-spec';
 
 const KEY = 'annotateSource';
-const KNOWN_KEYS = new Set(['source', 'file', 'line', 'endLine']);
+const KNOWN_KEYS = new Set([
+  'source',
+  'file',
+  'line',
+  'endLine',
+  'gitRef',
+  'gitSha',
+]);
 
 /**
  * Primary `Result`-typed impl of the `annotateSource` transform parser.
@@ -97,7 +104,9 @@ function isPredicateIris(value: unknown): value is AnnotationPredicateIris {
     typeof v['source'] === 'string' &&
     typeof v['file'] === 'string' &&
     typeof v['line'] === 'string' &&
-    typeof v['endLine'] === 'string'
+    typeof v['endLine'] === 'string' &&
+    typeof v['gitRef'] === 'string' &&
+    typeof v['gitSha'] === 'string'
   );
 }
 
@@ -114,7 +123,7 @@ function parseAnnotateSpecResult(
   if (typeof raw !== 'object' || Array.isArray(raw)) {
     return err(
       transformParseErr(
-        `\`${KEY}\` must be omitted, \`null\`, or an object \`{ source?, file?, line?, endLine? }\``,
+        `\`${KEY}\` must be omitted, \`null\`, or an object \`{ source?, file?, line?, endLine?, gitRef?, gitSha? }\``,
       ),
     );
   }
@@ -123,7 +132,7 @@ function parseAnnotateSpecResult(
     if (!KNOWN_KEYS.has(key)) {
       return err(
         transformParseErr(
-          `\`${KEY}\`: unknown key "${key}" (known: source, file, line, endLine)`,
+          `\`${KEY}\`: unknown key "${key}" (known: source, file, line, endLine, gitRef, gitSha)`,
         ),
       );
     }
@@ -136,17 +145,23 @@ function parseAnnotateSpecResult(
   if (line.isErr()) return err(line.error);
   const endLine = pickIriResult(obj, 'endLine');
   if (endLine.isErr()) return err(endLine.error);
+  const gitRef = pickIriResult(obj, 'gitRef');
+  if (gitRef.isErr()) return err(gitRef.error);
+  const gitSha = pickIriResult(obj, 'gitSha');
+  if (gitSha.isErr()) return err(gitSha.error);
   return ok({
     source: source.value ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.source,
     file: file.value ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.file,
     line: line.value ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.line,
     endLine: endLine.value ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.endLine,
+    gitRef: gitRef.value ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.gitRef,
+    gitSha: gitSha.value ?? DEFAULT_ANNOTATION_PREDICATE_IRIS.gitSha,
   });
 }
 
 function pickIriResult(
   obj: Record<string, unknown>,
-  key: 'source' | 'file' | 'line' | 'endLine',
+  key: 'source' | 'file' | 'line' | 'endLine' | 'gitRef' | 'gitSha',
 ): Result<string | undefined, TransformParseError> {
   const v = obj[key];
   if (v === undefined) return ok(undefined);
@@ -169,6 +184,7 @@ function applyAnnotate(
       `\`${KEY}\` requires per-file context from the loader; apply via the source pipeline (resolveSource/loadSources)`,
     );
   }
+  const pin = ctx?.pin;
   const out = new Store();
   for (const q of store.getQuads(null, null, null, null)) out.addQuad(q);
   for (const [file, records] of perFileRecords) {
@@ -178,6 +194,8 @@ function applyAnnotate(
         filePath: file,
         line: record.line,
         endLine: record.endLine,
+        gitRef: pin?.ref,
+        gitSha: pin?.sha,
         predicates,
       });
       for (const q of recordQuads) out.addQuad(q);

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { GitPort } from './git-port';
 import { pinGlobSource } from './pin-glob-source';
 import type { ParsedGlobSource } from '../source-spec';
+import { recordingLogger } from '../../test/recording-logger';
 
 const SHA = '0123456789abcdef0123456789abcdef01234567';
 
@@ -21,6 +22,7 @@ function stubPort(
   return {
     resolveRefToSha: vi.fn(async () => SHA),
     readFileAtSha: vi.fn(async () => Buffer.from('old-content\n', 'utf8')),
+    getRefObjectType: vi.fn(async () => 'tag'),
     ...overrides,
   };
 }
@@ -42,6 +44,7 @@ describe('pinGlobSource — happy path', () => {
     expect(pinned.repoRoot).toBe('/work/repo');
     expect(pinned.resolvedSha).toBe(SHA);
     expect(pinned.ref).toBe('v1.2.0');
+    expect(pinned.kind).toBe('pinned');
 
     const buf = await pinned.contentReader('/work/repo/vendor/foaf.ttl');
     expect(buf?.toString('utf8')).toBe('old-content\n');
@@ -63,6 +66,54 @@ describe('pinGlobSource — happy path', () => {
     );
 
     expect(result._unsafeUnwrap().repoRoot).toBe('/work/vendor-onts');
+  });
+});
+
+describe('pinGlobSource — floating-ref log (ADR-0029, #273)', () => {
+  it('logs `<ref> → <sha>` exactly once when the resolved kind is floating', async () => {
+    const { logger, entries } = recordingLogger();
+    const port = stubPort({ getRefObjectType: vi.fn(async () => 'commit') });
+    await pinGlobSource(
+      { source: source({ gitRef: 'main' }), configDir: '/work/repo' },
+      {
+        port,
+        repoDiscovery: STUB_FS_REPO_AT('/work/repo'),
+        logger,
+      },
+    );
+    const matched = entries.filter((e) =>
+      e.msg.includes(`main → ${SHA}`),
+    );
+    expect(matched).toHaveLength(1);
+    expect(matched[0].level).toBe('info');
+  });
+
+  it('does NOT log when the resolved kind is pinned (full SHA)', async () => {
+    const { logger, entries } = recordingLogger();
+    await pinGlobSource(
+      { source: source({ gitRef: SHA }), configDir: '/work/repo' },
+      {
+        port: stubPort(),
+        repoDiscovery: STUB_FS_REPO_AT('/work/repo'),
+        logger,
+      },
+    );
+    const matched = entries.filter((e) => /→/.test(e.msg));
+    expect(matched).toHaveLength(0);
+  });
+
+  it('does NOT log when the resolved kind is pinned (annotated tag)', async () => {
+    const { logger, entries } = recordingLogger();
+    await pinGlobSource(
+      { source: source({ gitRef: 'v1.2.0' }), configDir: '/work/repo' },
+      {
+        port: stubPort({ getRefObjectType: vi.fn(async () => 'tag') }),
+        repoDiscovery: STUB_FS_REPO_AT('/work/repo'),
+        logger,
+      },
+    );
+    const matched = entries.filter((e) => /→/.test(e.msg));
+    expect(matched).toHaveLength(0);
   });
 });
 

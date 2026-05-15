@@ -1,6 +1,7 @@
 import { existsSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { ResultAsync, errAsync } from 'neverthrow';
+import type { SparqlyLogger } from 'common';
 import {
   discoverRepoRoot,
   type DiscoverRepoError,
@@ -8,7 +9,7 @@ import {
 } from './discover-repo';
 import type { GitPinError } from '../errors';
 import type { GitPort } from './git-port';
-import { resolveGitRefToSha } from './resolve-ref';
+import { resolveGitRef } from './resolve-ref';
 import type { ParsedGlobSource } from '../source-spec';
 
 export interface PinnedGlob {
@@ -18,6 +19,13 @@ export interface PinnedGlob {
   resolvedSha: string;
   /** The user-facing ref string (as typed by the user). */
   ref: string;
+  /**
+   * Whether the ref is frozen (`pinned` — full SHA or annotated tag) or
+   * moving (`floating` — branch, `HEAD`, `HEAD~n`, lightweight tag). The CLI
+   * surfaces floating-ref resolutions at startup so the user knows which
+   * commit a `main`-style pin actually used (ADR-0029, issue #273 slice 2).
+   */
+  kind: 'pinned' | 'floating';
   /**
    * Per-file content reader for the load path: maps a working-tree absolute
    * path to the file bytes from the git tree at {@link resolvedSha}. Returns
@@ -31,6 +39,14 @@ export interface PinnedGlob {
 export interface PinGlobSourceDeps {
   port: GitPort;
   repoDiscovery: RepoDiscoveryDeps;
+  /**
+   * Optional logger used to surface floating-ref resolutions at run start
+   * (ADR-0029, issue #273). When the resolver classifies the ref as
+   * `floating` (branch, `HEAD`, `HEAD~n`, lightweight tag), one `info`-level
+   * line `<ref> → <sha>` is emitted so the user can see which commit a
+   * `main`-style pin actually used. Pinned refs do not log.
+   */
+  logger?: SparqlyLogger;
 }
 
 export interface PinGlobSourceArgs {
@@ -85,16 +101,21 @@ export function pinGlobSource(
     return errAsync(pinErrorForDiscovery(discovery.error));
   }
   const repoRoot = discovery.value;
-  return resolveGitRefToSha(deps.port, repoRoot, ref)
+  return resolveGitRef(deps.port, repoRoot, ref)
     .mapErr<GitPinError>((e) => ({
       kind: 'git-pin',
       reason: 'unresolvable-ref',
-      message: `gitRef "${e.ref}" did not resolve to a commit in ${e.repoRoot} — check spelling, that the ref exists locally (fetch first if it lives on a remote), and that it is a full SHA, short SHA, or annotated tag (slice 1 does not yet support branches or lightweight tags)`,
+      message: `gitRef "${e.ref}" did not resolve to a commit in ${e.repoRoot} — check spelling and that the ref exists locally (fetch first if it lives on a remote)`,
     }))
-    .map((sha) => ({
+    .map((resolved) => {
+      if (resolved.kind === 'floating') {
+        deps.logger?.info(`git-pin: ${ref} → ${resolved.sha}`);
+      }
+      return ({
       repoRoot,
-      resolvedSha: sha,
+      resolvedSha: resolved.sha,
       ref,
+      kind: resolved.kind,
       contentReader: async (absolutePath: string): Promise<Buffer | null> => {
         const rel = relative(repoRoot, absolutePath);
         if (rel === '' || rel.startsWith('..') || rel.includes(`..${sep}`)) {
@@ -104,13 +125,14 @@ export function pinGlobSource(
         }
         // git ls-tree / git show uses forward slashes regardless of platform.
         const gitPath = rel.split(sep).join('/');
-        const buf = await deps.port.readFileAtSha(repoRoot, sha, gitPath);
+        const buf = await deps.port.readFileAtSha(repoRoot, resolved.sha, gitPath);
         if (buf === null) {
-          throw new PinnedFileMissingError(absolutePath, gitPath, sha, ref);
+          throw new PinnedFileMissingError(absolutePath, gitPath, resolved.sha, ref);
         }
         return buf;
       },
-    }));
+    });
+    });
 }
 
 export class PinnedFileMissingError extends Error {

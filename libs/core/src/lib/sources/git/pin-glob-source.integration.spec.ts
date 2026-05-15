@@ -3,9 +3,14 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { DataFactory } from 'n3';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { resolveSourceResult } from '../resolve-source-result';
 import type { ParsedGlobSource } from '../source-spec';
+import { parseAnnotateTransform } from '../annotate-transform';
+import { DEFAULT_ANNOTATION_PREDICATE_IRIS } from '../source-record-builder';
+
+const { namedNode } = DataFactory;
 
 const execFileAsync = promisify(execFile);
 
@@ -115,6 +120,69 @@ describe('resolveSourceResult — pinned glob (ADR-0029)', () => {
     } finally {
       await rm(lonely, { recursive: true, force: true });
     }
+  });
+
+  it('emits sparqly:gitRef + sparqly:gitSha on annotate-transformed pinned sources (ADR-0029, #273)', async () => {
+    const result = await resolveSourceResult(
+      source({
+        transforms: [
+          { key: 'annotateSource', apply: parseAnnotateTransform({}) },
+        ],
+      }),
+      { configDir: repo },
+    );
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    if (result.value.mode !== 'materialized') throw new Error('unreachable');
+
+    const gitRefQuads = result.value.store.getQuads(
+      null,
+      namedNode(DEFAULT_ANNOTATION_PREDICATE_IRIS.gitRef),
+      null,
+      null,
+    );
+    const gitShaQuads = result.value.store.getQuads(
+      null,
+      namedNode(DEFAULT_ANNOTATION_PREDICATE_IRIS.gitSha),
+      null,
+      null,
+    );
+    expect(gitRefQuads).toHaveLength(1);
+    expect(gitRefQuads[0].object.value).toBe('v1.2.0');
+    expect(gitShaQuads).toHaveLength(1);
+    expect(gitShaQuads[0].object.value).toBe(oldSha);
+  });
+
+  it('does NOT emit sparqly:gitRef / sparqly:gitSha when an unpinned glob is annotated (byte-for-byte unchanged)', async () => {
+    // No gitRef on the source = working-tree load = no pin = no provenance quads.
+    const result = await resolveSourceResult(
+      source({
+        gitRef: undefined,
+        transforms: [
+          { key: 'annotateSource', apply: parseAnnotateTransform({}) },
+        ],
+      }),
+      { configDir: repo },
+    );
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    if (result.value.mode !== 'materialized') throw new Error('unreachable');
+    expect(
+      result.value.store.getQuads(
+        null,
+        namedNode(DEFAULT_ANNOTATION_PREDICATE_IRIS.gitRef),
+        null,
+        null,
+      ),
+    ).toHaveLength(0);
+    expect(
+      result.value.store.getQuads(
+        null,
+        namedNode(DEFAULT_ANNOTATION_PREDICATE_IRIS.gitSha),
+        null,
+        null,
+      ),
+    ).toHaveLength(0);
   });
 
   it('returns a git-pin error with reason "gitroot-not-a-repo" when gitRoot points at a non-repo path', async () => {

@@ -1,4 +1,5 @@
 import { ResultAsync, errAsync, okAsync } from 'neverthrow';
+import type { SparqlyLogger } from 'common';
 import type { GitPinError } from '../errors';
 import type { ParsedGlobSource, ParsedSource } from '../source-spec';
 import type { RepoDiscoveryDeps } from './discover-repo';
@@ -9,6 +10,8 @@ export interface NormalizeRegistryPinsDeps {
   configDir: string;
   port: GitPort;
   repoDiscovery: RepoDiscoveryDeps;
+  /** Logger for floating-ref `<ref> → <sha>` startup lines (ADR-0029, #273). */
+  logger?: SparqlyLogger;
 }
 
 /**
@@ -59,7 +62,11 @@ async function resolveOne(
   const glob = source as ParsedGlobSource;
   const result = await pinGlobSource(
     { source: glob, configDir: deps.configDir },
-    { port: deps.port, repoDiscovery: deps.repoDiscovery },
+    {
+      port: deps.port,
+      repoDiscovery: deps.repoDiscovery,
+      logger: deps.logger,
+    },
   );
   if (result.isErr()) {
     return { kind: 'err', error: result.error, source };
