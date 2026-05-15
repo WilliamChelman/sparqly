@@ -10,6 +10,7 @@ import { DiffController, DiffService } from '../diff';
 import type { EngineMap } from './engine-map';
 import type { MetaChildrenCache } from './meta-children-cache';
 import { RegistrySparqlController } from '../sparql';
+import { RefsController } from '../refs';
 import {
   SnippetAllowList,
   SnippetController,
@@ -69,6 +70,7 @@ export class ServerModule {
       controllers: [
         ConfigController,
         RegistrySparqlController,
+        RefsController,
         DiffController,
         DescribeController,
         SnippetController,

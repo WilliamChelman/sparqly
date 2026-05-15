@@ -5,3 +5,4 @@ export * from './lib/diff';
 export * from './lib/describe';
 export * from './lib/snippet';
 export * from './lib/shared';
+export * from './lib/refs';
