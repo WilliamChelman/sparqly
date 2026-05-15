@@ -1,4 +1,4 @@
-import type { ParsedSource } from 'core';
+import { parseSourceAddress, type ParsedSource } from 'core';
 
 /**
  * Thrown when `--at <ref>` is supplied alongside a non-glob target. The flag
@@ -26,6 +26,25 @@ export function applyAtOverride(
   if (at === undefined) return target;
   if (target.kind !== 'glob') throw new AtOverrideError(target);
   return { ...target, gitRef: at };
+}
+
+/**
+ * Split a positional CLI source argument into its target id and any trailing
+ * `:ref` address-form pin (ADR-0029). Non-`@`-prefixed inputs and unparseable
+ * addresses pass through with `positionalRef === undefined`, so inline globs
+ * like `data/*.ttl` are untouched.
+ */
+export function splitPositionalAddress(raw: string | undefined): {
+  targetArg: string | undefined;
+  positionalRef: string | undefined;
+} {
+  if (raw === undefined || !raw.startsWith('@')) {
+    return { targetArg: raw, positionalRef: undefined };
+  }
+  const parsed = parseSourceAddress(raw);
+  if (parsed.isErr()) return { targetArg: raw, positionalRef: undefined };
+  const { id, ref } = parsed.value;
+  return { targetArg: `@${id}`, positionalRef: ref };
 }
 
 function describeTarget(target: ParsedSource): string {

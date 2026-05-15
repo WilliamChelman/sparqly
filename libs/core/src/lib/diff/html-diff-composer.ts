@@ -361,11 +361,23 @@ function renderChip(record: SourceRecord, side: 'left' | 'right'): string {
   const base = basename(record.file);
   const anchorId = record.line === undefined ? base : `${base}-L${record.line}`;
   const text = record.line === undefined ? base : `${base}:${record.line}`;
+  const pin = renderGitPinSuffix(record);
   return (
     `<a class="chip chip-${side}" href="#${escapeAttr(anchorId)}">` +
     escapeHtml(text) +
-    '</a>\n'
+    '</a>\n' +
+    (pin === '' ? '' : `<span class="chip-pin chip-pin-${side}">${escapeHtml(pin)}</span>\n`)
   );
+}
+
+/**
+ * Render the user's ref string + resolved short SHA pair for a pinned source
+ * record (ADR-0029) as `v1.2 (resolved to abc1234)`. Returns `''` when the
+ * record was not loaded from a pinned source.
+ */
+function renderGitPinSuffix(record: SourceRecord): string {
+  if (record.gitRef === undefined || record.gitSha === undefined) return '';
+  return `${record.gitRef} (resolved to ${record.gitSha.slice(0, 7)})`;
 }
 
 function renderAnchor(

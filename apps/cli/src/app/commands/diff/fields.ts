@@ -56,6 +56,36 @@ export const rightField: FieldDescriptor = {
   ],
 };
 
+/**
+ * Per-side `--left-ref <ref>` / `--right-ref <ref>` pins for `diff` (ADR-0029,
+ * issue #276). Desugars at the handler edge onto the resolved per-side glob
+ * target's `gitRef` (see `applyAtOverride`). Off-target kinds (endpoint, view,
+ * …) produce an error.
+ */
+export const leftRefField: FieldDescriptor = {
+  key: 'leftRef',
+  schema: z.string().min(1),
+  flags: [
+    {
+      spec: '--left-ref <ref>',
+      description:
+        'Pin the LEFT target glob source to a git ref (full SHA, short SHA, or annotated tag) for this invocation. Overrides any declared `gitRef:` on the source. Only valid for glob sources. Address-form equivalent: `@<id>:<ref>` on the left positional.',
+    },
+  ],
+};
+
+export const rightRefField: FieldDescriptor = {
+  key: 'rightRef',
+  schema: z.string().min(1),
+  flags: [
+    {
+      spec: '--right-ref <ref>',
+      description:
+        'Pin the RIGHT target glob source to a git ref (full SHA, short SHA, or annotated tag) for this invocation. Overrides any declared `gitRef:` on the source. Only valid for glob sources. Address-form equivalent: `@<id>:<ref>` on the right positional.',
+    },
+  ],
+};
+
 export const queryField: FieldDescriptor = {
   key: 'query',
   schema: z.string().min(1),

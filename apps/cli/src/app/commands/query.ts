@@ -6,7 +6,6 @@ import {
   createGitTreeWalker,
   defaultGlobWalker,
   expandSplitGlobs,
-  parseSourceAddress,
   parseSourceSpecs,
   parseSparqlPrefixes,
   QueryEngine,
@@ -30,7 +29,7 @@ import {
   decorateQueryError,
   queryErrorExitCode,
 } from './query-error';
-import { applyAtOverride } from './at-override';
+import { applyAtOverride, splitPositionalAddress } from './at-override';
 import type { FieldDescriptor } from '../runner/fields/field';
 import {
   atRefField,
@@ -112,21 +111,6 @@ export function resolveQueryTargetResult(
   return selectTargetResult(effective, targetArg).map((target) =>
     positionalRef === undefined ? target : applyAtOverride(target, positionalRef),
   );
-}
-
-function splitPositionalAddress(raw: string | undefined): {
-  targetArg: string | undefined;
-  positionalRef: string | undefined;
-} {
-  if (raw === undefined || !raw.startsWith('@')) {
-    return { targetArg: raw, positionalRef: undefined };
-  }
-  const parsed = parseSourceAddress(raw);
-  if (parsed.isErr()) {
-    return { targetArg: raw, positionalRef: undefined };
-  }
-  const { id, ref } = parsed.value;
-  return { targetArg: `@${id}`, positionalRef: ref };
 }
 
 export const querySpec: CommandSpec<QueryConfig> = {

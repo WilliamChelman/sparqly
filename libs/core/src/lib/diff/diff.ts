@@ -58,6 +58,17 @@ export interface SourceRecord {
    * multi-line `[ … ]` blank node). Absent for single-line records.
    */
   endLine?: number;
+  /**
+   * User-facing git ref string the source was pinned to (tag, branch,
+   * SHA-as-typed). Populated for triples loaded from a pinned glob source
+   * (ADR-0029); absent for working-tree sources.
+   */
+  gitRef?: string;
+  /**
+   * Resolved commit SHA for the pinned glob source. Equals `gitRef` for
+   * SHA-typed refs; dereferenced commit SHA for annotated tags.
+   */
+  gitSha?: string;
 }
 
 export interface DiffSideStore {
@@ -148,6 +159,8 @@ function extractSourceRecordMap(
   const filePredicate = predicates.file;
   const linePredicate = predicates.line;
   const endLinePredicate = predicates.endLine;
+  const gitRefPredicate = predicates.gitRef;
+  const gitShaPredicate = predicates.gitSha;
 
   for (const annotation of store.getQuads(null, null, null, null)) {
     if ((annotation.subject.termType as string) !== 'Quad') continue;
@@ -177,9 +190,23 @@ function extractSourceRecordMap(
       null,
     );
     const endLineRaw = endLineQuads[0]?.object.value;
+    const gitRefRaw = store.getQuads(
+      recordNode,
+      { termType: 'NamedNode', value: gitRefPredicate } as Term,
+      null,
+      null,
+    )[0]?.object.value;
+    const gitShaRaw = store.getQuads(
+      recordNode,
+      { termType: 'NamedNode', value: gitShaPredicate } as Term,
+      null,
+      null,
+    )[0]?.object.value;
     const record: SourceRecord = { file };
     if (lineRaw !== undefined) record.line = Number(lineRaw);
     if (endLineRaw !== undefined) record.endLine = Number(endLineRaw);
+    if (gitRefRaw !== undefined) record.gitRef = gitRefRaw;
+    if (gitShaRaw !== undefined) record.gitSha = gitShaRaw;
 
     // Bucket the record under every asserted quad whose s/p/o matches the
     // quoted triple, in any graph (the annotation does not record graph).
