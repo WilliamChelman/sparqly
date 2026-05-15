@@ -6,6 +6,7 @@ import { z } from 'zod';
 import type { SparqlyLogger } from 'common';
 import {
   canonicalizeStore,
+  createGitTreeWalker,
   defaultGlobWalker,
   expandSplitGlobs,
   extractAnnotationPredicates,
@@ -249,7 +250,14 @@ export const hashSpec: CommandSpec<HashConfig> = {
 
     const registry = await expandSplitGlobs(
       parseSourceSpecs(config.sources ?? []),
-      { walkGlob: defaultGlobWalker, logger },
+      {
+        walkGlob: defaultGlobWalker,
+        walkGitGlob: createGitTreeWalker({
+          configDir: process.cwd(),
+          logger,
+        }),
+        logger,
+      },
     );
 
     if (isCompareMode) {

@@ -1,6 +1,12 @@
+import * as nodePath from 'node:path';
 import { ResultAsync, errAsync, ok, okAsync, type Result } from 'neverthrow';
 import { Store } from 'n3';
-import { loadRdfResult, type GraphMode, type LoadResult } from '../engine';
+import {
+  loadRdfResult,
+  parseRdfFileResult,
+  type GraphMode,
+  type LoadResult,
+} from '../engine';
 import { resolveViewResult, type ResolveViewOptions } from '../views';
 import type { SourceError, TransformParseError } from './errors';
 import { parseGraphNameTransformResult } from './graph-name-transform';
@@ -19,6 +25,7 @@ import type { RepoDiscoveryDeps } from './git/discover-repo';
 import {
   defaultRepoDiscovery,
   pinGlobSource,
+  PinnedFileMissingError,
 } from './git/pin-glob-source';
 import { normalizeRegistryPinsResult } from './git/normalize-registry-pins';
 
@@ -203,20 +210,126 @@ function loadFileIntoStore(
   options: ResolveSourceResultOptions,
 ): ResultAsync<LoadResult, SourceError> {
   // A synthesized file child resolves like a one-file glob — same loader,
-  // same transform pipeline (ADR-0027).
-  return loadRdfResult({ sources: source.path, logger: options.logger }).map(
-    (sub) => {
-      const transformed = applyTransformPipeline(sub.store, transforms, {
-        perFileRecords: sub.perFileRecords,
-      });
-      return {
-        store: transformed,
-        files: [...sub.files],
-        prefixes: { ...sub.prefixes },
-        perFileRecords: sub.perFileRecords,
-      };
-    },
-  );
+  // same transform pipeline (ADR-0027). When the child inherited a pin from
+  // its parent split-glob meta (ADR-0029), the loader reads from the git tree
+  // at the resolved SHA instead of the working tree.
+  const pin = pinFromFileSource(source);
+  if (pin === null) {
+    return loadRdfResult({ sources: source.path, logger: options.logger }).map(
+      (sub) =>
+        materializeFileLoad(sub, transforms),
+    );
+  }
+  // Pinned child: its working-tree file may be absent (deleted-after-ref) or
+  // stale (modified-after-ref). Bypass `tinyglobby` enumeration — the
+  // synthesized child already names the exact git-tree path — and parse the
+  // bytes returned by the git-tree contentReader directly (ADR-0029).
+  const port = options.gitPort ?? new GitCliPort();
+  const contentReader = makeGitTreeContentReader(port, pin);
+  return ResultAsync.fromPromise(
+    contentReader(source.path),
+    (err) => ({
+      kind: 'glob-load' as const,
+      glob: [source.path],
+      file: source.path,
+      message: err instanceof Error ? err.message : String(err),
+    }),
+  )
+    .andThen<LoadResult, SourceError>((buf) => {
+      if (buf === null) {
+        return errAsync<LoadResult, SourceError>({
+          kind: 'glob-load',
+          glob: [source.path],
+          file: source.path,
+          message: `pinned source: file ${source.path} not found at ${pin.resolvedSha}`,
+        });
+      }
+      return parseRdfFileResult(source.path, { contentOverride: buf })
+        .map((result) => {
+          const store = new Store();
+          for (const { quad } of result.records) store.addQuad(quad);
+          const perFileRecords = new Map<
+            string,
+            ReadonlyArray<import('../engine').RdfRecord>
+          >();
+          perFileRecords.set(source.path, result.records);
+          const sub: LoadResult = {
+            store,
+            files: [source.path],
+            prefixes: { [source.path]: result.prefixes },
+            perFileRecords,
+          };
+          return materializeFileLoad(sub, transforms, {
+            ref: pin.ref,
+            sha: pin.resolvedSha,
+          });
+        })
+        .mapErr<SourceError>((err) => err);
+    })
+    .orElse((err) => mapPinnedLoadError(err));
+}
+
+function pinFromFileSource(
+  source: ParsedFileSource,
+): { ref: string; resolvedSha: string; repoRoot: string } | null {
+  if (
+    source.gitRef === undefined ||
+    source.resolvedSha === undefined ||
+    source.repoRoot === undefined
+  ) {
+    return null;
+  }
+  return {
+    ref: source.gitRef,
+    resolvedSha: source.resolvedSha,
+    repoRoot: source.repoRoot,
+  };
+}
+
+function makeGitTreeContentReader(
+  port: GitPort,
+  pin: { ref: string; resolvedSha: string; repoRoot: string },
+): (absolutePath: string) => Promise<Buffer | null> {
+  return async (absolutePath) => {
+    const rel = nodePath.relative(pin.repoRoot, absolutePath);
+    if (
+      rel === '' ||
+      rel.startsWith('..') ||
+      rel.includes(`..${nodePath.sep}`)
+    ) {
+      throw new Error(
+        `pinned file source: matched path ${absolutePath} is outside repoRoot ${pin.repoRoot}; refusing to fetch from git tree`,
+      );
+    }
+    const gitPath = rel.split(nodePath.sep).join('/');
+    const buf = await port.readFileAtSha(pin.repoRoot, pin.resolvedSha, gitPath);
+    if (buf === null) {
+      throw new PinnedFileMissingError(
+        absolutePath,
+        gitPath,
+        pin.resolvedSha,
+        pin.ref,
+      );
+    }
+    return buf;
+  };
+}
+
+function materializeFileLoad(
+  sub: LoadResult,
+  transforms: ReadonlyArray<ParsedTransform>,
+  pin?: { ref: string; sha: string },
+): LoadResult {
+  const transformed = applyTransformPipeline(sub.store, transforms, {
+    perFileRecords: sub.perFileRecords,
+    pin,
+  });
+  return {
+    store: transformed,
+    files: [...sub.files],
+    prefixes: { ...sub.prefixes },
+    perFileRecords: sub.perFileRecords,
+  };
 }
 
 function effectiveTransforms(

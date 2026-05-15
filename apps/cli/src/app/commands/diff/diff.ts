@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 import {
+  createGitTreeWalker,
   defaultGlobWalker,
   expandSplitGlobs,
   parseSourceSpecs,
@@ -146,7 +147,14 @@ async function runDiff(config: DiffConfig): Promise<void> {
 
   const registry = await expandSplitGlobs(
     parseSourceSpecs(config.sources ?? []),
-    { walkGlob: defaultGlobWalker, logger },
+    {
+      walkGlob: defaultGlobWalker,
+      walkGitGlob: createGitTreeWalker({
+        configDir: process.cwd(),
+        logger,
+      }),
+      logger,
+    },
   );
 
   const leftTarget = resolveDiffSide(config, 'left', registry);

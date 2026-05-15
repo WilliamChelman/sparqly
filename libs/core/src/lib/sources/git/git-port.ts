@@ -31,4 +31,11 @@ export interface GitPort {
     sha: string,
     repoRelPath: string,
   ): Promise<Buffer | null>;
+  /**
+   * Lists every blob path in the git tree at `sha`, as repo-relative paths
+   * with forward-slash separators (the `git ls-tree -r --name-only` shape).
+   * Used by the split-glob git-tree walker (ADR-0029) to enumerate files at
+   * a pinned revision instead of the working tree.
+   */
+  listFilesAtSha(repoRoot: string, sha: string): Promise<ReadonlyArray<string>>;
 }

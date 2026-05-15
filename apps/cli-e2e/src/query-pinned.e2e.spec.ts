@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import dedent from 'dedent';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -115,5 +116,115 @@ describe('sparqly query --at — pinned glob (ADR-0029, issue #272)', () => {
     } finally {
       await rm(lonely, { recursive: true, force: true });
     }
+  });
+});
+
+// ADR-0029, issue #274 — split-glob enumeration walks the git tree at the
+// resolved SHA. Files added after the ref must be absent (no `@docs/added.ttl`
+// child); files deleted after the ref must be present (`@docs/keep.ttl` is the
+// child id even though it no longer exists on disk).
+describe('sparqly query — split-glob with gitRef (ADR-0029, issue #274)', () => {
+  let repo: string;
+  let configPath: string;
+  const TTL_KEEP =
+    '@prefix ex: <http://example.org/> .\nex:keep ex:p ex:k1 .\n';
+  const TTL_DELETED =
+    '@prefix ex: <http://example.org/> .\nex:deletedLater ex:p ex:d1 .\n';
+  const TTL_ADDED =
+    '@prefix ex: <http://example.org/> .\nex:addedLater ex:p ex:a1 .\n';
+
+  beforeAll(async () => {
+    repo = await mkdtemp(join(tmpdir(), 'sparqly-split-glob-pin-'));
+    await mkdir(join(repo, 'docs'), { recursive: true });
+    await writeFile(join(repo, 'docs/keep.ttl'), TTL_KEEP);
+    await writeFile(join(repo, 'docs/deleted-later.ttl'), TTL_DELETED);
+    await git(repo, ['init', '-q', '-b', 'main']);
+    await git(repo, ['add', '.']);
+    await git(repo, ['commit', '-q', '-m', 'v1']);
+    await git(repo, ['tag', '-a', 'v1.2.0', '-m', 'release']);
+
+    // After v1.2.0: add a new file, delete one, modify the kept file.
+    await writeFile(
+      join(repo, 'docs/keep.ttl'),
+      '@prefix ex: <http://example.org/> .\nex:keep ex:p ex:NEW .\n',
+    );
+    await writeFile(join(repo, 'docs/added-later.ttl'), TTL_ADDED);
+    await rm(join(repo, 'docs/deleted-later.ttl'));
+    await git(repo, ['add', '-A']);
+    await git(repo, ['commit', '-q', '-m', 'v2']);
+
+    configPath = join(repo, 'sparqly.config.yaml');
+    await writeFile(
+      configPath,
+      dedent`
+        sources:
+          - id: docs
+            glob: "docs/*.ttl"
+            splitByFile: true
+            gitRef: v1.2.0
+      ` + '\n',
+    );
+  }, 30_000);
+
+  afterAll(async () => {
+    if (repo) await rm(repo, { recursive: true, force: true });
+  });
+
+  it('querying @docs/keep.ttl returns the pre-v1.2.0 object (not the working-tree NEW value)', async () => {
+    const result = await runCli(
+      [
+        'query',
+        '@docs/keep.ttl',
+        '--config',
+        configPath,
+        '-q',
+        'SELECT ?o WHERE { ?s <http://example.org/p> ?o }',
+        '--quiet',
+      ],
+      { cwd: repo },
+    );
+    expect(result.exitCode, `stderr=${result.stderr}`).toBe(0);
+    const json = JSON.parse(result.stdout);
+    const objects = json.results.bindings.map(
+      (b: { o: { value: string } }) => b.o.value,
+    );
+    expect(objects).toEqual(['http://example.org/k1']);
+  });
+
+  it('querying @docs/deleted-later.ttl (deleted from working tree, present at v1.2.0) returns its triples', async () => {
+    const result = await runCli(
+      [
+        'query',
+        '@docs/deleted-later.ttl',
+        '--config',
+        configPath,
+        '-q',
+        'SELECT ?s WHERE { ?s ?p ?o }',
+        '--quiet',
+      ],
+      { cwd: repo },
+    );
+    expect(result.exitCode, `stderr=${result.stderr}`).toBe(0);
+    const json = JSON.parse(result.stdout);
+    const subjects = json.results.bindings.map(
+      (b: { s: { value: string } }) => b.s.value,
+    );
+    expect(subjects).toEqual(['http://example.org/deletedLater']);
+  });
+
+  it('querying @docs/added-later.ttl (added after v1.2.0) errors — that child id was never enumerated from the v1.2.0 tree', async () => {
+    const result = await runCli(
+      [
+        'query',
+        '@docs/added-later.ttl',
+        '--config',
+        configPath,
+        '-q',
+        'SELECT ?s WHERE { ?s ?p ?o }',
+        '--quiet',
+      ],
+      { cwd: repo },
+    );
+    expect(result.exitCode).not.toBe(0);
   });
 });

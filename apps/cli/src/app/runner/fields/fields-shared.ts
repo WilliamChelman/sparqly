@@ -45,6 +45,8 @@ const sourceObjectSchema = z
     headers: z.record(z.string(), z.string()).optional(),
     timeoutMs: z.number().int().positive().optional(),
     splitByFile: z.literal(true).optional(),
+    gitRef: z.string().optional(),
+    gitRoot: z.string().optional(),
   })
   .strict();
 

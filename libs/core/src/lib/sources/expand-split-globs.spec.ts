@@ -150,6 +150,150 @@ describe('expandSplitGlobs — pass-through', () => {
   });
 });
 
+describe('expandSplitGlobs — gitRef dispatch (ADR-0029, issue #274)', () => {
+  it('routes pinned split-glob metas through walkGitGlob, not walkGlob; children inherit the pin', async () => {
+    const meta: ParsedGlobSource = {
+      kind: 'glob',
+      id: 'docs',
+      glob: '/abs/repo/data/*.ttl',
+      splitByFile: true,
+      gitRef: 'v1.2.0',
+    };
+    const sha = 'a'.repeat(40);
+    const walkGitGlob = vi.fn(async () => ({
+      files: ['/abs/repo/data/foo.ttl', '/abs/repo/data/bar.ttl'],
+      repoRoot: '/abs/repo',
+      ref: 'v1.2.0',
+      resolvedSha: sha,
+    }));
+    const walkGlob = vi.fn(async () => []);
+
+    const expanded = await expandSplitGlobs([meta], { walkGlob, walkGitGlob });
+
+    expect(walkGlob).not.toHaveBeenCalled();
+    expect(walkGitGlob).toHaveBeenCalledOnce();
+    expect(walkGitGlob).toHaveBeenCalledWith(meta);
+    expect(expanded).toEqual([
+      meta,
+      {
+        kind: 'file',
+        id: 'docs/foo.ttl',
+        path: '/abs/repo/data/foo.ttl',
+        parentId: 'docs',
+        gitRef: 'v1.2.0',
+        repoRoot: '/abs/repo',
+        resolvedSha: sha,
+      },
+      {
+        kind: 'file',
+        id: 'docs/bar.ttl',
+        path: '/abs/repo/data/bar.ttl',
+        parentId: 'docs',
+        gitRef: 'v1.2.0',
+        repoRoot: '/abs/repo',
+        resolvedSha: sha,
+      },
+    ]);
+  });
+
+  it("propagates the meta's transform pipeline onto pinned children (deep-copied)", async () => {
+    const transform: ParsedTransform = { key: 'graphName', apply: (s) => s };
+    const meta: ParsedGlobSource = {
+      kind: 'glob',
+      id: 'docs',
+      glob: '/abs/repo/data/*.ttl',
+      splitByFile: true,
+      gitRef: 'v1.2.0',
+      transforms: [transform],
+    };
+    const walkGitGlob = async () => ({
+      files: ['/abs/repo/data/foo.ttl'],
+      repoRoot: '/abs/repo',
+      ref: 'v1.2.0',
+      resolvedSha: 'a'.repeat(40),
+    });
+
+    const expanded = await expandSplitGlobs([meta], {
+      walkGlob: async () => [],
+      walkGitGlob,
+    });
+
+    const child = expanded.find((s) => s.kind === 'file') as
+      | (ParsedGlobSource & { transforms?: ParsedTransform[] })
+      | undefined;
+    expect(child).toBeDefined();
+    const tx = (child as { transforms?: ParsedTransform[] }).transforms;
+    expect(tx).toHaveLength(1);
+    expect(tx?.[0]).not.toBe(transform);
+    expect(tx?.[0]?.key).toBe('graphName');
+  });
+
+  it('keeps child id as `<parentId>/<path>` regardless of ref — golden child shape', async () => {
+    const meta: ParsedGlobSource = {
+      kind: 'glob',
+      id: 'docs',
+      glob: '/abs/repo/data/*.ttl',
+      splitByFile: true,
+      gitRef: 'v1.2.0',
+    };
+    const walkGitGlob = async () => ({
+      files: ['/abs/repo/data/foo.ttl'],
+      repoRoot: '/abs/repo',
+      ref: 'v1.2.0',
+      resolvedSha: 'a'.repeat(40),
+    });
+
+    const expanded = await expandSplitGlobs([meta], {
+      walkGlob: async () => [],
+      walkGitGlob,
+    });
+    const child = expanded.find((s) => s.kind === 'file');
+    expect(child).toMatchInlineSnapshot(`
+      {
+        "gitRef": "v1.2.0",
+        "id": "docs/foo.ttl",
+        "kind": "file",
+        "parentId": "docs",
+        "path": "/abs/repo/data/foo.ttl",
+        "repoRoot": "/abs/repo",
+        "resolvedSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      }
+    `);
+  });
+
+  it('lets walkGitGlob errors propagate verbatim at expand time', async () => {
+    const meta: ParsedGlobSource = {
+      kind: 'glob',
+      id: 'docs',
+      glob: '/abs/repo/data/*.ttl',
+      splitByFile: true,
+      gitRef: 'v1.2.0',
+    };
+    const failure = new Error(
+      'pinned glob matches span multiple git repositories: /abs/repo and /abs/repo/nested',
+    );
+    const walkGitGlob = async () => {
+      throw failure;
+    };
+    await expect(
+      expandSplitGlobs([meta], { walkGlob: async () => [], walkGitGlob }),
+    ).rejects.toBe(failure);
+  });
+
+  it('throws when meta carries gitRef but no walkGitGlob dep is wired', async () => {
+    const meta: ParsedGlobSource = {
+      kind: 'glob',
+      id: 'docs',
+      glob: '/abs/repo/data/*.ttl',
+      splitByFile: true,
+      gitRef: 'v1.2.0',
+    };
+    await expect(
+      expandSplitGlobs([meta], { walkGlob: async () => [] }),
+    ).rejects.toThrow(/walkGitGlob/);
+  });
+});
+
 describe('expandSplitGlobs — zero-match', () => {
   it('emits one warn line through the injected logger and yields meta with no children', async () => {
     const meta: ParsedGlobSource = {

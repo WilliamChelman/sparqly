@@ -3,6 +3,7 @@ import { ok, type Result, type ResultAsync } from 'neverthrow';
 import { z } from 'zod';
 import { formatRdf, parseRdfString } from 'common';
 import {
+  createGitTreeWalker,
   defaultGlobWalker,
   expandSplitGlobs,
   parseSourceSpecs,
@@ -172,7 +173,14 @@ export const querySpec: CommandSpec<QueryConfig> = {
     const mutable = config.mutable === true;
     const registry = await expandSplitGlobs(
       parseSourceSpecs(config.sources ?? []),
-      { walkGlob: defaultGlobWalker, logger: boundaryLog },
+      {
+        walkGlob: defaultGlobWalker,
+        walkGitGlob: createGitTreeWalker({
+          configDir: process.cwd(),
+          logger: boundaryLog,
+        }),
+        logger: boundaryLog,
+      },
     );
 
     const pipeline: ResultAsync<ExecuteResult, SourceError | TargetError> =
