@@ -25,16 +25,19 @@ import {
   leftField,
   leftQueryField,
   leftQueryFileField,
+  leftRefField,
   queryField,
   queryFileField,
   rightField,
   rightQueryField,
   rightQueryFileField,
+  rightRefField,
   skipAutoSourceAnnotationField,
   snippetContextField,
   sourcesRegistryField,
   type DiffFormat,
 } from './fields';
+import { applyAtOverride } from '../at-override';
 import { runGraphDiff } from './graph-runner';
 import {
   loadSideInlineScopeQuery,
@@ -59,6 +62,8 @@ export interface DiffConfig {
   leftQueryFile?: string;
   rightQuery?: string;
   rightQueryFile?: string;
+  leftRef?: string;
+  rightRef?: string;
   skipAutoSourceAnnotation?: boolean;
   verbose?: boolean;
   quiet?: boolean;
@@ -87,6 +92,8 @@ export const diffSpec: CommandSpec<DiffConfig> = {
     leftQueryFileField,
     rightQueryField,
     rightQueryFileField,
+    leftRefField,
+    rightRefField,
     formatField,
     snippetContextField,
     skipAutoSourceAnnotationField,
@@ -157,8 +164,14 @@ async function runDiff(config: DiffConfig): Promise<void> {
     },
   );
 
-  const leftTarget = resolveDiffSide(config, 'left', registry);
-  const rightTarget = resolveDiffSide(config, 'right', registry);
+  const leftTarget = applyAtOverride(
+    resolveDiffSide(config, 'left', registry),
+    config.leftRef,
+  );
+  const rightTarget = applyAtOverride(
+    resolveDiffSide(config, 'right', registry),
+    config.rightRef,
+  );
 
   const tabularDispatch = detectTabularDispatch(
     leftInlineQuery,

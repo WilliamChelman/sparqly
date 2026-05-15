@@ -1,10 +1,31 @@
+import { execFile } from 'node:child_process';
 import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
+import { promisify } from 'node:util';
 import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli } from './helpers/run-cli';
 import { diffBodyLines } from './helpers/hash';
+
+const execFileAsync = promisify(execFile);
+
+async function git(
+  repo: string,
+  args: ReadonlyArray<string>,
+): Promise<string> {
+  const { stdout } = await execFileAsync('git', ['-C', repo, ...args], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: 'test',
+      GIT_AUTHOR_EMAIL: 'test@example.com',
+      GIT_COMMITTER_NAME: 'test',
+      GIT_COMMITTER_EMAIL: 'test@example.com',
+    },
+  });
+  return stdout.trim();
+}
 
 describe('sparqly diff -f human — source-record trailing comments', () => {
   let scratch: string;
@@ -382,5 +403,81 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
 
     expect(quiet.exitCode).toBe(1);
     expect(quiet.stderr).toBe('');
+  });
+});
+
+// ADR-0029, issue #276 — pinned diff sides also surface `sparqly:gitRef` +
+// `sparqly:gitSha` on each source record (canonicalized via #273) when the
+// diff side was pinned through `--left-ref` / `--right-ref` (or the
+// `@id:ref` address form). Covered end-to-end on the JSON format here, with
+// the html/chip rendering pinned in diff-pinned.e2e.spec.ts.
+describe('sparqly diff source records carry gitRef + gitSha when a side is pinned (ADR-0029, issue #276)', () => {
+  let repo: string;
+  let configPath: string;
+
+  beforeEach(async () => {
+    repo = await realpath(
+      await mkdtemp(join(tmpdir(), 'sparqly-diff-srcrec-pin-')),
+    );
+    const foaf = join(repo, 'foaf.ttl');
+    await writeFile(
+      foaf,
+      '@prefix ex: <http://example.org/> .\nex:keep ex:p ex:old .\n',
+    );
+    await git(repo, ['init', '-q', '-b', 'main']);
+    await git(repo, ['add', '.']);
+    await git(repo, ['commit', '-q', '-m', 'v1']);
+    await git(repo, ['tag', '-a', 'v1.2.0', '-m', 'release']);
+    await writeFile(
+      foaf,
+      '@prefix ex: <http://example.org/> .\nex:keep ex:p ex:new .\n',
+    );
+    await git(repo, ['add', '.']);
+    await git(repo, ['commit', '-q', '-m', 'v2']);
+    await git(repo, ['tag', '-a', 'v1.3.0', '-m', 'release']);
+
+    configPath = join(repo, 'sparqly.config.yaml');
+    await writeFile(
+      configPath,
+      dedent`
+        sources:
+          - id: docs
+            glob: "foaf.ttl"
+      ` + '\n',
+    );
+  }, 30_000);
+
+  afterEach(async () => {
+    if (repo) await rm(repo, { recursive: true, force: true });
+  });
+
+  it('appends `gitRef` + `gitSha` to each side\'s sourceRecords entries in `--format=json`', async () => {
+    const v1Sha = await git(repo, ['rev-parse', 'v1.2.0^{commit}']);
+    const v2Sha = await git(repo, ['rev-parse', 'v1.3.0^{commit}']);
+
+    const result = await runCli(
+      [
+        'diff',
+        '--quiet',
+        '--format=json',
+        '--config',
+        configPath,
+        '@docs:v1.2.0',
+        '@docs:v1.3.0',
+      ],
+      { cwd: repo },
+    );
+    expect(result.exitCode, `stderr=${result.stderr}`).toBe(1);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.removed).toHaveLength(1);
+    expect(parsed.added).toHaveLength(1);
+    expect(parsed.removed[0].sourceRecords[0]).toMatchObject({
+      gitRef: 'v1.2.0',
+      gitSha: v1Sha,
+    });
+    expect(parsed.added[0].sourceRecords[0]).toMatchObject({
+      gitRef: 'v1.3.0',
+      gitSha: v2Sha,
+    });
   });
 });

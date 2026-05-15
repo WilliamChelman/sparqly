@@ -15,6 +15,7 @@ import {
   type SourceSpecInput,
 } from 'core';
 import { DiffErrorSignal } from '../diff-error';
+import { applyAtOverride, splitPositionalAddress } from '../at-override';
 import type { DiffConfig } from './diff';
 
 export interface SideResolved {
@@ -32,11 +33,15 @@ export function resolveDiffSide(
 ): ParsedSource {
   const effective = registry ?? parseSourceSpecs(config.sources ?? []);
   const value = config[side];
-  const targetArg = typeof value === 'string' ? value : undefined;
-  if (value !== undefined && targetArg === undefined) {
+  const rawArg = typeof value === 'string' ? value : undefined;
+  if (value !== undefined && rawArg === undefined) {
     return parseSourceSpecs([value])[0];
   }
-  return selectTarget(effective, targetArg);
+  const { targetArg, positionalRef } = splitPositionalAddress(rawArg);
+  const target = selectTarget(effective, targetArg);
+  return positionalRef === undefined
+    ? target
+    : applyAtOverride(target, positionalRef);
 }
 
 export function anonymousUpstream(
