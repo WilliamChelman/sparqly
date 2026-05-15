@@ -2,13 +2,14 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { map, type Observable } from 'rxjs';
 
-export type SourceKind = 'glob' | 'endpoint' | 'empty' | 'view';
+export type SourceKind = 'glob' | 'endpoint' | 'empty' | 'view' | 'file';
 
 export interface SourceListingEntry {
   id: string;
   kind: SourceKind;
   label: string;
   default?: boolean;
+  parentId?: string;
 }
 
 export interface DisplayContext {

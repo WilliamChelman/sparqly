@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   EventEmitter,
   inject,
   Input,
@@ -73,14 +74,35 @@ import {
           (cdkListboxValueChange)="onPick($event.value)"
           (keydown.escape)="close()"
         >
-          @for (s of includedSources(); track s.id) {
+          @for (s of topLevelIncluded(); track s.id) {
             <li
               [cdkOption]="s.id"
               [attr.data-source-id]="s.id"
-              class="cursor-pointer rounded-md px-2.5 py-1.5 font-sans text-[13px] text-foreground-muted hover:bg-surface-sunken hover:text-foreground aria-selected:bg-surface-sunken aria-selected:text-foreground"
+              class="flex cursor-pointer items-baseline gap-1 rounded-md px-2.5 py-1.5 font-sans text-[13px] text-foreground-muted hover:bg-surface-sunken hover:text-foreground aria-selected:bg-surface-sunken aria-selected:text-foreground"
             >
-              {{ s.label }}
+              <span>{{ s.label }}</span>
+              @if (childrenOfIncluded().get(s.id); as children) {
+                <span class="text-foreground-faint">({{ children.length }} files)</span>
+                <button
+                  type="button"
+                  [attr.data-testid]="'group-toggle-' + s.id"
+                  class="ml-auto rounded px-1 text-foreground-faint hover:text-foreground"
+                  (click)="toggleGroup(s.id, $event)"
+                  [attr.aria-expanded]="expandedGroups().has(s.id)"
+                >{{ expandedGroups().has(s.id) ? '▾' : '▸' }}</button>
+              }
             </li>
+            @if (expandedGroups().has(s.id)) {
+              @for (c of childrenOfIncluded().get(s.id) ?? []; track c.id) {
+                <li
+                  [cdkOption]="c.id"
+                  [attr.data-source-id]="c.id"
+                  class="cursor-pointer rounded-md py-1.5 pl-6 pr-2.5 font-sans text-[13px] text-foreground-muted hover:bg-surface-sunken hover:text-foreground aria-selected:bg-surface-sunken aria-selected:text-foreground"
+                >
+                  {{ c.label }}
+                </li>
+              }
+            }
           }
         </ul>
       }
@@ -105,6 +127,23 @@ export class MultiSourcesPickerComponent implements OnInit {
     return all.filter((s) => !excluded.has(s.kind));
   });
 
+  readonly topLevelIncluded = computed<SourceListingEntry[]>(() =>
+    this.includedSources().filter((s) => !s.parentId),
+  );
+  readonly childrenOfIncluded = computed<Map<string, SourceListingEntry[]>>(
+    () => {
+      const m = new Map<string, SourceListingEntry[]>();
+      for (const s of this.includedSources()) {
+        if (!s.parentId) continue;
+        const arr = m.get(s.parentId);
+        if (arr) arr.push(s);
+        else m.set(s.parentId, [s]);
+      }
+      return m;
+    },
+  );
+  readonly expandedGroups = signal<ReadonlySet<string>>(new Set());
+
   readonly triggerLabel = computed(() => {
     const n = this.selectedIds().length;
     const total = this.includedSources().length;
@@ -123,8 +162,43 @@ export class MultiSourcesPickerComponent implements OnInit {
     if (v) this.excludeKindsSig.set([...v]);
   }
 
+  constructor() {
+    effect(() => {
+      const ids = this.selectedIds();
+      const all = this.sources() ?? [];
+      if (all.length === 0 || ids.length === 0) return;
+      const parentsToExpand = new Set<string>();
+      for (const id of ids) {
+        const entry = all.find((s) => s.id === id);
+        if (entry?.parentId) parentsToExpand.add(entry.parentId);
+      }
+      if (parentsToExpand.size === 0) return;
+      this.expandedGroups.update((set) => {
+        let changed = false;
+        const next = new Set(set);
+        for (const p of parentsToExpand) {
+          if (!next.has(p)) {
+            next.add(p);
+            changed = true;
+          }
+        }
+        return changed ? next : set;
+      });
+    });
+  }
+
   toggle(): void {
     this.open.update((v) => !v);
+  }
+
+  toggleGroup(id: string, ev: Event): void {
+    ev.stopPropagation();
+    this.expandedGroups.update((set) => {
+      const next = new Set(set);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   close(): void {
