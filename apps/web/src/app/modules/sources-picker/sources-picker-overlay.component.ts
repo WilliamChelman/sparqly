@@ -94,9 +94,11 @@ import { searchSources, type SourceSearchResult } from './source-search';
               [state]="refsState()"
               [stagedRef]="stagedRef()"
               [refSearch]="refSearch()"
+              [refreshError]="refreshError()"
               (stagedRefChange)="stagedRef.set($event)"
               (refSearchChange)="refSearch.set($event)"
               (appliedRef)="onAppliedRef($event)"
+              (refresh)="onRefreshRemotes()"
             />
           </div>
         </div>
@@ -127,6 +129,7 @@ export class SourcesPickerOverlayComponent {
   readonly query = signal<string>('');
   readonly refSearch = signal<string>('');
   readonly refsState = signal<RefsPanelState>({ kind: 'idle' });
+  readonly refreshError = signal<string | null>(null);
 
   readonly result = computed<SourceSearchResult>(() =>
     searchSources(this.sources(), this.query()),
@@ -146,6 +149,7 @@ export class SourcesPickerOverlayComponent {
 
     effect(() => {
       const id = this.stagedId();
+      this.refreshError.set(null);
       if (id === '') {
         this.refsState.set({ kind: 'idle' });
         return;
@@ -163,6 +167,23 @@ export class SourcesPickerOverlayComponent {
           }
         });
     });
+  }
+
+  onRefreshRemotes(): void {
+    const id = this.stagedId();
+    if (id === '') return;
+    this.refreshError.set(null);
+    this.refsApi
+      .refresh(id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((r) => {
+        if (this.stagedId() !== id) return;
+        if (r.state === 'ok') {
+          this.refsState.set({ kind: 'loaded', refs: r.refs });
+        } else {
+          this.refreshError.set(r.kind);
+        }
+      });
   }
 
   focusSource(id: string): void {

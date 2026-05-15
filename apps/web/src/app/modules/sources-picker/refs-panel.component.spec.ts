@@ -20,12 +20,18 @@ const REFS: RefsResponse = {
   tags: [{ ref: 'v1.0.0', sha: SHA_C, kind: 'tag-annotated' }],
 };
 
-function mount(state: RefsPanelState, stagedRef = '', refSearch = '') {
+function mount(
+  state: RefsPanelState,
+  stagedRef = '',
+  refSearch = '',
+  refreshError: string | null = null,
+) {
   TestBed.configureTestingModule({});
   const fixture = TestBed.createComponent(RefsPanelComponent);
   fixture.componentRef.setInput('state', state);
   fixture.componentRef.setInput('stagedRef', stagedRef);
   fixture.componentRef.setInput('refSearch', refSearch);
+  fixture.componentRef.setInput('refreshError', refreshError);
   fixture.detectChanges();
   return { fixture };
 }
@@ -233,6 +239,56 @@ describe('RefsPanelComponent', () => {
     );
     fixture.detectChanges();
     expect(emitted).toEqual(['HEAD~3']);
+  });
+
+  it('renders a "⟳ Refresh remotes" button in the panel header that emits (refresh) on click when state is loaded', () => {
+    const { fixture } = mount({ kind: 'loaded', refs: REFS });
+    const root = fixture.nativeElement as HTMLElement;
+    const btn = root.querySelector(
+      '[data-testid="refs-refresh"]',
+    ) as HTMLButtonElement | null;
+    expect(btn).toBeTruthy();
+    expect((btn?.textContent ?? '').trim()).toContain('Refresh');
+    let emitted = 0;
+    fixture.componentInstance.refresh.subscribe(() => {
+      emitted += 1;
+    });
+    btn!.click();
+    fixture.detectChanges();
+    expect(emitted).toBe(1);
+  });
+
+  it('renders an inline error in the panel naming the failure class when refreshError is set', () => {
+    const { fixture } = mount(
+      { kind: 'loaded', refs: REFS },
+      '',
+      '',
+      'network',
+    );
+    const root = fixture.nativeElement as HTMLElement;
+    const err = root.querySelector('[data-testid="refs-refresh-error"]');
+    expect(err).toBeTruthy();
+    expect((err?.textContent ?? '').toLowerCase()).toContain('network');
+  });
+
+  it('preserves the previously-rendered ref list when refreshError is set (failure does not clear the list)', () => {
+    const { fixture } = mount(
+      { kind: 'loaded', refs: REFS },
+      '',
+      '',
+      'network',
+    );
+    const root = fixture.nativeElement as HTMLElement;
+    const refs = Array.from(root.querySelectorAll('[data-ref]')).map((el) =>
+      el.getAttribute('data-ref'),
+    );
+    expect(refs).toEqual(['HEAD', 'main', 'origin/main', 'v1.0.0']);
+  });
+
+  it('does not render the Refresh remotes button for a no-git-repo source kind', () => {
+    const { fixture } = mount({ kind: 'no-git-repo', sourceKind: 'endpoint' });
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('[data-testid="refs-refresh"]')).toBeNull();
   });
 
   it('renders one Remote (<remote>) section per distinct remote when the repo has multiple remotes', () => {

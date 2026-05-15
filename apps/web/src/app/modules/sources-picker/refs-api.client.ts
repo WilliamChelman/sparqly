@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { catchError, map, of, shareReplay, throwError, type Observable } from 'rxjs';
+import { catchError, map, of, shareReplay, tap, throwError, type Observable } from 'rxjs';
 
 export type RefKind =
   | 'head'
@@ -27,6 +27,10 @@ export interface RefsResponse {
 export type RefsLoadResult =
   | { state: 'ok'; refs: RefsResponse }
   | { state: 'no-git-repo'; kind: string };
+
+export type RefreshResult =
+  | { state: 'ok'; refs: RefsResponse }
+  | { state: 'fetch-failed'; kind: string };
 
 @Injectable()
 export class RefsApiClient {
@@ -57,5 +61,39 @@ export class RefsApiClient {
       );
     this.cache.set(sourceId, stream);
     return stream;
+  }
+
+  refresh(sourceId: string): Observable<RefreshResult> {
+    return this.http
+      .post<RefsResponse>(
+        `/api/sources/${encodeURIComponent(sourceId)}/refs/fetch`,
+        null,
+      )
+      .pipe(
+        map((refs): RefreshResult => ({ state: 'ok', refs })),
+        tap((result) => {
+          if (result.state === 'ok') {
+            this.cache.set(
+              sourceId,
+              of<RefsLoadResult>({ state: 'ok', refs: result.refs }).pipe(
+                shareReplay({ bufferSize: 1, refCount: false }),
+              ),
+            );
+          }
+        }),
+        catchError((err: unknown) => {
+          if (
+            err instanceof HttpErrorResponse &&
+            err.status === 502 &&
+            err.error !== null &&
+            typeof err.error === 'object' &&
+            (err.error as { error?: unknown }).error === 'fetch-failed'
+          ) {
+            const kind = String((err.error as { kind?: unknown }).kind ?? '');
+            return of<RefreshResult>({ state: 'fetch-failed', kind });
+          }
+          return throwError(() => err);
+        }),
+      );
   }
 }

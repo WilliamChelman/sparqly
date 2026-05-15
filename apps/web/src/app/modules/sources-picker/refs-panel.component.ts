@@ -52,17 +52,29 @@ export type RefsPanelState =
   template: `
     @let s = state();
     @if (s.kind !== 'no-git-repo') {
-      <div class="border-b border-border p-3">
+      <div class="flex items-center gap-2 border-b border-border p-3">
         <input
           data-testid="refs-search"
           type="text"
           placeholder="Search refs…"
-          class="w-full rounded-md border border-border bg-surface px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-foreground-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+          class="min-w-0 flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-foreground-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
           [value]="refSearch()"
           (input)="onSearchInput($event)"
           (keydown.enter)="onEnter($event)"
         />
+        <button
+          type="button"
+          data-testid="refs-refresh"
+          class="shrink-0 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[13px] text-foreground hover:border-foreground-faint"
+          (click)="refresh.emit()"
+        >⟳ Refresh remotes</button>
       </div>
+      @if (refreshError(); as kind) {
+        <p
+          data-testid="refs-refresh-error"
+          class="border-b border-border bg-surface-sunken px-3 py-2 text-[12px] text-foreground-muted"
+        >Refresh failed ({{ kind }})</p>
+      }
     }
     @if (s.kind === 'no-git-repo') {
       <p data-testid="refs-panel-no-git">
@@ -149,6 +161,7 @@ export class RefsPanelComponent {
   readonly state = input.required<RefsPanelState>();
   readonly stagedRef = input<string>('');
   readonly refSearch = input<string>('');
+  readonly refreshError = input<string | null>(null);
 
   readonly filtered = computed<RefsResponse>(() => {
     const s = this.state();
@@ -175,6 +188,7 @@ export class RefsPanelComponent {
   @Output() readonly stagedRefChange = new EventEmitter<string>();
   @Output() readonly refSearchChange = new EventEmitter<string>();
   @Output() readonly appliedRef = new EventEmitter<string>();
+  @Output() readonly refresh = new EventEmitter<void>();
 
   move(delta: number, ev: Event): void {
     ev.preventDefault();

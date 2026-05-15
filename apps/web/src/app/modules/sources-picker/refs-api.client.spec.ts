@@ -5,7 +5,12 @@ import {
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { firstValueFrom } from 'rxjs';
-import { RefsApiClient, type RefsLoadResult, type RefsResponse } from './refs-api.client';
+import {
+  RefsApiClient,
+  type RefreshResult,
+  type RefsLoadResult,
+  type RefsResponse,
+} from './refs-api.client';
 
 const REFS: RefsResponse = {
   head: { ref: 'HEAD', sha: 'a'.repeat(40), kind: 'head' },
@@ -63,6 +68,95 @@ describe('RefsApiClient', () => {
     await first;
     const second = await firstValueFrom(client.load('docs'));
     expect(second).toEqual<RefsLoadResult>({ state: 'ok', refs: REFS });
+    http.verify();
+  });
+
+  it('refresh(id) POSTs /api/sources/:id/refs/fetch and resolves with state:ok and the response body', async () => {
+    const { http, client } = setup();
+    const promise = firstValueFrom(client.refresh('docs'));
+    const req = http.expectOne('/api/sources/docs/refs/fetch');
+    expect(req.request.method).toBe('POST');
+    req.flush(REFS);
+    const result = await promise;
+    expect(result).toEqual<RefsLoadResult>({ state: 'ok', refs: REFS });
+    http.verify();
+  });
+
+  it('after a successful refresh, the cache entry for that source is replaced — a subsequent load() returns the fresh response with no new HTTP request', async () => {
+    const { http, client } = setup();
+
+    const initialLoad = firstValueFrom(client.load('docs'));
+    http.expectOne('/api/sources/docs/refs').flush(REFS);
+    await initialLoad;
+
+    const fresh: RefsResponse = {
+      head: { ref: 'HEAD', sha: 'b'.repeat(40), kind: 'head' },
+      branches: [{ ref: 'main', sha: 'b'.repeat(40), kind: 'branch' }],
+      remoteBranches: [],
+      tags: [],
+    };
+    const refreshPromise = firstValueFrom(client.refresh('docs'));
+    http.expectOne('/api/sources/docs/refs/fetch').flush(fresh);
+    await refreshPromise;
+
+    const reloaded = await firstValueFrom(client.load('docs'));
+    expect(reloaded).toEqual<RefsLoadResult>({ state: 'ok', refs: fresh });
+    http.verify();
+  });
+
+  it('refreshing one source leaves another source\'s cache entry untouched', async () => {
+    const { http, client } = setup();
+
+    const otherRefs: RefsResponse = {
+      head: { ref: 'HEAD', sha: 'c'.repeat(40), kind: 'head' },
+      branches: [{ ref: 'release', sha: 'c'.repeat(40), kind: 'branch' }],
+      remoteBranches: [],
+      tags: [],
+    };
+
+    const loadDocs = firstValueFrom(client.load('docs'));
+    http.expectOne('/api/sources/docs/refs').flush(REFS);
+    await loadDocs;
+
+    const loadOther = firstValueFrom(client.load('other'));
+    http.expectOne('/api/sources/other/refs').flush(otherRefs);
+    await loadOther;
+
+    const fresh: RefsResponse = {
+      head: { ref: 'HEAD', sha: 'b'.repeat(40), kind: 'head' },
+      branches: [{ ref: 'main', sha: 'b'.repeat(40), kind: 'branch' }],
+      remoteBranches: [],
+      tags: [],
+    };
+    const refreshPromise = firstValueFrom(client.refresh('docs'));
+    http.expectOne('/api/sources/docs/refs/fetch').flush(fresh);
+    await refreshPromise;
+
+    // No new HTTP for 'other' — its cache survives.
+    const otherReloaded = await firstValueFrom(client.load('other'));
+    expect(otherReloaded).toEqual<RefsLoadResult>({ state: 'ok', refs: otherRefs });
+    http.verify();
+  });
+
+  it('translates a 502 { error: "fetch-failed", kind } body into a state:"fetch-failed" result (not a thrown error), and leaves the existing cache entry untouched', async () => {
+    const { http, client } = setup();
+
+    const loadDocs = firstValueFrom(client.load('docs'));
+    http.expectOne('/api/sources/docs/refs').flush(REFS);
+    await loadDocs;
+
+    const refreshPromise = firstValueFrom(client.refresh('docs'));
+    http.expectOne('/api/sources/docs/refs/fetch').flush(
+      { error: 'fetch-failed', kind: 'network' },
+      { status: 502, statusText: 'Bad Gateway' },
+    );
+    const result = await refreshPromise;
+    expect(result).toEqual<RefreshResult>({ state: 'fetch-failed', kind: 'network' });
+
+    // Cache survived the failure — a subsequent load() returns the pre-refresh value
+    // with no new HTTP.
+    const reloaded = await firstValueFrom(client.load('docs'));
+    expect(reloaded).toEqual<RefsLoadResult>({ state: 'ok', refs: REFS });
     http.verify();
   });
 });
