@@ -20,11 +20,12 @@ const REFS: RefsResponse = {
   tags: [{ ref: 'v1.0.0', sha: SHA_C, kind: 'tag-annotated' }],
 };
 
-function mount(state: RefsPanelState, stagedRef = '') {
+function mount(state: RefsPanelState, stagedRef = '', refSearch = '') {
   TestBed.configureTestingModule({});
   const fixture = TestBed.createComponent(RefsPanelComponent);
   fixture.componentRef.setInput('state', state);
   fixture.componentRef.setInput('stagedRef', stagedRef);
+  fixture.componentRef.setInput('refSearch', refSearch);
   fixture.detectChanges();
   return { fixture };
 }
@@ -153,6 +154,85 @@ describe('RefsPanelComponent', () => {
       'No git refs available for this source (endpoint)',
     );
     expect(root.querySelector('[data-section]')).toBeNull();
+  });
+
+  it('renders a "Search refs…" input in the panel header that reflects the refSearch input value', () => {
+    const { fixture } = mount({ kind: 'loaded', refs: REFS }, '', 'feat');
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector(
+      '[data-testid="refs-search"]',
+    ) as HTMLInputElement;
+    expect(input).toBeTruthy();
+    expect(input.placeholder).toContain('Search refs');
+    expect(input.value).toBe('feat');
+  });
+
+  it('filters rendered refs via the ref-search filter when refSearch is non-empty', () => {
+    const refs: RefsResponse = {
+      head: { ref: 'HEAD', sha: SHA_A, kind: 'head' },
+      branches: [
+        { ref: 'main', sha: SHA_A, kind: 'branch' },
+        { ref: 'feat/auth', sha: SHA_B, kind: 'branch' },
+      ],
+      remoteBranches: [],
+      tags: [{ ref: 'v1.0.0', sha: SHA_C, kind: 'tag-annotated' }],
+    };
+    const { fixture } = mount({ kind: 'loaded', refs }, '', 'auth');
+    const root = fixture.nativeElement as HTMLElement;
+    const visible = Array.from(root.querySelectorAll('[data-ref]')).map((el) =>
+      el.getAttribute('data-ref'),
+    );
+    expect(visible).toEqual(['feat/auth']);
+  });
+
+  it('typing into the search input emits refSearchChange with the new value', () => {
+    const { fixture } = mount({ kind: 'loaded', refs: REFS });
+    const root = fixture.nativeElement as HTMLElement;
+    const emitted: string[] = [];
+    fixture.componentInstance.refSearchChange.subscribe((v: string) =>
+      emitted.push(v),
+    );
+    const input = root.querySelector(
+      '[data-testid="refs-search"]',
+    ) as HTMLInputElement;
+    input.value = 'foo';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(emitted).toEqual(['foo']);
+  });
+
+  it('Enter on the search input with a focused row emits appliedRef with that row\'s ref', () => {
+    const { fixture } = mount({ kind: 'loaded', refs: REFS }, 'main');
+    const root = fixture.nativeElement as HTMLElement;
+    const emitted: string[] = [];
+    fixture.componentInstance.appliedRef.subscribe((v: string) =>
+      emitted.push(v),
+    );
+    const input = root.querySelector(
+      '[data-testid="refs-search"]',
+    ) as HTMLInputElement;
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+    );
+    fixture.detectChanges();
+    expect(emitted).toEqual(['main']);
+  });
+
+  it('Enter on the search input with text typed and no focused row applies the typed string verbatim', () => {
+    const { fixture } = mount({ kind: 'loaded', refs: REFS }, '', 'HEAD~3');
+    const root = fixture.nativeElement as HTMLElement;
+    const emitted: string[] = [];
+    fixture.componentInstance.appliedRef.subscribe((v: string) =>
+      emitted.push(v),
+    );
+    const input = root.querySelector(
+      '[data-testid="refs-search"]',
+    ) as HTMLInputElement;
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+    );
+    fixture.detectChanges();
+    expect(emitted).toEqual(['HEAD~3']);
   });
 
   it('renders one Remote (<remote>) section per distinct remote when the repo has multiple remotes', () => {

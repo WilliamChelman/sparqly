@@ -93,7 +93,10 @@ import { searchSources, type SourceSearchResult } from './source-search';
             <app-refs-panel
               [state]="refsState()"
               [stagedRef]="stagedRef()"
+              [refSearch]="refSearch()"
               (stagedRefChange)="stagedRef.set($event)"
+              (refSearchChange)="refSearch.set($event)"
+              (appliedRef)="onAppliedRef($event)"
             />
           </div>
         </div>
@@ -122,6 +125,7 @@ export class SourcesPickerOverlayComponent {
   readonly stagedId = signal<string>('');
   readonly stagedRef = signal<string>('');
   readonly query = signal<string>('');
+  readonly refSearch = signal<string>('');
   readonly refsState = signal<RefsPanelState>({ kind: 'idle' });
 
   readonly result = computed<SourceSearchResult>(() =>
@@ -164,8 +168,14 @@ export class SourcesPickerOverlayComponent {
   focusSource(id: string): void {
     if (this.stagedId() !== id) {
       this.stagedRef.set('');
+      this.refSearch.set('');
     }
     this.stagedId.set(id);
+  }
+
+  onAppliedRef(ref: string): void {
+    this.stagedRef.set(ref);
+    this.applied.emit(`@${this.stagedId()}:${ref}`);
   }
 
   onQueryInput(ev: Event): void {

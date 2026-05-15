@@ -18,7 +18,7 @@ export interface RefEntry {
 }
 
 export interface RefsResponse {
-  head: RefEntry;
+  head?: RefEntry;
   branches: RefEntry[];
   remoteBranches: RefEntry[];
   tags: RefEntry[];
