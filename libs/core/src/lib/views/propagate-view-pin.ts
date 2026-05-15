@@ -5,6 +5,7 @@ import type {
   ParsedViewSource,
 } from '../sources';
 import type { GitPinError } from '../sources/errors';
+import { resolveViewLeafGlob } from './resolve-view-leaf-glob';
 
 /**
  * Successful propagation: the `from:` chain from the entry view bottoms on a
@@ -33,41 +34,21 @@ export function propagateViewPin(
   ref: string,
   registry: ReadonlyArray<ParsedSource>,
 ): Result<PropagatedViewPin, GitPinError> {
-  return walk(view, ref, registry, view.id);
-}
-
-function walk(
-  view: ParsedViewSource,
-  ref: string,
-  registry: ReadonlyArray<ParsedSource>,
-  entryViewId: string,
-): Result<PropagatedViewPin, GitPinError> {
-  const byId = new Map<string, ParsedSource>();
-  for (const src of registry) {
-    if (src.kind === 'reference') continue;
-    if (src.id === undefined) continue;
-    byId.set(src.id, src);
+  const resolution = resolveViewLeafGlob(view, registry);
+  if (resolution.isOk()) {
+    return ok({ leafGlob: resolution.value, ref });
   }
-  const upstream = byId.get(view.from);
-  if (upstream === undefined) {
+  const failure = resolution.error;
+  if (failure.kind === 'view-chain-unknown-upstream') {
     return err({
       kind: 'git-pin',
       reason: 'unresolvable-ref',
-      message: `cannot pin \`@${entryViewId}\`: unknown \`from:\` ref \`@${view.from}\``,
+      message: `cannot pin \`@${failure.entryViewId}\`: unknown \`from:\` ref \`@${failure.fromId}\``,
     });
-  }
-  if (upstream.kind === 'glob') {
-    return ok({
-      leafGlob: upstream as ParsedGlobSource & { id: string },
-      ref,
-    });
-  }
-  if (upstream.kind === 'view') {
-    return walk(upstream, ref, registry, entryViewId);
   }
   return err({
     kind: 'git-pin',
     reason: 'unresolvable-ref',
-    message: `cannot pin \`@${entryViewId}\`: upstream chain reaches \`kind:'${upstream.kind}'\` source \`@${upstream.id ?? view.from}\``,
+    message: `cannot pin \`@${failure.entryViewId}\`: upstream chain reaches \`kind:'${failure.terminatingKind}'\` source \`@${failure.terminatingId ?? ''}\``,
   });
 }

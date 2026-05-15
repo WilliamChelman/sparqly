@@ -17,6 +17,7 @@ import {
 import { SPARQL_SERVED_REGISTRY } from '../bootstrap';
 import { listRefs } from './list-refs';
 import type { RefsResponse } from './refs-response';
+import { resolveRefsSource } from './resolve-refs-source';
 
 const repoDiscovery: RepoDiscoveryDeps = {
   hasGitDir(dir: string): boolean {
@@ -39,30 +40,29 @@ export class RefsController {
 
   @Get(':id/refs')
   async list(@Param('id') id: string): Promise<RefsResponse> {
-    const source = this.servedRegistry.find((s) => s.id === id);
-    if (!source) {
-      throw new NotFoundException({
-        error: 'unknown-source',
-        id,
-      });
-    }
-    if (source.kind !== 'glob') {
+    const resolution = resolveRefsSource(id, this.servedRegistry);
+    if (resolution.isErr()) {
+      const failure = resolution.error;
+      if (failure.kind === 'unknown-source') {
+        throw new NotFoundException({ error: 'unknown-source', id });
+      }
       throw new HttpException(
-        { error: 'no-git-repo', kind: source.kind },
+        { error: 'no-git-repo', kind: failure.terminatingKind },
         HttpStatus.NOT_FOUND,
       );
     }
+    const glob = resolution.value;
     const discovery = discoverRepoRoot(
       {
-        glob: source.glob,
+        glob: glob.glob,
         configDir: process.cwd(),
-        gitRoot: source.gitRoot,
+        gitRoot: glob.gitRoot,
       },
       repoDiscovery,
     );
     if (discovery.isErr()) {
       throw new HttpException(
-        { error: 'no-git-repo', kind: source.kind, reason: discovery.error.kind },
+        { error: 'no-git-repo', kind: 'glob', reason: discovery.error.kind },
         HttpStatus.NOT_FOUND,
       );
     }
