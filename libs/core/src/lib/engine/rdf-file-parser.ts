@@ -1,5 +1,6 @@
 import { createReadStream } from 'node:fs';
 import { extname } from 'node:path';
+import { Readable } from 'node:stream';
 import { Parser, type Quad } from 'n3';
 import { ResultAsync } from 'neverthrow';
 import { rdfParser } from 'rdf-parse';
@@ -137,6 +138,16 @@ class LineTrackingParser extends N3ParserBase {
   }
 }
 
+export interface ParseRdfFileOptions {
+  /**
+   * Buffer of raw file content. When provided, the parser uses this content
+   * instead of reading `path` from disk; the `path` is still used for
+   * extension detection, base-IRI, and error attribution (ADR-0029 — pinned
+   * source content comes from the git tree, not the working tree).
+   */
+  contentOverride?: Buffer;
+}
+
 /**
  * Primary `Result`-typed parser. Failures collapse into a single
  * {@link GlobLoadError} variant carrying the offending file path and the
@@ -144,8 +155,9 @@ class LineTrackingParser extends N3ParserBase {
  */
 export function parseRdfFileResult(
   path: string,
+  options: ParseRdfFileOptions = {},
 ): ResultAsync<ParseFileResult, GlobLoadError> {
-  return ResultAsync.fromPromise(parseRdfFile(path), (err) => ({
+  return ResultAsync.fromPromise(parseRdfFile(path, options), (err) => ({
     kind: 'glob-load' as const,
     glob: [path],
     file: path,
@@ -157,21 +169,56 @@ export function parseRdfFileResult(
  * @deprecated Use {@link parseRdfFileResult} (ADR-0024). Retained as a thin
  * throw-based adapter for callers that have not migrated yet.
  */
-export async function parseRdfFile(path: string): Promise<ParseFileResult> {
+export async function parseRdfFile(
+  path: string,
+  options: ParseRdfFileOptions = {},
+): Promise<ParseFileResult> {
   const ext = extname(path).toLowerCase();
-  if (ext in N3_FORMAT_BY_EXT) return parseWithN3(path, N3_FORMAT_BY_EXT[ext]);
+  if (ext in N3_FORMAT_BY_EXT) {
+    return parseWithN3(path, N3_FORMAT_BY_EXT[ext], options.contentOverride);
+  }
   if (ext in RDF_PARSE_FORMAT_BY_EXT) {
-    return parseWithRdfParse(path, RDF_PARSE_FORMAT_BY_EXT[ext]);
+    return parseWithRdfParse(
+      path,
+      RDF_PARSE_FORMAT_BY_EXT[ext],
+      options.contentOverride,
+    );
   }
   throw new Error(`Unsupported file extension: ${path}`);
 }
 
-function parseWithN3(path: string, format: string): Promise<ParseFileResult> {
+function parseWithN3(
+  path: string,
+  format: string,
+  contentOverride: Buffer | undefined,
+): Promise<ParseFileResult> {
   const records: RdfRecord[] = [];
   const prefixes: Record<string, string> = {};
   const parser = new LineTrackingParser({ format });
 
   return new Promise((resolve, reject) => {
+    const onQuad = (err: Error | null, quad?: WithLine): void => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      if (quad) {
+        const rec: RdfRecord = { quad, line: quad[LINE_KEY] };
+        if (quad[END_LINE_KEY] !== undefined) rec.endLine = quad[END_LINE_KEY];
+        records.push(rec);
+      } else {
+        resolve({ records, prefixes });
+      }
+    };
+    const onPrefix = (prefix: string, iri: { value: string }): void => {
+      if (prefix && iri) prefixes[prefix] = iri.value;
+    };
+
+    if (contentOverride !== undefined) {
+      parser['parse'](contentOverride.toString('utf8'), { onQuad, onPrefix });
+      return;
+    }
+
     const stream = createReadStream(path, { encoding: 'utf8' });
     let parseError: Error | null = null;
     stream.on('error', reject);
@@ -187,9 +234,7 @@ function parseWithN3(path: string, format: string): Promise<ParseFileResult> {
           records.push(rec);
         }
       },
-      onPrefix: (prefix: string, iri: { value: string }) => {
-        if (prefix && iri) prefixes[prefix] = iri.value;
-      },
+      onPrefix,
     });
     stream.on('end', () => {
       if (parseError) reject(parseError);
@@ -198,14 +243,21 @@ function parseWithN3(path: string, format: string): Promise<ParseFileResult> {
   });
 }
 
-function parseWithRdfParse(path: string, contentType: string): Promise<ParseFileResult> {
+function parseWithRdfParse(
+  path: string,
+  contentType: string,
+  contentOverride: Buffer | undefined,
+): Promise<ParseFileResult> {
   const records: RdfRecord[] = [];
   const prefixes: Record<string, string> = {};
   return new Promise((resolve, reject) => {
-    const stream = createReadStream(path);
-    stream.on('error', reject);
+    const input =
+      contentOverride !== undefined
+        ? Readable.from(contentOverride)
+        : createReadStream(path);
+    input.on('error', reject);
     rdfParser
-      .parse(stream, { contentType, baseIRI: `file://${path}` })
+      .parse(input, { contentType, baseIRI: `file://${path}` })
       .on('data', (quad: Quad) => records.push({ quad, line: undefined }))
       .on('prefix', (prefix: string, iri: { value: string }) => {
         if (prefix && iri?.value) prefixes[prefix] = iri.value;

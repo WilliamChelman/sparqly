@@ -70,6 +70,13 @@ describe('querySpec — single-target shape', () => {
     expect(querySpec.exitCode(new Error('boom'))).toBe(1);
   });
 
+  it('exposes a `--at <ref>` flag bound to the `at` field (ADR-0029)', () => {
+    const at = querySpec.fields.find((f) => f.key === 'at');
+    expect(at).toBeDefined();
+    const specs = (at?.flags ?? []).map((f) => f.spec);
+    expect(specs).toContain('--at <ref>');
+  });
+
   it('exitCode routes QueryErrorSignal through queryErrorExitCode (per-variant)', () => {
     const signal = new QueryErrorSignal({
       kind: 'endpoint-fetch',

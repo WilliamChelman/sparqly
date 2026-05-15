@@ -9,6 +9,11 @@ import {
   type ParsedViewCache,
   type ViewCacheInput,
 } from './view-cache-spec';
+import {
+  pickEndpointHttp,
+  rejectEndpointOnlyFields,
+  rejectLegacyEndpointGraphFields,
+} from './source-spec-endpoint';
 
 export interface SourceSpecCommonFields {
   id?: string;
@@ -42,6 +47,25 @@ export interface ParsedGlobSource
    * never performs the expansion; this field is only carried through.
    */
   splitByFile?: true;
+  /**
+   * Pin this glob to a specific git revision (ADR-0029). Non-empty ref string
+   * (full SHA, short SHA, annotated tag — pinned refs only in slice 1).
+   * Resolution to a SHA happens at expand/load time, not parse time.
+   */
+  gitRef?: string;
+  /**
+   * Repo discovery override (ADR-0029). Path relative to the project config
+   * dir. Only meaningful when `gitRef` is declared; rejected otherwise.
+   */
+  gitRoot?: string;
+  /**
+   * Post-resolution 40-char commit SHA the {@link gitRef} resolves to
+   * (ADR-0029). Populated by `pinGlobSource` after a successful resolve; never
+   * set by the parser. When present, the view-cache fingerprint substitutes
+   * this for `gitRef`/`gitRoot` so two pins onto the same commit (e.g. tag
+   * vs. full SHA) share cache entries.
+   */
+  resolvedSha?: string;
 }
 
 /**
@@ -109,6 +133,10 @@ export interface SourceSpecObjectInput
   transforms?: ReadonlyArray<unknown>;
   /** Opt-in split-glob expansion flag — only valid on glob inputs (ADR-0027). */
   splitByFile?: true;
+  /** Pin glob to a git revision (ADR-0029) — only valid on glob inputs. */
+  gitRef?: string;
+  /** Repo discovery override (ADR-0029) — only meaningful with `gitRef`. */
+  gitRoot?: string;
 }
 
 export type SourceSpecInput = string | SourceSpecObjectInput;
@@ -155,6 +183,46 @@ function rejectSplitByFileOn(
   if (input.splitByFile !== undefined) {
     throw new Error(
       `\`splitByFile\` is only valid on glob sources (got a ${kind} source)`,
+    );
+  }
+}
+
+function pickGitFields(
+  input: SourceSpecObjectInput,
+): { gitRef?: string; gitRoot?: string } {
+  const out: { gitRef?: string; gitRoot?: string } = {};
+  if (input.gitRef !== undefined) {
+    if (typeof input.gitRef !== 'string' || input.gitRef.length === 0) {
+      throw new Error('`gitRef` must be a non-empty string');
+    }
+    out.gitRef = input.gitRef;
+  }
+  if (input.gitRoot !== undefined) {
+    if (typeof input.gitRoot !== 'string' || input.gitRoot.length === 0) {
+      throw new Error('`gitRoot` must be a non-empty string');
+    }
+    if (out.gitRef === undefined) {
+      throw new Error(
+        '`gitRoot` is only meaningful alongside `gitRef` (omit it otherwise)',
+      );
+    }
+    out.gitRoot = input.gitRoot;
+  }
+  return out;
+}
+
+function rejectGitRefOn(
+  input: SourceSpecObjectInput,
+  kind: 'endpoint' | 'view' | 'empty',
+): void {
+  if (input.gitRef !== undefined) {
+    throw new Error(
+      `\`gitRef\` is only valid on glob sources (got a ${kind} source)`,
+    );
+  }
+  if (input.gitRoot !== undefined) {
+    throw new Error(
+      `\`gitRoot\` is only valid on glob sources (got a ${kind} source)`,
     );
   }
 }
@@ -226,6 +294,7 @@ export function parseSourceSpec(
   if (hasFrom) {
     rejectTransformsOn(input, 'view');
     rejectSplitByFileOn(input, 'view');
+    rejectGitRefOn(input, 'view');
     return parseView(input);
   }
   if (hasEmpty) {
@@ -248,18 +317,21 @@ export function parseSourceSpec(
         ? {}
         : { transforms: parseTransformList(input.transforms, registry) };
     const splitByFileField = pickSplitByFile(input);
+    const gitFields = pickGitFields(input);
     return {
       kind: 'glob',
       glob: input.glob as string,
       ...common,
       ...transformsField,
       ...splitByFileField,
+      ...gitFields,
       ...defaultMarker,
     };
   }
   rejectLegacyEndpointGraphFields(input);
   rejectTransformsOn(input, 'endpoint');
   rejectSplitByFileOn(input, 'endpoint');
+  rejectGitRefOn(input, 'endpoint');
   const http = pickEndpointHttp(input);
   return {
     kind: 'endpoint',
@@ -281,16 +353,6 @@ function rejectTransformsOn(
   }
 }
 
-function rejectLegacyEndpointGraphFields(input: SourceSpecObjectInput): void {
-  for (const key of LEGACY_GLOB_GRAPH_FIELD_KEYS) {
-    if ((input as Record<string, unknown>)[key] !== undefined) {
-      throw new Error(
-        `\`${key}\` is not valid on endpoint sources; express endpoint graph behaviour through a view's query (see #78)`,
-      );
-    }
-  }
-}
-
 const EMPTY_FORBIDDEN_KEYS = [
   ...LEGACY_GLOB_GRAPH_FIELD_KEYS,
   'auth',
@@ -300,6 +362,8 @@ const EMPTY_FORBIDDEN_KEYS = [
   'queryFile',
   'cache',
   'transforms',
+  'gitRef',
+  'gitRoot',
 ] as const;
 
 function parseEmpty(input: SourceSpecObjectInput): ParsedEmptySource {
@@ -365,62 +429,6 @@ function parseView(input: SourceSpecObjectInput): ParsedViewSource {
   const defaultMarker = pickDefault(input);
   if (defaultMarker.default) out.default = true;
   return out;
-}
-
-const ENDPOINT_ONLY_KEYS = ['auth', 'headers', 'timeoutMs'] as const;
-
-function rejectEndpointOnlyFields(input: SourceSpecObjectInput): void {
-  for (const key of ENDPOINT_ONLY_KEYS) {
-    if ((input as Record<string, unknown>)[key] !== undefined) {
-      throw new Error(
-        `\`${key}\` is only valid on endpoint sources (got a glob source)`,
-      );
-    }
-  }
-}
-
-function pickEndpointHttp(input: SourceSpecObjectInput): EndpointHttpFields {
-  const out: EndpointHttpFields = {};
-  if (input.auth !== undefined) {
-    out.auth = validateAuth(input.auth);
-  }
-  if (input.headers !== undefined) out.headers = { ...input.headers };
-  if (input.timeoutMs !== undefined) out.timeoutMs = input.timeoutMs;
-  if (out.auth && out.headers) {
-    for (const key of Object.keys(out.headers)) {
-      if (key.toLowerCase() === 'authorization') {
-        throw new Error(
-          '`auth` and an explicit `Authorization` header collide on the same endpoint source',
-        );
-      }
-    }
-  }
-  return out;
-}
-
-function validateAuth(auth: SparqlAuth): SparqlAuth {
-  if (auth.type === 'bearer') {
-    if (typeof auth.token !== 'string' || auth.token.length === 0) {
-      throw new Error('bearer auth `token` must be a non-empty string');
-    }
-    return { type: 'bearer', token: auth.token };
-  }
-  if (auth.type === 'basic') {
-    if (typeof auth.username !== 'string' || auth.username.length === 0) {
-      throw new Error('basic auth `username` must be a non-empty string');
-    }
-    if (typeof auth.password !== 'string' || auth.password.length === 0) {
-      throw new Error('basic auth `password` must be a non-empty string');
-    }
-    return {
-      type: 'basic',
-      username: auth.username,
-      password: auth.password,
-    };
-  }
-  throw new Error(
-    `unknown auth type: ${JSON.stringify((auth as { type: unknown }).type)}`,
-  );
 }
 
 export interface ParseSourceSpecsContext extends ParseSourceSpecContext {

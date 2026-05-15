@@ -13,6 +13,14 @@ import type {
 } from './source-spec';
 import { applyTransformPipeline } from './transform-pipeline';
 import type { ParsedTransform } from './transform-spec';
+import { GitCliPort } from './git/git-cli-port';
+import type { GitPort } from './git/git-port';
+import type { RepoDiscoveryDeps } from './git/discover-repo';
+import {
+  defaultRepoDiscovery,
+  pinGlobSource,
+} from './git/pin-glob-source';
+import { normalizeRegistryPinsResult } from './git/normalize-registry-pins';
 
 export {
   formatSourceError,
@@ -31,6 +39,22 @@ export interface ResolveSourceResultOptions {
   now?: ResolveViewOptions['now'];
   engine?: ResolveViewOptions['engine'];
   logger?: ResolveViewOptions['logger'];
+  /**
+   * Absolute path to the project config directory (or cwd when no config is
+   * loaded). Used as the resolution root for `gitRoot:` relative overrides on
+   * pinned glob sources (ADR-0029). Defaults to `process.cwd()`.
+   */
+  configDir?: string;
+  /**
+   * Injectable git port for pinned-source loading (ADR-0029). Defaults to the
+   * production `GitCliPort` (shells out to `git`).
+   */
+  gitPort?: GitPort;
+  /**
+   * Injectable repo-discovery deps for pinned-source loading (ADR-0029).
+   * Defaults to a filesystem-backed implementation.
+   */
+  repoDiscovery?: RepoDiscoveryDeps;
 }
 
 /**
@@ -74,14 +98,22 @@ function resolveViewTargetResult(
   options: ResolveSourceResultOptions,
 ): ResultAsync<QuerySources, SourceError> {
   const registry = options.registry ?? [view];
-  return resolveViewResult({
-    view,
-    registry,
-    cacheDir: options.cacheDir,
-    now: options.now,
-    engine: options.engine,
-    logger: options.logger,
-  }).map((store) => materialized(store, [], {}));
+  return normalizeRegistryPinsResult(registry, {
+    configDir: options.configDir ?? process.cwd(),
+    port: options.gitPort ?? new GitCliPort(),
+    repoDiscovery: options.repoDiscovery ?? defaultRepoDiscovery,
+  })
+    .mapErr<SourceError>((e) => e)
+    .andThen<QuerySources, SourceError>((normalizedRegistry) =>
+      resolveViewResult({
+        view,
+        registry: normalizedRegistry,
+        cacheDir: options.cacheDir,
+        now: options.now,
+        engine: options.engine,
+        logger: options.logger,
+      }).map((store) => materialized(store, [], {})),
+    );
 }
 
 function loadGlobIntoStore(
@@ -89,17 +121,69 @@ function loadGlobIntoStore(
   transforms: ReadonlyArray<ParsedTransform>,
   options: ResolveSourceResultOptions,
 ): ResultAsync<LoadResult, SourceError> {
-  return loadRdfResult({ sources: source.glob, logger: options.logger }).map((sub) => {
-    const transformed = applyTransformPipeline(sub.store, transforms, {
-      perFileRecords: sub.perFileRecords,
-    });
-    return {
-      store: transformed,
-      files: [...sub.files],
-      prefixes: { ...sub.prefixes },
-      perFileRecords: sub.perFileRecords,
-    };
+  if (source.gitRef === undefined) {
+    return loadRdfResult({ sources: source.glob, logger: options.logger }).map(
+      (sub) => applyGlobTransforms(sub, transforms),
+    );
+  }
+  return pinAndLoadGlob(source, transforms, options);
+}
+
+function pinAndLoadGlob(
+  source: ParsedGlobSource,
+  transforms: ReadonlyArray<ParsedTransform>,
+  options: ResolveSourceResultOptions,
+): ResultAsync<LoadResult, SourceError> {
+  const port = options.gitPort ?? new GitCliPort();
+  const repoDiscovery = options.repoDiscovery ?? defaultRepoDiscovery;
+  const configDir = options.configDir ?? process.cwd();
+
+  return pinGlobSource({ source, configDir }, { port, repoDiscovery })
+    .mapErr<SourceError>((e) => e)
+    .andThen<LoadResult, SourceError>((pinned) =>
+      loadRdfResult({
+        sources: source.glob,
+        logger: options.logger,
+        contentReader: pinned.contentReader,
+      })
+        .map((sub) => applyGlobTransforms(sub, transforms))
+        .orElse((err) => mapPinnedLoadError(err)),
+    );
+}
+
+function applyGlobTransforms(
+  sub: LoadResult,
+  transforms: ReadonlyArray<ParsedTransform>,
+): LoadResult {
+  const transformed = applyTransformPipeline(sub.store, transforms, {
+    perFileRecords: sub.perFileRecords,
   });
+  return {
+    store: transformed,
+    files: [...sub.files],
+    prefixes: { ...sub.prefixes },
+    perFileRecords: sub.perFileRecords,
+  };
+}
+
+function mapPinnedLoadError(
+  err: SourceError,
+): ResultAsync<LoadResult, SourceError> {
+  // The contentReader can throw PinnedFileMissingError when a working-tree
+  // match is absent from the git tree at the resolved revision. The loader
+  // surfaces that as a glob-load error wrapping the thrown message; promote
+  // it to a typed git-pin error so the surface decorators can render it.
+  if (
+    err.kind === 'glob-load' &&
+    err.message.includes('pinned source: file ')
+  ) {
+    return errAsync<LoadResult, SourceError>({
+      kind: 'git-pin',
+      reason: 'pinned-file-missing',
+      message: err.message,
+    });
+  }
+  return errAsync<LoadResult, SourceError>(err);
 }
 
 function loadFileIntoStore(

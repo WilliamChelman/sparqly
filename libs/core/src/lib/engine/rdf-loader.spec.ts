@@ -313,6 +313,48 @@ describe('loadRdfResult', () => {
     expect(result.error.file).toBe(bad);
   });
 
+  it('uses contentReader override bytes instead of disk content when provided (ADR-0029)', async () => {
+    const path = join(dir, 'foaf.ttl');
+    // Disk file says one thing; override returns different content.
+    await writeFile(
+      path,
+      '@prefix ex: <http://example.org/> . ex:disk ex:p ex:disk .',
+    );
+    const overrideBytes = Buffer.from(
+      '@prefix ex: <http://example.org/> . ex:override ex:p ex:override .',
+      'utf8',
+    );
+
+    const result = await loadRdfResult({
+      sources: path,
+      contentReader: async (absPath) =>
+        absPath === path ? overrideBytes : null,
+    });
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    const subjects = [...result.value.store].map((q) => q.subject.value);
+    expect(subjects).toEqual(['http://example.org/override']);
+  });
+
+  it('falls back to disk when contentReader returns null for a path', async () => {
+    const path = join(dir, 'foaf.ttl');
+    await writeFile(
+      path,
+      '@prefix ex: <http://example.org/> . ex:disk ex:p ex:disk .',
+    );
+
+    const result = await loadRdfResult({
+      sources: path,
+      contentReader: async () => null,
+    });
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    const subjects = [...result.value.store].map((q) => q.subject.value);
+    expect(subjects).toEqual(['http://example.org/disk']);
+  });
+
   it('accepts an array glob and warns once naming both patterns when empty', async () => {
     const patterns = [join(dir, 'nope-a*.ttl'), join(dir, 'nope-b*.ttl')];
     const { logger, entries } = recordingLogger();

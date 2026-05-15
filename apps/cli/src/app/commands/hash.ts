@@ -25,8 +25,10 @@ import {
   decorateHashError,
   hashErrorExitCode,
 } from './hash-error';
+import { applyAtOverride } from './at-override';
 import type { FieldDescriptor } from '../runner/fields/field';
 import {
+  atRefField,
   coercedBooleanSchema,
   outFieldFor,
   sourceField,
@@ -44,6 +46,7 @@ interface HashConfig {
   compareWithQuery?: string;
   compareWithQueryFile?: string;
   out?: string;
+  at?: string;
   verbose?: boolean;
   quiet?: boolean;
   logFormat?: 'text' | 'json';
@@ -177,6 +180,7 @@ export const hashSpec: CommandSpec<HashConfig> = {
     queryFileField,
     compareWithQueryField,
     compareWithQueryFileField,
+    atRefField,
     outFieldFor('hash'),
     ...verbosityFieldsFor('hash'),
   ],
@@ -251,6 +255,7 @@ export const hashSpec: CommandSpec<HashConfig> = {
     if (isCompareMode) {
       const compareSpec = config.compareWith as string;
       const pair = await resolveHashTargetResult(config, registry)
+        .map((primaryTarget) => applyAtOverride(primaryTarget, config.at))
         .asyncAndThen<HashedPair, SourceError | TargetError>((primaryTarget) =>
           resolveCompareTargetResult(compareSpec, registry).asyncAndThen(
             (secondaryTarget) =>
@@ -289,10 +294,11 @@ export const hashSpec: CommandSpec<HashConfig> = {
       return;
     }
 
-    const single = await resolveHashTargetResult(config, registry).asyncAndThen<
-      { source: string; hash: string },
-      SourceError | TargetError
-    >((target) => hashTargetResult(target, registry, inlineQuery, logger));
+    const single = await resolveHashTargetResult(config, registry)
+      .map((target) => applyAtOverride(target, config.at))
+      .asyncAndThen<{ source: string; hash: string }, SourceError | TargetError>(
+        (target) => hashTargetResult(target, registry, inlineQuery, logger),
+      );
 
     await single.match(
       async (result) => {
@@ -379,10 +385,11 @@ function hashTargetResult(
     );
   }
 
-  return resolveSourceResult(target, { registry, logger }).andThen<
-    { source: string; hash: string },
-    SourceError
-  >((sources) => {
+  return resolveSourceResult(target, {
+    registry,
+    logger,
+    configDir: process.cwd(),
+  }).andThen<{ source: string; hash: string }, SourceError>((sources) => {
     if (sources.mode === 'pass-through') {
       throw new Error(
         `SPARQL endpoint ${sources.endpoint.endpoint} cannot be hashed directly (hash materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,

@@ -1,25 +1,15 @@
 sources:
-  - id: era-shapes-3-2-0
-    glob: ./data/era-shapes-3.2.0.ttl
-  - id: era-shapes-3-2-2
-    glob: ./data/era-shapes-3.2.2.ttl
-  - id: era-shapes-head
-    glob: ./data/era-shapes.ttl
-    default: true
-  - id: diff-01
-    glob: ./data/diffs/diff-01.ttl
-  - id: diff-02
-    glob: ./data/diffs/diff-02.ttl
+  - id: data
+    glob: ./data/**/*.ttl
+    splitByFile: true
   - id: fedlex
     endpoint: https://fedlex.data.admin.ch/sparqlendpoint
-  - id: era-new-cs
-    glob: ../tmp/era-cs/new-era-cs.ttl
-  - id: era-old-cs
-    glob: ../tmp/era-cs/old-era-cs.ttl
-  - id: era-new-onto
-    glob: ../tmp/era-onto/era-onto-3-3-0.ttl
-  - id: era-old-onto
-    glob: ../tmp/era-onto/era-onto-3-2-2.ttl
+  - id: tmp
+    glob: ../tmp/**/*.ttl
+    splitByFile: true
+  - id: era-ontology
+    glob: /Users/williamchelman/Dev/cognizone/era/era-vocabulary/ontology.ttl
+    splitByFile: true
 
 serve:
   port: 3000

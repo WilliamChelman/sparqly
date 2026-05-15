@@ -17,7 +17,8 @@ export type SourceError =
   | ViewValidationError
   | ViewReferenceError
   | CacheIoError
-  | TransformParseError;
+  | TransformParseError
+  | GitPinError;
 
 export interface ReferenceTargetError {
   kind: 'reference-target';
@@ -104,6 +105,22 @@ export interface TransformParseError {
   message: string;
 }
 
+/**
+ * Failure resolving a `gitRef:` declaration (or `--at` invocation) for a glob
+ * source (ADR-0029). Covers four user-facing modes: no repo discoverable +
+ * gitRef declared, gitRoot pointing at a non-repo, unresolvable ref, and a
+ * file present in the working tree that is absent at the resolved revision.
+ */
+export interface GitPinError {
+  kind: 'git-pin';
+  reason:
+    | 'no-repo-found'
+    | 'gitroot-not-a-repo'
+    | 'unresolvable-ref'
+    | 'pinned-file-missing';
+  message: string;
+}
+
 export function formatSourceError(error: SourceError): string {
   switch (error.kind) {
     case 'reference-target':
@@ -127,5 +144,7 @@ export function formatSourceError(error: SourceError): string {
       return `cache ${error.cachePath}: ${error.message}`;
     case 'transform-parse':
       return `\`${error.transformKey}\`: ${error.message}`;
+    case 'git-pin':
+      return error.message;
   }
 }

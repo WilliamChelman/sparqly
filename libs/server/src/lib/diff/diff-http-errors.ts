@@ -108,6 +108,12 @@ export function mapDiffHttpError(error: TransportError): HttpException {
         transformKey: error.transformKey,
         message: error.message,
       });
+    case 'git-pin':
+      return new BadRequestException({
+        kind: 'git-pin',
+        reason: error.reason,
+        message: error.message,
+      });
   }
 }
 

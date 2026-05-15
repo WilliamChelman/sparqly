@@ -65,6 +65,15 @@ describe('hashErrorExitCode — per-variant stable exit code map', () => {
       },
       code: 38,
     },
+    {
+      name: 'source/git-pin',
+      error: {
+        kind: 'git-pin',
+        reason: 'unresolvable-ref',
+        message: 'gitRef "v999" did not resolve',
+      },
+      code: 39,
+    },
     { name: 'target/ref-as-target', error: { kind: 'ref-as-target' }, code: 50 },
     { name: 'target/empty-registry', error: { kind: 'empty-registry' }, code: 51 },
     {
