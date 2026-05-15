@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   EventEmitter,
   inject,
   Input,
@@ -60,14 +61,35 @@ import { ConfigService, type SourceListingEntry } from '@app/core';
           (cdkListboxValueChange)="onPick($event.value)"
           (keydown.escape)="close()"
         >
-          @for (s of sources(); track s.id) {
+          @for (s of topLevel(); track s.id) {
             <li
               [cdkOption]="s.id"
               [attr.data-source-id]="s.id"
-              class="cursor-pointer rounded-md px-2.5 py-1.5 font-sans text-[13px] text-foreground-muted hover:bg-surface-sunken hover:text-foreground aria-selected:bg-surface-sunken aria-selected:text-foreground [&.cdk-option-active]:bg-surface-sunken [&.cdk-option-active]:text-foreground"
+              class="flex cursor-pointer items-baseline gap-1 rounded-md px-2.5 py-1.5 font-sans text-[13px] text-foreground-muted hover:bg-surface-sunken hover:text-foreground aria-selected:bg-surface-sunken aria-selected:text-foreground [&.cdk-option-active]:bg-surface-sunken [&.cdk-option-active]:text-foreground"
             >
-              {{ s.label }}
+              <span>{{ s.label }}</span>
+              @if (childrenOf().get(s.id); as children) {
+                <span class="text-foreground-faint">({{ children.length }} files)</span>
+                <button
+                  type="button"
+                  [attr.data-testid]="'group-toggle-' + s.id"
+                  class="ml-auto rounded px-1 text-foreground-faint hover:text-foreground"
+                  (click)="toggleGroup(s.id, $event)"
+                  [attr.aria-expanded]="expandedGroups().has(s.id)"
+                >{{ expandedGroups().has(s.id) ? '▾' : '▸' }}</button>
+              }
             </li>
+            @if (expandedGroups().has(s.id)) {
+              @for (c of childrenOf().get(s.id) ?? []; track c.id) {
+                <li
+                  [cdkOption]="c.id"
+                  [attr.data-source-id]="c.id"
+                  class="cursor-pointer rounded-md py-1.5 pl-6 pr-2.5 font-sans text-[13px] text-foreground-muted hover:bg-surface-sunken hover:text-foreground aria-selected:bg-surface-sunken aria-selected:text-foreground [&.cdk-option-active]:bg-surface-sunken [&.cdk-option-active]:text-foreground"
+                >
+                  {{ c.label }}
+                </li>
+              }
+            }
           }
         </ul>
       }
@@ -82,6 +104,20 @@ export class SourcesPickerComponent implements OnInit {
   readonly sources = signal<SourceListingEntry[] | null>(null);
   readonly selectedId = signal<string>('');
   readonly open = signal<boolean>(false);
+  readonly topLevel = computed<SourceListingEntry[]>(() =>
+    (this.sources() ?? []).filter((s) => !s.parentId),
+  );
+  readonly childrenOf = computed<Map<string, SourceListingEntry[]>>(() => {
+    const m = new Map<string, SourceListingEntry[]>();
+    for (const s of this.sources() ?? []) {
+      if (!s.parentId) continue;
+      const arr = m.get(s.parentId);
+      if (arr) arr.push(s);
+      else m.set(s.parentId, [s]);
+    }
+    return m;
+  });
+  readonly expandedGroups = signal<ReadonlySet<string>>(new Set());
   readonly triggerLabel = computed(() => {
     const id = this.selectedId();
     const entry = (this.sources() ?? []).find((s) => s.id === id);
@@ -94,8 +130,33 @@ export class SourcesPickerComponent implements OnInit {
     }
   }
 
+  constructor() {
+    effect(() => {
+      const id = this.selectedId();
+      const entry = (this.sources() ?? []).find((s) => s.id === id);
+      const parentId = entry?.parentId;
+      if (!parentId) return;
+      this.expandedGroups.update((set) => {
+        if (set.has(parentId)) return set;
+        const next = new Set(set);
+        next.add(parentId);
+        return next;
+      });
+    });
+  }
+
   toggle(): void {
     this.open.update((v) => !v);
+  }
+
+  toggleGroup(id: string, ev: Event): void {
+    ev.stopPropagation();
+    this.expandedGroups.update((set) => {
+      const next = new Set(set);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   close(): void {

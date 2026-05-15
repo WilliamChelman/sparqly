@@ -124,6 +124,68 @@ describe('MultiSourcesPickerComponent', () => {
     expect(locked?.textContent).toContain('only');
   });
 
+  it('groups children under their meta and keeps meta/child ticks independent', () => {
+    const grouped: SourceListing = {
+      sources: [
+        { id: 'docs', kind: 'glob', label: 'docs (glob)' },
+        { id: 'docs/a.ttl', kind: 'file', label: 'a.ttl', parentId: 'docs' },
+        { id: 'docs/b.ttl', kind: 'file', label: 'b.ttl', parentId: 'docs' },
+      ],
+    };
+    const { fixture } = setup(grouped);
+    fixture.componentRef.setInput('value', ['docs']);
+    fixture.detectChanges();
+    const emitted: string[][] = [];
+    fixture.componentInstance.valueChange.subscribe((v) => emitted.push(v));
+    const root = fixture.nativeElement as HTMLElement;
+    (root.querySelector(
+      'button[data-testid="multi-sources-trigger"]',
+    ) as HTMLButtonElement).click();
+    fixture.detectChanges();
+    // Expand the meta's group so children are visible
+    const toggle = root.querySelector(
+      '[data-testid="group-toggle-docs"]',
+    ) as HTMLButtonElement;
+    expect(toggle).toBeTruthy();
+    toggle.click();
+    fixture.detectChanges();
+    // Tick a child — meta selection must NOT be removed
+    const child = root.querySelector(
+      '[data-source-id="docs/a.ttl"]',
+    ) as HTMLElement;
+    child.click();
+    fixture.detectChanges();
+    expect(emitted[0]).toEqual(['docs', 'docs/a.ttl']);
+    // Now untick the meta — the child remains
+    const meta = root.querySelector(
+      '[data-source-id="docs"]',
+    ) as HTMLElement;
+    meta.click();
+    fixture.detectChanges();
+    expect(emitted[1]).toEqual(['docs/a.ttl']);
+  });
+
+  it('auto-expands parent groups when value includes a child id, so cdkListbox values match rendered options', () => {
+    const grouped: SourceListing = {
+      sources: [
+        { id: 'docs', kind: 'glob', label: 'docs (glob)' },
+        { id: 'docs/a.ttl', kind: 'file', label: 'a.ttl', parentId: 'docs' },
+        { id: 'docs/b.ttl', kind: 'file', label: 'b.ttl', parentId: 'docs' },
+      ],
+    };
+    const { fixture } = setup(grouped);
+    fixture.componentRef.setInput('value', ['docs/a.ttl']);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    (root.querySelector(
+      'button[data-testid="multi-sources-trigger"]',
+    ) as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const child = root.querySelector('[data-source-id="docs/a.ttl"]');
+    expect(child).toBeTruthy();
+    expect(child?.getAttribute('aria-selected')).toBe('true');
+  });
+
   it('shows a loading hint until the listing arrives', () => {
     const subj = new Subject<SourceListing>();
     const stub: Pick<ConfigService, 'list'> = {
