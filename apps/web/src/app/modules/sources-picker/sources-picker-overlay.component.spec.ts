@@ -1,7 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import type { SourceListingEntry } from '@app/core';
 import { of, Subject, type Observable } from 'rxjs';
-import { RefsApiClient, type RefsLoadResult, type RefsResponse } from './refs-api.client';
+import {
+  RefsApiClient,
+  type RefreshResult,
+  type RefsLoadResult,
+  type RefsResponse,
+} from './refs-api.client';
 import { SourcesPickerOverlayComponent } from './sources-picker-overlay.component';
 
 const TWO_SOURCES: SourceListingEntry[] = [
@@ -25,20 +30,28 @@ const REFS_DEFAULT: RefsResponse = {
 interface StubRefsApi {
   readonly client: RefsApiClient;
   readonly calls: string[];
+  readonly refreshCalls: string[];
 }
 
 function stubRefsApi(
   responses: Partial<Record<string, RefsLoadResult>> = {},
+  refreshResponses: Partial<Record<string, RefreshResult>> = {},
 ): StubRefsApi {
   const calls: string[] = [];
+  const refreshCalls: string[] = [];
   const client = {
     load(id: string): Observable<RefsLoadResult> {
       calls.push(id);
       const fallback: RefsLoadResult = { state: 'ok', refs: REFS_DEFAULT };
       return of(responses[id] ?? fallback);
     },
+    refresh(id: string): Observable<RefreshResult> {
+      refreshCalls.push(id);
+      const fallback: RefreshResult = { state: 'ok', refs: REFS_DEFAULT };
+      return of(refreshResponses[id] ?? fallback);
+    },
   } as unknown as RefsApiClient;
-  return { client, calls };
+  return { client, calls, refreshCalls };
 }
 
 function mount(
@@ -338,6 +351,7 @@ describe('SourcesPickerOverlayComponent', () => {
         },
       } as unknown as RefsApiClient,
       calls: [],
+      refreshCalls: [],
     };
     const { fixture } = mount(TWO_SOURCES, 'right', lateApi);
     const root = fixture.nativeElement as HTMLElement;
@@ -436,6 +450,43 @@ describe('SourcesPickerOverlayComponent', () => {
     (root.querySelector('[data-source-id="left"]') as HTMLElement).click();
     fixture.detectChanges();
     expect(search().value).toBe('');
+  });
+
+  it('clicking ⟳ Refresh remotes calls refresh() with the focused source id and replaces the ref list with the fresh response', () => {
+    const fresh: RefsResponse = {
+      head: { ref: 'HEAD', sha: SHA_B, kind: 'head' },
+      branches: [{ ref: 'release', sha: SHA_B, kind: 'branch' }],
+      remoteBranches: [],
+      tags: [],
+    };
+    const api = stubRefsApi({}, { right: { state: 'ok', refs: fresh } });
+    const { fixture } = mount(TWO_SOURCES, 'right', api);
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('[data-ref="main"]')).toBeTruthy();
+    (root.querySelector('[data-testid="refs-refresh"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(api.refreshCalls).toEqual(['right']);
+    expect(root.querySelector('[data-ref="main"]')).toBeNull();
+    expect(root.querySelector('[data-ref="release"]')).toBeTruthy();
+    expect(root.querySelector('[data-testid="refs-refresh-error"]')).toBeNull();
+  });
+
+  it('clicking ⟳ Refresh remotes on a fetch-failed response renders the failure class inline and preserves the previously-rendered ref list', () => {
+    const api = stubRefsApi(
+      {},
+      { right: { state: 'fetch-failed', kind: 'network' } },
+    );
+    const { fixture } = mount(TWO_SOURCES, 'right', api);
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('[data-ref="main"]')).toBeTruthy();
+    (root.querySelector('[data-testid="refs-refresh"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const errEl = root.querySelector('[data-testid="refs-refresh-error"]');
+    expect(errEl).toBeTruthy();
+    expect((errEl?.textContent ?? '').toLowerCase()).toContain('network');
+    // List preserved.
+    expect(root.querySelector('[data-ref="main"]')).toBeTruthy();
+    expect(root.querySelector('[data-ref="feat/x"]')).toBeTruthy();
   });
 
   it('emits applied with the initial selection when Apply is clicked without picking another row', () => {
