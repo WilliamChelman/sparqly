@@ -34,3 +34,7 @@ This is the same simplification ADR-0004 applied to `view.from`, lifted one leve
 - **Result cache**: keys are unchanged. Pre-existing cache entries for non-target views remain on disk and are simply not read; no migration needed.
 - **Breaking change**: configs that relied on multi-source merging at the command boundary (multi-glob positional, array `--sources`, `createServer({ sources: [a, b] })` with intent to merge) stop working. No deprecation window — sparqly is in alpha.
 - **Glossary**: `CONTEXT.md` adds **Source registry**, **Target source**, **Default source**; rewrites `query` and `serve` relationships for the single-target model.
+
+## Amendment — ADR-0027 (split globs)
+
+A **File source** synthesized as the child of a **split glob** is a valid single target for `query`, `hash`, and `diff` — the meta and any one of its children are each single targets, and the picker remains single-select on those pages. Multi-file scoping (selecting two or more children at once) is explicitly out of scope; users compose multiple files via the meta-as-union plus SPARQL `VALUES`, or via a declared view. The single-target contract this ADR sets is preserved unchanged.

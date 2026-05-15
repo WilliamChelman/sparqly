@@ -33,3 +33,7 @@ The default flip is **scoped to `diff` only**. `query`, `serve`, `format`, and `
 - **Breaking config rename** — any existing config using `transforms: [{ annotate: ... }]` must migrate to `annotateSource`. Zod's closed-key validation produces an `unrecognized key` error pointing at the offending position; we accept that error UX rather than ship a hint refinement.
 - **`html` diff output is now line-number-rich by default** for the common inline-glob CLI use case. The "feature works without ceremony" is the whole point of the ADR.
 - **Sets precedent for command-scoped implicit transforms.** Future commands with output formats that depend on a transform may inject it the same way (e.g. a hypothetical SHACL-aware diff format injecting a SHACL-validation transform). The pattern: implicit prepend, explicit declaration wins, `--skip-auto-<transform-name>` flag for opt-out.
+
+## Amendment — ADR-0027 (split globs)
+
+`diff`'s implicit `annotateSource` injection applies uniformly to **File source** targets (split-glob children) and to **Glob source** targets in **graph-diff** mode. A `diff` between two children of the same split glob — or between a child and any other glob/file target — produces source records on both sides, so per-file URIs disambiguate which side a record came from. The opt-out flag `--skip-auto-source-annotation` and the explicit-wins rule behave identically whether the target is a meta or a child.
