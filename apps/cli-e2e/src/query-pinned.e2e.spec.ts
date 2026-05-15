@@ -119,6 +119,79 @@ describe('sparqly query --at — pinned glob (ADR-0029, issue #272)', () => {
   });
 });
 
+// ADR-0029, issue #275 — `sparqly query @docs:v1.2.0` must desugar to
+// `sparqly query @docs --at v1.2.0`, producing byte-identical output.
+describe('sparqly query @id:ref — positional address parity (ADR-0029, issue #275)', () => {
+  let repo: string;
+  let configPath: string;
+
+  beforeAll(async () => {
+    repo = await mkdtemp(join(tmpdir(), 'sparqly-query-positional-pin-'));
+    const foaf = join(repo, 'foaf.ttl');
+    await writeFile(foaf, OLD_TTL);
+    await git(repo, ['init', '-q', '-b', 'main']);
+    await git(repo, ['add', '.']);
+    await git(repo, ['commit', '-q', '-m', 'first']);
+    await git(repo, ['tag', '-a', 'v1.2.0', '-m', 'release v1.2.0']);
+    await writeFile(foaf, NEW_TTL);
+    await git(repo, ['add', '.']);
+    await git(repo, ['commit', '-q', '-m', 'second']);
+
+    configPath = join(repo, 'sparqly.config.yaml');
+    await writeFile(
+      configPath,
+      dedent`
+        sources:
+          - id: docs
+            glob: "foaf.ttl"
+      ` + '\n',
+    );
+  }, 30_000);
+
+  afterAll(async () => {
+    if (repo) await rm(repo, { recursive: true, force: true });
+  });
+
+  it('`@docs:v1.2.0` produces byte-identical stdout to `@docs --at v1.2.0`', async () => {
+    const positional = await runCli(
+      [
+        'query',
+        '@docs:v1.2.0',
+        '--config',
+        configPath,
+        '-q',
+        SELECT_OBJECTS,
+        '--quiet',
+      ],
+      { cwd: repo },
+    );
+    const flag = await runCli(
+      [
+        'query',
+        '@docs',
+        '--config',
+        configPath,
+        '-q',
+        SELECT_OBJECTS,
+        '--at',
+        'v1.2.0',
+        '--quiet',
+      ],
+      { cwd: repo },
+    );
+
+    expect(positional.exitCode, `stderr=${positional.stderr}`).toBe(0);
+    expect(flag.exitCode, `stderr=${flag.stderr}`).toBe(0);
+    expect(positional.stdout).toBe(flag.stdout);
+
+    const json = JSON.parse(positional.stdout);
+    const objects = json.results.bindings.map(
+      (b: { o: { value: string } }) => b.o.value,
+    );
+    expect(objects).toEqual(['http://example.org/old']);
+  });
+});
+
 // ADR-0029, issue #274 — split-glob enumeration walks the git tree at the
 // resolved SHA. Files added after the ref must be absent (no `@docs/added.ttl`
 // child); files deleted after the ref must be present (`@docs/keep.ttl` is the

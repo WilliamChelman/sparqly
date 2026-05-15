@@ -1,3 +1,4 @@
+import { parseSourceAddress } from './address';
 import { TRANSFORM_REGISTRY } from './transform-registry';
 import {
   parseTransformList,
@@ -123,6 +124,13 @@ export interface ParsedViewSource extends DefaultMarkerField {
   kind: 'view';
   id: string;
   from: string;
+  /**
+   * Optional pin attached to the `from:` upstream (ADR-0029, slice 4). Set when
+   * `from:` was given as `@<id>:<ref>`; propagated to the upstream glob at
+   * view-resolution time so the view query runs against the upstream's git-tree
+   * content at that ref. Non-glob upstreams reject this at resolve time.
+   */
+  fromGitRef?: string;
   query?: string;
   queryFile?: string;
   cache?: ParsedViewCache;
@@ -398,8 +406,6 @@ function parseEmpty(input: SourceSpecObjectInput): ParsedEmptySource {
   return { kind: 'empty', id: input.id, ...defaultMarker };
 }
 
-const VIEW_REF_PREFIX = /^@(.+)$/;
-
 function parseView(input: SourceSpecObjectInput): ParsedViewSource {
   if (input.id === undefined) {
     throw new Error('view source: `id` is required');
@@ -414,13 +420,14 @@ function parseView(input: SourceSpecObjectInput): ParsedViewSource {
       'view source: `from` must be a `@id` ref string (e.g. `@my-source`)',
     );
   }
-  const match = VIEW_REF_PREFIX.exec(input.from);
-  if (!match) {
+  const addr = parseSourceAddress(input.from);
+  if (addr.isErr()) {
     throw new Error(
       `view source: \`from\` entry ${JSON.stringify(input.from)} must be a \`@id\` ref (e.g. \`@my-source\`)`,
     );
   }
-  const ref = match[1];
+  const ref = addr.value.id;
+  const fromGitRef = addr.value.ref;
   const hasQuery = input.query !== undefined;
   const hasQueryFile = input.queryFile !== undefined;
   if (hasQuery && hasQueryFile) {
@@ -438,6 +445,7 @@ function parseView(input: SourceSpecObjectInput): ParsedViewSource {
     id: input.id,
     from: ref,
   };
+  if (fromGitRef !== undefined) out.fromGitRef = fromGitRef;
   if (hasQuery) out.query = input.query;
   if (hasQueryFile) out.queryFile = input.queryFile;
   if (input.cache !== undefined) {

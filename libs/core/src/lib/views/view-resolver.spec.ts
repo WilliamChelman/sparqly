@@ -629,6 +629,68 @@ describe('resolveView — failure surfacing', () => {
     const view = registry[1] as ParsedViewSource;
     await expect(resolveView({ view, registry })).rejects.toThrow();
   });
+
+  // ADR-0029 / issue #275 slice 4: a `from: @<id>:<ref>` against a non-glob
+  // upstream is rejected as "not yet supported" at expand time — view-of-view
+  // chain propagation is slice #6. The shape of the typed error is the
+  // contract the e2e in `view-from-pinned-glob.e2e.spec.ts` relies on.
+  it('errors when view `from:` pin targets another view (deferred to slice #6)', async () => {
+    const a = join(dir, 'a.ttl');
+    await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: a },
+      {
+        id: 'inner',
+        from: '@raw',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+      {
+        id: 'outer',
+        from: '@inner:v1.2.0',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+    ]);
+    const view = registry[2] as ParsedViewSource;
+    const result = await resolveViewResult({ view, registry });
+    expect(result.isErr()).toBe(true);
+    const err = result._unsafeUnwrapErr();
+    expect(err.kind).toBe('git-pin');
+    expect(err.message).toMatch(/view-of-view|slice #6|not yet supported/i);
+  });
+
+  it('errors when view `from:` pin targets an endpoint upstream', async () => {
+    const registry = parseSourceSpecs([
+      { id: 'remote', endpoint: 'http://example.org/sparql' },
+      {
+        id: 'pinned-remote',
+        from: '@remote:v1.2.0',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+    const result = await resolveViewResult({ view, registry });
+    expect(result.isErr()).toBe(true);
+    const err = result._unsafeUnwrapErr();
+    expect(err.kind).toBe('git-pin');
+    expect(err.message).toMatch(/endpoint|cannot pin|not yet supported/i);
+  });
+
+  it('errors when view `from:` pin targets an empty upstream', async () => {
+    const registry = parseSourceSpecs([
+      { id: 'composer', empty: true },
+      {
+        id: 'pinned-empty',
+        from: '@composer:v1.2.0',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+    const result = await resolveViewResult({ view, registry });
+    expect(result.isErr()).toBe(true);
+    const err = result._unsafeUnwrapErr();
+    expect(err.kind).toBe('git-pin');
+    expect(err.message).toMatch(/empty|cannot pin|not yet supported/i);
+  });
 });
 
 describe('resolveView — query event logging (ADR-0020)', () => {

@@ -12,9 +12,14 @@ import {
   type ParsedSource,
   type ParsedViewSource,
 } from '../sources';
+import { GitCliPort } from '../sources/git/git-cli-port';
+import type { GitPort } from '../sources/git/git-port';
+import { defaultRepoDiscovery } from '../sources/git/pin-glob-source';
+import type { RepoDiscoveryDeps } from '../sources/git/discover-repo';
 import type {
   CacheIoError,
   EndpointFetchError,
+  GitPinError,
   GlobLoadError,
   QueryExecutionError,
   ViewReferenceError,
@@ -30,6 +35,11 @@ import {
   type ViewQueryLogMeta,
 } from './view-pass-through';
 import { validateViewQueryResult } from './view-query-validate';
+import {
+  loadPinnedGlobUpstreamResult,
+  nonGlobPinError,
+  type PinDeps,
+} from './view-resolver-glob-pin';
 
 export interface ResolveViewOptions {
   view: ParsedViewSource;
@@ -50,6 +60,22 @@ export interface ResolveViewOptions {
    * (ADR-0020).
    */
   logger?: SparqlyLogger;
+  /**
+   * Absolute path to the project config dir, used as the resolution root for
+   * `gitRoot:` relative overrides when a view propagates a pin (ADR-0029,
+   * #275). Defaults to `process.cwd()`.
+   */
+  configDir?: string;
+  /**
+   * Injectable git port used when the view's `from:` carries a `:<ref>` pin
+   * (ADR-0029, #275). Defaults to the production `GitCliPort`.
+   */
+  gitPort?: GitPort;
+  /**
+   * Injectable repo-discovery deps used when the view's `from:` carries a
+   * `:<ref>` pin (ADR-0029, #275). Defaults to a filesystem-backed impl.
+   */
+  repoDiscovery?: RepoDiscoveryDeps;
 }
 
 /**
@@ -64,7 +90,8 @@ export type ResolveViewError =
   | CacheIoError
   | EndpointFetchError
   | QueryExecutionError
-  | GlobLoadError;
+  | GlobLoadError
+  | GitPinError;
 
 /**
  * Primary `Result`-typed view resolver. Returns the same `Store` payload as
@@ -76,6 +103,11 @@ export type ResolveViewError =
 export function resolveViewResult(
   opts: ResolveViewOptions,
 ): ResultAsync<Store, ResolveViewError> {
+  const pinDeps: PinDeps = {
+    configDir: opts.configDir ?? process.cwd(),
+    gitPort: opts.gitPort ?? new GitCliPort(),
+    repoDiscovery: opts.repoDiscovery ?? defaultRepoDiscovery,
+  };
   return resolveViewWithCacheResult(
     opts.view,
     opts.registry,
@@ -84,6 +116,7 @@ export function resolveViewResult(
     opts.now,
     opts.engine,
     opts.logger,
+    pinDeps,
   );
 }
 
@@ -107,9 +140,10 @@ function resolveViewWithCacheResult(
   now: (() => number) | undefined,
   engine: ComunicaQueryEngine | undefined,
   logger: SparqlyLogger | undefined,
+  pinDeps: PinDeps,
 ): ResultAsync<Store, ResolveViewError> {
   if (!view.cache || !cacheDir) {
-    return resolveViewInternal(view, registry, stack, cacheDir, now, engine, logger);
+    return resolveViewInternal(view, registry, stack, cacheDir, now, engine, logger, pinDeps);
   }
   const upstream = collectCacheUpstream(view, registry);
   const binding: ViewCacheBinding = {
@@ -120,14 +154,14 @@ function resolveViewWithCacheResult(
     registry,
     loadProbeStore:
       view.cache.strategy === 'freshness'
-        ? () => loadUpstreamPromise(view, registry, stack, cacheDir, now, engine, logger)
+        ? () => loadUpstreamPromise(view, registry, stack, cacheDir, now, engine, logger, pinDeps)
         : undefined,
   };
   return cacheLookupResult(binding).andThen<Store, ResolveViewError>((hit) => {
     if (hit.freshness === 'fresh' && hit.store) {
       return okAsync(hit.store);
     }
-    return resolveViewInternal(view, registry, stack, cacheDir, now, engine, logger).andThen(
+    return resolveViewInternal(view, registry, stack, cacheDir, now, engine, logger, pinDeps).andThen(
       (fresh) => cacheStoreViewResult(binding, fresh).map(() => fresh),
     );
   });
@@ -146,8 +180,9 @@ async function loadUpstreamPromise(
   now: (() => number) | undefined,
   engine: ComunicaQueryEngine | undefined,
   logger: SparqlyLogger | undefined,
+  pinDeps: PinDeps,
 ): Promise<Store> {
-  const result = await loadUpstreamResult(view, registry, stack, cacheDir, now, engine, logger);
+  const result = await loadUpstreamResult(view, registry, stack, cacheDir, now, engine, logger, pinDeps);
   if (result.isErr()) throw new Error(result.error.message);
   return result.value;
 }
@@ -173,6 +208,7 @@ function resolveViewInternal(
   now: (() => number) | undefined,
   engine: ComunicaQueryEngine | undefined,
   logger: SparqlyLogger | undefined,
+  pinDeps: PinDeps,
 ): ResultAsync<Store, ResolveViewError> {
   return loadViewQueryResult(view).andThen<Store, ResolveViewError>((query) =>
     validateViewQueryResult(query, { viewId: view.id })
@@ -181,6 +217,11 @@ function resolveViewInternal(
         const meta = { source: view.id, logger };
         const singleEndpoint = singleEndpointUpstream(view, registry);
         if (singleEndpoint) {
+          if (view.fromGitRef !== undefined) {
+            return errAsync<Store, ResolveViewError>(
+              nonGlobPinError(view, 'endpoint', singleEndpoint.id ?? view.from),
+            );
+          }
           return resolveViewPassThroughResult({
             endpoint: singleEndpoint,
             viewQuery: validQuery,
@@ -196,6 +237,7 @@ function resolveViewInternal(
           now,
           engine,
           logger,
+          pinDeps,
         ).andThen((upstreamStore) =>
           runViewQueryResult(upstreamStore, validQuery, engine, meta),
         );
@@ -240,6 +282,7 @@ function loadUpstreamResult(
   now: (() => number) | undefined,
   engine: ComunicaQueryEngine | undefined,
   logger: SparqlyLogger | undefined,
+  pinDeps: PinDeps,
 ): ResultAsync<Store, ResolveViewError> {
   const refId = view.from;
   const byId = buildRegistryById(registry);
@@ -277,6 +320,9 @@ function loadUpstreamResult(
     });
   }
   if (upstream.kind === 'view') {
+    if (view.fromGitRef !== undefined) {
+      return errAsync(nonGlobPinError(view, 'view', refId));
+    }
     return resolveViewWithCacheResult(
       upstream,
       registry,
@@ -285,12 +331,19 @@ function loadUpstreamResult(
       now,
       engine,
       logger,
+      pinDeps,
     );
   }
   if (upstream.kind === 'empty') {
+    if (view.fromGitRef !== undefined) {
+      return errAsync(nonGlobPinError(view, 'empty', refId));
+    }
     return okAsync(new Store());
   }
   if (upstream.kind === 'file') {
+    if (view.fromGitRef !== undefined) {
+      return errAsync(nonGlobPinError(view, 'file', refId));
+    }
     return loadRdfResult({ sources: upstream.path, logger }).map((sub) =>
       applyTransformPipeline(sub.store, upstream.transforms ?? [], {
         perFileRecords: sub.perFileRecords,
@@ -310,12 +363,7 @@ function loadUpstreamResult(
       }" for ref @${refId}`,
     });
   }
-  const globUpstream = upstream;
-  return loadRdfResult({ sources: globUpstream.glob, logger }).map((sub) =>
-    applyTransformPipeline(sub.store, globUpstream.transforms ?? [], {
-      perFileRecords: sub.perFileRecords,
-    }),
-  );
+  return loadPinnedGlobUpstreamResult(view, upstream, logger, pinDeps);
 }
 
 function buildRegistryById(

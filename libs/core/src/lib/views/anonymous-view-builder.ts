@@ -10,6 +10,7 @@ import {
 import type {
   CacheIoError,
   EndpointFetchError,
+  GitPinError,
   GlobLoadError,
   QueryExecutionError,
   ViewReferenceError,
@@ -31,7 +32,8 @@ export type ResolveAnonymousViewError =
   | CacheIoError
   | EndpointFetchError
   | QueryExecutionError
-  | GlobLoadError;
+  | GlobLoadError
+  | GitPinError;
 
 const ANON_UPSTREAM_ID = '__sparqly_anon_upstream__';
 const ANON_VIEW_ID = '__sparqly_anon_view__';
