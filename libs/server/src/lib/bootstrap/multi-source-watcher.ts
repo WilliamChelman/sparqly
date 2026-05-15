@@ -169,6 +169,11 @@ async function startMultiSourceWatcher(
   ): void => {
     for (const [t, runner] of sourceRunners) {
       if (!pathBelongsToPlan(path, t.plan)) continue;
+      // Watcher gate (ADR-0029): a pinned glob's content + enumeration are
+      // frozen to the git tree at the resolved SHA, so working-tree events
+      // never bust its cache. Skip both child-cache invalidation and the
+      // source-runner rebuild for pinned sources.
+      if (isPinnedGlob(t.target)) continue;
       if (setChanged && isSplitGlobMeta(t.target)) {
         const parentId = t.plan.id;
         if (parentId !== undefined && deps.metaChildrenCache.hasParent(parentId)) {
@@ -303,6 +308,10 @@ function createSourceRunner(
 
 function isSplitGlobMeta(src: ParsedSource): boolean {
   return src.kind === 'glob' && src.splitByFile === true;
+}
+
+function isPinnedGlob(src: ParsedSource): boolean {
+  return src.kind === 'glob' && src.gitRef !== undefined;
 }
 
 function pathBelongsToPlan(

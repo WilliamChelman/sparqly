@@ -80,6 +80,18 @@ export class EngineMap {
     return entry.engine;
   }
 
+  /**
+   * Returns the {@link ParsedSource} the engine for `id` was built from, or
+   * `undefined` when there is no engine for that id. Used by the route layer
+   * to detect when an incoming `@id:ref` request asks for a pin different from
+   * the one the pre-built engine carries — in that case the request resolves a
+   * fresh, on-demand pinned engine instead of reusing the registered one
+   * (ADR-0029, issue #278).
+   */
+  getSource(id: string): ParsedSource | undefined {
+    return this.entries.get(id)?.source;
+  }
+
   getStoreRef(id: string): StoreRef | undefined {
     return this.entries.get(id)?.storeRef;
   }

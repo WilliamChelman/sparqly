@@ -1,5 +1,9 @@
 import { err, ok, type Result } from 'neverthrow';
-import { parseSourceSpec, type ParsedSource } from '../sources';
+import {
+  parseSourceAddress,
+  parseSourceSpec,
+  type ParsedSource,
+} from '../sources';
 import type { TargetError } from './errors';
 
 /**
@@ -43,14 +47,25 @@ function resolveRef(
   registry: ReadonlyArray<ParsedSource>,
   target: string,
 ): Result<ParsedSource, TargetError> {
-  const ref = target.slice(1);
-  const entry = registry.find((s) => s.id === ref);
-  if (entry !== undefined) return ok(entry);
-  return err({
-    kind: 'unknown-ref',
-    ref: target,
-    availableIds: collectIds(registry),
-  });
+  const parsed = parseSourceAddress(target);
+  const id = parsed.isOk() ? parsed.value.id : target.slice(1);
+  const ref = parsed.isOk() ? parsed.value.ref : undefined;
+  const entry = registry.find((s) => s.id === id);
+  if (entry === undefined) {
+    return err({
+      kind: 'unknown-ref',
+      ref: target,
+      availableIds: collectIds(registry),
+    });
+  }
+  if (ref === undefined) return ok(entry);
+  return ok(applyAddressPin(entry, ref));
+}
+
+function applyAddressPin(entry: ParsedSource, ref: string): ParsedSource {
+  if (entry.kind === 'glob') return { ...entry, gitRef: ref };
+  if (entry.kind === 'view') return { ...entry, fromGitRef: ref };
+  return entry;
 }
 
 function collectIds(
