@@ -1,9 +1,10 @@
 import { parseSourceAddress, type ParsedSource } from 'core';
 
 /**
- * Thrown when `--at <ref>` is supplied alongside a non-glob target. The flag
- * desugars onto `ParsedGlobSource.gitRef` (ADR-0029, issue #272 slice 1) and
- * has no meaning for endpoints, views, references, or empty sources.
+ * Thrown when `--at <ref>` is supplied alongside a target it cannot pin —
+ * endpoints, empty sources, references, or split-glob file children. Glob
+ * targets desugar onto `gitRef` and view targets desugar onto `fromGitRef`,
+ * which propagates down the `from:` chain (ADR-0029).
  */
 export class AtOverrideError extends Error {
   constructor(target: ParsedSource) {
@@ -16,16 +17,19 @@ export class AtOverrideError extends Error {
 
 /**
  * Apply the invocation-time `--at <ref>` override to a resolved target. Returns
- * the target unchanged when `at` is absent; replaces (or sets) `gitRef` on a
- * glob target when present; throws {@link AtOverrideError} for any other kind.
+ * the target unchanged when `at` is absent; sets `gitRef` on a glob target;
+ * sets `fromGitRef` on a view target so the resolver walks the `from:` chain
+ * down to the leaf glob (ADR-0029); throws {@link AtOverrideError} for any
+ * other kind.
  */
 export function applyAtOverride(
   target: ParsedSource,
   at: string | undefined,
 ): ParsedSource {
   if (at === undefined) return target;
-  if (target.kind !== 'glob') throw new AtOverrideError(target);
-  return { ...target, gitRef: at };
+  if (target.kind === 'glob') return { ...target, gitRef: at };
+  if (target.kind === 'view') return { ...target, fromGitRef: at };
+  throw new AtOverrideError(target);
 }
 
 /**

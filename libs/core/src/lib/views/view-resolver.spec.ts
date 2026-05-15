@@ -630,23 +630,22 @@ describe('resolveView — failure surfacing', () => {
     await expect(resolveView({ view, registry })).rejects.toThrow();
   });
 
-  // ADR-0029 / issue #275 slice 4: a `from: @<id>:<ref>` against a non-glob
-  // upstream is rejected as "not yet supported" at expand time — view-of-view
-  // chain propagation is slice #6. The shape of the typed error is the
-  // contract the e2e in `view-from-pinned-glob.e2e.spec.ts` relies on.
-  it('errors when view `from:` pin targets another view (deferred to slice #6)', async () => {
-    const a = join(dir, 'a.ttl');
-    await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
+  // ADR-0029 / issue #277 slice 6: `from: @<view-id>:<ref>` now propagates the
+  // ref down the `from:` chain until it reaches a glob, replacing the
+  // slice-#275 stub error. End-to-end content correctness lives in
+  // `view-pin-propagation.e2e.spec.ts`; here we only verify that the chain
+  // resolves (no longer rejected up-front).
+  it('errors when view `from:` pin chain bottoms on an endpoint, naming the offending id', async () => {
     const registry = parseSourceSpecs([
-      { id: 'raw', glob: a },
+      { id: 'live', endpoint: 'http://example.org/sparql' },
       {
-        id: 'inner',
-        from: '@raw',
+        id: 'mid',
+        from: '@live',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       },
       {
         id: 'outer',
-        from: '@inner:v1.2.0',
+        from: '@mid:v1.2.0',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       },
     ]);
@@ -655,10 +654,12 @@ describe('resolveView — failure surfacing', () => {
     expect(result.isErr()).toBe(true);
     const err = result._unsafeUnwrapErr();
     expect(err.kind).toBe('git-pin');
-    expect(err.message).toMatch(/view-of-view|slice #6|not yet supported/i);
+    expect(err.message).toMatch(/@outer/);
+    expect(err.message).toMatch(/@live/);
+    expect(err.message).toMatch(/endpoint/);
   });
 
-  it('errors when view `from:` pin targets an endpoint upstream', async () => {
+  it('errors when view `from:` pin targets an endpoint upstream directly', async () => {
     const registry = parseSourceSpecs([
       { id: 'remote', endpoint: 'http://example.org/sparql' },
       {
@@ -672,10 +673,11 @@ describe('resolveView — failure surfacing', () => {
     expect(result.isErr()).toBe(true);
     const err = result._unsafeUnwrapErr();
     expect(err.kind).toBe('git-pin');
-    expect(err.message).toMatch(/endpoint|cannot pin|not yet supported/i);
+    expect(err.message).toMatch(/@remote/);
+    expect(err.message).toMatch(/endpoint/);
   });
 
-  it('errors when view `from:` pin targets an empty upstream', async () => {
+  it('errors when view `from:` pin targets an empty upstream directly', async () => {
     const registry = parseSourceSpecs([
       { id: 'composer', empty: true },
       {
@@ -689,7 +691,8 @@ describe('resolveView — failure surfacing', () => {
     expect(result.isErr()).toBe(true);
     const err = result._unsafeUnwrapErr();
     expect(err.kind).toBe('git-pin');
-    expect(err.message).toMatch(/empty|cannot pin|not yet supported/i);
+    expect(err.message).toMatch(/@composer/);
+    expect(err.message).toMatch(/empty/);
   });
 });
 
