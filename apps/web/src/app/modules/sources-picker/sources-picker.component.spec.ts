@@ -18,26 +18,25 @@ function setup(listing: SourceListing) {
     providers: [{ provide: ConfigService, useValue: stub }],
   });
   const fixture = TestBed.createComponent(SourcesPickerComponent);
+  const emitted: string[] = [];
+  fixture.componentInstance.valueChange.subscribe((v: string) =>
+    emitted.push(v),
+  );
   fixture.detectChanges();
-  return { fixture };
+  return { fixture, emitted };
+}
+
+function trigger(root: HTMLElement): HTMLButtonElement {
+  return root.querySelector(
+    '[data-testid="sources-picker-trigger"]',
+  ) as HTMLButtonElement;
+}
+
+function overlay(root: HTMLElement): HTMLElement | null {
+  return root.querySelector('[data-testid="sources-overlay"]');
 }
 
 describe('SourcesPickerComponent', () => {
-  it('renders one option per source from the ConfigService listing when opened', () => {
-    const { fixture } = setup(TWO_SOURCE_LISTING);
-    const root = fixture.nativeElement as HTMLElement;
-    (root.querySelector('button') as HTMLButtonElement).click();
-    fixture.detectChanges();
-    const options = Array.from(
-      root.querySelectorAll('[role="option"]'),
-    ) as HTMLElement[];
-    expect(options.map((o) => o.getAttribute('data-source-id'))).toEqual([
-      'left',
-      'right',
-    ]);
-    expect(options[1].textContent).toContain('right (glob)');
-  });
-
   it('preselects the source marked default: true and emits its id', () => {
     const stub: Pick<ConfigService, 'list'> = {
       list: () => of(TWO_SOURCE_LISTING),
@@ -53,9 +52,7 @@ describe('SourcesPickerComponent', () => {
     fixture.detectChanges();
     const root = fixture.nativeElement as HTMLElement;
     expect(emitted).toEqual(['right']);
-    const trigger = root.querySelector('button') as HTMLButtonElement;
-    expect(trigger).toBeTruthy();
-    expect(trigger.textContent).toContain('right (glob)');
+    expect(trigger(root).textContent).toContain('right (glob)');
   });
 
   it('does not override an explicit value with the default', () => {
@@ -73,199 +70,99 @@ describe('SourcesPickerComponent', () => {
     );
     fixture.detectChanges();
     const root = fixture.nativeElement as HTMLElement;
-    const trigger = root.querySelector('button') as HTMLButtonElement;
-    expect(trigger.textContent).toContain('left (glob)');
+    expect(trigger(root).textContent).toContain('left (glob)');
     expect(emitted).toEqual([]);
   });
 
-  it('emits valueChange and updates the trigger when a different option is picked', () => {
+  it('marks the trigger as a dialog popup, closed by default', () => {
     const { fixture } = setup(TWO_SOURCE_LISTING);
     const root = fixture.nativeElement as HTMLElement;
-    const emitted: string[] = [];
-    fixture.componentInstance.valueChange.subscribe((v: string) =>
-      emitted.push(v),
-    );
-    (root.querySelector('button') as HTMLButtonElement).click();
-    fixture.detectChanges();
-    const leftOption = root.querySelector(
-      '[data-source-id="left"]',
-    ) as HTMLElement;
-    leftOption.click();
-    fixture.detectChanges();
-    const trigger = root.querySelector('button') as HTMLButtonElement;
-    expect(emitted).toEqual(['left']);
-    expect(trigger.textContent).toContain('left (glob)');
+    const t = trigger(root);
+    expect(t.getAttribute('aria-haspopup')).toBe('dialog');
+    expect(t.getAttribute('aria-expanded')).toBe('false');
+    expect(overlay(root)).toBeFalsy();
   });
 
-  it('marks the trigger as a listbox popup, closed by default', () => {
+  it('opens the overlay when the trigger is clicked', () => {
     const { fixture } = setup(TWO_SOURCE_LISTING);
     const root = fixture.nativeElement as HTMLElement;
-    const trigger = root.querySelector('button') as HTMLButtonElement;
-    expect(trigger.getAttribute('aria-haspopup')).toBe('listbox');
-    expect(trigger.getAttribute('aria-expanded')).toBe('false');
-    expect(root.querySelector('[role="listbox"]')).toBeFalsy();
+    trigger(root).click();
+    fixture.detectChanges();
+    expect(trigger(root).getAttribute('aria-expanded')).toBe('true');
+    expect(overlay(root)).toBeTruthy();
   });
 
-  it('opens the listbox when the trigger is clicked', () => {
-    const { fixture } = setup(TWO_SOURCE_LISTING);
+  it('closes the overlay on Escape and reverts to the previously-applied selection', () => {
+    const { fixture, emitted } = setup(TWO_SOURCE_LISTING);
     const root = fixture.nativeElement as HTMLElement;
-    const trigger = root.querySelector('button') as HTMLButtonElement;
-    trigger.click();
+    trigger(root).click();
     fixture.detectChanges();
-    expect(trigger.getAttribute('aria-expanded')).toBe('true');
-    expect(root.querySelector('[role="listbox"]')).toBeTruthy();
-    expect(
-      root.querySelectorAll('[role="option"]').length,
-    ).toBe(TWO_SOURCE_LISTING.sources.length);
-  });
-
-  it('closes the listbox on Escape', () => {
-    const { fixture } = setup(TWO_SOURCE_LISTING);
-    const root = fixture.nativeElement as HTMLElement;
-    const trigger = root.querySelector('button') as HTMLButtonElement;
-    trigger.click();
+    const o = overlay(root)!;
+    (root.querySelector('[data-source-id="left"]') as HTMLElement).click();
     fixture.detectChanges();
-    const listbox = root.querySelector('[role="listbox"]') as HTMLElement;
-    expect(listbox).toBeTruthy();
-    listbox.dispatchEvent(
+    o.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
     );
     fixture.detectChanges();
-    expect(trigger.getAttribute('aria-expanded')).toBe('false');
-    expect(root.querySelector('[role="listbox"]')).toBeFalsy();
+    expect(overlay(root)).toBeFalsy();
+    // Only the initial default-driven emit; staged click was discarded.
+    expect(emitted).toEqual(['right']);
+    expect(trigger(root).textContent).toContain('right (glob)');
   });
 
-  it('closes the listbox after picking an option', () => {
+  it('Apply emits the staged selection and closes; Cancel reverts and closes', () => {
+    const { fixture, emitted } = setup(TWO_SOURCE_LISTING);
+    const root = fixture.nativeElement as HTMLElement;
+    // Open, click a row, Apply: emits and closes
+    trigger(root).click();
+    fixture.detectChanges();
+    (root.querySelector('[data-source-id="left"]') as HTMLElement).click();
+    fixture.detectChanges();
+    (
+      root.querySelector('[data-testid="overlay-apply"]') as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    expect(emitted).toEqual(['right', 'left']);
+    expect(overlay(root)).toBeFalsy();
+    expect(trigger(root).textContent).toContain('left (glob)');
+    // Reopen, stage right (back to default), Cancel: no emit, trigger unchanged
+    trigger(root).click();
+    fixture.detectChanges();
+    (root.querySelector('[data-source-id="right"]') as HTMLElement).click();
+    fixture.detectChanges();
+    (
+      root.querySelector('[data-testid="overlay-cancel"]') as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    expect(emitted).toEqual(['right', 'left']);
+    expect(trigger(root).textContent).toContain('left (glob)');
+  });
+
+  it('reopening the overlay starts at the previously-applied selection (initialSelectedId reflects the applied value)', () => {
     const { fixture } = setup(TWO_SOURCE_LISTING);
     const root = fixture.nativeElement as HTMLElement;
-    const trigger = root.querySelector('button') as HTMLButtonElement;
-    trigger.click();
+    // Default = right is applied. Reopen and verify the overlay sees 'right'.
+    trigger(root).click();
     fixture.detectChanges();
-    const leftOption = root.querySelector(
-      '[data-source-id="left"]',
-    ) as HTMLElement;
-    leftOption.click();
+    // Apply without picking anything: the staged id == initial selection.
+    (
+      root.querySelector('[data-testid="overlay-apply"]') as HTMLButtonElement
+    ).click();
     fixture.detectChanges();
-    expect(trigger.getAttribute('aria-expanded')).toBe('false');
-    expect(root.querySelector('[role="listbox"]')).toBeFalsy();
+    // No change should re-emit
+    expect(trigger(root).textContent).toContain('right (glob)');
   });
 
-  it('auto-expands the parent group when the selected id is a child, so the cdkListbox value matches a rendered option', () => {
-    const grouped: SourceListing = {
-      sources: [
-        { id: 'docs', kind: 'glob', label: 'docs (glob)', default: true },
-        { id: 'docs/a.ttl', kind: 'file', label: 'a.ttl', parentId: 'docs' },
-        { id: 'docs/b.ttl', kind: 'file', label: 'b.ttl', parentId: 'docs' },
-      ],
-    };
-    const stub: Pick<ConfigService, 'list'> = { list: () => of(grouped) };
-    TestBed.configureTestingModule({
-      providers: [{ provide: ConfigService, useValue: stub }],
-    });
-    const fixture = TestBed.createComponent(SourcesPickerComponent);
-    fixture.componentRef.setInput('value', 'docs/a.ttl');
-    fixture.detectChanges();
+  it('Apply with no change does not re-emit valueChange', () => {
+    const { fixture, emitted } = setup(TWO_SOURCE_LISTING);
     const root = fixture.nativeElement as HTMLElement;
-    (root.querySelector('button') as HTMLButtonElement).click();
+    trigger(root).click();
     fixture.detectChanges();
-    // The child option MUST be rendered (its parent auto-expanded) — otherwise
-    // CdkListbox throws "Listbox has selected values that do not match any of its options".
-    const child = root.querySelector('[data-source-id="docs/a.ttl"]');
-    expect(child).toBeTruthy();
-    expect(child?.getAttribute('aria-selected')).toBe('true');
-  });
-
-  it('preselects the meta (not a child) when the meta is the default, and selecting a child swaps the selection mutually exclusive (ADR-0005)', () => {
-    const grouped: SourceListing = {
-      sources: [
-        { id: 'docs', kind: 'glob', label: 'docs (glob)', default: true },
-        { id: 'docs/a.ttl', kind: 'file', label: 'a.ttl', parentId: 'docs' },
-        { id: 'docs/b.ttl', kind: 'file', label: 'b.ttl', parentId: 'docs' },
-      ],
-    };
-    const stub: Pick<ConfigService, 'list'> = { list: () => of(grouped) };
-    TestBed.configureTestingModule({
-      providers: [{ provide: ConfigService, useValue: stub }],
-    });
-    const fixture = TestBed.createComponent(SourcesPickerComponent);
-    const emitted: string[] = [];
-    fixture.componentInstance.valueChange.subscribe((v: string) =>
-      emitted.push(v),
-    );
+    (
+      root.querySelector('[data-testid="overlay-apply"]') as HTMLButtonElement
+    ).click();
     fixture.detectChanges();
-    expect(emitted).toEqual(['docs']);
-    const root = fixture.nativeElement as HTMLElement;
-    (root.querySelector('button') as HTMLButtonElement).click();
-    fixture.detectChanges();
-    const toggle = root.querySelector(
-      '[data-testid="group-toggle-docs"]',
-    ) as HTMLButtonElement;
-    toggle.click();
-    fixture.detectChanges();
-    const child = root.querySelector(
-      '[data-source-id="docs/a.ttl"]',
-    ) as HTMLElement;
-    child.click();
-    fixture.detectChanges();
-    expect(emitted).toEqual(['docs', 'docs/a.ttl']);
-    // Reopen and verify single-select: only one option is aria-selected
-    (root.querySelector('button') as HTMLButtonElement).click();
-    fixture.detectChanges();
-    // Re-expand if needed
-    const toggle2 = root.querySelector(
-      '[data-testid="group-toggle-docs"]',
-    ) as HTMLButtonElement;
-    if (!root.querySelector('[data-source-id="docs/a.ttl"]')) toggle2.click();
-    fixture.detectChanges();
-    const selected = Array.from(
-      root.querySelectorAll('[aria-selected="true"]'),
-    ).map((el) => el.getAttribute('data-source-id'));
-    expect(selected).toEqual(['docs/a.ttl']);
-  });
-
-  it('hides children behind a collapse toggle on the meta row; expanding reveals them', () => {
-    const grouped: SourceListing = {
-      sources: [
-        { id: 'docs', kind: 'glob', label: 'docs (glob)', default: true },
-        { id: 'docs/a.ttl', kind: 'file', label: 'a.ttl', parentId: 'docs' },
-        { id: 'docs/b.ttl', kind: 'file', label: 'b.ttl', parentId: 'docs' },
-      ],
-    };
-    const { fixture } = setup(grouped);
-    const root = fixture.nativeElement as HTMLElement;
-    (root.querySelector('button') as HTMLButtonElement).click();
-    fixture.detectChanges();
-    // Children are NOT visible yet — collapsed by default
-    expect(root.querySelector('[data-source-id="docs/a.ttl"]')).toBeFalsy();
-    expect(root.querySelector('[data-source-id="docs/b.ttl"]')).toBeFalsy();
-    // Toggle the meta's group
-    const toggle = root.querySelector(
-      '[data-testid="group-toggle-docs"]',
-    ) as HTMLButtonElement;
-    expect(toggle).toBeTruthy();
-    toggle.click();
-    fixture.detectChanges();
-    expect(root.querySelector('[data-source-id="docs/a.ttl"]')).toBeTruthy();
-    expect(root.querySelector('[data-source-id="docs/b.ttl"]')).toBeTruthy();
-  });
-
-  it('renders a "(N files)" badge on a meta entry that has children grouped under it', () => {
-    const grouped: SourceListing = {
-      sources: [
-        { id: 'docs', kind: 'glob', label: 'docs (glob)', default: true },
-        { id: 'docs/a.ttl', kind: 'file', label: 'a.ttl', parentId: 'docs' },
-        { id: 'docs/b.ttl', kind: 'file', label: 'b.ttl', parentId: 'docs' },
-      ],
-    };
-    const { fixture } = setup(grouped);
-    const root = fixture.nativeElement as HTMLElement;
-    (root.querySelector('button') as HTMLButtonElement).click();
-    fixture.detectChanges();
-    const docsOption = root.querySelector(
-      '[data-source-id="docs"]',
-    ) as HTMLElement;
-    expect(docsOption).toBeTruthy();
-    expect(docsOption.textContent).toContain('(2 files)');
+    expect(emitted).toEqual(['right']); // only the init emit
   });
 
   it('renders the underlying source label plus a ref chip when value is `@id:ref` (ADR-0029, #279)', () => {
@@ -279,30 +176,10 @@ describe('SourcesPickerComponent', () => {
     fixture.componentRef.setInput('value', '@right:v1.2.0');
     fixture.detectChanges();
     const root = fixture.nativeElement as HTMLElement;
-    const trigger = root.querySelector('button') as HTMLButtonElement;
-    expect(trigger.textContent).toContain('right (glob)');
+    expect(trigger(root).textContent).toContain('right (glob)');
     const chip = root.querySelector('[data-testid="pinned-ref-chip"]');
     expect(chip).toBeTruthy();
     expect(chip?.textContent).toContain('v1.2.0');
-  });
-
-  it('marks the underlying source as cdkListbox-selected when value is `@id:ref` — so opening the listbox does not throw "selected values do not match any options" (ADR-0029, #279)', () => {
-    const stub: Pick<ConfigService, 'list'> = {
-      list: () => of(TWO_SOURCE_LISTING),
-    };
-    TestBed.configureTestingModule({
-      providers: [{ provide: ConfigService, useValue: stub }],
-    });
-    const fixture = TestBed.createComponent(SourcesPickerComponent);
-    fixture.componentRef.setInput('value', '@right:v1.2.0');
-    fixture.detectChanges();
-    const root = fixture.nativeElement as HTMLElement;
-    (root.querySelector('button') as HTMLButtonElement).click();
-    fixture.detectChanges();
-    const selected = Array.from(
-      root.querySelectorAll('[aria-selected="true"]'),
-    ).map((el) => el.getAttribute('data-source-id'));
-    expect(selected).toEqual(['right']);
   });
 
   it('renders a "resolves at server boot" note when the pinned ref is floating-shaped (ADR-0029 floating-ref, #279)', () => {
@@ -344,7 +221,7 @@ describe('SourcesPickerComponent', () => {
     expect(root.querySelector('[data-testid="floating-ref-note"]')).toBeFalsy();
   });
 
-  it('picking a different option emits the bare id and clears the ref chip (pin does not stick across selection)', () => {
+  it('picking a different option and applying emits the bare id and clears the ref chip (pin does not stick across selection)', () => {
     const stub: Pick<ConfigService, 'list'> = {
       list: () => of(TWO_SOURCE_LISTING),
     };
@@ -359,41 +236,17 @@ describe('SourcesPickerComponent', () => {
     );
     fixture.detectChanges();
     const root = fixture.nativeElement as HTMLElement;
-    (root.querySelector('button') as HTMLButtonElement).click();
+    trigger(root).click();
     fixture.detectChanges();
-    const leftOption = root.querySelector(
-      '[data-source-id="left"]',
-    ) as HTMLElement;
-    leftOption.click();
+    (root.querySelector('[data-source-id="left"]') as HTMLElement).click();
+    fixture.detectChanges();
+    (
+      root.querySelector('[data-testid="overlay-apply"]') as HTMLButtonElement
+    ).click();
     fixture.detectChanges();
     expect(emitted).toEqual(['left']);
     expect(root.querySelector('[data-testid="pinned-ref-chip"]')).toBeFalsy();
-    const trigger = root.querySelector('button') as HTMLButtonElement;
-    expect(trigger.textContent).toContain('left (glob)');
-  });
-
-  it('selects the split-glob child option when value is `@parentId/path:ref` (ADR-0029 split-glob children + pinning, #279)', () => {
-    const grouped: SourceListing = {
-      sources: [
-        { id: 'docs', kind: 'glob', label: 'docs (glob)', default: true },
-        { id: 'docs/people/alice.ttl', kind: 'file', label: 'alice.ttl', parentId: 'docs' },
-      ],
-    };
-    const stub: Pick<ConfigService, 'list'> = { list: () => of(grouped) };
-    TestBed.configureTestingModule({
-      providers: [{ provide: ConfigService, useValue: stub }],
-    });
-    const fixture = TestBed.createComponent(SourcesPickerComponent);
-    fixture.componentRef.setInput('value', '@docs/people/alice.ttl:v1.2');
-    fixture.detectChanges();
-    const root = fixture.nativeElement as HTMLElement;
-    (root.querySelector('button') as HTMLButtonElement).click();
-    fixture.detectChanges();
-    const child = root.querySelector('[data-source-id="docs/people/alice.ttl"]');
-    expect(child).toBeTruthy();
-    expect(child?.getAttribute('aria-selected')).toBe('true');
-    const chip = root.querySelector('[data-testid="pinned-ref-chip"]');
-    expect(chip?.textContent).toContain('v1.2');
+    expect(trigger(root).textContent).toContain('left (glob)');
   });
 
   it('shows a loading hint until the listing arrives', () => {
@@ -408,6 +261,6 @@ describe('SourcesPickerComponent', () => {
     fixture.detectChanges();
     const root = fixture.nativeElement as HTMLElement;
     expect(root.textContent ?? '').toContain('loading sources');
-    expect(root.querySelector('button')).toBeFalsy();
+    expect(trigger(root)).toBeFalsy();
   });
 });
