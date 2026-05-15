@@ -1,7 +1,20 @@
 import { TestBed } from '@angular/core/testing';
 import { of, Subject } from 'rxjs';
+import { provideHttpClient } from '@angular/common/http';
+import {
+  HttpTestingController,
+  provideHttpClientTesting,
+} from '@angular/common/http/testing';
 import { SourcesPickerComponent } from './sources-picker.component';
 import { ConfigService, type SourceListing } from '@app/core';
+import type { RefsResponse } from './refs-api.client';
+
+const REFS_OK: RefsResponse = {
+  head: { ref: 'HEAD', sha: 'a'.repeat(40), kind: 'head' },
+  branches: [{ ref: 'main', sha: 'a'.repeat(40), kind: 'branch' }],
+  remoteBranches: [],
+  tags: [],
+};
 
 const TWO_SOURCE_LISTING: SourceListing = {
   sources: [
@@ -15,7 +28,11 @@ function setup(listing: SourceListing) {
     list: () => of(listing),
   };
   TestBed.configureTestingModule({
-    providers: [{ provide: ConfigService, useValue: stub }],
+    providers: [
+      { provide: ConfigService, useValue: stub },
+      provideHttpClient(),
+      provideHttpClientTesting(),
+    ],
   });
   const fixture = TestBed.createComponent(SourcesPickerComponent);
   const emitted: string[] = [];
@@ -42,7 +59,11 @@ describe('SourcesPickerComponent', () => {
       list: () => of(TWO_SOURCE_LISTING),
     };
     TestBed.configureTestingModule({
-      providers: [{ provide: ConfigService, useValue: stub }],
+      providers: [
+        { provide: ConfigService, useValue: stub },
+        provideHttpClient(),
+        provideHttpClientTesting(),
+      ],
     });
     const fixture = TestBed.createComponent(SourcesPickerComponent);
     const emitted: string[] = [];
@@ -60,7 +81,11 @@ describe('SourcesPickerComponent', () => {
       list: () => of(TWO_SOURCE_LISTING),
     };
     TestBed.configureTestingModule({
-      providers: [{ provide: ConfigService, useValue: stub }],
+      providers: [
+        { provide: ConfigService, useValue: stub },
+        provideHttpClient(),
+        provideHttpClientTesting(),
+      ],
     });
     const fixture = TestBed.createComponent(SourcesPickerComponent);
     fixture.componentRef.setInput('value', 'left');
@@ -170,7 +195,11 @@ describe('SourcesPickerComponent', () => {
       list: () => of(TWO_SOURCE_LISTING),
     };
     TestBed.configureTestingModule({
-      providers: [{ provide: ConfigService, useValue: stub }],
+      providers: [
+        { provide: ConfigService, useValue: stub },
+        provideHttpClient(),
+        provideHttpClientTesting(),
+      ],
     });
     const fixture = TestBed.createComponent(SourcesPickerComponent);
     fixture.componentRef.setInput('value', '@right:v1.2.0');
@@ -187,7 +216,11 @@ describe('SourcesPickerComponent', () => {
       list: () => of(TWO_SOURCE_LISTING),
     };
     TestBed.configureTestingModule({
-      providers: [{ provide: ConfigService, useValue: stub }],
+      providers: [
+        { provide: ConfigService, useValue: stub },
+        provideHttpClient(),
+        provideHttpClientTesting(),
+      ],
     });
     const fixture = TestBed.createComponent(SourcesPickerComponent);
     fixture.componentRef.setInput('value', '@right:main');
@@ -203,7 +236,11 @@ describe('SourcesPickerComponent', () => {
       list: () => of(TWO_SOURCE_LISTING),
     };
     TestBed.configureTestingModule({
-      providers: [{ provide: ConfigService, useValue: stub }],
+      providers: [
+        { provide: ConfigService, useValue: stub },
+        provideHttpClient(),
+        provideHttpClientTesting(),
+      ],
     });
     const fixture = TestBed.createComponent(SourcesPickerComponent);
     fixture.componentRef.setInput(
@@ -226,7 +263,11 @@ describe('SourcesPickerComponent', () => {
       list: () => of(TWO_SOURCE_LISTING),
     };
     TestBed.configureTestingModule({
-      providers: [{ provide: ConfigService, useValue: stub }],
+      providers: [
+        { provide: ConfigService, useValue: stub },
+        provideHttpClient(),
+        provideHttpClientTesting(),
+      ],
     });
     const fixture = TestBed.createComponent(SourcesPickerComponent);
     fixture.componentRef.setInput('value', '@right:v1.2.0');
@@ -249,13 +290,55 @@ describe('SourcesPickerComponent', () => {
     expect(trigger(root).textContent).toContain('left (glob)');
   });
 
+  it('reuses the refs cache while the overlay stays open (no second HTTP request when refocusing the same source)', () => {
+    const { fixture } = setup(TWO_SOURCE_LISTING);
+    const http = TestBed.inject(HttpTestingController);
+    const root = fixture.nativeElement as HTMLElement;
+    trigger(root).click();
+    fixture.detectChanges();
+    const req1 = http.expectOne('/api/sources/right/refs');
+    req1.flush(REFS_OK);
+    fixture.detectChanges();
+    // Refocusing the same source row should not trigger a new request.
+    (root.querySelector('[data-source-id="right"]') as HTMLElement).click();
+    fixture.detectChanges();
+    http.expectNone('/api/sources/right/refs');
+    http.verify();
+  });
+
+  it('drops the refs cache when the overlay closes — reopening on the same source re-fetches', () => {
+    const { fixture } = setup(TWO_SOURCE_LISTING);
+    const http = TestBed.inject(HttpTestingController);
+    const root = fixture.nativeElement as HTMLElement;
+    // Open #1
+    trigger(root).click();
+    fixture.detectChanges();
+    http.expectOne('/api/sources/right/refs').flush(REFS_OK);
+    fixture.detectChanges();
+    // Close via Cancel
+    (
+      root.querySelector('[data-testid="overlay-cancel"]') as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    // Open #2 — cache should have been dropped with the previous overlay instance.
+    trigger(root).click();
+    fixture.detectChanges();
+    const req2 = http.expectOne('/api/sources/right/refs');
+    req2.flush(REFS_OK);
+    http.verify();
+  });
+
   it('shows a loading hint until the listing arrives', () => {
     const subj = new Subject<SourceListing>();
     const stub: Pick<ConfigService, 'list'> = {
       list: () => subj.asObservable(),
     };
     TestBed.configureTestingModule({
-      providers: [{ provide: ConfigService, useValue: stub }],
+      providers: [
+        { provide: ConfigService, useValue: stub },
+        provideHttpClient(),
+        provideHttpClientTesting(),
+      ],
     });
     const fixture = TestBed.createComponent(SourcesPickerComponent);
     fixture.detectChanges();

@@ -2,19 +2,26 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
   EventEmitter,
+  inject,
   input,
   Output,
   signal,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { SourceListingEntry } from '@app/core';
+import { RefsApiClient } from './refs-api.client';
+import { RefsPanelComponent, type RefsPanelState } from './refs-panel.component';
 import { searchSources, type SourceSearchResult } from './source-search';
 
 @Component({
   selector: 'app-sources-picker-overlay',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [RefsApiClient],
+  imports: [RefsPanelComponent],
   template: `
     <div
       data-testid="sources-overlay"
@@ -64,7 +71,8 @@ import { searchSources, type SourceSearchResult } from './source-search';
                       [attr.data-dimmed]="hit.dimmed ? 'true' : null"
                       [attr.aria-selected]="stagedId() === hit.entry.id ? 'true' : null"
                       class="block w-full cursor-pointer rounded-md px-2.5 py-1.5 text-left font-sans text-[13px] text-foreground-muted hover:bg-surface-sunken hover:text-foreground aria-selected:bg-surface-sunken aria-selected:text-foreground data-[dimmed=true]:opacity-50"
-                      (click)="stagedId.set(hit.entry.id)"
+                      [attr.tabindex]="stagedId() === hit.entry.id ? 0 : -1"
+                      (click)="focusSource(hit.entry.id)"
                     >
                       @let segs = labelSegments(hit.entry.label);
                       <span>{{ segs.before }}</span>
@@ -81,11 +89,12 @@ import { searchSources, type SourceSearchResult } from './source-search';
               </ul>
             }
           </div>
-          <div
-            data-testid="refs-panel-stub"
-            class="flex flex-col items-center justify-center p-6 text-center text-[13px] text-foreground-faint"
-          >
-            Refs panel coming soon
+          <div class="flex flex-col overflow-y-auto p-3">
+            <app-refs-panel
+              [state]="refsState()"
+              [stagedRef]="stagedRef()"
+              (stagedRefChange)="stagedRef.set($event)"
+            />
           </div>
         </div>
         <div class="flex items-center justify-end gap-2 border-t border-border bg-surface-sunken px-3 py-2">
@@ -109,12 +118,18 @@ import { searchSources, type SourceSearchResult } from './source-search';
 export class SourcesPickerOverlayComponent {
   readonly sources = input<ReadonlyArray<SourceListingEntry>>([]);
   readonly initialSelectedId = input<string>('');
+  readonly initialRef = input<string>('');
   readonly stagedId = signal<string>('');
+  readonly stagedRef = signal<string>('');
   readonly query = signal<string>('');
+  readonly refsState = signal<RefsPanelState>({ kind: 'idle' });
 
   readonly result = computed<SourceSearchResult>(() =>
     searchSources(this.sources(), this.query()),
   );
+
+  private readonly refsApi = inject(RefsApiClient);
+  private readonly destroyRef = inject(DestroyRef);
 
   @Output() readonly applied = new EventEmitter<string>();
   @Output() readonly canceled = new EventEmitter<void>();
@@ -122,7 +137,35 @@ export class SourcesPickerOverlayComponent {
   constructor() {
     effect(() => {
       this.stagedId.set(this.initialSelectedId());
+      this.stagedRef.set(this.initialRef());
     });
+
+    effect(() => {
+      const id = this.stagedId();
+      if (id === '') {
+        this.refsState.set({ kind: 'idle' });
+        return;
+      }
+      this.refsState.set({ kind: 'loading' });
+      this.refsApi
+        .load(id)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe((r) => {
+          if (this.stagedId() !== id) return;
+          if (r.state === 'ok') {
+            this.refsState.set({ kind: 'loaded', refs: r.refs });
+          } else {
+            this.refsState.set({ kind: 'no-git-repo', sourceKind: r.kind });
+          }
+        });
+    });
+  }
+
+  focusSource(id: string): void {
+    if (this.stagedId() !== id) {
+      this.stagedRef.set('');
+    }
+    this.stagedId.set(id);
   }
 
   onQueryInput(ev: Event): void {
@@ -143,7 +186,9 @@ export class SourcesPickerOverlayComponent {
   }
 
   onApply(): void {
-    this.applied.emit(this.stagedId());
+    const id = this.stagedId();
+    const ref = this.stagedRef();
+    this.applied.emit(ref === '' ? id : `@${id}:${ref}`);
   }
 
   moveStaged(delta: number, ev: Event): void {
@@ -158,7 +203,7 @@ export class SourcesPickerOverlayComponent {
           ? 0
           : ids.length - 1
         : (current + delta + ids.length) % ids.length;
-    this.stagedId.set(ids[nextIdx]);
+    this.focusSource(ids[nextIdx]);
   }
 
   onCancel(): void {
