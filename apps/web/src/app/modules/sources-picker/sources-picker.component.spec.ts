@@ -268,6 +268,134 @@ describe('SourcesPickerComponent', () => {
     expect(docsOption.textContent).toContain('(2 files)');
   });
 
+  it('renders the underlying source label plus a ref chip when value is `@id:ref` (ADR-0029, #279)', () => {
+    const stub: Pick<ConfigService, 'list'> = {
+      list: () => of(TWO_SOURCE_LISTING),
+    };
+    TestBed.configureTestingModule({
+      providers: [{ provide: ConfigService, useValue: stub }],
+    });
+    const fixture = TestBed.createComponent(SourcesPickerComponent);
+    fixture.componentRef.setInput('value', '@right:v1.2.0');
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const trigger = root.querySelector('button') as HTMLButtonElement;
+    expect(trigger.textContent).toContain('right (glob)');
+    const chip = root.querySelector('[data-testid="pinned-ref-chip"]');
+    expect(chip).toBeTruthy();
+    expect(chip?.textContent).toContain('v1.2.0');
+  });
+
+  it('marks the underlying source as cdkListbox-selected when value is `@id:ref` — so opening the listbox does not throw "selected values do not match any options" (ADR-0029, #279)', () => {
+    const stub: Pick<ConfigService, 'list'> = {
+      list: () => of(TWO_SOURCE_LISTING),
+    };
+    TestBed.configureTestingModule({
+      providers: [{ provide: ConfigService, useValue: stub }],
+    });
+    const fixture = TestBed.createComponent(SourcesPickerComponent);
+    fixture.componentRef.setInput('value', '@right:v1.2.0');
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    (root.querySelector('button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const selected = Array.from(
+      root.querySelectorAll('[aria-selected="true"]'),
+    ).map((el) => el.getAttribute('data-source-id'));
+    expect(selected).toEqual(['right']);
+  });
+
+  it('renders a "resolves at server boot" note when the pinned ref is floating-shaped (ADR-0029 floating-ref, #279)', () => {
+    const stub: Pick<ConfigService, 'list'> = {
+      list: () => of(TWO_SOURCE_LISTING),
+    };
+    TestBed.configureTestingModule({
+      providers: [{ provide: ConfigService, useValue: stub }],
+    });
+    const fixture = TestBed.createComponent(SourcesPickerComponent);
+    fixture.componentRef.setInput('value', '@right:main');
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const note = root.querySelector('[data-testid="floating-ref-note"]');
+    expect(note).toBeTruthy();
+    expect(note?.textContent?.toLowerCase()).toContain('resolves at server boot');
+  });
+
+  it('omits the "resolves at server boot" note when the pinned ref is a full SHA (40 hex chars)', () => {
+    const stub: Pick<ConfigService, 'list'> = {
+      list: () => of(TWO_SOURCE_LISTING),
+    };
+    TestBed.configureTestingModule({
+      providers: [{ provide: ConfigService, useValue: stub }],
+    });
+    const fixture = TestBed.createComponent(SourcesPickerComponent);
+    fixture.componentRef.setInput(
+      'value',
+      '@right:0123456789abcdef0123456789abcdef01234567',
+    );
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('[data-testid="floating-ref-note"]')).toBeFalsy();
+  });
+
+  it('omits the "resolves at server boot" note when no ref is in use (unpinned value)', () => {
+    const { fixture } = setup(TWO_SOURCE_LISTING);
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('[data-testid="floating-ref-note"]')).toBeFalsy();
+  });
+
+  it('picking a different option emits the bare id and clears the ref chip (pin does not stick across selection)', () => {
+    const stub: Pick<ConfigService, 'list'> = {
+      list: () => of(TWO_SOURCE_LISTING),
+    };
+    TestBed.configureTestingModule({
+      providers: [{ provide: ConfigService, useValue: stub }],
+    });
+    const fixture = TestBed.createComponent(SourcesPickerComponent);
+    fixture.componentRef.setInput('value', '@right:v1.2.0');
+    const emitted: string[] = [];
+    fixture.componentInstance.valueChange.subscribe((v: string) =>
+      emitted.push(v),
+    );
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    (root.querySelector('button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const leftOption = root.querySelector(
+      '[data-source-id="left"]',
+    ) as HTMLElement;
+    leftOption.click();
+    fixture.detectChanges();
+    expect(emitted).toEqual(['left']);
+    expect(root.querySelector('[data-testid="pinned-ref-chip"]')).toBeFalsy();
+    const trigger = root.querySelector('button') as HTMLButtonElement;
+    expect(trigger.textContent).toContain('left (glob)');
+  });
+
+  it('selects the split-glob child option when value is `@parentId/path:ref` (ADR-0029 split-glob children + pinning, #279)', () => {
+    const grouped: SourceListing = {
+      sources: [
+        { id: 'docs', kind: 'glob', label: 'docs (glob)', default: true },
+        { id: 'docs/people/alice.ttl', kind: 'file', label: 'alice.ttl', parentId: 'docs' },
+      ],
+    };
+    const stub: Pick<ConfigService, 'list'> = { list: () => of(grouped) };
+    TestBed.configureTestingModule({
+      providers: [{ provide: ConfigService, useValue: stub }],
+    });
+    const fixture = TestBed.createComponent(SourcesPickerComponent);
+    fixture.componentRef.setInput('value', '@docs/people/alice.ttl:v1.2');
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    (root.querySelector('button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const child = root.querySelector('[data-source-id="docs/people/alice.ttl"]');
+    expect(child).toBeTruthy();
+    expect(child?.getAttribute('aria-selected')).toBe('true');
+    const chip = root.querySelector('[data-testid="pinned-ref-chip"]');
+    expect(chip?.textContent).toContain('v1.2');
+  });
+
   it('shows a loading hint until the listing arrives', () => {
     const subj = new Subject<SourceListing>();
     const stub: Pick<ConfigService, 'list'> = {

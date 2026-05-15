@@ -351,6 +351,29 @@ describe('QueryPage', () => {
     http.verify();
   });
 
+  it('flows a pinned-address URL `?source=@<id>:<ref>` straight through to the SPARQL endpoint (ADR-0029 bookmark/share, #279)', async () => {
+    const initialUrl =
+      '/query?source=' +
+      encodeURIComponent('@a:v1.2.0') +
+      '&query=' +
+      encodeURIComponent('ASK { ?s ?p ?o }');
+    const { fixture, http, router } = await setup(TWO, initialUrl);
+    expect(pickerStub(fixture).value).toBe('@a:v1.2.0');
+    const root = fixture.nativeElement as HTMLElement;
+    (root.querySelector('button[data-testid=run-query]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const req = http.expectOne(`/api/sparql/${encodeURIComponent('@a:v1.2.0')}`);
+    req.flush(
+      JSON.stringify({ head: { vars: [] }, results: { bindings: [] } }),
+      { headers: { 'Content-Type': 'application/sparql-results+json' } },
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const tree = router.parseUrl(router.url);
+    expect(tree.queryParamMap.get('source')).toBe('@a:v1.2.0');
+    http.verify();
+  });
+
   it('mirrors picked source and editor text into URL query params', async () => {
     const { fixture, router } = await setup(TWO);
     const root = fixture.nativeElement as HTMLElement;

@@ -13,6 +13,17 @@ import {
 } from '@angular/core';
 import { ConfigService, type SourceListingEntry } from '@app/core';
 
+function splitPinnedAddress(value: string): { id: string; ref?: string } {
+  if (!value.startsWith('@')) return { id: value };
+  const body = value.slice(1);
+  const lastColon = body.lastIndexOf(':');
+  if (lastColon === -1) return { id: body };
+  const id = body.slice(0, lastColon);
+  const ref = body.slice(lastColon + 1);
+  if (id.length === 0 || ref.length === 0) return { id: body };
+  return { id, ref };
+}
+
 @Component({
   selector: 'app-sources-picker',
   standalone: true,
@@ -36,6 +47,13 @@ import { ConfigService, type SourceListingEntry } from '@app/core';
         >
         <span class="h-3.5 w-px bg-border" aria-hidden="true"></span>
         <span class="font-sans font-medium">{{ triggerLabel() }}</span>
+        @if (parsedValue().ref; as ref) {
+          <span
+            data-testid="pinned-ref-chip"
+            class="rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-[10px] text-foreground-muted"
+            >@{{ ref }}</span
+          >
+        }
         <svg
           class="h-2.5 w-2.5 text-foreground-muted transition-transform duration-200"
           [class.rotate-180]="open()"
@@ -52,12 +70,23 @@ import { ConfigService, type SourceListingEntry } from '@app/core';
           />
         </svg>
       </button>
+      @if (parsedValue().ref; as ref) {
+        @if (isFloatingRefShape(ref)) {
+          <p
+            data-testid="floating-ref-note"
+            class="mt-1 text-[11px] text-foreground-faint"
+          >
+            <code class="font-mono">@{{ ref }}</code> resolves at server boot —
+            restart sparqly to pick up a moved branch tip.
+          </p>
+        }
+      }
       @if (open()) {
         <ul
           cdkListbox
           class="absolute left-0 top-[calc(100%+6px)] z-10 m-0 min-w-full list-none rounded-lg border border-border bg-surface p-1.5 shadow-md"
           [tabindex]="0"
-          [cdkListboxValue]="[selectedId()]"
+          [cdkListboxValue]="[parsedValue().id]"
           (cdkListboxValueChange)="onPick($event.value)"
           (keydown.escape)="close()"
         >
@@ -118,8 +147,11 @@ export class SourcesPickerComponent implements OnInit {
     return m;
   });
   readonly expandedGroups = signal<ReadonlySet<string>>(new Set());
+  readonly parsedValue = computed<{ id: string; ref?: string }>(() =>
+    splitPinnedAddress(this.selectedId()),
+  );
   readonly triggerLabel = computed(() => {
-    const id = this.selectedId();
+    const id = this.parsedValue().id;
     const entry = (this.sources() ?? []).find((s) => s.id === id);
     return entry?.label ?? '';
   });
@@ -132,7 +164,7 @@ export class SourcesPickerComponent implements OnInit {
 
   constructor() {
     effect(() => {
-      const id = this.selectedId();
+      const id = this.parsedValue().id;
       const entry = (this.sources() ?? []).find((s) => s.id === id);
       const parentId = entry?.parentId;
       if (!parentId) return;
@@ -170,6 +202,10 @@ export class SourcesPickerComponent implements OnInit {
       this.valueChange.emit(id);
     }
     this.close();
+  }
+
+  isFloatingRefShape(ref: string): boolean {
+    return !/^[0-9a-f]{40}$/i.test(ref);
   }
 
   ngOnInit(): void {
