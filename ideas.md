@@ -6,14 +6,11 @@
 - terminal table in cli mode
 - other output formats
 - literal lexical-form normalization — `sparqly hash` (PRD #21) and `sparqly diff` (PRD #30) both use RDFC-1.0, which canonicalizes blank nodes and statement order but does not normalize literals, so `"01"^^xsd:integer` and `"1"^^xsd:integer` hash differently and appear as both an addition and a removal in `diff`. Same for `"1.0"` vs `"1.00"`, language tag casing, etc. Add a normalization pass (numeric/date lexical forms, language-tag case) so semantically-equal literals hash and diff equal.
-- docs (md or website with github pages)
 - mcp?
 - merge/split files
 - ontology / shacl / skos views
-- mutable files + rdf\* for file line number
-- ontology to shacl
-- linting
-  - duplicated triples (either in file or across graphs)
+- mutable files
+- ontology to shacl (dedicated transformation?)
 - mutation dive
   - file update
   - remote changes (vendor specific?)
@@ -28,19 +25,11 @@
   - trigger data dump (ui and/or ipc)
   - download full query result
   - per-source `mutable` (today registry-wide on `serve`; once Yasgui is registry-aware, individual `@id`s may want independent read-only/mutable policies — e.g. one editable scratch source alongside read-only declared globs)
-- diff
-  - prefixes
-  - rdf:list compression
-  - ! more logs on startup (at least port used)
-- add transform to views (or add a new type 'pipe'?) to be explicit about materialization?
-- 'did you mean...' on config errors (typos and such)
-- config rationale: source on one part, cmd specific on the other + extend?
 - re-evaluate exit codes
 - more comprehensive e2e tests with era files
-- diff using templting library instead of "manual" html
+- diff cmd using templating library instead of "manual" html
 - https://diffs.com/
 - service queries using source ids
-  - 2 paths implementation: sonnet vs. opus (for comparison)
 - quick queries (default select with or withou ?g, filled with prefixes from config) + saved queries that make sense
 - new source kind: remote file
 - i18n
@@ -52,8 +41,5 @@
   - either one source or all (if one source, nice selector). All by default (following hints)
 - virtual files for diffing sparql endpoints
 - free text source in web for quick anon source (unsecure)
-- git interactions only through a dedicated cli class in BE to ensure nothing dangerous can happen (no push or whatever)
 - avoid expansion on single source glob
-- single file as ref target
-- design system (reusable buttons, ui kit page, etc)
-- api doc page
+- api doc page (nestjs swagger)

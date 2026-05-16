@@ -14,6 +14,7 @@ import type {
   Triple,
   TripleResult,
 } from '@app/core';
+import { CardComponent } from '@app/modules/card';
 import { EyebrowComponent } from '@app/modules/eyebrow';
 import { parseRdfString, type FormatSerialization } from 'common';
 import { DataFactory, type Quad } from 'n3';
@@ -53,6 +54,7 @@ interface DownloadOption {
   selector: 'app-result-pane',
   standalone: true,
   imports: [
+    CardComponent,
     ErrorConstellationComponent,
     EyebrowComponent,
     FormattedResultComponent,
@@ -97,7 +99,7 @@ interface DownloadOption {
         </div>
       }
       @case ('result') {
-        <div class="overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
+        <div app-card>
           <div
             app-eyebrow
             class="flex items-center justify-between gap-4 border-b border-border-muted bg-surface-sunken px-4 py-2.5 text-[11px]"

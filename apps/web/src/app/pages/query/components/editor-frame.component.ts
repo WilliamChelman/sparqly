@@ -7,6 +7,7 @@ import {
   ViewChild,
   computed,
 } from '@angular/core';
+import { CardComponent } from '@app/modules/card';
 import { EyebrowComponent } from '@app/modules/eyebrow';
 import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
 
@@ -14,10 +15,10 @@ import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
   selector: 'app-editor-frame',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [EyebrowComponent, YasqeEditorComponent],
+  imports: [CardComponent, EyebrowComponent, YasqeEditorComponent],
   host: { class: 'block' },
   template: `
-    <div class="overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
+    <div app-card>
       <div
         class="my-head flex items-center justify-between border-b border-border-muted bg-surface-sunken px-3.5 py-2"
       >
