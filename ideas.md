@@ -47,8 +47,6 @@
 - init command to bootstrap a config file?
 - inverse dependency on source kind: need to implement contract instead of if/elsing/switching everywhere
 - config edit ui + config hot reload
-- describe and file vs. glob union redundance
-- decorralte diff from annotation triples
 - describe hints
   - uri prefexies / pattern
   - either one source or all (if one source, nice selector). All by default (following hints)
@@ -58,3 +56,4 @@
 - avoid expansion on single source glob
 - single file as ref target
 - design system (reusable buttons, ui kit page, etc)
+- api doc page
