@@ -40,7 +40,15 @@ export interface DescribeConfig {
 
 export interface DescribeRequest {
   iri: string;
-  sources?: ReadonlyArray<string>;
+  /**
+   * Either a single source id (with optional leading `@`) to describe against,
+   * or omitted to fan out across the served registry under the absorbing-meta
+   * rule (ADR-0033): split-glob `kind: 'file'` children whose parent meta is
+   * also served are dropped, and `kind: 'empty'` sources are dropped. An
+   * explicit id resolves the named source verbatim — no absorption, no
+   * auto-expansion.
+   */
+  source?: string;
   withProvenance?: boolean;
   perSourceLimit?: number;
   fromSourcePredicate?: string;
@@ -103,7 +111,7 @@ export class DescribeService {
     if (seedResult.isErr()) return errAsync(seedResult.error);
     const seed = seedResult.value;
 
-    const selection = this.selectSources(req.sources);
+    const selection = this.selectSources(req.source);
     if (selection.isErr()) return errAsync(selection.error);
     const selected = selection.value;
 
@@ -283,27 +291,43 @@ export class DescribeService {
       });
   }
 
+  /**
+   * Source selection under ADR-0033's single-or-all contract.
+   *
+   * - Omitted `source`: fan out across the served registry under the
+   *   absorbing-meta rule — drop split-glob `kind: 'file'` children whose
+   *   `parentId` is also served (the meta carries their quads), drop
+   *   `kind: 'empty'` sources (no data of their own), keep everything else.
+   * - Explicit `source`: resolve the named id verbatim. No absorption, no
+   *   auto-expansion. An unknown id is `empty-target`; a `reference` alias is
+   *   `reference-target`.
+   */
   private selectSources(
-    requested: ReadonlyArray<string> | undefined,
+    requested: string | undefined,
   ): Result<ParsedSource[], DescribeTopLevelError> {
-    if (requested !== undefined && requested.length === 0) {
-      return err({ kind: 'empty-target' });
+    if (requested !== undefined) {
+      const id = requested.startsWith('@') ? requested.slice(1) : requested;
+      const match = this.servedRegistry.find(
+        (s) => isSupportedKind(s) && s.id === id,
+      );
+      if (!match) return err({ kind: 'empty-target' });
+      if (match.kind === 'reference') return err({ kind: 'reference-target' });
+      return ok([match]);
     }
-    const requestedSet = requested
-      ? new Set(requested.map((s) => (s.startsWith('@') ? s.slice(1) : s)))
-      : undefined;
+    const servedIds = new Set<string>();
+    for (const src of this.servedRegistry) {
+      if (src.id !== undefined) servedIds.add(src.id);
+    }
     const out: ParsedSource[] = [];
     for (const src of this.servedRegistry) {
       if (!isSupportedKind(src)) continue;
-      const id = src.id;
-      if (id === undefined) continue;
-      if (requestedSet && !requestedSet.has(id)) continue;
+      if (src.id === undefined) continue;
+      if (src.kind === 'empty') continue;
+      if (src.kind === 'reference') continue;
+      if (src.kind === 'file' && servedIds.has(src.parentId)) continue;
       out.push(src);
     }
     if (out.length === 0) return err({ kind: 'empty-target' });
-    if (out.every((s) => s.kind === 'reference')) {
-      return err({ kind: 'reference-target' });
-    }
     return ok(out);
   }
 }

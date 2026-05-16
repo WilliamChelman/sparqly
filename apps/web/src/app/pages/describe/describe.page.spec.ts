@@ -14,23 +14,26 @@ import {
 } from '@app/core';
 import { DescribePage } from './describe.page';
 import { DescribeSectionsComponent } from './components/describe-sections.component';
-import { MultiSourcesPickerComponent } from '@app/modules/multi-sources-picker';
+import { SourcesPickerComponent } from '@app/modules/sources-picker';
 
 @Component({
-  selector: 'app-multi-sources-picker',
+  selector: 'app-sources-picker',
   standalone: true,
   template: `<div
-    data-testid="stub-multi-picker"
-    [attr.data-value]="(value ?? []).join(',')"
+    data-testid="stub-sources-picker"
+    [attr.data-value]="value ?? ''"
+    [attr.data-allow-empty]="allowEmpty ? 'true' : 'false'"
+    [attr.data-placeholder]="placeholder"
   ></div>`,
 })
-class MultiSourcesPickerStub {
-  @Input() value: string[] | undefined = undefined;
-  @Input() label = 'sources';
-  @Input() excludeKinds: ReadonlyArray<string> = [];
-  @Output() valueChange = new EventEmitter<string[]>();
+class SourcesPickerStub {
+  @Input() value: string | undefined = undefined;
+  @Input() label = 'source';
+  @Input() allowEmpty = false;
+  @Input() placeholder = '';
+  @Output() valueChange = new EventEmitter<string>();
 
-  emit(value: string[]): void {
+  emit(value: string): void {
     this.value = value;
     this.valueChange.emit(value);
   }
@@ -77,8 +80,8 @@ async function setup(
     ],
   })
     .overrideComponent(DescribePage, {
-      remove: { imports: [MultiSourcesPickerComponent] },
-      add: { imports: [MultiSourcesPickerStub] },
+      remove: { imports: [SourcesPickerComponent] },
+      add: { imports: [SourcesPickerStub] },
     })
     .compileComponents();
 
@@ -111,10 +114,10 @@ function requireDescribeSections(fixture: {
 
 function pickerStub(fixture: {
   debugElement: import('@angular/core').DebugElement;
-}): MultiSourcesPickerStub | null {
+}): SourcesPickerStub | null {
   const all = fixture.debugElement
-    .queryAll((n) => n.componentInstance instanceof MultiSourcesPickerStub)
-    .map((d) => d.componentInstance as MultiSourcesPickerStub);
+    .queryAll((n) => n.componentInstance instanceof SourcesPickerStub)
+    .map((d) => d.componentInstance as SourcesPickerStub);
   return all[0] ?? null;
 }
 
@@ -235,12 +238,15 @@ describe('DescribePage', () => {
     http.verify();
   });
 
-  it('renders the multi-sources picker', async () => {
+  it('renders the single-source picker in clearable mode with the "All sources" placeholder', async () => {
     const { fixture } = await setup();
-    expect(pickerStub(fixture)).toBeTruthy();
+    const picker = pickerStub(fixture);
+    expect(picker).toBeTruthy();
+    expect(picker?.allowEmpty).toBe(true);
+    expect(picker?.placeholder).toBe('All sources');
   });
 
-  it('omits `sources` from the request body when the picker is at its default (all selected)', async () => {
+  it('omits `source` from the request body when the picker is cleared (no override)', async () => {
     const { fixture, http } = await setup();
     const root = fixture.nativeElement as HTMLElement;
     const input = root.querySelector('input[data-testid=seed-input]') as HTMLInputElement;
@@ -248,7 +254,6 @@ describe('DescribePage', () => {
     input.dispatchEvent(new Event('input'));
     fixture.detectChanges();
 
-    // No explicit picker change → no `sources` in body.
     (root.querySelector('button[data-testid=run-describe]') as HTMLButtonElement).click();
     fixture.detectChanges();
 
@@ -263,7 +268,7 @@ describe('DescribePage', () => {
     http.verify();
   });
 
-  it('sends `sources` in the request body when the picker emits a subset', async () => {
+  it('sends `source` in the request body when the picker emits an id', async () => {
     const { fixture, http } = await setup();
     const root = fixture.nativeElement as HTMLElement;
     const input = root.querySelector('input[data-testid=seed-input]') as HTMLInputElement;
@@ -273,7 +278,7 @@ describe('DescribePage', () => {
 
     const picker = pickerStub(fixture);
     if (!picker) throw new Error('picker stub not found');
-    picker.emit(['beta']);
+    picker.emit('beta');
     fixture.detectChanges();
 
     (root.querySelector('button[data-testid=run-describe]') as HTMLButtonElement).click();
@@ -282,7 +287,7 @@ describe('DescribePage', () => {
     const req = http.expectOne('/api/describe');
     expect(req.request.body).toEqual({
       iri: 'http://example.org/alice',
-      sources: ['beta'],
+      source: 'beta',
     });
     req.flush({
       iri: 'http://example.org/alice',
@@ -293,7 +298,35 @@ describe('DescribePage', () => {
     http.verify();
   });
 
-  it('mirrors picker selection into the ?sources URL query param on submit', async () => {
+  it('omits `source` from the request body again after the picker is cleared back to empty', async () => {
+    const { fixture, http } = await setup();
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector('input[data-testid=seed-input]') as HTMLInputElement;
+    input.value = 'http://example.org/alice';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    const picker = pickerStub(fixture);
+    if (!picker) throw new Error('picker stub not found');
+    picker.emit('beta');
+    picker.emit('');
+    fixture.detectChanges();
+
+    (root.querySelector('button[data-testid=run-describe]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const req = http.expectOne('/api/describe');
+    expect(req.request.body).toEqual({ iri: 'http://example.org/alice' });
+    req.flush({
+      iri: 'http://example.org/alice',
+      quads: '',
+      total: 0,
+      perSource: {},
+    });
+    http.verify();
+  });
+
+  it('mirrors picker selection into the ?source URL query param on submit', async () => {
     const { fixture, http, router } = await setup();
     const root = fixture.nativeElement as HTMLElement;
     const input = root.querySelector('input[data-testid=seed-input]') as HTMLInputElement;
@@ -303,7 +336,7 @@ describe('DescribePage', () => {
 
     const picker = pickerStub(fixture);
     if (!picker) throw new Error('picker stub not found');
-    picker.emit(['alpha', 'beta']);
+    picker.emit('alpha');
     fixture.detectChanges();
 
     (root.querySelector('button[data-testid=run-describe]') as HTMLButtonElement).click();
@@ -311,7 +344,7 @@ describe('DescribePage', () => {
     await fixture.whenStable();
 
     const tree = router.parseUrl(router.url);
-    expect(tree.queryParamMap.get('sources')).toBe('alpha,beta');
+    expect(tree.queryParamMap.get('source')).toBe('alpha');
 
     http.expectOne('/api/describe').flush({
       iri: 'http://example.org/alice',
@@ -322,10 +355,39 @@ describe('DescribePage', () => {
     http.verify();
   });
 
-  it('seeds the picker from the ?sources URL query param', async () => {
-    const { fixture } = await setup('/describe?sources=beta');
+  it('drops the ?source URL query param when the picker is cleared and the describe re-runs', async () => {
+    const { fixture, http, router } = await setup('/describe?source=beta');
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector('input[data-testid=seed-input]') as HTMLInputElement;
+    input.value = 'http://example.org/alice';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
     const picker = pickerStub(fixture);
-    expect(picker?.value).toEqual(['beta']);
+    if (!picker) throw new Error('picker stub not found');
+    picker.emit('');
+    fixture.detectChanges();
+
+    (root.querySelector('button[data-testid=run-describe]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const tree = router.parseUrl(router.url);
+    expect(tree.queryParamMap.get('source')).toBeNull();
+
+    http.expectOne('/api/describe').flush({
+      iri: 'http://example.org/alice',
+      quads: '',
+      total: 0,
+      perSource: {},
+    });
+    http.verify();
+  });
+
+  it('seeds the picker from the ?source URL query param', async () => {
+    const { fixture } = await setup('/describe?source=beta');
+    const picker = pickerStub(fixture);
+    expect(picker?.value).toBe('beta');
   });
 
   async function runAndFlush(
@@ -461,16 +523,16 @@ describe('DescribePage', () => {
     http.verify();
   });
 
-  it('auto-runs with the ?sources subset when the URL carries iri and sources', async () => {
+  it('auto-runs with the ?source override when the URL carries iri and source', async () => {
     const { http } = await setup(
       '/describe?iri=' +
         encodeURIComponent('http://example.org/alice') +
-        '&sources=beta',
+        '&source=beta',
     );
     const req = http.expectOne('/api/describe');
     expect(req.request.body).toEqual({
       iri: 'http://example.org/alice',
-      sources: ['beta'],
+      source: 'beta',
     });
     req.flush({
       iri: 'http://example.org/alice',
@@ -622,7 +684,7 @@ describe('DescribePage', () => {
       expect(req.request.method).toBe('POST');
       expect(req.request.body).toEqual({
         iri: ALICE,
-        sources: ['remote'],
+        source: 'remote',
         expandedPaths: { remote: [[{ predicate: KNOWS, inverse: false }]] },
       });
       req.flush({
@@ -674,7 +736,7 @@ describe('DescribePage', () => {
       fixture.detectChanges();
 
       const req = http.expectOne('/api/describe');
-      expect(req.request.body.sources).toEqual(['remote']);
+      expect(req.request.body.source).toBe('remote');
       req.flush({
         iri: ALICE,
         quads:
@@ -770,7 +832,7 @@ describe('DescribePage', () => {
       expect(req.request.method).toBe('POST');
       expect(req.request.body).toEqual({
         iri: ALICE,
-        sources: ['remote'],
+        source: 'remote',
         expandedPaths: { remote: [[{ predicate: KNOWS, inverse: false }]] },
       });
       req.flush({

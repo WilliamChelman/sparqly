@@ -46,7 +46,11 @@ function splitPinnedAddress(value: string): { id: string; ref?: string } {
           >{{ label }}</span
         >
         <span class="h-3.5 w-px bg-border" aria-hidden="true"></span>
-        <span class="font-sans font-medium">{{ triggerLabel() }}</span>
+        <span
+          class="font-sans font-medium"
+          [class.text-foreground-faint]="selectedId() === ''"
+          >{{ triggerLabel() }}</span
+        >
         @if (parsedValue().ref; as ref) {
           <span
             data-testid="pinned-ref-chip"
@@ -70,6 +74,24 @@ function splitPinnedAddress(value: string): { id: string; ref?: string } {
           />
         </svg>
       </button>
+      @if (allowEmpty && selectedId() !== '') {
+        <button
+          type="button"
+          data-testid="sources-picker-clear"
+          [attr.aria-label]="'Clear ' + label"
+          class="ml-1 inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border border-border bg-surface text-foreground-muted hover:border-foreground-faint hover:text-foreground"
+          (click)="clear($event)"
+        >
+          <svg class="h-2.5 w-2.5" viewBox="0 0 10 10" aria-hidden="true">
+            <path
+              d="M2 2 L8 8 M8 2 L2 8"
+              stroke="currentColor"
+              stroke-width="1.4"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+      }
       @if (parsedValue().ref; as ref) {
         @if (isFloatingRefShape(ref)) {
           <p
@@ -95,6 +117,16 @@ function splitPinnedAddress(value: string): { id: string; ref?: string } {
 })
 export class SourcesPickerComponent implements OnInit {
   @Input() label = 'source';
+  /**
+   * Opt-in clearable mode (ADR-0033). When `true`, the picker skips its
+   * default-source auto-selection on init, accepts `value=''` as a valid
+   * cleared state, and renders a clear (×) button next to the trigger.
+   * Callers wire the cleared state to a domain-specific "no selection"
+   * meaning (e.g. describe page: "all sources").
+   */
+  @Input() allowEmpty = false;
+  /** Trigger-label text when `selectedId` is empty (only meaningful with `allowEmpty`). */
+  @Input() placeholder = '';
   @Output() valueChange = new EventEmitter<string>();
 
   private readonly configService = inject(ConfigService);
@@ -106,14 +138,15 @@ export class SourcesPickerComponent implements OnInit {
   );
   readonly triggerLabel = computed(() => {
     const id = this.parsedValue().id;
+    if (id === '') return this.placeholder;
     const entry = (this.sources() ?? []).find((s) => s.id === id);
     return entry?.label ?? '';
   });
 
   @Input() set value(v: string | null | undefined) {
-    if (v !== null && v !== undefined && v !== '') {
-      this.selectedId.set(v);
-    }
+    if (v === null || v === undefined) return;
+    if (v === '' && !this.allowEmpty) return;
+    this.selectedId.set(v);
   }
 
   toggle(): void {
@@ -132,6 +165,13 @@ export class SourcesPickerComponent implements OnInit {
     this.close();
   }
 
+  clear(ev: Event): void {
+    ev.stopPropagation();
+    if (this.selectedId() === '') return;
+    this.selectedId.set('');
+    this.valueChange.emit('');
+  }
+
   isFloatingRefShape(ref: string): boolean {
     return !/^[0-9a-f]{40}$/i.test(ref);
   }
@@ -139,6 +179,7 @@ export class SourcesPickerComponent implements OnInit {
   ngOnInit(): void {
     this.configService.list().subscribe((listing) => {
       this.sources.set(listing.sources);
+      if (this.allowEmpty) return;
       if (this.selectedId() === '') {
         const def = listing.sources.find((s) => s.default === true);
         const initial = def?.id ?? listing.sources[0]?.id ?? '';

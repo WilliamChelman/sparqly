@@ -103,6 +103,33 @@ describe('POST /api/describe — tracer-bullet (single glob source)', () => {
     expect(json.perSource.alpha.count).toBe(3);
   });
 
+  it('accepts the single-source `source` field and dispatches against that source only', async () => {
+    const resp = await postJson({
+      iri: 'http://example.org/alice',
+      source: 'alpha',
+    });
+    expect(resp.status).toBe(200);
+    const json = (await resp.json()) as {
+      total: number;
+      perSource: Record<string, { count: number }>;
+    };
+    expect(json.perSource).toHaveProperty('alpha');
+    expect(json.total).toBe(3);
+  });
+
+  it('rejects the legacy `sources: string[]` field as an unknown property (strict schema)', async () => {
+    const resp = await postJson({
+      iri: 'http://example.org/alice',
+      sources: ['alpha'],
+    });
+    expect(resp.status).toBe(400);
+  });
+
+  it('rejects `source: ""` (min(1) on the optional field)', async () => {
+    const resp = await postJson({ iri: 'http://example.org/alice', source: '' });
+    expect(resp.status).toBe(400);
+  });
+
   it('returns 200 with total=0 and an empty N-Quads body when the seed is absent', async () => {
     const resp = await postJson({ iri: 'http://example.org/ghost' });
     expect(resp.status).toBe(200);

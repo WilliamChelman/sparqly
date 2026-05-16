@@ -5,7 +5,12 @@ import type { Observable } from 'rxjs';
 
 export interface DescribeRequest {
   iri: string;
-  sources?: string[];
+  /**
+   * Single-or-all source selection (ADR-0033). Omit for the merged-across-all
+   * "absorbed registry" view; set to an `@`-prefixed (or bare) id to describe
+   * against exactly that source.
+   */
+  source?: string;
   /** UI-driven blank-node expansion paths per source id (ADR-0019). */
   expandedPaths?: Record<string, PathStep[][]>;
 }
@@ -31,7 +36,7 @@ export class DescribeService {
 
   run(req: DescribeRequest): Observable<DescribeResponse> {
     const body: DescribeRequest = { iri: req.iri };
-    if (req.sources !== undefined) body.sources = [...req.sources];
+    if (req.source !== undefined) body.source = req.source;
     if (req.expandedPaths !== undefined) body.expandedPaths = req.expandedPaths;
     return this.http.post<DescribeResponse>('/api/describe', body);
   }

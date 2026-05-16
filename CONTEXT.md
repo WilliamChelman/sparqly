@@ -131,7 +131,7 @@ A path from a describe seed IRI to a dangling blank node, sent on a describe req
 _Avoid_: "depth parameter", conflating with the **describe-this affordance**
 
 **Describe page**:
-The webapp surface that runs **describe** of a seed IRI across one or more sources in the **served registry** and renders the merged result. Initial state on first load selects all sources; zero sources selected produces an empty result with a "Select all" affordance. The default view renders the merged quads as two **describe sections**.
+The webapp surface that runs **describe** of a seed IRI against the **served registry** and renders the merged result. The page exposes a single-or-cleared source picker (ADR-0033): cleared (the default, labeled "All sources") describes across every served source with the absorbing-meta rule applied; selecting one id describes against that source only. The default view renders the merged quads as two **describe sections**.
 
 **Describe section**:
 One of the two halves the **Describe page**'s default view splits the merged quads into: **outbound** (quads whose subject is the seed) and **inbound** (quads whose object is the seed). Within a section, quads are grouped by predicate, with named IRIs rendered as **describe-this affordance** chips, literals inline, and blank nodes inlined as nested blocks showing their own predicate-grouped properties.

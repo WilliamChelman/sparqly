@@ -7,7 +7,7 @@ import {
   signal,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { MultiSourcesPickerComponent } from '@app/modules/multi-sources-picker';
+import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import { ConfigService, type DisplayContext } from '@app/core';
 import { FormattedResultComponent } from '@app/pages/query/components/result/formatted-result.component';
 import {
@@ -42,7 +42,7 @@ const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
   imports: [
     DescribeSectionsComponent,
     FormattedResultComponent,
-    MultiSourcesPickerComponent,
+    SourcesPickerComponent,
     SourceErrorsComponent,
   ],
   template: `
@@ -63,9 +63,12 @@ const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
           (input)="onSeedInput($any($event.target).value)"
           (keydown.enter)="run()"
         />
-        <app-multi-sources-picker
-          [value]="initialSources()"
-          (valueChange)="onSourcesChange($event)"
+        <app-sources-picker
+          label="source"
+          placeholder="All sources"
+          [allowEmpty]="true"
+          [value]="initialSource()"
+          (valueChange)="onSourceChange($event)"
         />
         <button
           data-testid="run-describe"
@@ -156,9 +159,10 @@ export class DescribePage implements OnInit {
   readonly running = signal<boolean>(false);
   readonly response = signal<DescribeResponse | null>(null);
   readonly iriError = signal<string | null>(null);
-  // null means "no override" (server defaults to all sources).
-  private selectedSources: string[] | null = null;
-  readonly initialSources = signal<string[] | undefined>(undefined);
+  // '' means "no override" — server fans out across the absorbed registry
+  // (ADR-0033). A non-empty id describes against that source only.
+  private selectedSource = '';
+  readonly initialSource = signal<string>('');
   private prefixes: Record<string, string> = {};
   readonly displayContext = signal<DisplayContext>({ prefixes: {} });
   /** Ids of `endpoint` sources — only their dangling bnodes get an expand affordance. */
@@ -208,14 +212,10 @@ export class DescribePage implements OnInit {
   constructor() {
     const iri = this.route.snapshot.queryParamMap.get('iri');
     if (iri !== null) this.seed.set(iri);
-    const sources = this.route.snapshot.queryParamMap.get('sources');
-    if (sources !== null) {
-      const ids = sources
-        .split(',')
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
-      this.selectedSources = ids;
-      this.initialSources.set(ids);
+    const source = this.route.snapshot.queryParamMap.get('source');
+    if (source !== null && source !== '') {
+      this.selectedSource = source;
+      this.initialSource.set(source);
     }
   }
 
@@ -236,8 +236,8 @@ export class DescribePage implements OnInit {
     this.iriError.set(null);
   }
 
-  onSourcesChange(value: string[]): void {
-    this.selectedSources = value;
+  onSourceChange(value: string): void {
+    this.selectedSource = value;
   }
 
   setTab(tab: DescribeTab): void {
@@ -257,20 +257,20 @@ export class DescribePage implements OnInit {
     this.running.set(true);
     this.response.set(null);
     this._activeTab.set('table');
-    const queryParams: Record<string, string | null> = { iri };
-    if (this.selectedSources !== null) {
-      queryParams['sources'] = this.selectedSources.join(',');
-    }
+    const queryParams: Record<string, string | null> = {
+      iri,
+      // Always write the key so a previously-selected source clears from the URL
+      // when the picker is back to "All sources".
+      source: this.selectedSource === '' ? null : this.selectedSource,
+    };
     void this.router.navigate([], {
       relativeTo: this.route,
       queryParams,
       queryParamsHandling: 'merge',
       replaceUrl: true,
     });
-    const req =
-      this.selectedSources !== null
-        ? { iri, sources: this.selectedSources }
-        : { iri };
+    const req: { iri: string; source?: string } = { iri };
+    if (this.selectedSource !== '') req.source = this.selectedSource;
     this.describeService.run(req).subscribe({
       next: (resp) => {
         this.running.set(false);
@@ -311,7 +311,7 @@ export class DescribePage implements OnInit {
     this.describeService
       .run({
         iri: this.submittedSeed(),
-        sources: [sourceId],
+        source: sourceId,
         expandedPaths: { [sourceId]: this.expandedPaths[sourceId] },
       })
       .subscribe({
