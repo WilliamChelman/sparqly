@@ -14,7 +14,7 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
-import { ResultAsync } from 'neverthrow';
+import { type Result, ResultAsync } from 'neverthrow';
 import {
   QueryEngine,
   resolveSourceResult,
@@ -137,11 +137,14 @@ export class RegistrySparqlController {
     res: ResLike,
   ): Promise<void> {
     const format = pickFormat(accept);
-    const result = await selectTargetResult(
-      this.servedRegistry,
-      ref,
-    ).asyncAndThen((target: ParsedSource) =>
-      this.executeAgainstTarget(target, query, format),
+    const selected = selectTargetResult(this.servedRegistry, ref);
+    if (selected.isErr()) {
+      throw mapError(selected.error);
+    }
+    const result = await this.executeAgainstTarget(
+      selected.value,
+      query,
+      format,
     );
     result.match(
       (ok: ExecuteResult) => {
@@ -156,18 +159,22 @@ export class RegistrySparqlController {
     );
   }
 
-  private executeAgainstTarget(
+  private async executeAgainstTarget(
     target: ParsedSource,
     query: string,
     format: SparqlFormat | undefined,
-  ): ResultAsync<ExecuteResult, SourceError | TargetError> {
-    const id = target.id as string;
+  ): Promise<Result<ExecuteResult, SourceError | TargetError>> {
     if (this.isAdHocPin(target)) {
-      return this.executeAdHocPinned(target, query, format);
+      return await this.executeAdHocPinned(target, query, format);
     }
-    return this.engineMap
-      .get(id)
-      .executeResult(query, { format, mutable: this.config.mutable });
+    // Lazy materialization (ADR-0031): ensure() drives a one-shot per-source
+    // load on first request; concurrent first-touches share the in-flight
+    // promise so resolveSource runs at most once for the source.
+    const engine = await this.engineMap.ensure(target.id as string);
+    return await engine.executeResult(query, {
+      format,
+      mutable: this.config.mutable,
+    });
   }
 
   /**

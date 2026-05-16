@@ -137,7 +137,7 @@ describe('sparqly serve — Registry mode default (issue #141)', () => {
     expect(json.ref).toBe('@nope');
   });
 
-  it('logs per-@id load timing on boot', async () => {
+  it('logs per-@id load timing on first request (ADR-0031 lazy materialization)', async () => {
     const alphaPath = join(dir, 'alpha.ttl');
     const betaPath = join(dir, 'beta.ttl');
     await writeFile(
@@ -161,6 +161,18 @@ describe('sparqly serve — Registry mode default (issue #141)', () => {
     );
 
     handle = await startServe(['--config', configPath, '--verbose']);
+
+    // Under lazy materialization, no source is loaded until first request.
+    expect(handle.stderr()).not.toMatch(/DEBUG \[sparqly\] source-loaded/);
+
+    for (const id of ['alpha', 'beta']) {
+      const res = await fetch(
+        `${handle.baseUrl}/api/sparql/${id}?query=${encodeURIComponent(
+          'ASK { ?s ?p ?o }',
+        )}`,
+      );
+      expect(res.status).toBe(200);
+    }
 
     const stderr = handle.stderr();
     expect(stderr).toMatch(

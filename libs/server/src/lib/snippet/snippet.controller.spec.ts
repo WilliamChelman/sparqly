@@ -233,6 +233,15 @@ describe('GET /api/source-snippet — --watch rebuild refreshes the allow-list',
       watchDebounceMs: debounceMs,
     });
     baseUrl = `http://localhost:${server.port}/api/source-snippet`;
+    // ADR-0031: lazy materialization defers the Store build until first
+    // request; the watcher's FS-event rebuild skips un-touched sources so
+    // the allow-list would not update until something queries the source.
+    // Warm the engine here so the rebuild path is live for the tests below.
+    await fetch(
+      `http://localhost:${server.port}/api/sparql?query=${encodeURIComponent(
+        'SELECT ?s WHERE { ?s ?p ?o } LIMIT 1',
+      )}`,
+    );
   });
 
   afterAll(async () => {

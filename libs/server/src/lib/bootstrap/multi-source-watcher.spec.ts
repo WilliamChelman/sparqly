@@ -94,6 +94,79 @@ describe('createServer — multi-source watcher lifecycle', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  it('FS events for a path under a never-touched source do not trigger a load (ADR-0031)', async () => {
+    // Two materialized sources. Only `touched` is queried; `untouched` stays
+    // un-ensure()'d for the life of the test. Mutating a file under
+    // `untouched`'s glob must not cause a `source-loaded` boundary log line
+    // for it — the watcher must respect the lazy-materialization contract.
+    const touchedDir = await mkdtemp(
+      join(tmpdir(), 'sparqly-watch-lazy-touched-'),
+    );
+    const untouchedDir = await mkdtemp(
+      join(tmpdir(), 'sparqly-watch-lazy-untouched-'),
+    );
+    try {
+      await writeFile(
+        join(touchedDir, 'a.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+      await writeFile(
+        join(untouchedDir, 'a.ttl'),
+        '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .',
+      );
+      const rec = recordingLogger();
+      server = await createServer({
+        sources: [
+          { id: 'touched', glob: join(touchedDir, '*.ttl') },
+          { id: 'untouched', glob: join(untouchedDir, '*.ttl') },
+        ],
+        port: 0,
+        watch: true,
+        watchDebounceMs: 25,
+        logger: rec.logger,
+      });
+
+      // Warm `touched` only so it has a live storeRef; `untouched` remains
+      // un-loaded for the rest of the test.
+      expect(
+        await bindings(
+          `http://localhost:${server.port}/api/sparql/touched`,
+        ),
+      ).toEqual(['http://example.org/a']);
+      await rec.waitFor(
+        (e) =>
+          e.msg === 'source-loaded' &&
+          (e.fields as { source?: string } | undefined)?.source === 'touched',
+      );
+
+      // Bump a file under the un-touched source's glob and wait long enough
+      // for the watcher to have processed (and skipped) the event.
+      await writeFile(
+        join(untouchedDir, 'b.ttl'),
+        '@prefix ex: <http://example.org/> . ex:e ex:p ex:f .',
+      );
+      // Sleep > watchDebounceMs + chokidar settling, then assert no rebuild
+      // happened for the un-touched source.
+      await new Promise((r) => setTimeout(r, 300));
+
+      const loadedUntouched = rec.entries.filter(
+        (e) =>
+          e.msg === 'source-loaded' &&
+          (e.fields as { source?: string } | undefined)?.source === 'untouched',
+      );
+      expect(loadedUntouched).toEqual([]);
+      const rebuiltUntouched = rec.entries.filter(
+        (e) =>
+          e.msg === 'view-rebuilt' &&
+          (e.fields as { source?: string } | undefined)?.source === 'untouched',
+      );
+      expect(rebuiltUntouched).toEqual([]);
+    } finally {
+      await rm(touchedDir, { recursive: true, force: true });
+      await rm(untouchedDir, { recursive: true, force: true });
+    }
+  });
+
   it('starts the watcher, debounces a file change into a single rebuild, then stops cleanly on close', async () => {
     const { logger, entries, waitFor } = recordingLogger();
     server = await createServer({
