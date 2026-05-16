@@ -3,6 +3,7 @@ import {
   Component,
   inject,
 } from '@angular/core';
+import { ButtonComponent } from '@app/modules/button';
 import { ThemeService, type ThemeMode } from '@app/core';
 
 const MODES: ReadonlyArray<{ mode: ThemeMode; label: string; glyph: string }> = [
@@ -15,6 +16,7 @@ const MODES: ReadonlyArray<{ mode: ThemeMode; label: string; glyph: string }> = 
   selector: 'app-theme-toggle',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ButtonComponent],
   template: `
     <div
       role="group"
@@ -23,11 +25,13 @@ const MODES: ReadonlyArray<{ mode: ThemeMode; label: string; glyph: string }> = 
     >
       @for (m of modes; track m.mode) {
         <button
+          app-btn
+          variant="icon"
           type="button"
           [attr.data-mode]="m.mode"
           [attr.aria-label]="m.label"
           [attr.aria-pressed]="service.mode() === m.mode"
-          class="grid h-7 w-7 place-items-center rounded-full text-[13px] leading-none transition-colors hover:text-foreground aria-pressed:bg-bg aria-pressed:text-foreground aria-pressed:shadow-sm"
+          class="h-7 w-7 rounded-full aria-pressed:bg-bg aria-pressed:text-foreground aria-pressed:shadow-sm"
           (click)="service.set(m.mode)"
         >
           <span aria-hidden="true">{{ m.glyph }}</span>

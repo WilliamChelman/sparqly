@@ -16,12 +16,13 @@ import {
   type SourceKind,
   type SourceListingEntry,
 } from '@app/core';
+import { ButtonComponent } from '@app/modules/button';
 
 @Component({
   selector: 'app-multi-sources-picker',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CdkListboxModule],
+  imports: [CdkListboxModule, ButtonComponent],
   host: { class: 'relative inline-block' },
   template: `
     @if (sources() === null) {
@@ -56,9 +57,12 @@ import {
       </button>
       @if (selectedIds().length === 0) {
         <button
+          app-btn
+          variant="secondary"
+          size="sm"
           data-testid="select-all"
           type="button"
-          class="ml-2 rounded-md border border-border bg-surface px-2 py-1 text-xs text-foreground-muted hover:bg-surface-sunken"
+          class="ml-2"
           (click)="selectAll()"
         >
           Select all
@@ -84,9 +88,12 @@ import {
               @if (childrenOfIncluded().get(s.id); as children) {
                 <span class="text-foreground-faint">({{ children.length }} files)</span>
                 <button
+                  app-btn
+                  variant="ghost"
+                  size="sm"
                   type="button"
                   [attr.data-testid]="'group-toggle-' + s.id"
-                  class="ml-auto rounded px-1 text-foreground-faint hover:text-foreground"
+                  class="ml-auto"
                   (click)="toggleGroup(s.id, $event)"
                   [attr.aria-expanded]="expandedGroups().has(s.id)"
                 >{{ expandedGroups().has(s.id) ? '▾' : '▸' }}</button>

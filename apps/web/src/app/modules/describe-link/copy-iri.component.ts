@@ -5,13 +5,17 @@ import {
   input,
   signal,
 } from '@angular/core';
+import { ButtonComponent } from '@app/modules/button';
 
 @Component({
   selector: 'app-copy-iri',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ButtonComponent],
   template: `
     <button
+      app-btn
+      variant="icon"
       type="button"
       data-testid="copy-iri"
       [title]="copied() ? 'Copied' : 'Copy IRI'"
@@ -19,7 +23,7 @@ import {
         copied() ? 'IRI copied to clipboard' : 'Copy IRI to clipboard'
       "
       (click)="copy()"
-      class="ml-1 inline-flex cursor-pointer items-center border-0 bg-transparent p-0 align-middle font-[inherit] text-[1.05em] leading-none text-foreground-faint transition-colors hover:text-accent"
+      class="ml-1 align-middle font-[inherit] text-[1.05em]"
       >{{ copied() ? '✓' : '⧉' }}</button
     >
   `,

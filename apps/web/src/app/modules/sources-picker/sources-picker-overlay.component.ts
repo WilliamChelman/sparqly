@@ -13,6 +13,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ButtonComponent } from '@app/modules/button';
 import type { SourceListingEntry } from '@app/core';
 import { RefsApiClient } from './refs-api.client';
 import { RefsPanelComponent, type RefsPanelState } from './refs-panel.component';
@@ -28,7 +29,7 @@ import {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [RefsApiClient],
-  imports: [RefsPanelComponent],
+  imports: [RefsPanelComponent, ButtonComponent],
   template: `
     <div
       data-testid="sources-overlay"
@@ -68,9 +69,11 @@ import {
               >
                 <p>No sources match your search.</p>
                 <button
+                  app-btn
+                  variant="secondary"
+                  size="sm"
                   type="button"
                   data-testid="overlay-clear-search"
-                  class="rounded-md border border-border bg-surface px-2.5 py-1 text-[12px] text-foreground hover:border-foreground-faint"
                   (click)="query.set('')"
                 >Clear search</button>
               </div>
@@ -183,15 +186,17 @@ import {
         </div>
         <div class="flex items-center justify-end gap-2 border-t border-border bg-surface-sunken px-3 py-2">
           <button
+            app-btn
+            variant="secondary"
             type="button"
             data-testid="overlay-cancel"
-            class="rounded-md border border-border bg-surface px-3 py-1.5 text-[13px] text-foreground hover:border-foreground-faint"
             (click)="onCancel()"
           >Cancel</button>
           <button
+            app-btn
+            variant="accent"
             type="button"
             data-testid="overlay-apply"
-            class="rounded-md border border-accent bg-accent px-3 py-1.5 text-[13px] font-medium text-surface hover:opacity-90"
             (click)="onApply()"
           >Apply</button>
         </div>
