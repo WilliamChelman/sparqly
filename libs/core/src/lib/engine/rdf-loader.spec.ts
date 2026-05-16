@@ -355,6 +355,34 @@ describe('loadRdfResult', () => {
     expect(subjects).toEqual(['http://example.org/disk']);
   });
 
+  it('surfaces a rejected contentReader as a typed glob-load error rather than an unhandled rejection (ADR-0029)', async () => {
+    // Regression: ad-hoc pinning of split-glob parents enumerates the working
+    // tree and feeds each match to the contentReader, which throws
+    // PinnedFileMissingError when a working-tree file is absent at the pinned
+    // SHA. The rejection must be caught and surfaced as a structured
+    // `glob-load` error so the caller can promote it to a `git-pin` error;
+    // otherwise it escapes the Result chain and the server returns 500.
+    const path = join(dir, 'foaf.ttl');
+    await writeFile(
+      path,
+      '@prefix ex: <http://example.org/> . ex:disk ex:p ex:disk .',
+    );
+
+    const result = await loadRdfResult({
+      sources: path,
+      contentReader: async () => {
+        throw new Error('pinned source: file foaf.ttl is absent from the git tree at v3.2.0');
+      },
+    });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('glob-load');
+    if (result.error.kind !== 'glob-load') throw new Error('unreachable');
+    expect(result.error.file).toBe(path);
+    expect(result.error.message).toContain('pinned source: file foaf.ttl');
+  });
+
   it('accepts an array glob and warns once naming both patterns when empty', async () => {
     const patterns = [join(dir, 'nope-a*.ttl'), join(dir, 'nope-b*.ttl')];
     const { logger, entries } = recordingLogger();

@@ -105,8 +105,14 @@ function parseFiles(
   const chain = files.reduce<ResultAsync<void, GlobLoadError>>(
     (prev, file) =>
       prev.andThen(() =>
-        ResultAsync.fromSafePromise(
+        ResultAsync.fromPromise(
           contentReader ? contentReader(file) : Promise.resolve(null),
+          (err): GlobLoadError => ({
+            kind: 'glob-load',
+            glob: globs,
+            file,
+            message: err instanceof Error ? err.message : String(err),
+          }),
         ).andThen((override) =>
           parseRdfFileResult(
             file,
