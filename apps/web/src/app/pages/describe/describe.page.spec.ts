@@ -638,9 +638,11 @@ describe('DescribePage', () => {
     async function setupWithInitialResponse(
       sources: SourceListing['sources'],
       body: object,
+      selectedSource = 'remote',
     ) {
+      const sourcePart = selectedSource === '' ? '' : `&source=${selectedSource}`;
       const ctx = await setup(
-        '/describe?iri=' + encodeURIComponent(ALICE),
+        '/describe?iri=' + encodeURIComponent(ALICE) + sourcePart,
         {},
         sources,
       );
@@ -651,15 +653,42 @@ describe('DescribePage', () => {
       return ctx;
     }
 
-    it('passes endpoint source ids to the sectioned view', async () => {
+    it('exposes the selected endpoint source id to the sectioned view (affordance unlocked)', async () => {
+      const { fixture, http } = await setupWithInitialResponse(
+        [
+          { id: 'alpha', kind: 'glob', label: 'A (glob)' },
+          { id: 'remote', kind: 'endpoint', label: 'R (endpoint)', default: true },
+        ],
+        { iri: ALICE, quads: NQUADS_SAMPLE, total: 3, perSource: { remote: { count: 3, truncated: false } } },
+        'remote',
+      );
+      expect(requireDescribeSections(fixture).endpointSourceIds()).toEqual(['remote']);
+      http.verify();
+    });
+
+    it('hides the expand affordance when no source is selected (cleared picker, fan-out across the absorbed registry)', async () => {
       const { fixture, http } = await setupWithInitialResponse(
         [
           { id: 'alpha', kind: 'glob', label: 'A (glob)', default: true },
           { id: 'remote', kind: 'endpoint', label: 'R (endpoint)' },
         ],
         { iri: ALICE, quads: NQUADS_SAMPLE, total: 3, perSource: { alpha: { count: 3, truncated: false } } },
+        '',
       );
-      expect(requireDescribeSections(fixture).endpointSourceIds()).toEqual(['remote']);
+      expect(requireDescribeSections(fixture).endpointSourceIds()).toEqual([]);
+      http.verify();
+    });
+
+    it('hides the expand affordance when the selected source is non-endpoint', async () => {
+      const { fixture, http } = await setupWithInitialResponse(
+        [
+          { id: 'alpha', kind: 'glob', label: 'A (glob)', default: true },
+          { id: 'remote', kind: 'endpoint', label: 'R (endpoint)' },
+        ],
+        { iri: ALICE, quads: NQUADS_SAMPLE, total: 3, perSource: { alpha: { count: 3, truncated: false } } },
+        'alpha',
+      );
+      expect(requireDescribeSections(fixture).endpointSourceIds()).toEqual([]);
       http.verify();
     });
 
@@ -685,7 +714,7 @@ describe('DescribePage', () => {
       expect(req.request.body).toEqual({
         iri: ALICE,
         source: 'remote',
-        expandedPaths: { remote: [[{ predicate: KNOWS, inverse: false }]] },
+        expandedPaths: [[{ predicate: KNOWS, inverse: false }]],
       });
       req.flush({
         iri: ALICE,
@@ -800,12 +829,10 @@ describe('DescribePage', () => {
       });
       fixture.detectChanges();
       const req = http.expectOne('/api/describe');
-      expect(req.request.body.expandedPaths).toEqual({
-        remote: [
-          [{ predicate: KNOWS, inverse: false }],
-          [{ predicate: 'http://example.org/likes', inverse: false }],
-        ],
-      });
+      expect(req.request.body.expandedPaths).toEqual([
+        [{ predicate: KNOWS, inverse: false }],
+        [{ predicate: 'http://example.org/likes', inverse: false }],
+      ]);
       req.flush({ iri: ALICE, quads: wire0, total: 2, perSource: { remote: { count: 2, truncated: true } } });
       http.verify();
     });
@@ -833,7 +860,7 @@ describe('DescribePage', () => {
       expect(req.request.body).toEqual({
         iri: ALICE,
         source: 'remote',
-        expandedPaths: { remote: [[{ predicate: KNOWS, inverse: false }]] },
+        expandedPaths: [[{ predicate: KNOWS, inverse: false }]],
       });
       req.flush({
         iri: ALICE,
@@ -864,12 +891,16 @@ describe('DescribePage', () => {
       const wire =
         `<${ALICE}> <${KNOWS}> _:alpha__b0 .\n` +
         provQuad(`<${ALICE}>`, `<${KNOWS}>`, '_:alpha__b0', 'alpha');
-      const { fixture, http } = await setupWithInitialResponse(sources, {
-        iri: ALICE,
-        quads: wire,
-        total: 1,
-        perSource: { alpha: { count: 1, truncated: false } },
-      });
+      const { fixture, http } = await setupWithInitialResponse(
+        sources,
+        {
+          iri: ALICE,
+          quads: wire,
+          total: 1,
+          perSource: { alpha: { count: 1, truncated: false } },
+        },
+        'alpha',
+      );
       const root = fixture.nativeElement as HTMLElement;
       expect(root.querySelector('[data-testid=expand-bnode]')).toBeFalsy();
       http.verify();
@@ -897,7 +928,7 @@ describe('DescribePage', () => {
       await fixture.whenStable();
       expect(router.url).toBe(urlBefore);
       const tree = router.parseUrl(router.url);
-      expect([...tree.queryParamMap.keys].sort()).toEqual(['iri']);
+      expect([...tree.queryParamMap.keys].sort()).toEqual(['iri', 'source']);
       http.verify();
     });
   });

@@ -127,7 +127,7 @@ A sparqly-defined algorithm that computes a symmetric concise bounded descriptio
 _Avoid_: "CBD", conflating with SPARQL `DESCRIBE`, "expand entity"
 
 **Describe expansion path** (`expandedPaths`):
-A path from a describe seed IRI to a dangling blank node, sent on a describe request to pull that node one blank-node hop deeper against an `endpoint` source. Path length is capped (~12 steps); past the cap the source is flagged `truncated`. Materialized sources ignore the field — they are already fully expanded. Pinning happens by predicate (blank nodes have no portable identity over the wire), so expanding one of several siblings reached by the same predicate co-expands the siblings.
+A path from a describe seed IRI to a dangling blank node, sent on a describe request to pull that node one blank-node hop deeper. Carried as a flat `PathStep[][]` per request, against the selected endpoint source (ADR-0033) — valid only when `source` is set and that source is `kind: 'endpoint'`; otherwise the request is a 400 precondition violation. Path length is capped (~12 steps); past the cap the source is flagged `truncated`. Pinning happens by predicate (blank nodes have no portable identity over the wire), so expanding one of several siblings reached by the same predicate co-expands the siblings.
 _Avoid_: "depth parameter", conflating with the **describe-this affordance**
 
 **Describe page**:

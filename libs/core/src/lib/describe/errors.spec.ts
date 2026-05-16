@@ -36,6 +36,8 @@ describe('formatDescribeError', () => {
       { kind: 'empty-target' },
       { kind: 'seed-not-iri', value: 'not-an-iri' },
       { kind: 'reference-target' },
+      { kind: 'expanded-paths-without-source' },
+      { kind: 'expanded-paths-non-endpoint-source', id: 'docs', sourceKind: 'glob' },
     ];
     for (const v of variants) {
       expect(formatDescribeError(v).length).toBeGreaterThan(0);

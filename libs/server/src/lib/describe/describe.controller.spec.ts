@@ -144,42 +144,51 @@ describe('POST /api/describe — tracer-bullet (single glob source)', () => {
     expect(json.perSource.alpha.count).toBe(0);
   });
 
-  it('accepts a well-formed `expandedPaths` map; a glob source ignores it (result unchanged)', async () => {
+  it('returns 400 when `expandedPaths` is provided without a `source`', async () => {
     const resp = await postJson({
       iri: 'http://example.org/alice',
+      expandedPaths: [[{ predicate: 'http://example.org/knows', inverse: false }]],
+    });
+    expect(resp.status).toBe(400);
+    const body = (await resp.json()) as { message?: { kind?: string } };
+    const kind =
+      (body as { kind?: string }).kind ??
+      (body.message && typeof body.message === 'object' ? body.message.kind : undefined);
+    expect(kind).toBe('expanded-paths-without-source');
+  });
+
+  it('returns 400 when `expandedPaths` is paired with a non-endpoint source', async () => {
+    const resp = await postJson({
+      iri: 'http://example.org/alice',
+      source: 'alpha',
+      expandedPaths: [[{ predicate: 'http://example.org/knows', inverse: false }]],
+    });
+    expect(resp.status).toBe(400);
+    const body = (await resp.json()) as { message?: { kind?: string } };
+    const kind =
+      (body as { kind?: string }).kind ??
+      (body.message && typeof body.message === 'object' ? body.message.kind : undefined);
+    expect(kind).toBe('expanded-paths-non-endpoint-source');
+  });
+
+  it('rejects the legacy `expandedPaths: Record<id, …>` shape (strict schema)', async () => {
+    const resp = await postJson({
+      iri: 'http://example.org/alice',
+      source: 'alpha',
       expandedPaths: {
         alpha: [[{ predicate: 'http://example.org/knows', inverse: false }]],
       },
     });
-    expect(resp.status).toBe(200);
-    const json = (await resp.json()) as {
-      total: number;
-      perSource: Record<string, { count: number; truncated: boolean }>;
-    };
-    // Same as the no-expandedPaths case: alpha is a glob, paths are ignored.
-    expect(json.total).toBe(3);
-    expect(json.perSource.alpha.count).toBe(3);
-    expect(json.perSource.alpha.truncated).toBe(false);
+    expect(resp.status).toBe(400);
   });
 
   it('returns 400 when an `expandedPaths` step is malformed (missing `inverse`)', async () => {
     const resp = await postJson({
       iri: 'http://example.org/alice',
-      expandedPaths: { alpha: [[{ predicate: 'http://example.org/knows' }]] },
+      source: 'alpha',
+      expandedPaths: [[{ predicate: 'http://example.org/knows' }]],
     });
     expect(resp.status).toBe(400);
-  });
-
-  it('does not reject an over-long expansion path — the cap clamps rather than 400s', async () => {
-    const longPath = Array.from({ length: 30 }, () => ({
-      predicate: 'http://example.org/p',
-      inverse: false,
-    }));
-    const resp = await postJson({
-      iri: 'http://example.org/alice',
-      expandedPaths: { alpha: [longPath] },
-    });
-    expect(resp.status).toBe(200);
   });
 });
 
@@ -271,11 +280,13 @@ describe('DescribeController — result routing through describe-http-errors map
     });
   });
 
-  it('routes the three precondition variants through the mapper as 400 HttpExceptions', async () => {
+  it('routes every precondition variant through the mapper as 400 HttpExceptions', async () => {
     const variants: DescribeTopLevelError[] = [
       { kind: 'empty-target' },
       { kind: 'seed-not-iri', value: 'x' },
       { kind: 'reference-target' },
+      { kind: 'expanded-paths-without-source' },
+      { kind: 'expanded-paths-non-endpoint-source', id: 'alpha', sourceKind: 'glob' },
     ];
     for (const error of variants) {
       const ctl = controllerWithErr(error);
