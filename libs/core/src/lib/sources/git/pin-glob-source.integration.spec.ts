@@ -197,3 +197,84 @@ describe('resolveSourceResult — pinned glob (ADR-0029)', () => {
     expect(result.error.reason).toBe('gitroot-not-a-repo');
   });
 });
+
+describe('resolveSourceResult — pinned split-glob parent (ADR-0027 + ADR-0029)', () => {
+  let repo: string;
+  let oldSha: string;
+
+  beforeAll(async () => {
+    repo = await mkdtemp(join(tmpdir(), 'sparqly-pin-split-glob-'));
+    await git(repo, ['init', '-q', '-b', 'main']);
+    // Initial commit: only foo.ttl exists in the tree at v1.0.0.
+    await writeFile(
+      join(repo, 'foo.ttl'),
+      '@prefix ex: <http://example.org/> .\nex:foo ex:p ex:a .\n',
+    );
+    await git(repo, ['add', '.']);
+    await git(repo, ['commit', '-q', '-m', 'first']);
+    oldSha = await git(repo, ['rev-parse', 'HEAD']);
+    await git(repo, ['tag', '-a', 'v1.0.0', '-m', 'release v1.0.0']);
+    // Second commit: bar.ttl is added later. Working tree now has both
+    // files but v1.0.0 only has foo.ttl.
+    await writeFile(
+      join(repo, 'bar.ttl'),
+      '@prefix ex: <http://example.org/> .\nex:bar ex:p ex:b .\n',
+    );
+    await git(repo, ['add', '.']);
+    await git(repo, ['commit', '-q', '-m', 'second']);
+  }, 30_000);
+
+  afterAll(async () => {
+    if (repo) await rm(repo, { recursive: true, force: true });
+  });
+
+  it('loads only files that existed at the pinned ref, ignoring working-tree-only additions', async () => {
+    const source: ParsedGlobSource = {
+      kind: 'glob',
+      glob: join(repo, '*.ttl'),
+      id: 'split',
+      splitByFile: true,
+      gitRef: 'v1.0.0',
+    };
+
+    const result = await resolveSourceResult(source, { configDir: repo });
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    if (result.value.mode !== 'materialized') throw new Error('unreachable');
+    expect(result.value.files).toEqual([join(repo, 'foo.ttl')]);
+    const subjects = [...result.value.store].map((q) => q.subject.value);
+    expect(subjects).toEqual(['http://example.org/foo']);
+    // oldSha is consumed transitively via gitRef → tag resolution.
+    expect(oldSha).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it('still loads files from the git tree at the pinned ref when the working-tree copy has been deleted', async () => {
+    const { unlink } = await import('node:fs/promises');
+    const fooPath = join(repo, 'foo.ttl');
+    await unlink(fooPath);
+    try {
+      const source: ParsedGlobSource = {
+        kind: 'glob',
+        glob: join(repo, '*.ttl'),
+        id: 'split',
+        splitByFile: true,
+        gitRef: 'v1.0.0',
+      };
+
+      const result = await resolveSourceResult(source, { configDir: repo });
+
+      expect(result.isOk()).toBe(true);
+      if (!result.isOk()) throw new Error('unreachable');
+      if (result.value.mode !== 'materialized') throw new Error('unreachable');
+      expect(result.value.files).toEqual([fooPath]);
+      const objects = [...result.value.store].map((q) => q.object.value);
+      expect(objects).toEqual(['http://example.org/a']);
+    } finally {
+      await writeFile(
+        fooPath,
+        '@prefix ex: <http://example.org/> .\nex:foo ex:p ex:a .\n',
+      );
+    }
+  });
+});
