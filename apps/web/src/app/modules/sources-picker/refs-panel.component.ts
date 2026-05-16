@@ -12,6 +12,7 @@ import {
   Output,
 } from '@angular/core';
 import { ButtonComponent } from '@app/modules/button';
+import { EyebrowComponent } from '@app/modules/eyebrow';
 import type { RefEntry, RefsResponse } from './refs-api.client';
 import { searchRefs } from './ref-search';
 
@@ -120,8 +121,9 @@ export type RefsPanelState =
       >
         @if (view.head; as headRef) {
           <h3
+            app-eyebrow
             data-section="head"
-            class="px-2.5 pb-1 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint"
+            class="px-2.5 pb-1 pt-2"
           >HEAD</h3>
           <ul class="list-none">
             <ng-container
@@ -131,8 +133,9 @@ export type RefsPanelState =
         }
         @if (view.branches.length > 0) {
           <h3
+            app-eyebrow
             data-section="branches"
-            class="px-2.5 pb-1 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint"
+            class="px-2.5 pb-1 pt-2"
           >Branches</h3>
           <ul class="list-none">
             @for (b of view.branches; track b.ref) {
@@ -144,8 +147,9 @@ export type RefsPanelState =
         }
         @for (group of remoteSections(); track group.remote) {
           <h3
+            app-eyebrow
             [attr.data-section]="'remote:' + group.remote"
-            class="px-2.5 pb-1 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint"
+            class="px-2.5 pb-1 pt-2"
           >Remote ({{ group.remote }})</h3>
           <ul class="list-none">
             @for (rb of group.entries; track rb.ref) {
@@ -157,8 +161,9 @@ export type RefsPanelState =
         }
         @if (view.tags.length > 0) {
           <h3
+            app-eyebrow
             data-section="tags"
-            class="px-2.5 pb-1 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint"
+            class="px-2.5 pb-1 pt-2"
           >Tags</h3>
           <ul class="list-none">
             @for (t of view.tags; track t.ref) {
@@ -200,7 +205,7 @@ export type RefsPanelState =
       </li>
     </ng-template>
   `,
-  imports: [NgTemplateOutlet, ButtonComponent],
+  imports: [NgTemplateOutlet, ButtonComponent, EyebrowComponent],
 })
 export class RefsPanelComponent {
   readonly state = input.required<RefsPanelState>();

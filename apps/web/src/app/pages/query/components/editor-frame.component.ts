@@ -7,23 +7,21 @@ import {
   ViewChild,
   computed,
 } from '@angular/core';
+import { EyebrowComponent } from '@app/modules/eyebrow';
 import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
 
 @Component({
   selector: 'app-editor-frame',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [YasqeEditorComponent],
+  imports: [EyebrowComponent, YasqeEditorComponent],
   host: { class: 'block' },
   template: `
     <div class="overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
       <div
         class="my-head flex items-center justify-between border-b border-border-muted bg-surface-sunken px-3.5 py-2"
       >
-        <span
-          class="my-name font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint"
-          >{{ name }}</span
-        >
+        <span app-eyebrow class="my-name">{{ name }}</span>
         <span class="flex gap-3.5 font-mono text-[10px] text-foreground-faint">
           <span class="my-kind font-medium text-secondary">{{ kindLabel() }}</span>
           <span class="my-meta">{{ prefixLabel() }}</span>

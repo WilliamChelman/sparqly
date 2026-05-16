@@ -10,6 +10,7 @@ import {
   signal,
 } from '@angular/core';
 import { ConfigService, type SourceListingEntry } from '@app/core';
+import { EyebrowComponent } from '@app/modules/eyebrow';
 import { SourcesPickerOverlayComponent } from './sources-picker-overlay.component';
 
 function splitPinnedAddress(value: string): { id: string; ref?: string } {
@@ -27,7 +28,7 @@ function splitPinnedAddress(value: string): { id: string; ref?: string } {
   selector: 'app-sources-picker',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SourcesPickerOverlayComponent],
+  imports: [EyebrowComponent, SourcesPickerOverlayComponent],
   host: { class: 'relative inline-block' },
   template: `
     @if (sources() === null) {
@@ -41,10 +42,7 @@ function splitPinnedAddress(value: string): { id: string; ref?: string } {
         [attr.aria-expanded]="open()"
         (click)="toggle()"
       >
-        <span
-          class="font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint"
-          >{{ label }}</span
-        >
+        <span app-eyebrow>{{ label }}</span>
         <span class="h-3.5 w-px bg-border" aria-hidden="true"></span>
         <span
           class="font-sans font-medium"

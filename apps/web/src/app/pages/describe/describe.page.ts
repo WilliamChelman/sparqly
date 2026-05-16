@@ -9,6 +9,7 @@ import {
 import { ActivatedRoute, Router } from '@angular/router';
 import { ButtonComponent } from '@app/modules/button';
 import { ErrorBannerComponent } from '@app/modules/error-banner';
+import { EyebrowComponent } from '@app/modules/eyebrow';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import { ConfigService, type DisplayContext } from '@app/core';
 import { FormattedResultComponent } from '@app/pages/query/components/result/formatted-result.component';
@@ -45,6 +46,7 @@ const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
     ButtonComponent,
     DescribeSectionsComponent,
     ErrorBannerComponent,
+    EyebrowComponent,
     FormattedResultComponent,
     SourcesPickerComponent,
     SourceErrorsComponent,
@@ -103,8 +105,9 @@ const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
             <span data-testid="describe-total">{{ resp.total }}</span> quad(s).
           </p>
           <nav
+            app-eyebrow
             role="tablist"
-            class="flex gap-3.5 border-b border-border-muted font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint"
+            class="flex gap-3.5 border-b border-border-muted"
           >
             <button
               data-testid="tab-table"

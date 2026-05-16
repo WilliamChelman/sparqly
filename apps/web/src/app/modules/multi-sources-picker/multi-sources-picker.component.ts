@@ -17,12 +17,13 @@ import {
   type SourceListingEntry,
 } from '@app/core';
 import { ButtonComponent } from '@app/modules/button';
+import { EyebrowComponent } from '@app/modules/eyebrow';
 
 @Component({
   selector: 'app-multi-sources-picker',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CdkListboxModule, ButtonComponent],
+  imports: [CdkListboxModule, ButtonComponent, EyebrowComponent],
   host: { class: 'relative inline-block' },
   template: `
     @if (sources() === null) {
@@ -32,10 +33,7 @@ import { ButtonComponent } from '@app/modules/button';
         data-testid="multi-sources-locked"
         class="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-foreground"
       >
-        <span
-          class="font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint"
-          >{{ label }}</span
-        >
+        <span app-eyebrow>{{ label }}</span>
         <span class="h-3.5 w-px bg-border" aria-hidden="true"></span>
         <span class="font-sans font-medium">{{ includedSources()[0].label }}</span>
       </span>
@@ -48,10 +46,7 @@ import { ButtonComponent } from '@app/modules/button';
         [attr.aria-expanded]="open()"
         (click)="toggle()"
       >
-        <span
-          class="font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint"
-          >{{ label }}</span
-        >
+        <span app-eyebrow>{{ label }}</span>
         <span class="h-3.5 w-px bg-border" aria-hidden="true"></span>
         <span class="font-sans font-medium">{{ triggerLabel() }}</span>
       </button>
