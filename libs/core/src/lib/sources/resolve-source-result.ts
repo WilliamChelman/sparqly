@@ -26,8 +26,10 @@ import {
   defaultRepoDiscovery,
   pinGlobSource,
   PinnedFileMissingError,
+  type PinnedGlob,
 } from './git/pin-glob-source';
 import { normalizeRegistryPinsResult } from './git/normalize-registry-pins';
+import { walkGitTree, type WalkGitTreeError } from './git/walk-git-tree';
 
 export {
   formatSourceError,
@@ -154,20 +156,113 @@ function pinAndLoadGlob(
     { port, repoDiscovery, logger: options.logger },
   )
     .mapErr<SourceError>((e) => e)
-    .andThen<LoadResult, SourceError>((pinned) =>
-      loadRdfResult({
+    .andThen<LoadResult, SourceError>((pinned) => {
+      const transformPin = { ref: pinned.ref, sha: pinned.resolvedSha };
+      if (source.splitByFile === true) {
+        // Split-glob parents enumerate from the git tree at the resolved SHA
+        // (mirroring `expandSplitGlobs.expandPinned`) so the load sees the
+        // ref-time file set, not the working tree's. Without this branch the
+        // working-tree walk would surface files added after the ref as
+        // pinned-file-missing errors (ADR-0029 ad-hoc pin path).
+        return loadPinnedSplitGlob(source, pinned, port, repoDiscovery)
+          .map((sub) => applyGlobTransforms(sub, transforms, transformPin));
+      }
+      return loadRdfResult({
         sources: source.glob,
         logger: options.logger,
         contentReader: pinned.contentReader,
       })
-        .map((sub) =>
-          applyGlobTransforms(sub, transforms, {
-            ref: pinned.ref,
-            sha: pinned.resolvedSha,
+        .map((sub) => applyGlobTransforms(sub, transforms, transformPin))
+        .orElse((err) => mapPinnedLoadError(err));
+    });
+}
+
+function loadPinnedSplitGlob(
+  source: ParsedGlobSource,
+  pinned: PinnedGlob,
+  port: GitPort,
+  repoDiscovery: RepoDiscoveryDeps,
+): ResultAsync<LoadResult, SourceError> {
+  return walkGitTree(
+    {
+      glob: source.glob,
+      repoRoot: pinned.repoRoot,
+      sha: pinned.resolvedSha,
+    },
+    { gitPort: port, repoDiscovery },
+  )
+    .mapErr<SourceError>((err) => walkErrorToSourceError(err, source.glob))
+    .andThen((files) => parsePinnedFiles(files, source.glob, pinned.contentReader));
+}
+
+function parsePinnedFiles(
+  files: ReadonlyArray<string>,
+  glob: string,
+  contentReader: PinnedGlob['contentReader'],
+): ResultAsync<LoadResult, SourceError> {
+  const store = new Store();
+  const prefixes: Record<string, Record<string, string>> = {};
+  const perFileRecords = new Map<
+    string,
+    ReadonlyArray<import('../engine').RdfRecord>
+  >();
+  const seed: ResultAsync<void, SourceError> = okAsync(undefined);
+  const chain = files.reduce<ResultAsync<void, SourceError>>(
+    (prev, file) =>
+      prev.andThen(() =>
+        ResultAsync.fromPromise(
+          contentReader(file),
+          (err): SourceError => ({
+            kind: 'glob-load',
+            glob: [glob],
+            file,
+            message: err instanceof Error ? err.message : String(err),
           }),
-        )
-        .orElse((err) => mapPinnedLoadError(err)),
-    );
+        ).andThen<void, SourceError>((buf) => {
+          if (buf === null) {
+            return errAsync<void, SourceError>({
+              kind: 'git-pin',
+              reason: 'pinned-file-missing',
+              message: `pinned source: file ${file} unexpectedly absent at the resolved SHA`,
+            });
+          }
+          return parseRdfFileResult(file, { contentOverride: buf })
+            .map((result) => {
+              for (const { quad } of result.records) store.addQuad(quad);
+              prefixes[file] = result.prefixes;
+              perFileRecords.set(file, result.records);
+            })
+            .mapErr<SourceError>((err) => ({
+              kind: 'glob-load',
+              glob: [glob],
+              file,
+              message: err.message,
+            }));
+        }),
+      ),
+    seed,
+  );
+  return chain.map(() => ({
+    store,
+    files: [...files],
+    prefixes,
+    perFileRecords,
+  }));
+}
+
+function walkErrorToSourceError(
+  err: WalkGitTreeError,
+  glob: string,
+): SourceError {
+  if (err.kind === 'spans-multiple-repos') {
+    return { kind: 'git-pin', reason: 'no-repo-found', message: err.message };
+  }
+  return {
+    kind: 'glob-load',
+    glob: [glob],
+    file: glob,
+    message: err.message,
+  };
 }
 
 function applyGlobTransforms(
