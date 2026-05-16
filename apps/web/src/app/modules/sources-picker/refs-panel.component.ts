@@ -11,6 +11,7 @@ import {
   input,
   Output,
 } from '@angular/core';
+import { ButtonComponent } from '@app/modules/button';
 import type { RefEntry, RefsResponse } from './refs-api.client';
 import { searchRefs } from './ref-search';
 
@@ -70,17 +71,21 @@ export type RefsPanelState =
           />
           @if (stagedRef() !== '') {
             <button
+              app-btn
+              variant="secondary"
               type="button"
               data-testid="refs-clear"
               title="Clear selected ref"
-              class="shrink-0 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[13px] text-foreground-muted hover:border-foreground-faint hover:text-foreground"
+              class="shrink-0"
               (click)="onClear()"
             >Clear</button>
           }
           <button
+            app-btn
+            variant="secondary"
             type="button"
             data-testid="refs-refresh"
-            class="shrink-0 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[13px] text-foreground hover:border-foreground-faint"
+            class="shrink-0"
             (click)="refresh.emit()"
           >⟳ Refresh remotes</button>
         </div>
@@ -195,7 +200,7 @@ export type RefsPanelState =
       </li>
     </ng-template>
   `,
-  imports: [NgTemplateOutlet],
+  imports: [NgTemplateOutlet, ButtonComponent],
 })
 export class RefsPanelComponent {
   readonly state = input.required<RefsPanelState>();

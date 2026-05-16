@@ -1,5 +1,6 @@
 import { Component } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { ButtonComponent } from '@app/modules/button';
 import { LogomarkComponent } from './components/logomark.component';
 import { ThemeToggleComponent } from './components/theme-toggle.component';
 
@@ -9,6 +10,7 @@ import { ThemeToggleComponent } from './components/theme-toggle.component';
   imports: [
     RouterLink,
     RouterLinkActive,
+    ButtonComponent,
     LogomarkComponent,
     ThemeToggleComponent,
   ],
@@ -32,22 +34,25 @@ import { ThemeToggleComponent } from './components/theme-toggle.component';
       </a>
       <nav class="relative z-[1] flex gap-1 text-xs uppercase tracking-[0.14em]">
         <a
+          app-btn
+          variant="pill"
           routerLink="/"
           routerLinkActive="bg-bg text-foreground shadow-sm"
           [routerLinkActiveOptions]="{ exact: true }"
-          class="rounded-full px-3 py-1.5 text-foreground-faint transition-colors hover:text-foreground"
           >Playground</a
         >
         <a
+          app-btn
+          variant="pill"
           routerLink="/diff"
           routerLinkActive="bg-bg text-foreground shadow-sm"
-          class="rounded-full px-3 py-1.5 text-foreground-faint transition-colors hover:text-foreground"
           >Diff</a
         >
         <a
+          app-btn
+          variant="pill"
           routerLink="/describe"
           routerLinkActive="bg-bg text-foreground shadow-sm"
-          class="rounded-full px-3 py-1.5 text-foreground-faint transition-colors hover:text-foreground"
           >Describe</a
         >
       </nav>

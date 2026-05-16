@@ -7,6 +7,7 @@ import {
   signal,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { ButtonComponent } from '@app/modules/button';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import {
   ConfigService,
@@ -29,6 +30,7 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ButtonComponent,
     SourcesPickerComponent,
     DiffResultRendererComponent,
     YasqeEditorComponent,
@@ -131,10 +133,11 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
         </details>
         <div>
           <button
+            app-btn
+            variant="primary"
             data-testid="run-diff"
             type="button"
-            class="rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground shadow-sm transition-colors hover:bg-accent-strong disabled:opacity-50"
-            [disabled]="running()"
+            [loading]="running()"
             (click)="run()"
           >
             {{ running() ? 'running…' : 'Run' }}

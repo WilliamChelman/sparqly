@@ -7,6 +7,7 @@ import {
   signal,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { ButtonComponent } from '@app/modules/button';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import { ConfigService, type DisplayContext } from '@app/core';
 import { FormattedResultComponent } from '@app/pages/query/components/result/formatted-result.component';
@@ -40,6 +41,7 @@ const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ButtonComponent,
     DescribeSectionsComponent,
     FormattedResultComponent,
     SourcesPickerComponent,
@@ -71,10 +73,12 @@ const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
           (valueChange)="onSourceChange($event)"
         />
         <button
+          app-btn
+          variant="primary"
           data-testid="run-describe"
           type="button"
-          class="rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground shadow-sm transition-colors hover:bg-accent-strong disabled:opacity-50"
-          [disabled]="running() || seed().trim().length === 0"
+          [loading]="running()"
+          [disabled]="seed().trim().length === 0"
           (click)="run()"
         >
           {{ running() ? 'running…' : 'Describe' }}

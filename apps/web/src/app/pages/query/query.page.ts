@@ -20,6 +20,7 @@ import {
   type DisplayContext,
   type SourceListingEntry,
 } from '@app/core';
+import { ButtonComponent } from '@app/modules/button';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import { EditorFrameComponent } from './components/editor-frame.component';
 import {
@@ -56,7 +57,12 @@ function buildDefaultQuery(context: DisplayContext): string {
   selector: 'app-query-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SourcesPickerComponent, EditorFrameComponent, ResultPaneComponent],
+  imports: [
+    ButtonComponent,
+    SourcesPickerComponent,
+    EditorFrameComponent,
+    ResultPaneComponent,
+  ],
   template: `
     <header class="border-b border-border-muted bg-surface px-4 py-3">
       <h1 class="font-serif text-2xl italic text-foreground">
@@ -87,10 +93,12 @@ function buildDefaultQuery(context: DisplayContext): string {
         />
         <div>
           <button
+            app-btn
+            variant="primary"
             data-testid="run-query"
             type="button"
-            class="rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground shadow-sm transition-colors hover:bg-accent-strong disabled:opacity-50"
-            [disabled]="running() || !sourceId()"
+            [loading]="running()"
+            [disabled]="!sourceId()"
             (click)="run()"
           >
             {{ running() ? 'running…' : 'Run' }}
