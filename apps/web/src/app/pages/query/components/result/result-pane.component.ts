@@ -14,6 +14,7 @@ import type {
   Triple,
   TripleResult,
 } from '@app/core';
+import { EyebrowComponent } from '@app/modules/eyebrow';
 import { parseRdfString, type FormatSerialization } from 'common';
 import { DataFactory, type Quad } from 'n3';
 import {
@@ -53,6 +54,7 @@ interface DownloadOption {
   standalone: true,
   imports: [
     ErrorConstellationComponent,
+    EyebrowComponent,
     FormattedResultComponent,
     HeroIllustrationComponent,
     LoadingConstellationComponent,
@@ -97,17 +99,19 @@ interface DownloadOption {
       @case ('result') {
         <div class="overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
           <div
-            class="flex items-center justify-between gap-4 border-b border-border-muted bg-surface-sunken px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground-faint"
+            app-eyebrow
+            class="flex items-center justify-between gap-4 border-b border-border-muted bg-surface-sunken px-4 py-2.5 text-[11px]"
           >
             <nav role="tablist" class="flex gap-3.5">
               @for (t of tabs(); track t.id) {
                 <button
+                  app-eyebrow
                   [attr.data-testid]="'tab-' + t.testId"
                   role="tab"
                   type="button"
                   [attr.aria-selected]="activeTab() === t.id"
                   (click)="setTab(t.id)"
-                  class="cursor-pointer border-b border-transparent bg-transparent px-0 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint transition-colors duration-[180ms] hover:text-foreground-muted aria-selected:border-accent aria-selected:text-foreground"
+                  class="cursor-pointer border-b border-transparent bg-transparent px-0 py-1 transition-colors duration-[180ms] hover:text-foreground-muted aria-selected:border-accent aria-selected:text-foreground"
                 >{{ t.label }}</button>
               }
             </nav>

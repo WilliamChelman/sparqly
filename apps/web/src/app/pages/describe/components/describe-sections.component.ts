@@ -8,6 +8,7 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import type { Quad } from 'n3';
 import type { DisplayContext } from '@app/core';
+import { EyebrowComponent } from '@app/modules/eyebrow';
 import { TermCellComponent } from '@app/pages/query/components/result/term-cell.component';
 import {
   buildDescribeSections,
@@ -20,7 +21,7 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 @Component({
   selector: 'app-describe-sections',
   standalone: true,
-  imports: [TermCellComponent, NgTemplateOutlet],
+  imports: [EyebrowComponent, TermCellComponent, NgTemplateOutlet],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let view = sections();
@@ -35,7 +36,7 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
           data-direction="outbound"
           class="flex flex-col gap-2 border-b border-border-muted py-3"
         >
-          <h2 class="font-mono text-xs uppercase tracking-[0.14em] text-foreground-faint">
+          <h2 app-eyebrow class="text-xs">
             outbound ·
             <span data-testid="describe-section-count">{{ view.outbound.count }}</span>
           </h2>
@@ -55,7 +56,7 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
           data-direction="inbound"
           class="flex flex-col gap-2 py-3"
         >
-          <h2 class="font-mono text-xs uppercase tracking-[0.14em] text-foreground-faint">
+          <h2 app-eyebrow class="text-xs">
             inbound ·
             <span data-testid="describe-section-count">{{ view.inbound.count }}</span>
           </h2>

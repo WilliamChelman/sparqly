@@ -6,12 +6,13 @@ import {
   input,
 } from '@angular/core';
 import type { DisplayContext, SelectResult, Term } from '@app/core';
+import { EyebrowComponent } from '@app/modules/eyebrow';
 import { TermCellComponent } from './term-cell.component';
 
 @Component({
   selector: 'app-result-table-select',
   standalone: true,
-  imports: [ScrollingModule, TermCellComponent],
+  imports: [EyebrowComponent, ScrollingModule, TermCellComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div
@@ -20,9 +21,10 @@ import { TermCellComponent } from './term-cell.component';
       class="w-full font-mono text-xs"
     >
       <div
+        app-eyebrow
         data-testid="select-header"
         data-sticky="true"
-        class="sticky top-0 z-[1] grid border-b border-border bg-surface-sunken font-sans text-[10px] uppercase tracking-[0.14em] text-foreground-faint [&>div]:px-3.5 [&>div]:py-2"
+        class="sticky top-0 z-[1] grid border-b border-border bg-surface-sunken font-sans [&>div]:px-3.5 [&>div]:py-2"
         [style.gridTemplateColumns]="gridTemplateColumns()"
       >
         <div

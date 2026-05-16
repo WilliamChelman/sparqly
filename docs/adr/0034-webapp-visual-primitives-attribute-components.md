@@ -22,7 +22,7 @@ Behaviour:
 
 - Named slots `iconStart` and `iconEnd` project SVG/icon components via `<ng-content select="[iconStart]" />` / `[iconEnd]`. The component owns flex+gap layout and wraps slots in size-aware spans (sm → 14px, md → 16px).
 - `[loading]="true"` sets host `disabled`, sets `aria-busy="true"`, and **replaces the `iconStart` slot with `IconSpinnerComponent`** if `iconStart` was projected; otherwise prepends a spinner before the label. The label stays at full opacity — width stays roughly stable, the button's purpose stays readable to assistive tech.
-- A pure-function sibling `button.classes.ts` exports `getButtonClasses(variant, size, loading?): string`. The variant×size matrix is golden-tested in `button.classes.spec.ts`; `button.component.spec.ts` covers behaviour (slot projection, loading swap, aria-busy, disabled coupling).
+- The class composition lives inline in `button.component.ts` as top-level exports: `getButtonClasses(variant, size, loading?): string` for primitives with computed shapes, or an exported `*_CLASSES` constant for primitives whose shape is fixed (eyebrow). Behaviour tests and the variant×size golden snapshot both live in `button.component.spec.ts`. An earlier draft split these into sibling `<primitive>.classes.ts` / `.classes.spec.ts` files; the split collapsed once we noticed it forced readers to chase two files for one decision and the combined size stayed well under ADR-0026's 300-line soft budget (button ~160 lines, eyebrow ~35).
 - `tailwind-merge` composes the variant classes with any call-site `class="…"` overrides so consumers can override predictably (`routerLinkActive` set classes on header nav included).
 
 The 5-variant taxonomy maps every existing button call-site:
