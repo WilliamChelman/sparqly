@@ -1,9 +1,19 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { parseSourceSpecs } from 'core';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { parseSourceSpecs, type ParsedSource } from 'core';
+import { EngineMap } from '../bootstrap';
 import { DiffService } from './diff.service';
+
+async function buildSvc(
+  registry: ReadonlyArray<ParsedSource>,
+  logger?: { debug: (event: string, data: unknown) => void },
+): Promise<{ svc: DiffService; engineMap: EngineMap }> {
+  const engineMap = await EngineMap.create(registry, { logger });
+  const svc = new DiffService(engineMap, registry);
+  return { svc, engineMap };
+}
 
 const TRIPLES_CONSTRUCT =
   'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:p ?o } WHERE { ?s ex:p ?o }';
@@ -41,7 +51,7 @@ describe('DiffService — grouped mode', () => {
       { id: 'alpha', glob: paths.alphaTtl },
       { id: 'beta', glob: paths.betaTtl },
     ]);
-    svc = new DiffService(registry);
+    ({ svc } = await buildSvc(registry));
   });
 
   afterEach(async () => {
@@ -78,19 +88,24 @@ describe('DiffService — grouped mode', () => {
     expect(hunk.sourceRecords.right[0].file).toMatch(/beta\.ttl$/);
   });
 
-  it('skipAutoSourceAnnotation leaves per-hunk source records empty on glob targets', async () => {
-    const out = await svc.runDiff({
-      left: '@alpha',
-      right: '@beta',
-      skipAutoSourceAnnotation: true,
-    });
+  it('reuses engine-map cache: a second grouped diff against the same @ids does not re-load the source', async () => {
+    const debug = vi.fn();
+    const registry = parseSourceSpecs([
+      { id: 'alpha', glob: paths.alphaTtl },
+      { id: 'beta', glob: paths.betaTtl },
+    ]);
+    const { svc: warmSvc } = await buildSvc(registry, { debug });
 
-    expect(out.kind).toBe('grouped');
-    if (out.kind !== 'grouped') return;
-    for (const hunk of out.hunked.hunks) {
-      expect(hunk.sourceRecords.left).toEqual([]);
-      expect(hunk.sourceRecords.right).toEqual([]);
-    }
+    await warmSvc.runDiff({ left: '@alpha', right: '@beta' });
+    await warmSvc.runDiff({ left: '@alpha', right: '@beta' });
+
+    const loadEvents = debug.mock.calls.filter(
+      ([event]) => event === 'source-loaded',
+    );
+    const loadedIds = loadEvents.map(
+      ([, payload]) => (payload as { source: string }).source,
+    );
+    expect(loadedIds.sort()).toEqual(['alpha', 'beta']);
   });
 
   it('honours per-side scoping queries (anonymous view) on the grouped path', async () => {
@@ -121,7 +136,7 @@ describe('DiffService — tabular mode', () => {
       { id: 'alpha', glob: paths.alphaTtl },
       { id: 'beta', glob: paths.betaTtl },
     ]);
-    svc = new DiffService(registry);
+    ({ svc } = await buildSvc(registry));
   });
 
   afterEach(async () => {
@@ -175,7 +190,7 @@ describe('DiffService — tabular mode', () => {
       blankTtl,
       '@prefix ex: <http://example.org/> . ex:a ex:hasThing _:b1 . ex:a ex:hasThing _:b2 .\n',
     );
-    const svc2 = new DiffService(
+    const { svc: svc2 } = await buildSvc(
       parseSourceSpecs([
         { id: 'alpha', glob: paths.alphaTtl },
         { id: 'blank', glob: blankTtl },
@@ -209,7 +224,7 @@ describe('DiffService — tabular mode', () => {
       blankTtl,
       '@prefix ex: <http://example.org/> . ex:a ex:hasThing _:b1 .\n',
     );
-    const svc2 = new DiffService(
+    const { svc: svc2 } = await buildSvc(
       parseSourceSpecs([
         { id: 'alpha', glob: paths.alphaTtl },
         { id: 'blank', glob: blankTtl },
@@ -247,7 +262,7 @@ describe('DiffService — error packaging', () => {
       { id: 'alpha', glob: paths.alphaTtl },
       { id: 'beta', glob: paths.betaTtl },
     ]);
-    svc = new DiffService(registry);
+    ({ svc } = await buildSvc(registry));
   });
 
   afterEach(async () => {

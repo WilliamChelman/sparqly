@@ -189,26 +189,13 @@ describe('POST /api/diff', () => {
     });
   });
 
-  it('skipAutoSourceAnnotation in body leaves per-hunk source records empty on glob targets', async () => {
+  it('rejects `skipAutoSourceAnnotation` as an unrecognized key (removed in ADR-0032)', async () => {
     const resp = await postJson({
       left: '@alpha',
       right: '@beta',
       skipAutoSourceAnnotation: true,
     });
-    expect(resp.status).toBe(200);
-    const json = (await resp.json()) as {
-      kind: string;
-      hunked: {
-        hunks: Array<{
-          sourceRecords: { left: unknown[]; right: unknown[] };
-        }>;
-      };
-    };
-    expect(json.kind).toBe('grouped');
-    for (const h of json.hunked.hunks) {
-      expect(h.sourceRecords.left).toEqual([]);
-      expect(h.sourceRecords.right).toEqual([]);
-    }
+    expect(resp.status).toBe(400);
   });
 });
 

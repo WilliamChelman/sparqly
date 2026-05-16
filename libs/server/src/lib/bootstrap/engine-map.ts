@@ -3,14 +3,28 @@ import type { SparqlyLogger } from 'common';
 import {
   QueryEngine,
   resolveSourceResult,
+  type ParsedEndpointSource,
   type ParsedSource,
   type SourceError,
+  type SourceRecordSidecar,
 } from 'core';
+import type { Store } from 'n3';
 import type { StoreRef } from './tokens';
+
+/**
+ * Loaded view of a served source, surfaced to consumers that need the
+ * underlying Store and (where available) the loader-attached source-record
+ * sidecar (ADR-0032). Discriminated mirrors `QuerySources` so callers can
+ * dispatch on `mode` without reaching into `engine-map` internals.
+ */
+export type LoadedSources =
+  | { mode: 'materialized'; store: Store; sourceRecords?: SourceRecordSidecar }
+  | { mode: 'pass-through'; endpoint: ParsedEndpointSource };
 
 interface LoadedEntry {
   engine: QueryEngine;
   storeRef: StoreRef | undefined;
+  sources: LoadedSources;
 }
 
 interface Entry {
@@ -92,6 +106,7 @@ export class EngineMap {
             logger: options.logger,
           }),
           storeRef: undefined,
+          sources: { mode: 'pass-through', endpoint: src },
         };
         entries.set(src.id, {
           source: src,
@@ -124,12 +139,26 @@ export class EngineMap {
    * without restarting the server (#290).
    */
   ensure(id: string): ResultAsync<QueryEngine, SourceError> {
+    return this.ensureEntry(id).map((loaded) => loaded.engine);
+  }
+
+  /**
+   * Triggers the same one-shot lazy load as {@link ensure} but returns the
+   * resolved {@link LoadedSources} discriminant — the diff service uses this
+   * to read the loader-attached source-record sidecar (ADR-0032) without
+   * touching the engine.
+   */
+  ensureSources(id: string): ResultAsync<LoadedSources, SourceError> {
+    return this.ensureEntry(id).map((loaded) => loaded.sources);
+  }
+
+  private ensureEntry(id: string): ResultAsync<LoadedEntry, SourceError> {
     const entry = this.entries.get(id);
     if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
     if (entry.loaded === undefined) {
       entry.loaded = this.loadEntry(entry);
     }
-    return new ResultAsync(entry.loaded).map((loaded) => loaded.engine);
+    return new ResultAsync(entry.loaded);
   }
 
   private async loadEntry(
@@ -158,6 +187,7 @@ export class EngineMap {
           logger: this.logger,
         }),
         storeRef: undefined,
+        sources: { mode: 'pass-through', endpoint: sources.endpoint },
       };
       entry.files = [];
     } else {
@@ -170,6 +200,11 @@ export class EngineMap {
           logger: this.logger,
         }),
         storeRef,
+        sources: {
+          mode: 'materialized',
+          store: sources.store,
+          sourceRecords: sources.sourceRecords,
+        },
       };
       entry.files = [...sources.files];
     }

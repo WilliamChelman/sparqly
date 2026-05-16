@@ -7,7 +7,6 @@ export interface DiffRequest {
   right: string;
   leftQuery?: string;
   rightQuery?: string;
-  skipAutoSourceAnnotation?: boolean;
 }
 
 /**
@@ -198,9 +197,6 @@ export class DiffService {
     }
     if (req.rightQuery !== undefined && req.rightQuery.length > 0) {
       body.rightQuery = req.rightQuery;
-    }
-    if (req.skipAutoSourceAnnotation === true) {
-      body.skipAutoSourceAnnotation = true;
     }
     return this.http.post<DiffResponse>('/api/diff', body);
   }

@@ -317,43 +317,19 @@ describe('DiffPage', () => {
     );
   });
 
-  it('exposes an advanced disclosure with skipAutoSourceAnnotation checkbox (default off) and context number input (default 3)', async () => {
+  it('exposes an advanced disclosure with only the snippet context number input (default 3); the skipAutoSourceAnnotation checkbox is gone (ADR-0032)', async () => {
     const { fixture } = await setup(TWO);
     const root = fixture.nativeElement as HTMLElement;
     const skip = root.querySelector(
       'input[data-testid=skip-auto-source-annotation]',
-    ) as HTMLInputElement | null;
+    );
     const ctx = root.querySelector(
       'input[data-testid=snippet-context]',
     ) as HTMLInputElement | null;
-    expect(skip).toBeTruthy();
-    expect(skip?.type).toBe('checkbox');
-    expect(skip?.checked).toBe(false);
+    expect(skip).toBeNull();
     expect(ctx).toBeTruthy();
     expect(ctx?.type).toBe('number');
     expect(ctx?.value).toBe('3');
-  });
-
-  it('forwards skipAutoSourceAnnotation in the /api/diff request body when checked', async () => {
-    const { fixture, diffStub } = await setup(TWO);
-    const root = fixture.nativeElement as HTMLElement;
-    const { left, right } = pickerStubs(fixture);
-    left.valueChange.emit('a');
-    right.valueChange.emit('b');
-    fixture.detectChanges();
-
-    const skip = root.querySelector(
-      'input[data-testid=skip-auto-source-annotation]',
-    ) as HTMLInputElement;
-    skip.checked = true;
-    skip.dispatchEvent(new Event('change'));
-    fixture.detectChanges();
-
-    (root.querySelector('button[data-testid=run-diff]') as HTMLButtonElement).click();
-    fixture.detectChanges();
-
-    expect(diffStub.calls.length).toBe(1);
-    expect(diffStub.calls[0].request.skipAutoSourceAnnotation).toBe(true);
   });
 
   it('forwards the context input value into the DiffResultRenderer', async () => {
