@@ -13,7 +13,6 @@ export * from './load-sources';
 export * from './resolve-source';
 export * from './resolve-source-result';
 export * from './resolve-source-references';
-export * from './with-auto-source-annotation';
 export * from './expand-split-globs';
 export * from './walk-glob-paths';
 export * from './derive-file-source-id';

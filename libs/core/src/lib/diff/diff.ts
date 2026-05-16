@@ -8,7 +8,6 @@ import {
 } from './grouped-diff-formatter';
 import type { HunkedRdfDiff } from './group-rdf-diff-by-entity';
 import {
-  DEFAULT_ANNOTATION_PREDICATE_IRIS,
   displaySourcePath,
   triplePatternKey,
   type AnnotationPredicateIris,
@@ -45,23 +44,25 @@ export interface DiffTotals {
 export interface DiffSideStore {
   /**
    * The full Store for one side, after `resolveSource`. May contain
-   * RDF-star annotation triples (when the source declared `annotate`); when it
-   * does not, the side's source-record map will simply be empty.
+   * RDF-star annotation triples when the source declared an explicit
+   * `annotateSource` transform; the canonicalizer strips them using
+   * {@link annotationPredicates} before diffing.
    */
   store: Store;
   /**
-   * Predicate IRIs used by the side's `annotate` transform, threaded from
-   * {@link extractAnnotationPredicates}. Defaults to
-   * {@link DEFAULT_ANNOTATION_PREDICATE_IRIS} when the source did not override
-   * any of them. Ignored when {@link sourceRecords} is supplied.
+   * Predicate IRIs used by the side's explicit `annotateSource` transform,
+   * threaded from {@link extractAnnotationPredicates}. Tells the
+   * canonicalizer which RDF-star annotation triples to strip before
+   * diffing. Defaults are applied when the source did not declare or
+   * override `annotateSource`.
    */
   annotationPredicates?: AnnotationPredicateIris;
   /**
    * Loader-attached source-record sidecar (ADR-0032). When supplied, diff
-   * re-keys the sidecar's `(s, p, o)` map to canonical N-Quads — fanning out
-   * across graphs the same way the legacy RDF-star path does — and does
-   * not walk the Store for annotation triples. Output is byte-identical to
-   * the legacy path on equivalent inputs.
+   * re-keys the sidecar's `(s, p, o)` map to canonical N-Quads, fanning
+   * out across graphs so each asserted quad gets the records authored
+   * under its triple. When absent, the per-side source-record map is
+   * empty.
    */
   sourceRecords?: SourceRecordSidecar;
 }
@@ -124,13 +125,11 @@ function buildSideRecordMap(
   side: DiffSideStore,
   canonicalIdMap: Map<string, string>,
 ): Map<string, SourceRecord[]> {
-  if (side.sourceRecords !== undefined) {
-    return sidecarToCanonicalRecordMap(side.store, side.sourceRecords, canonicalIdMap);
-  }
-  return extractSourceRecordMap(
+  if (side.sourceRecords === undefined) return new Map();
+  return sidecarToCanonicalRecordMap(
     side.store,
+    side.sourceRecords,
     canonicalIdMap,
-    side.annotationPredicates ?? DEFAULT_ANNOTATION_PREDICATE_IRIS,
   );
 }
 
@@ -156,84 +155,6 @@ function sidecarToCanonicalRecordMap(
       out.set(canonKey, bucket);
     }
     for (const r of records) bucket.push(r);
-  }
-  return out;
-}
-
-function extractSourceRecordMap(
-  store: Store,
-  canonicalIdMap: Map<string, string>,
-  predicates: AnnotationPredicateIris,
-): Map<string, SourceRecord[]> {
-  const out = new Map<string, SourceRecord[]>();
-  const sourcePredicate = predicates.source;
-  const filePredicate = predicates.file;
-  const linePredicate = predicates.line;
-  const endLinePredicate = predicates.endLine;
-  const gitRefPredicate = predicates.gitRef;
-  const gitShaPredicate = predicates.gitSha;
-
-  for (const annotation of store.getQuads(null, null, null, null)) {
-    if ((annotation.subject.termType as string) !== 'Quad') continue;
-    if (annotation.predicate.value !== sourcePredicate) continue;
-
-    const quotedTriple = annotation.subject as unknown as Quad;
-    const recordNode = annotation.object;
-    const fileQuads = store.getQuads(
-      recordNode,
-      { termType: 'NamedNode', value: filePredicate } as Term,
-      null,
-      null,
-    );
-    if (fileQuads.length === 0) continue;
-    const file = fileQuads[0].object.value;
-    const lineQuads = store.getQuads(
-      recordNode,
-      { termType: 'NamedNode', value: linePredicate } as Term,
-      null,
-      null,
-    );
-    const lineRaw = lineQuads[0]?.object.value;
-    const endLineQuads = store.getQuads(
-      recordNode,
-      { termType: 'NamedNode', value: endLinePredicate } as Term,
-      null,
-      null,
-    );
-    const endLineRaw = endLineQuads[0]?.object.value;
-    const gitRefRaw = store.getQuads(
-      recordNode,
-      { termType: 'NamedNode', value: gitRefPredicate } as Term,
-      null,
-      null,
-    )[0]?.object.value;
-    const gitShaRaw = store.getQuads(
-      recordNode,
-      { termType: 'NamedNode', value: gitShaPredicate } as Term,
-      null,
-      null,
-    )[0]?.object.value;
-    const record: SourceRecord = { file };
-    if (lineRaw !== undefined) record.line = Number(lineRaw);
-    if (endLineRaw !== undefined) record.endLine = Number(endLineRaw);
-    if (gitRefRaw !== undefined) record.gitRef = gitRefRaw;
-    if (gitShaRaw !== undefined) record.gitSha = gitShaRaw;
-
-    // Bucket the record under every asserted quad whose s/p/o matches the
-    // quoted triple, in any graph (the annotation does not record graph).
-    const matching = store.getQuads(
-      quotedTriple.subject,
-      quotedTriple.predicate,
-      quotedTriple.object,
-      null,
-    );
-    for (const asserted of matching) {
-      if ((asserted.subject.termType as string) === 'Quad') continue;
-      const key = canonicalQuadKey(asserted, canonicalIdMap);
-      const bucket = out.get(key);
-      if (bucket === undefined) out.set(key, [record]);
-      else bucket.push(record);
-    }
   }
   return out;
 }

@@ -66,9 +66,10 @@ export const ANNOTATE_SOURCE_TRANSFORM: TransformDefinition = {
 /**
  * Pull the configured annotation predicate IRIs out of a parsed transforms
  * list — returns the override when the source declared `annotateSource`
- * (with or without overrides), or the defaults otherwise. Used by the
- * canonicalize / hash / diff layer to thread the right predicates into the
- * stripper. The matched key is `annotateSource`.
+ * (with or without overrides), or the defaults otherwise. Threaded into
+ * the canonicalizer's RDF-star strip pass (ADR-0032) so users who declared
+ * an explicit `annotateSource` transform see those triples excluded from
+ * the canonical form. The matched key is `annotateSource`.
  */
 export function extractAnnotationPredicates(
   transforms: ReadonlyArray<ParsedTransform> | undefined,
