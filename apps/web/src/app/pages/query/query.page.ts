@@ -21,6 +21,7 @@ import {
   type SourceListingEntry,
 } from '@app/core';
 import { ButtonComponent } from '@app/modules/button';
+import { CodeChipComponent } from '@app/modules/code-chip';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import { EditorFrameComponent } from './components/editor-frame.component';
 import {
@@ -59,6 +60,7 @@ function buildDefaultQuery(context: DisplayContext): string {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ButtonComponent,
+    CodeChipComponent,
     SourcesPickerComponent,
     EditorFrameComponent,
     ResultPaneComponent,
@@ -70,9 +72,7 @@ function buildDefaultQuery(context: DisplayContext): string {
       </h1>
       <p class="text-sm text-foreground-muted">
         Querying
-        <code class="rounded bg-surface-sunken px-1 py-0.5 font-mono"
-          >/api/sparql/{{ sourceId() || '…' }}</code
-        >
+        <code app-code-chip>/api/sparql/{{ sourceId() || '…' }}</code>
       </p>
     </header>
     @if (sources() === null) {
