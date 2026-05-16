@@ -103,19 +103,19 @@ describe('SourcesPickerOverlayComponent', () => {
     expect(emitted).toEqual(['right']);
   });
 
-  it('marks non-matching siblings of a matched child with data-dimmed (structural cue preserved)', () => {
+  it('hides non-matching siblings while filtering and renders the parent as a non-clickable breadcrumb', () => {
     const grouped: SourceListingEntry[] = [
-      { id: 'docs', kind: 'glob', label: 'docs (glob)' },
+      { id: 'docs', kind: 'glob', label: 'docs' },
       {
         id: 'docs/alice.ttl',
         kind: 'file',
-        label: 'alice.ttl',
+        label: 'docs/alice.ttl',
         parentId: 'docs',
       },
       {
         id: 'docs/bob.ttl',
         kind: 'file',
-        label: 'bob.ttl',
+        label: 'docs/bob.ttl',
         parentId: 'docs',
       },
     ];
@@ -127,16 +127,111 @@ describe('SourcesPickerOverlayComponent', () => {
     search.value = 'alice';
     search.dispatchEvent(new Event('input'));
     fixture.detectChanges();
-    const alice = root.querySelector(
-      '[data-source-id="docs/alice.ttl"]',
-    ) as HTMLElement;
-    const bob = root.querySelector(
-      '[data-source-id="docs/bob.ttl"]',
-    ) as HTMLElement;
+    const alice = root.querySelector('[data-source-id="docs/alice.ttl"]');
+    const bob = root.querySelector('[data-source-id="docs/bob.ttl"]');
     expect(alice).toBeTruthy();
-    expect(bob).toBeTruthy();
-    expect(alice.getAttribute('data-dimmed')).toBeNull();
-    expect(bob.getAttribute('data-dimmed')).toBe('true');
+    expect(bob).toBeNull();
+    // Parent "docs" no longer matches, so it's a breadcrumb (not selectable).
+    expect(root.querySelector('[data-source-id="docs"]')).toBeNull();
+    expect(root.querySelector('[data-source-breadcrumb="docs"]')).toBeTruthy();
+  });
+
+  it('renders child labels with the parent prefix stripped and indented under the group', () => {
+    const grouped: SourceListingEntry[] = [
+      { id: 'era-skos', kind: 'glob', label: 'era-skos' },
+      {
+        id: 'era-skos/Concepts.ttl',
+        kind: 'file',
+        label: 'era-skos/Concepts.ttl',
+        parentId: 'era-skos',
+      },
+    ];
+    const { fixture } = mount(grouped, 'era-skos/Concepts.ttl');
+    const root = fixture.nativeElement as HTMLElement;
+    const child = root.querySelector(
+      '[data-source-id="era-skos/Concepts.ttl"]',
+    ) as HTMLElement;
+    expect(child).toBeTruthy();
+    expect(child.getAttribute('data-depth')).toBe('1');
+    expect(child.textContent?.trim()).toBe('Concepts.ttl');
+  });
+
+  it('shows a group child count when no query is active', () => {
+    const grouped: SourceListingEntry[] = [
+      { id: 'docs', kind: 'glob', label: 'docs' },
+      {
+        id: 'docs/a.ttl',
+        kind: 'file',
+        label: 'docs/a.ttl',
+        parentId: 'docs',
+      },
+      {
+        id: 'docs/b.ttl',
+        kind: 'file',
+        label: 'docs/b.ttl',
+        parentId: 'docs',
+      },
+    ];
+    const { fixture } = mount(grouped, 'docs');
+    const root = fixture.nativeElement as HTMLElement;
+    const count = root.querySelector(
+      '[data-source-id="docs"] [data-testid="group-count"]',
+    );
+    expect(count?.textContent?.trim()).toBe('(2)');
+  });
+
+  it('shows a match-count badge while filtering', () => {
+    const grouped: SourceListingEntry[] = [
+      { id: 'docs', kind: 'glob', label: 'docs' },
+      {
+        id: 'docs/a.ttl',
+        kind: 'file',
+        label: 'docs/a.ttl',
+        parentId: 'docs',
+      },
+      {
+        id: 'docs/b.ttl',
+        kind: 'file',
+        label: 'docs/b.ttl',
+        parentId: 'docs',
+      },
+    ];
+    const { fixture } = mount(grouped, 'docs');
+    const root = fixture.nativeElement as HTMLElement;
+    const search = root.querySelector(
+      '[data-testid="overlay-search"]',
+    ) as HTMLInputElement;
+    search.value = '.ttl';
+    search.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    const badge = root.querySelector('[data-testid="overlay-match-count"]');
+    expect(badge?.textContent?.trim()).toBe('2 matches');
+  });
+
+  it('toggles a group via its chevron without selecting it', () => {
+    const grouped: SourceListingEntry[] = [
+      { id: 'docs', kind: 'glob', label: 'docs' },
+      {
+        id: 'docs/a.ttl',
+        kind: 'file',
+        label: 'docs/a.ttl',
+        parentId: 'docs',
+      },
+    ];
+    const { fixture } = mount(grouped, 'docs');
+    const root = fixture.nativeElement as HTMLElement;
+    // Collapsed by default: child not rendered.
+    expect(root.querySelector('[data-source-id="docs/a.ttl"]')).toBeNull();
+    const chevron = root.querySelector(
+      '[data-source-group="docs"] [data-testid="group-chevron"]',
+    ) as HTMLButtonElement;
+    chevron.click();
+    fixture.detectChanges();
+    expect(root.querySelector('[data-source-id="docs/a.ttl"]')).toBeTruthy();
+    // Re-click collapses.
+    chevron.click();
+    fixture.detectChanges();
+    expect(root.querySelector('[data-source-id="docs/a.ttl"]')).toBeNull();
   });
 
   it('bolds the matched substring within the matching row', () => {

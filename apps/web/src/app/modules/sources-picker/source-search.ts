@@ -1,108 +1,150 @@
 import type { SourceListingEntry } from '@app/core';
 
-export interface SourceSearchMatch {
-  readonly field: 'id' | 'label';
+export interface SourceMatchSpan {
   readonly start: number;
   readonly end: number;
 }
 
-export interface SourceSearchHit {
+export interface SourceGroupRow {
+  readonly kind: 'group';
   readonly entry: SourceListingEntry;
-  readonly matched: boolean;
-  readonly dimmed: boolean;
+  readonly displayLabel: string;
+  readonly childCount: number;
+  readonly matchedChildCount: number;
   readonly expanded: boolean;
-  readonly match?: SourceSearchMatch;
+  readonly selectable: boolean;
+  readonly match?: SourceMatchSpan;
 }
 
-export interface SourceSearchResult {
-  readonly hits: ReadonlyArray<SourceSearchHit>;
+export interface SourceLeafRow {
+  readonly kind: 'leaf';
+  readonly entry: SourceListingEntry;
+  readonly depth: 0 | 1;
+  readonly displayLabel: string;
+  readonly match?: SourceMatchSpan;
+}
+
+export type SourceRow = SourceGroupRow | SourceLeafRow;
+
+export interface SourceTreeResult {
+  readonly rows: ReadonlyArray<SourceRow>;
+  readonly matchCount: number;
+  readonly totalCount: number;
   readonly empty: boolean;
 }
 
-function findMatch(
-  entry: SourceListingEntry,
-  needle: string,
-): SourceSearchMatch | undefined {
-  const idIdx = entry.id.toLowerCase().indexOf(needle);
-  if (idIdx !== -1) {
-    return { field: 'id', start: idIdx, end: idIdx + needle.length };
-  }
-  const labelIdx = entry.label.toLowerCase().indexOf(needle);
-  if (labelIdx !== -1) {
-    return { field: 'label', start: labelIdx, end: labelIdx + needle.length };
-  }
-  return undefined;
+function getMatchSpan(text: string, needle: string): SourceMatchSpan | undefined {
+  if (needle === '') return undefined;
+  const idx = text.toLowerCase().indexOf(needle);
+  if (idx === -1) return undefined;
+  return { start: idx, end: idx + needle.length };
 }
 
-export function searchSources(
+function entryMatches(entry: SourceListingEntry, needle: string): boolean {
+  return (
+    entry.id.toLowerCase().includes(needle) ||
+    entry.label.toLowerCase().includes(needle)
+  );
+}
+
+function stripParentPrefix(childLabel: string, parentLabel: string): string {
+  const prefix = parentLabel.endsWith('/') ? parentLabel : `${parentLabel}/`;
+  return childLabel.startsWith(prefix)
+    ? childLabel.slice(prefix.length)
+    : childLabel;
+}
+
+export function buildSourceTree(
   sources: ReadonlyArray<SourceListingEntry>,
   query: string,
-): SourceSearchResult {
-  if (query === '') {
-    return {
-      empty: false,
-      hits: sources.map((entry) => ({
-        entry,
-        matched: true,
-        dimmed: false,
-        expanded: false,
-      })),
-    };
-  }
-
+  expandedGroupIds: ReadonlySet<string>,
+): SourceTreeResult {
   const needle = query.toLowerCase();
-  const directMatch = new Map<string, SourceSearchMatch>();
+  const hasQuery = needle !== '';
+
+  const childrenByParent = new Map<string, SourceListingEntry[]>();
   for (const entry of sources) {
-    const m = findMatch(entry, needle);
-    if (m !== undefined) directMatch.set(entry.id, m);
+    if (entry.parentId === undefined) continue;
+    const arr = childrenByParent.get(entry.parentId) ?? [];
+    arr.push(entry);
+    childrenByParent.set(entry.parentId, arr);
   }
 
-  if (directMatch.size === 0) {
-    return { hits: [], empty: true };
-  }
-
-  const parentsWithMatchingChild = new Set<string>();
-  for (const entry of sources) {
-    if (!directMatch.has(entry.id)) continue;
-    if (entry.parentId !== undefined) {
-      parentsWithMatchingChild.add(entry.parentId);
+  const matchedIds = new Set<string>();
+  if (hasQuery) {
+    for (const entry of sources) {
+      if (entryMatches(entry, needle)) matchedIds.add(entry.id);
     }
   }
 
-  const hits: SourceSearchHit[] = [];
-  for (const entry of sources) {
-    const match = directMatch.get(entry.id);
-    if (match !== undefined) {
-      hits.push({
+  const topLevel = sources.filter((e) => e.parentId === undefined);
+
+  const rows: SourceRow[] = [];
+  let matchCount = 0;
+
+  for (const entry of topLevel) {
+    const children = childrenByParent.get(entry.id) ?? [];
+    const isGroup = children.length > 0;
+
+    if (!isGroup) {
+      if (hasQuery && !matchedIds.has(entry.id)) continue;
+      const match = hasQuery ? getMatchSpan(entry.label, needle) : undefined;
+      if (hasQuery && matchedIds.has(entry.id)) matchCount++;
+      rows.push({
+        kind: 'leaf',
         entry,
-        matched: true,
-        dimmed: false,
-        expanded: parentsWithMatchingChild.has(entry.id),
+        depth: 0,
+        displayLabel: entry.label,
         match,
       });
       continue;
     }
-    if (parentsWithMatchingChild.has(entry.id)) {
-      hits.push({
-        entry,
-        matched: false,
-        dimmed: false,
-        expanded: true,
-      });
-      continue;
-    }
-    if (
-      entry.parentId !== undefined &&
-      parentsWithMatchingChild.has(entry.parentId)
-    ) {
-      hits.push({
-        entry,
-        matched: false,
-        dimmed: true,
-        expanded: false,
+
+    const groupSelfMatched = hasQuery && matchedIds.has(entry.id);
+    const matchedChildren = hasQuery
+      ? children.filter((c) => matchedIds.has(c.id))
+      : [];
+
+    if (hasQuery && !groupSelfMatched && matchedChildren.length === 0) continue;
+
+    const userExpanded = expandedGroupIds.has(entry.id);
+    const expanded = hasQuery
+      ? matchedChildren.length > 0 || (groupSelfMatched && userExpanded)
+      : userExpanded;
+
+    rows.push({
+      kind: 'group',
+      entry,
+      displayLabel: entry.label,
+      childCount: children.length,
+      matchedChildCount: matchedChildren.length,
+      expanded,
+      selectable: !hasQuery || groupSelfMatched,
+      match: hasQuery ? getMatchSpan(entry.label, needle) : undefined,
+    });
+    if (groupSelfMatched) matchCount++;
+
+    if (!expanded) continue;
+
+    const visibleChildren = hasQuery ? matchedChildren : children;
+    for (const child of visibleChildren) {
+      const displayLabel = stripParentPrefix(child.label, entry.label);
+      const childMatched = hasQuery && matchedIds.has(child.id);
+      if (childMatched) matchCount++;
+      rows.push({
+        kind: 'leaf',
+        entry: child,
+        depth: 1,
+        displayLabel,
+        match: childMatched ? getMatchSpan(displayLabel, needle) : undefined,
       });
     }
   }
 
-  return { hits, empty: hits.length === 0 };
+  return {
+    rows,
+    matchCount,
+    totalCount: sources.length,
+    empty: hasQuery && rows.length === 0,
+  };
 }
