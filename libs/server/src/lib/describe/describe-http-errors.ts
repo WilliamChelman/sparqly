@@ -31,6 +31,14 @@ export function mapDescribeHttpError(
       });
     case 'reference-target':
       return new BadRequestException({ kind: 'reference-target' });
+    case 'expanded-paths-without-source':
+      return new BadRequestException({ kind: 'expanded-paths-without-source' });
+    case 'expanded-paths-non-endpoint-source':
+      return new BadRequestException({
+        kind: 'expanded-paths-non-endpoint-source',
+        id: error.id,
+        sourceKind: error.sourceKind,
+      });
   }
 }
 

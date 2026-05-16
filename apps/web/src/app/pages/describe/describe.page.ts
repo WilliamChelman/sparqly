@@ -161,15 +161,31 @@ export class DescribePage implements OnInit {
   readonly iriError = signal<string | null>(null);
   // '' means "no override" — server fans out across the absorbed registry
   // (ADR-0033). A non-empty id describes against that source only.
-  private selectedSource = '';
+  readonly selectedSource = signal<string>('');
   readonly initialSource = signal<string>('');
   private prefixes: Record<string, string> = {};
   readonly displayContext = signal<DisplayContext>({ prefixes: {} });
-  /** Ids of `endpoint` sources — only their dangling bnodes get an expand affordance. */
-  readonly endpointSourceIds = signal<string[]>([]);
-  /** UI-driven blank-node expansion paths, keyed by source id (ADR-0019). Lives
-   * only in component state — the URL keeps carrying just the seed and sources. */
-  private expandedPaths: Record<string, PathStep[][]> = {};
+  /** Ids of every `endpoint` source in the served registry. */
+  private readonly allEndpointSourceIds = signal<string[]>([]);
+  /**
+   * Endpoint-source ids that can be expanded *right now*. Under ADR-0033's
+   * single-or-all contract, `expandedPaths` is scoped to the currently
+   * selected source — so the expand affordance is gated on that source
+   * being set *and* being an endpoint. When no source (or a non-endpoint
+   * source) is selected, the affordance is hidden everywhere.
+   */
+  readonly endpointSourceIds = computed<readonly string[]>(() => {
+    const selected = this.selectedSource();
+    if (selected === '') return [];
+    return this.allEndpointSourceIds().includes(selected) ? [selected] : [];
+  });
+  /**
+   * UI-driven blank-node expansion paths against the selected endpoint source
+   * (ADR-0019, ADR-0033). A single flat array — the request carries one
+   * source per call, so per-source keying is no longer needed. Lives only in
+   * component state — the URL keeps carrying just the seed and source.
+   */
+  private expandedPaths: PathStep[][] = [];
 
   private readonly _activeTab = signal<DescribeTab>('table');
   readonly activeTab = this._activeTab.asReadonly();
@@ -214,7 +230,7 @@ export class DescribePage implements OnInit {
     if (iri !== null) this.seed.set(iri);
     const source = this.route.snapshot.queryParamMap.get('source');
     if (source !== null && source !== '') {
-      this.selectedSource = source;
+      this.selectedSource.set(source);
       this.initialSource.set(source);
     }
   }
@@ -223,7 +239,7 @@ export class DescribePage implements OnInit {
     this.configService.config().subscribe((config) => {
       this.prefixes = config.context.prefixes;
       this.displayContext.set(config.context);
-      this.endpointSourceIds.set(
+      this.allEndpointSourceIds.set(
         config.sources.filter((s) => s.kind === 'endpoint').map((s) => s.id),
       );
       // A URL carrying ?iri is a bookmark — rehydrate and run immediately.
@@ -237,7 +253,7 @@ export class DescribePage implements OnInit {
   }
 
   onSourceChange(value: string): void {
-    this.selectedSource = value;
+    this.selectedSource.set(value);
   }
 
   setTab(tab: DescribeTab): void {
@@ -253,15 +269,16 @@ export class DescribePage implements OnInit {
     const iri = expanded.iri;
     this.iriError.set(null);
     this.submittedSeed.set(iri);
-    this.expandedPaths = {};
+    this.expandedPaths = [];
     this.running.set(true);
     this.response.set(null);
     this._activeTab.set('table');
+    const selected = this.selectedSource();
     const queryParams: Record<string, string | null> = {
       iri,
       // Always write the key so a previously-selected source clears from the URL
       // when the picker is back to "All sources".
-      source: this.selectedSource === '' ? null : this.selectedSource,
+      source: selected === '' ? null : selected,
     };
     void this.router.navigate([], {
       relativeTo: this.route,
@@ -270,7 +287,7 @@ export class DescribePage implements OnInit {
       replaceUrl: true,
     });
     const req: { iri: string; source?: string } = { iri };
-    if (this.selectedSource !== '') req.source = this.selectedSource;
+    if (selected !== '') req.source = selected;
     this.describeService.run(req).subscribe({
       next: (resp) => {
         this.running.set(false);
@@ -294,25 +311,26 @@ export class DescribePage implements OnInit {
   }
 
   /**
-   * Expand a dangling blank node one hop deeper (ADR-0019). Append its
-   * predicate-pinned path to `expandedPaths` for its source, re-call
-   * `/api/describe` for that source alone, and splice the fresh slice into the
-   * merged view — sibling sources keep their existing quads and are not queried.
+   * Expand a dangling blank node one hop deeper (ADR-0019, ADR-0033). Append
+   * its predicate-pinned path to `expandedPaths` and re-call `/api/describe`
+   * against the currently selected endpoint source alone; splice the fresh
+   * slice into the merged view. Affordance gating upstream guarantees a
+   * non-empty selected source whose kind is `endpoint`, so the bnode's
+   * origin source always matches the selection.
    */
   onExpand(target: DescribeBnodePathResult): void {
     const current = this.response();
     if (current === null) return;
     const { sourceId, path } = target;
-    const existing = this.expandedPaths[sourceId] ?? [];
     const serialized = JSON.stringify(path);
-    if (existing.some((p) => JSON.stringify(p) === serialized)) return;
-    this.expandedPaths = { ...this.expandedPaths, [sourceId]: [...existing, path] };
+    if (this.expandedPaths.some((p) => JSON.stringify(p) === serialized)) return;
+    this.expandedPaths = [...this.expandedPaths, path];
     this.running.set(true);
     this.describeService
       .run({
         iri: this.submittedSeed(),
         source: sourceId,
-        expandedPaths: { [sourceId]: this.expandedPaths[sourceId] },
+        expandedPaths: this.expandedPaths,
       })
       .subscribe({
         next: (fresh) => {

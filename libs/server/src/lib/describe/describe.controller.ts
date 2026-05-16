@@ -23,9 +23,7 @@ const DESCRIBE_REQUEST_SCHEMA = z
     withProvenance: z.boolean().optional(),
     perSourceLimit: z.number().int().positive().optional(),
     fromSourcePredicate: z.string().min(1).optional(),
-    expandedPaths: z
-      .record(z.string(), z.array(z.array(PATH_STEP_SCHEMA)))
-      .optional(),
+    expandedPaths: z.array(z.array(PATH_STEP_SCHEMA)).optional(),
   })
   .strict();
 

@@ -76,7 +76,9 @@ export type DescribeTopLevelError =
   | AllSourcesFailedError
   | EmptyTargetError
   | SeedNotIriError
-  | DescribeReferenceTargetError;
+  | DescribeReferenceTargetError
+  | ExpandedPathsWithoutSourceError
+  | ExpandedPathsNonEndpointSourceError;
 
 export interface AllSourcesFailedError {
   kind: 'all-sources-failed';
@@ -103,6 +105,27 @@ export interface DescribeReferenceTargetError {
   kind: 'reference-target';
 }
 
+/**
+ * `expandedPaths` was supplied without `source`. Under ADR-0033 the field is
+ * scoped to exactly one endpoint source per request, so it has no meaning
+ * under the all-sources fan-out branch.
+ */
+export interface ExpandedPathsWithoutSourceError {
+  kind: 'expanded-paths-without-source';
+}
+
+/**
+ * `expandedPaths` was supplied with a `source` whose kind is not `endpoint`.
+ * Path expansion only applies to endpoint sources — materialized sources are
+ * already fully expanded — so the coupling is enforced at the request
+ * boundary rather than silently ignored.
+ */
+export interface ExpandedPathsNonEndpointSourceError {
+  kind: 'expanded-paths-non-endpoint-source';
+  id: string;
+  sourceKind: string;
+}
+
 export function formatDescribeError(error: DescribeTopLevelError): string {
   switch (error.kind) {
     case 'all-sources-failed': {
@@ -115,5 +138,9 @@ export function formatDescribeError(error: DescribeTopLevelError): string {
       return `describe: seed ${JSON.stringify(error.value)} is not an IRI`;
     case 'reference-target':
       return "describe: every selected source is a `reference` alias; describe an actual data source instead";
+    case 'expanded-paths-without-source':
+      return 'describe: `expandedPaths` requires `source` to be set (paths apply to a single endpoint source per request)';
+    case 'expanded-paths-non-endpoint-source':
+      return `describe: \`expandedPaths\` is only valid against \`endpoint\` sources; source '${error.id}' is \`${error.sourceKind}\``;
   }
 }

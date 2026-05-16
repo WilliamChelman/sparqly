@@ -53,13 +53,14 @@ export interface DescribeRequest {
   perSourceLimit?: number;
   fromSourcePredicate?: string;
   /**
-   * UI-driven blank-node expansion paths per source id (ADR-0019). For each
-   * `endpoint` source, `expandedPaths[id]` is forwarded as `paths` to
-   * {@link describeEndpointResult}; `glob`/`view` sources ignore it (already
-   * fully expanded). Paths longer than {@link MAX_EXPANSION_PATH_STEPS} are
-   * clamped and the affected source is reported `truncated`.
+   * UI-driven blank-node expansion paths (ADR-0019, ADR-0033). Scoped to a
+   * single endpoint source per request, so valid only when `source` is set
+   * and that source is `kind: 'endpoint'` — anything else errs at the request
+   * boundary. Forwarded as `paths` to {@link describeEndpointResult}. Paths
+   * longer than {@link MAX_EXPANSION_PATH_STEPS} are clamped and the source
+   * is reported `truncated`.
    */
-  expandedPaths?: Record<string, PathStep[][]>;
+  expandedPaths?: PathStep[][];
 }
 
 /** Cap on expansion-path length (ADR-0019); over-long paths are clamped, not rejected. */
@@ -115,6 +116,23 @@ export class DescribeService {
     if (selection.isErr()) return errAsync(selection.error);
     const selected = selection.value;
 
+    const expandedPaths = req.expandedPaths;
+    if (expandedPaths !== undefined && expandedPaths.length > 0) {
+      if (req.source === undefined) {
+        return errAsync({ kind: 'expanded-paths-without-source' });
+      }
+      // `selected` resolved to exactly one entry when `source` is set, so the
+      // first element is the chosen target.
+      const target = selected[0];
+      if (target.kind !== 'endpoint') {
+        return errAsync({
+          kind: 'expanded-paths-non-endpoint-source',
+          id: target.id ?? req.source,
+          sourceKind: target.kind,
+        });
+      }
+    }
+
     const predicate =
       req.fromSourcePredicate ?? this.config.fromSourcePredicate;
     const withProvenance = req.withProvenance !== false;
@@ -132,7 +150,13 @@ export class DescribeService {
     // after every source has resolved.
     const folded = selected.map((target) => {
       const id = target.id ?? 'source';
-      const requestedPaths = req.expandedPaths?.[id] ?? [];
+      // Paths are only meaningful when an endpoint source is explicitly
+      // named — the precondition above ensures `expandedPaths` is only
+      // forwarded to that endpoint, never to a sibling under fan-out.
+      const requestedPaths =
+        target.kind === 'endpoint' && req.source !== undefined
+          ? req.expandedPaths ?? []
+          : [];
       return this.describeOneResult(target, id, seed, perSourceLimit, requestedPaths)
         .map(
           (raw): SourceRun => ({

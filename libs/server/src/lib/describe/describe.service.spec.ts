@@ -202,7 +202,8 @@ describe('DescribeService — expandedPaths (ADR-0019)', () => {
 
       const after = await describeResponse(svc, {
         iri: 'http://example.org/alice',
-        expandedPaths: { remote: [[{ predicate: PIN, inverse: false }]] },
+        source: 'remote',
+        expandedPaths: [[{ predicate: PIN, inverse: false }]],
       });
       // The path-walk query was sent and pinned the predicate.
       expect(ep.queries.some((q) => q.includes(`<${PIN}>`))).toBe(true);
@@ -212,44 +213,6 @@ describe('DescribeService — expandedPaths (ADR-0019)', () => {
     } finally {
       await ep.close();
     }
-  });
-
-  it("does not forward one source's expandedPaths to another endpoint source", async () => {
-    const PIN = 'http://example.org/list';
-    const target = await startSparqlEndpoint('');
-    const other = await startSparqlEndpoint('');
-    try {
-      const registry = parseSourceSpecs([
-        { id: 'target', endpoint: target.url },
-        { id: 'other', endpoint: other.url },
-      ]);
-      await describeResponse(new DescribeService(registry), {
-        iri: 'http://example.org/alice',
-        expandedPaths: { target: [[{ predicate: PIN, inverse: false }]] },
-      });
-      expect(target.queries.some((q) => q.includes(`<${PIN}>`))).toBe(true);
-      expect(other.queries.some((q) => q.includes(`<${PIN}>`))).toBe(false);
-    } finally {
-      await target.close();
-      await other.close();
-    }
-  });
-
-  it('ignores expandedPaths for a materialized (glob) source — result identical to omitting it', async () => {
-    const registry = parseSourceSpecs([{ id: 'alpha', glob: paths.alphaTtl }]);
-    const svc = new DescribeService(registry);
-    const baseline = await describeResponse(svc, {
-      iri: 'http://example.org/alice',
-    });
-    const withPaths = await describeResponse(svc, {
-      iri: 'http://example.org/alice',
-      expandedPaths: {
-        alpha: [[{ predicate: 'http://example.org/knows', inverse: false }]],
-      },
-    });
-    expect(withPaths.total).toBe(baseline.total);
-    expect(withPaths.perSource.alpha.count).toBe(baseline.perSource.alpha.count);
-    expect(withPaths.perSource.alpha.truncated).toBe(false);
   });
 
   it('clamps an over-long expansion path to the cap and reports the source truncated', async () => {
@@ -262,7 +225,8 @@ describe('DescribeService — expandedPaths (ADR-0019)', () => {
       }));
       const out = await describeResponse(new DescribeService(registry), {
         iri: 'http://example.org/alice',
-        expandedPaths: { remote: [overLong] },
+        source: 'remote',
+        expandedPaths: [overLong],
       });
       expect(out.perSource.remote.truncated).toBe(true);
       // The path-walk query the endpoint received was clamped to MAX steps:
@@ -783,6 +747,33 @@ describe('DescribeService — multi-source aggregation', () => {
       expect(result.isErr()).toBe(true);
       if (result.isErr()) expect(result.error.kind).toBe('reference-target');
     });
+
+    it('errs with expanded-paths-without-source when `expandedPaths` is set but `source` is omitted', async () => {
+      const result = await svc.runDescribe({
+        iri: 'http://example.org/alice',
+        expandedPaths: [[{ predicate: 'http://example.org/knows', inverse: false }]],
+      });
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) {
+        expect(result.error.kind).toBe('expanded-paths-without-source');
+      }
+    });
+
+    it('errs with expanded-paths-non-endpoint-source when `source` names a non-endpoint kind', async () => {
+      const result = await svc.runDescribe({
+        iri: 'http://example.org/alice',
+        source: 'alpha',
+        expandedPaths: [[{ predicate: 'http://example.org/knows', inverse: false }]],
+      });
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) {
+        expect(result.error.kind).toBe('expanded-paths-non-endpoint-source');
+        if (result.error.kind === 'expanded-paths-non-endpoint-source') {
+          expect(result.error.id).toBe('alpha');
+          expect(result.error.sourceKind).toBe('glob');
+        }
+      }
+    });
   });
 
   describe('view dispatch', () => {
@@ -820,7 +811,7 @@ describe('DescribeService — multi-source aggregation', () => {
         ]);
         const out = await describeResponse(new DescribeService(registry), {
           iri: 'http://example.org/alice',
-          sources: ['overlay'],
+          source: 'overlay',
         });
         expect(out.perSource.overlay.error).toBeUndefined();
         expect(out.perSource.overlay.count).toBe(1);

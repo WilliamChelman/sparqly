@@ -11,8 +11,12 @@ export interface DescribeRequest {
    * against exactly that source.
    */
   source?: string;
-  /** UI-driven blank-node expansion paths per source id (ADR-0019). */
-  expandedPaths?: Record<string, PathStep[][]>;
+  /**
+   * UI-driven blank-node expansion paths against the selected endpoint
+   * `source` (ADR-0019, ADR-0033). The server rejects this field unless
+   * `source` is set to an `endpoint` kind.
+   */
+  expandedPaths?: PathStep[][];
 }
 
 export interface DescribePerSourceEntry {
