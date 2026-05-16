@@ -9,6 +9,10 @@ sources:
     splitByFile: true
   - id: era-ontology
     glob: /Users/williamchelman/Dev/cognizone/era/era-vocabulary/ontology.ttl
+    gitRef: v3.2.0
+    splitByFile: true
+  - id: era-skos
+    glob: /Users/williamchelman/Dev/cognizone/era/era-vocabulary/era-skos/**/*.ttl
     splitByFile: true
 
 serve:

@@ -57,7 +57,7 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
             <app-sources-picker
               label="left"
               [value]="leftId()"
-              (valueChange)="leftId.set($event)"
+              (valueChange)="onLeftIdChange($event)"
             />
             <div class="flex h-80 min-h-32 resize-y flex-col overflow-hidden rounded-lg border border-border bg-surface">
               <app-yasqe-editor
@@ -81,7 +81,7 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
             <app-sources-picker
               label="right"
               [value]="rightId()"
-              (valueChange)="rightId.set($event)"
+              (valueChange)="onRightIdChange($event)"
             />
             <div class="flex h-80 min-h-32 resize-y flex-col overflow-hidden rounded-lg border border-border bg-surface">
               <app-yasqe-editor
@@ -207,6 +207,20 @@ export class DiffPage implements OnInit {
         replaceUrl: true,
       });
     });
+  }
+
+  onLeftIdChange(id: string): void {
+    if (id === this.leftId()) return;
+    this.leftId.set(id);
+    this.result.set(null);
+    this.errors.set(null);
+  }
+
+  onRightIdChange(id: string): void {
+    if (id === this.rightId()) return;
+    this.rightId.set(id);
+    this.result.set(null);
+    this.errors.set(null);
   }
 
   setContext(raw: string): void {

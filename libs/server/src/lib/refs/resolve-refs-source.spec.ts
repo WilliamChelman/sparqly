@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseSourceSpecs } from 'core';
+import { type ParsedFileSource, type ParsedSource, parseSourceSpecs } from 'core';
 import { resolveRefsSource } from './resolve-refs-source';
 
 describe('resolveRefsSource — locates the glob whose repo backs ref-discovery', () => {
@@ -105,6 +105,45 @@ describe('resolveRefsSource — locates the glob whose repo backs ref-discovery'
     expect(result.error).toEqual({
       kind: 'no-git-repo',
       terminatingKind: 'empty',
+    });
+  });
+
+  it('walks up from a split-glob file child to its parent glob', () => {
+    const parsed = parseSourceSpecs([
+      { id: 'docs', glob: 'data/*.ttl', splitByFile: true },
+    ]);
+    const child: ParsedFileSource = {
+      kind: 'file',
+      id: 'docs/alice.ttl',
+      path: '/abs/data/alice.ttl',
+      parentId: 'docs',
+    };
+    const registry: ReadonlyArray<ParsedSource> = [...parsed, child];
+
+    const result = resolveRefsSource('docs/alice.ttl', registry);
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.kind).toBe('glob');
+    expect(result.value.id).toBe('docs');
+  });
+
+  it('errors no-git-repo kind:file when a file child has no parent in the registry', () => {
+    const orphan: ParsedFileSource = {
+      kind: 'file',
+      id: 'docs/alice.ttl',
+      path: '/abs/data/alice.ttl',
+      parentId: 'docs',
+    };
+    const registry: ReadonlyArray<ParsedSource> = [orphan];
+
+    const result = resolveRefsSource('docs/alice.ttl', registry);
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error).toEqual({
+      kind: 'no-git-repo',
+      terminatingKind: 'file',
     });
   });
 

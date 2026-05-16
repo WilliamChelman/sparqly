@@ -53,7 +53,7 @@ GET /api/sources/:id/refs
 => 404 { error: 'no-git-repo', kind: '<sourceKind>' }
 ```
 
-For `view` sources, the endpoint walks the `from:` chain until it reaches a glob, and returns that glob's refs. This matches the existing pin-propagation rule (ADR-0029): when a user pins `@my-view:v1.2`, the pin is for the underlying glob, so the listing comes from there too.
+For `view` sources, the endpoint walks the `from:` chain down until it reaches a glob; for `file` sources (split-glob children, ADR-0027), it walks up via `parentId` to the parent glob. In both cases the response shape is identical to a direct glob query, and a chain that bottoms on a kind with no repo (`endpoint`/`empty`, or a parent glob with no discoverable `.git`) returns the same `404 { error: 'no-git-repo', kind: '<terminating kind>' }` shape, reporting the terminating kind — not the requested row's kind. This matches the existing pin-propagation rule (ADR-0029): when a user pins `@my-view:v1.2` or `@docs/people/alice.ttl:v1.2`, the pin is for the underlying glob, so the listing comes from there too.
 
 `POST /api/sources/:id/refs/fetch` returns the same shape as the GET after running `git fetch` in the source's repo. Failure modes (network, auth) surface as HTTP errors with a typed body; the picker renders the failure inline in the ref panel and leaves the previous list in place.
 
