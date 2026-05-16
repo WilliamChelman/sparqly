@@ -47,6 +47,16 @@ describe('ThemeToggleComponent', () => {
     expect(fake.mode()).toBe('dark');
   });
 
+  it('renders the matching icon component inside each mode button', () => {
+    const { fixture } = setup();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(buttonByMode(el, 'light').querySelector('app-icon-sun')).toBeTruthy();
+    expect(buttonByMode(el, 'dark').querySelector('app-icon-moon')).toBeTruthy();
+    expect(
+      buttonByMode(el, 'system').querySelector('app-icon-system'),
+    ).toBeTruthy();
+  });
+
   it('marks the current mode with aria-pressed=true', () => {
     const { fixture, fake } = setup();
     fake.set('dark');

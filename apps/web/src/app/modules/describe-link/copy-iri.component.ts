@@ -6,12 +6,13 @@ import {
   signal,
 } from '@angular/core';
 import { ButtonComponent } from '@app/modules/button';
+import { IconCheckComponent, IconCopyComponent } from '@app/modules/icons';
 
 @Component({
   selector: 'app-copy-iri',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonComponent],
+  imports: [ButtonComponent, IconCheckComponent, IconCopyComponent],
   template: `
     <button
       app-btn
@@ -24,8 +25,13 @@ import { ButtonComponent } from '@app/modules/button';
       "
       (click)="copy()"
       class="ml-1 align-middle font-[inherit] text-[1.05em]"
-      >{{ copied() ? '✓' : '⧉' }}</button
     >
+      @if (copied()) {
+        <app-icon-check />
+      } @else {
+        <app-icon-copy />
+      }
+    </button>
   `,
 })
 export class CopyIriComponent implements OnDestroy {
