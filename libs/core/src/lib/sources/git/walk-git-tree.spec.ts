@@ -9,6 +9,9 @@ function stubPort(files: ReadonlyArray<string>): GitPort {
     getRefObjectType: async () => null,
     readFileAtSha: async () => null,
     listFilesAtSha: async () => files,
+    readManyAtSha: async function* () {
+      yield* [];
+    },
   };
 }
 

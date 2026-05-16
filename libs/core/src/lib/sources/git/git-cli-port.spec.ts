@@ -37,6 +37,7 @@ describe('GitCliPort (integration with real fixture repo)', () => {
     repo = await mkdtemp(join(tmpdir(), 'sparqly-gitport-'));
     await git(repo, ['init', '-q', '-b', 'main']);
     await writeFile(join(repo, 'foaf.ttl'), 'old-content\n');
+    await writeFile(join(repo, 'skos.ttl'), 'skos-content\n');
     await git(repo, ['add', '.']);
     await git(repo, ['commit', '-q', '-m', 'first']);
     commit1Sha = await git(repo, ['rev-parse', 'HEAD']);
@@ -125,6 +126,54 @@ describe('GitCliPort (integration with real fixture repo)', () => {
 
     it('returns null for a path absent at the given SHA', async () => {
       expect(await port.readFileAtSha(repo, commit1Sha, 'missing.ttl')).toBeNull();
+    });
+  });
+
+  describe('readManyAtSha', () => {
+    it('streams bytes for each requested path from the git tree at the given SHA', async () => {
+      const out: Array<{ path: string; bytes: string | null }> = [];
+      for await (const r of port.readManyAtSha(repo, commit1Sha, [
+        'foaf.ttl',
+        'skos.ttl',
+      ])) {
+        out.push({ path: r.path, bytes: r.bytes?.toString('utf8') ?? null });
+      }
+      expect(out).toEqual([
+        { path: 'foaf.ttl', bytes: 'old-content\n' },
+        { path: 'skos.ttl', bytes: 'skos-content\n' },
+      ]);
+    });
+
+    it('yields nothing for an empty input and resolves promptly (no hung subprocess)', async () => {
+      const out: Array<{ path: string; bytes: Buffer | null }> = [];
+      for await (const r of port.readManyAtSha(repo, commit1Sha, [])) {
+        out.push(r);
+      }
+      expect(out).toEqual([]);
+    });
+
+    it('returns historical SHA content, ignoring the working tree', async () => {
+      const out: Array<{ path: string; bytes: string | null }> = [];
+      for await (const r of port.readManyAtSha(repo, commit1Sha, ['foaf.ttl'])) {
+        out.push({ path: r.path, bytes: r.bytes?.toString('utf8') ?? null });
+      }
+      expect(out).toEqual([{ path: 'foaf.ttl', bytes: 'old-content\n' }]);
+    });
+
+    it('yields bytes: null for paths absent at the given SHA, preserving input order alongside present paths', async () => {
+      const out: Array<{ path: string; bytes: string | null }> = [];
+      for await (const r of port.readManyAtSha(repo, commit1Sha, [
+        'foaf.ttl',
+        'missing.ttl',
+        'skos.ttl',
+      ])) {
+        out.push({ path: r.path, bytes: r.bytes?.toString('utf8') ?? null });
+      }
+      expect(out).toEqual([
+        { path: 'foaf.ttl', bytes: 'old-content\n' },
+        { path: 'missing.ttl', bytes: null },
+        { path: 'skos.ttl', bytes: 'skos-content\n' },
+      ]);
     });
   });
 });

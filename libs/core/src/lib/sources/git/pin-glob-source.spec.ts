@@ -24,6 +24,9 @@ function stubPort(
     readFileAtSha: vi.fn(async () => Buffer.from('old-content\n', 'utf8')),
     getRefObjectType: vi.fn(async () => 'tag'),
     listFilesAtSha: vi.fn(async () => []),
+    readManyAtSha: vi.fn(async function* () {
+      yield* [];
+    }),
     ...overrides,
   };
 }

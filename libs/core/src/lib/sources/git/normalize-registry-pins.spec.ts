@@ -12,6 +12,9 @@ function stubPort(overrides: Partial<GitPort> = {}): GitPort {
     readFileAtSha: vi.fn(async () => Buffer.from('', 'utf8')),
     getRefObjectType: vi.fn(async () => 'tag'),
     listFilesAtSha: vi.fn(async () => []),
+    readManyAtSha: vi.fn(async function* () {
+      yield* [];
+    }),
     ...overrides,
   };
 }

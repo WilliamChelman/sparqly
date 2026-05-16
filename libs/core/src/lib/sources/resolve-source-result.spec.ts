@@ -1,12 +1,13 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   formatSourceError,
   resolveSourceResult,
 } from './resolve-source-result';
 import { parseSourceSpec, parseSourceSpecs } from './source-spec';
+import type { GitPort } from './git/git-port';
 
 describe('resolveSourceResult — endpoint target', () => {
   it('returns Result.ok with pass-through mode for an endpoint target', async () => {
@@ -93,6 +94,71 @@ describe('resolveSourceResult — glob target', () => {
     expect(result.error.kind).toBe('glob-load');
     if (result.error.kind !== 'glob-load') throw new Error('unreachable');
     expect(result.error.file).toBe(bad);
+  });
+});
+
+describe('resolveSourceResult — pinned split-glob batches file reads', () => {
+  const SHA = '0123456789abcdef0123456789abcdef01234567';
+  const REPO = '/work/repo';
+  const turtleFor = (path: string): string => {
+    const local = path.replace(/[^a-zA-Z0-9]/g, '_');
+    return `@prefix ex: <http://example.org/> . ex:${local} ex:p ex:o .`;
+  };
+
+  function makePort(): GitPort & {
+    readManyAtSha: ReturnType<typeof vi.fn>;
+    readFileAtSha: ReturnType<typeof vi.fn>;
+  } {
+    return {
+      resolveRefToSha: vi.fn(async () => SHA),
+      getRefObjectType: vi.fn(async () => 'tag' as const),
+      readFileAtSha: vi.fn(async (_root: string, _sha: string, p: string) =>
+        Buffer.from(turtleFor(p), 'utf8'),
+      ),
+      listFilesAtSha: vi.fn(async () => ['data/a.ttl', 'data/b.ttl']),
+      readManyAtSha: vi.fn(async function* (
+        _repoRoot: string,
+        _sha: string,
+        paths: ReadonlyArray<string>,
+      ) {
+        for (const path of paths) {
+          yield { path, bytes: Buffer.from(turtleFor(path), 'utf8') };
+        }
+      }),
+    } as GitPort & {
+      readManyAtSha: ReturnType<typeof vi.fn>;
+      readFileAtSha: ReturnType<typeof vi.fn>;
+    };
+  }
+
+  it('issues a single batched readManyAtSha call (not one readFileAtSha per file) and parses every yielded blob into the store', async () => {
+    const target = parseSourceSpec({
+      id: 'data',
+      glob: `${REPO}/data/*.ttl`,
+      gitRef: 'v1.0.0',
+      splitByFile: true,
+    });
+    const port = makePort();
+
+    const result = await resolveSourceResult(target, {
+      gitPort: port,
+      repoDiscovery: { hasGitDir: (dir) => dir === REPO },
+      configDir: REPO,
+    });
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    if (result.value.mode !== 'materialized') throw new Error('unreachable');
+    expect(result.value.files).toHaveLength(2);
+    expect(result.value.store.size).toBe(2);
+
+    expect(port.readManyAtSha).toHaveBeenCalledTimes(1);
+    const call = port.readManyAtSha.mock.calls[0];
+    expect(call[0]).toBe(REPO);
+    expect(call[1]).toBe(SHA);
+    expect([...call[2]]).toEqual(['data/a.ttl', 'data/b.ttl']);
+
+    expect(port.readFileAtSha).not.toHaveBeenCalled();
   });
 });
 
