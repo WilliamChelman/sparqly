@@ -211,7 +211,7 @@ describe('SourcesPickerComponent', () => {
     expect(chip?.textContent).toContain('v1.2.0');
   });
 
-  it('renders a "resolves at server boot" note when the pinned ref is floating-shaped (ADR-0029 floating-ref, #279)', () => {
+  it('renders a "moving ref" note when the pinned ref is floating-shaped (ADR-0029 floating-ref, #279)', () => {
     const stub: Pick<ConfigService, 'list'> = {
       list: () => of(TWO_SOURCE_LISTING),
     };
@@ -228,10 +228,11 @@ describe('SourcesPickerComponent', () => {
     const root = fixture.nativeElement as HTMLElement;
     const note = root.querySelector('[data-testid="floating-ref-note"]');
     expect(note).toBeTruthy();
-    expect(note?.textContent?.toLowerCase()).toContain('resolves at server boot');
+    expect(note?.textContent?.toLowerCase()).toContain('moving ref');
+    expect(note?.textContent?.toLowerCase()).toContain('refresh remotes');
   });
 
-  it('omits the "resolves at server boot" note when the pinned ref is a full SHA (40 hex chars)', () => {
+  it('omits the "moving ref" note when the pinned ref is a full SHA (40 hex chars)', () => {
     const stub: Pick<ConfigService, 'list'> = {
       list: () => of(TWO_SOURCE_LISTING),
     };
@@ -252,7 +253,7 @@ describe('SourcesPickerComponent', () => {
     expect(root.querySelector('[data-testid="floating-ref-note"]')).toBeFalsy();
   });
 
-  it('omits the "resolves at server boot" note when no ref is in use (unpinned value)', () => {
+  it('omits the "moving ref" note when no ref is in use (unpinned value)', () => {
     const { fixture } = setup(TWO_SOURCE_LISTING);
     const root = fixture.nativeElement as HTMLElement;
     expect(root.querySelector('[data-testid="floating-ref-note"]')).toBeFalsy();

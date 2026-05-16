@@ -76,8 +76,8 @@ function splitPinnedAddress(value: string): { id: string; ref?: string } {
             data-testid="floating-ref-note"
             class="mt-1 text-[11px] text-foreground-faint"
           >
-            <code class="font-mono">@{{ ref }}</code> resolves at server boot —
-            restart sparqly to pick up a moved branch tip.
+            <code class="font-mono">@{{ ref }}</code> is a moving ref — click
+            Refresh Remotes to pick up a new tip.
           </p>
         }
       }
