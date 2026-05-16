@@ -294,30 +294,37 @@ describe('DescribeService — multi-source aggregation', () => {
     await rm(paths.dir, { recursive: true, force: true });
   });
 
-  it('defaults to all glob sources when `sources` is omitted', async () => {
+  it('defaults to all glob sources when `source` is omitted', async () => {
     const out = await describeResponse(svc, { iri: 'http://example.org/alice' });
     expect(out.perSource).toHaveProperty('alpha');
     expect(out.perSource).toHaveProperty('beta');
   });
 
-  it('runs describe against only the requested subset when `sources` is provided', async () => {
+  it('runs describe against only the named source when `source` is provided', async () => {
     const out = await describeResponse(svc, {
       iri: 'http://example.org/alice',
-      sources: ['alpha'],
+      source: 'alpha',
     });
     expect(out.perSource).toHaveProperty('alpha');
     expect(out.perSource).not.toHaveProperty('beta');
   });
 
-  it('errs with empty-target when `sources` is explicitly empty (ADR-0025 precondition)', async () => {
+  it('accepts an `@`-prefixed source id (matches the wire convention)', async () => {
+    const out = await describeResponse(svc, {
+      iri: 'http://example.org/alice',
+      source: '@beta',
+    });
+    expect(out.perSource).toHaveProperty('beta');
+    expect(out.perSource).not.toHaveProperty('alpha');
+  });
+
+  it('errs with empty-target when `source` names an unknown id', async () => {
     const result = await svc.runDescribe({
       iri: 'http://example.org/alice',
-      sources: [],
+      source: 'nope',
     });
     expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error.kind).toBe('empty-target');
-    }
+    if (result.isErr()) expect(result.error.kind).toBe('empty-target');
   });
 
   it('dedupes IRI-only quads across sources (alice knows bob counted once in total) but counts each source under perSource.count', async () => {
@@ -469,6 +476,92 @@ describe('DescribeService — multi-source aggregation', () => {
     expect(out.perSource.alpha.count).toBe(0);
     expect(out.perSource.beta.count).toBe(0);
     expect(out.quads.trim()).toBe('');
+  });
+
+  describe('split-glob absorbing-meta rule (ADR-0033)', () => {
+    async function makeSplitGlobRegistry(): Promise<{
+      dir: string;
+      registry: ParsedSource[];
+    }> {
+      const dir = await mkdtemp(join(tmpdir(), 'sparqly-describe-split-'));
+      const f1 = join(dir, 'one.ttl');
+      const f2 = join(dir, 'two.ttl');
+      await writeFile(
+        f1,
+        [
+          '@prefix ex: <http://example.org/> .',
+          'ex:alice ex:address _:b1 .',
+          '_:b1 ex:city "Paris" .',
+          '',
+        ].join('\n'),
+      );
+      await writeFile(
+        f2,
+        [
+          '@prefix ex: <http://example.org/> .',
+          'ex:alice ex:name "Alice" .',
+          '',
+        ].join('\n'),
+      );
+      const registry: ParsedSource[] = [
+        { kind: 'glob', id: 'docs', glob: join(dir, '*.ttl'), splitByFile: true },
+        { kind: 'file', id: 'docs/one.ttl', path: f1, parentId: 'docs' },
+        { kind: 'file', id: 'docs/two.ttl', path: f2, parentId: 'docs' },
+      ];
+      return { dir, registry };
+    }
+
+    it('"all" mode absorbs split-glob file children whose parent meta is served', async () => {
+      const { dir, registry } = await makeSplitGlobRegistry();
+      try {
+        const out = await describeResponse(new DescribeService(registry), {
+          iri: 'http://example.org/alice',
+        });
+        expect(out.perSource).toHaveProperty('docs');
+        expect(out.perSource).not.toHaveProperty('docs/one.ttl');
+        expect(out.perSource).not.toHaveProperty('docs/two.ttl');
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('a bnode-bearing seed across split-glob meta+children yields the bnode subtree exactly once (closes duplicate-subtree hole)', async () => {
+      const { dir, registry } = await makeSplitGlobRegistry();
+      try {
+        const out = await describeResponse(new DescribeService(registry), {
+          iri: 'http://example.org/alice',
+        });
+        const wire = parseNQuads(out.quads);
+        // The `_:b1 ex:city "Paris"` quad lives once in the source data; with
+        // absorption only the meta runs, so the merged result holds it exactly
+        // once. Without absorption, the meta and child describe runs would each
+        // contribute a separately-labelled bnode subtree, and the count would
+        // be two.
+        const cityQuads = wire.filter(
+          (q) => q.predicate.value === 'http://example.org/city',
+        );
+        expect(cityQuads).toHaveLength(1);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('explicit `source: "@docs/one.ttl"` honours the child id verbatim — meta is not also described', async () => {
+      const { dir, registry } = await makeSplitGlobRegistry();
+      try {
+        const out = await describeResponse(new DescribeService(registry), {
+          iri: 'http://example.org/alice',
+          source: '@docs/one.ttl',
+        });
+        expect(out.perSource).toHaveProperty('docs/one.ttl');
+        expect(out.perSource).not.toHaveProperty('docs');
+        expect(out.perSource).not.toHaveProperty('docs/two.ttl');
+        // file `one.ttl` holds the address+city quads about alice.
+        expect(out.perSource['docs/one.ttl'].count).toBe(2);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe('partial failure', () => {
@@ -624,7 +717,7 @@ describe('DescribeService — multi-source aggregation', () => {
       }
     });
 
-    it('rejects an empty source as a structured empty-source per-source error', async () => {
+    it('absorbs an empty source in "all" mode — it does not appear in perSource', async () => {
       const registry = parseSourceSpecs([
         { id: 'alpha', glob: paths.alphaTtl },
         { id: 'placeholder', empty: true },
@@ -632,16 +725,28 @@ describe('DescribeService — multi-source aggregation', () => {
       const out = await describeResponse(new DescribeService(registry), {
         iri: 'http://example.org/alice',
       });
-      expect(out.perSource.placeholder.count).toBe(0);
-      expect(out.perSource.placeholder.error?.kind).toBe('empty-source');
-      if (out.perSource.placeholder.error?.kind === 'empty-source') {
-        expect(out.perSource.placeholder.error.id).toBe('placeholder');
-      }
-      // The sibling glob is unaffected.
+      expect(out.perSource).not.toHaveProperty('placeholder');
       expect(out.perSource.alpha.count).toBeGreaterThan(0);
     });
 
-    it('rejects a reference (alias) source with a structured reference-source per-source error', async () => {
+    it('surfaces empty-source when the user explicitly names the empty source (preserved explanatory error)', async () => {
+      const registry = parseSourceSpecs([
+        { id: 'alpha', glob: paths.alphaTtl },
+        { id: 'placeholder', empty: true },
+      ]);
+      const result = await new DescribeService(registry).runDescribe({
+        iri: 'http://example.org/alice',
+        source: 'placeholder',
+      });
+      // Single-source all-failed terminal: the empty-source per-source error
+      // is promoted to the top level via all-sources-failed.
+      expect(result.isErr()).toBe(true);
+      if (result.isErr() && result.error.kind === 'all-sources-failed') {
+        expect(result.error.perSource.placeholder.kind).toBe('empty-source');
+      }
+    });
+
+    it('absorbs a reference (alias) source in "all" mode — it does not appear in perSource', async () => {
       const registry: ParsedSource[] = [
         { kind: 'glob', glob: paths.alphaTtl, id: 'alpha' },
         { kind: 'reference', ref: 'alpha', id: 'aliasy' },
@@ -649,11 +754,7 @@ describe('DescribeService — multi-source aggregation', () => {
       const out = await describeResponse(new DescribeService(registry), {
         iri: 'http://example.org/alice',
       });
-      expect(out.perSource.aliasy.error?.kind).toBe('reference-source');
-      if (out.perSource.aliasy.error?.kind === 'reference-source') {
-        expect(out.perSource.aliasy.error.id).toBe('aliasy');
-        expect(out.perSource.aliasy.error.ref).toBe('alpha');
-      }
+      expect(out.perSource).not.toHaveProperty('aliasy');
       expect(out.perSource.alpha.count).toBeGreaterThan(0);
     });
   });
@@ -670,14 +771,14 @@ describe('DescribeService — multi-source aggregation', () => {
       }
     });
 
-    it('errs with reference-target when every selected source resolves to a reference', async () => {
+    it('errs with reference-target when `source` explicitly names a reference alias', async () => {
       const registry: ParsedSource[] = [
         { kind: 'glob', glob: paths.alphaTtl, id: 'alpha' },
         { kind: 'reference', ref: 'alpha', id: 'aliasy' },
       ];
       const result = await new DescribeService(registry).runDescribe({
         iri: 'http://example.org/alice',
-        sources: ['aliasy'],
+        source: 'aliasy',
       });
       expect(result.isErr()).toBe(true);
       if (result.isErr()) expect(result.error.kind).toBe('reference-target');
@@ -696,7 +797,7 @@ describe('DescribeService — multi-source aggregation', () => {
       ]);
       const out = await describeResponse(new DescribeService(registry), {
         iri: 'http://example.org/alice',
-        sources: ['projected'],
+        source: 'projected',
       });
       expect(out.perSource.projected.error).toBeUndefined();
       // alpha carries 3 quads about alice: knows bob, address _:b1, _:b1 city.
@@ -740,7 +841,7 @@ describe('DescribeService — multi-source aggregation', () => {
       ]);
       const out = await describeResponse(new DescribeService(registry), {
         iri: 'http://example.org/alice',
-        sources: ['projected'],
+        source: 'projected',
       });
       const wire = parseNQuads(out.quads);
       // Per-source bnode relabel: every bnode label is namespaced by the source id.
