@@ -42,14 +42,16 @@ describe('CopyIriComponent', () => {
 
     const fixture = setup('http://example.org/alice');
     const btn = buttonOf(fixture);
-    expect(btn.textContent?.trim()).toBe('⧉');
+    expect(btn.querySelector('app-icon-copy')).toBeTruthy();
+    expect(btn.querySelector('app-icon-check')).toBeNull();
 
     btn.click();
     await Promise.resolve();
     fixture.detectChanges();
 
     expect(writeText).toHaveBeenCalledWith('http://example.org/alice');
-    expect(btn.textContent?.trim()).toBe('✓');
+    expect(btn.querySelector('app-icon-check')).toBeTruthy();
+    expect(btn.querySelector('app-icon-copy')).toBeNull();
   });
 
   it('does nothing when the Clipboard API is unavailable', () => {

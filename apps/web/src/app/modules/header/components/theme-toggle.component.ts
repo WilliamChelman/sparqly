@@ -1,22 +1,28 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  inject,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { ButtonComponent } from '@app/modules/button';
+import {
+  IconMoonComponent,
+  IconSunComponent,
+  IconSystemComponent,
+} from '@app/modules/icons';
 import { ThemeService, type ThemeMode } from '@app/core';
 
-const MODES: ReadonlyArray<{ mode: ThemeMode; label: string; glyph: string }> = [
-  { mode: 'light', label: 'Light theme', glyph: '☀' },
-  { mode: 'dark', label: 'Dark theme', glyph: '☾' },
-  { mode: 'system', label: 'Match system theme', glyph: '◐' },
+const MODES: ReadonlyArray<{ mode: ThemeMode; label: string }> = [
+  { mode: 'light', label: 'Light theme' },
+  { mode: 'dark', label: 'Dark theme' },
+  { mode: 'system', label: 'Match system theme' },
 ];
 
 @Component({
   selector: 'app-theme-toggle',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonComponent],
+  imports: [
+    ButtonComponent,
+    IconSunComponent,
+    IconMoonComponent,
+    IconSystemComponent,
+  ],
   template: `
     <div
       role="group"
@@ -34,7 +40,17 @@ const MODES: ReadonlyArray<{ mode: ThemeMode; label: string; glyph: string }> = 
           class="h-7 w-7 rounded-full aria-pressed:bg-bg aria-pressed:text-foreground aria-pressed:shadow-sm"
           (click)="service.set(m.mode)"
         >
-          <span aria-hidden="true">{{ m.glyph }}</span>
+          @switch (m.mode) {
+            @case ('light') {
+              <app-icon-sun />
+            }
+            @case ('dark') {
+              <app-icon-moon />
+            }
+            @case ('system') {
+              <app-icon-system />
+            }
+          }
         </button>
       }
     </div>
