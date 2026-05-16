@@ -38,4 +38,18 @@ export interface GitPort {
    * a pinned revision instead of the working tree.
    */
   listFilesAtSha(repoRoot: string, sha: string): Promise<ReadonlyArray<string>>;
+  /**
+   * Streams file content for many repo-relative paths from the git tree at
+   * `sha` through a single, shared git operation. Each yielded entry pairs the
+   * input `path` with its `bytes` (or `null` if the path is absent at `sha`).
+   * Yield order matches input order. Production uses one long-lived
+   * `git cat-file --batch` subprocess so the per-file cost collapses from a
+   * spawn-per-file to a bounded streaming read (split-glob pinned loads can be
+   * 100s of files; see `git-cat-file-batch-perf.md`).
+   */
+  readManyAtSha(
+    repoRoot: string,
+    sha: string,
+    repoRelPaths: ReadonlyArray<string>,
+  ): AsyncIterable<{ path: string; bytes: Buffer | null }>;
 }
