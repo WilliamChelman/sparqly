@@ -1,5 +1,6 @@
 import { DataFactory, Parser, type Store } from 'n3';
-import type { DiffTotals, RdfDiffWithSourcesResult, SourceRecord } from './diff';
+import type { DiffTotals, RdfDiffWithSourcesResult } from './diff';
+import type { SourceRecord } from '../sources';
 import { anchorDefinitionSite } from './anchor-definition-site';
 import { resolveAnchors } from './resolve-anchors';
 import { buildSubjectPath, serializeObject } from './subject-path';

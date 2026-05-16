@@ -51,8 +51,16 @@ export async function runGraphDiff(args: RunGraphDiffArgs): Promise<void> {
     resolveSide(rightTarget, config, rightInlineQuery, 'right', logger, registry),
   ]);
   const diff = await diffStores(
-    { store: leftResolved.store, annotationPredicates: leftResolved.annotationPredicates },
-    { store: rightResolved.store, annotationPredicates: rightResolved.annotationPredicates },
+    {
+      store: leftResolved.store,
+      annotationPredicates: leftResolved.annotationPredicates,
+      sourceRecords: leftResolved.sourceRecords,
+    },
+    {
+      store: rightResolved.store,
+      annotationPredicates: rightResolved.annotationPredicates,
+      sourceRecords: rightResolved.sourceRecords,
+    },
   );
   logger.debug('source-loaded', {
     leftFiles: leftResolved.fileCount,
@@ -148,7 +156,7 @@ export async function runGraphDiff(args: RunGraphDiffArgs): Promise<void> {
       diff.sourceRecords.right.size === 0
     ) {
       process.stderr.write(
-        'note: no source records present; HTML output will contain no line numbers (auto source annotation only applies to glob targets — wrap views/endpoints in a glob, or remove --skip-auto-source-annotation)\n',
+        'note: no source records present; HTML output will contain no line numbers (per-quad provenance is only attached to glob/file targets — wrap views/endpoints in a glob)\n',
       );
     }
     if (leftResolved.annotated !== rightResolved.annotated) {

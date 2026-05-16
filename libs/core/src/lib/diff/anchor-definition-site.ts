@@ -1,5 +1,5 @@
 import { DataFactory, type Quad, type Store } from 'n3';
-import type { SourceRecord } from './diff';
+import type { SourceRecord } from '../sources';
 import {
   DEFAULT_ANNOTATION_PREDICATE_IRIS,
   type AnnotationPredicateIris,

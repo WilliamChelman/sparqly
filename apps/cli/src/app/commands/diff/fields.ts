@@ -164,23 +164,7 @@ export const formatField: FieldDescriptor = {
   flags: [
     {
       spec: '-f, --format <format>',
-      description: `Output format: ${DIFF_FORMATS.map((f) => `'${f}'`).join(', ')}. When omitted, inferred from --out's extension (.html/.htm → html, .json → json, .ttl → turtle), falling back to 'human'. Format \`html\` benefits from source records, which \`diff\` auto-attaches to glob targets unless \`--skip-auto-source-annotation\` is passed.`,
-    },
-  ],
-};
-
-export const skipAutoSourceAnnotationField: FieldDescriptor = {
-  key: 'skipAutoSourceAnnotation',
-  schema: z.preprocess(
-    (v) => (typeof v === 'string' ? v === 'true' : v),
-    z.boolean(),
-  ),
-  default: false,
-  flags: [
-    {
-      spec: '--skip-auto-source-annotation',
-      description:
-        "Suppress `diff`'s implicit `annotateSource` injection on glob targets. Has no effect on view/endpoint targets (which can't carry source records anyway). An explicit `annotateSource` declared in config still runs. Also a no-op in tabular diff mode — bindings rows have no per-row provenance, so no annotation is injected on either side.",
+      description: `Output format: ${DIFF_FORMATS.map((f) => `'${f}'`).join(', ')}. When omitted, inferred from --out's extension (.html/.htm → html, .json → json, .ttl → turtle), falling back to 'human'. Format \`html\` benefits from source records, which the loader attaches to every glob/file target.`,
     },
   ],
 };

@@ -416,7 +416,7 @@ describe('sparqly diff — tabular mode (arbitrary SELECT)', () => {
     });
   });
 
-  it('accepts --skip-auto-source-annotation in tabular mode (no-op)', async () => {
+  it('rejects --skip-auto-source-annotation as an unknown option (removed in ADR-0032)', async () => {
     await writeFile(leftPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
     await writeFile(rightPath, [TTL_HEADER, 'ex:p1 ex:id "1" .'].join('\n'));
 
@@ -430,6 +430,7 @@ describe('sparqly diff — tabular mode (arbitrary SELECT)', () => {
       rightPath,
     ]);
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/unknown option.*--skip-auto-source-annotation/i);
   });
 });

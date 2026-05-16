@@ -84,16 +84,19 @@ describe('sparqly split-glob — query/hash/diff against synthesized children', 
         '--config',
         configPath,
         '--quiet',
-        '--skip-auto-source-annotation',
       ],
       { env: CLEARED_ENV },
     );
 
     expect(result.exitCode).toBe(1);
     const lines = diffBodyLines(result.stdout);
-    // Two-file diff: foo's triple removed, bar's triple added.
-    expect(lines).toContain('- ex:foo ex:p ex:a .');
-    expect(lines).toContain('+ ex:bar ex:p ex:b .');
+    // Two-file diff: foo's triple removed, bar's triple added. Loader-
+    // attached source records (ADR-0032) append trailing `# <path>:<line>`
+    // comments to each hunk.
+    expect(lines.some((l) => /^- ex:foo ex:p ex:a \. # .*foo\.ttl:/.test(l)))
+      .toBe(true);
+    expect(lines.some((l) => /^\+ ex:bar ex:p ex:b \. # .*bar\.ttl:/.test(l)))
+      .toBe(true);
   });
 
   it('sparqly hash @docs (the meta) hashes the union and stays stable across runs', async () => {

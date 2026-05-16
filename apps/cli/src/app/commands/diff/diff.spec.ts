@@ -1,4 +1,3 @@
-import { withAutoSourceAnnotation } from 'core';
 import { describe, expect, it } from 'vitest';
 import {
   blockSchemaFromFields,
@@ -37,7 +36,6 @@ describe('diffSpec', () => {
       'rightQuery',
       'rightQueryFile',
       'format',
-      'skipAutoSourceAnnotation',
       'snippetContext',
       'out',
     ];
@@ -269,178 +267,19 @@ describe('diffSpec — single-target shape', () => {
   }
 });
 
-describe('withAutoSourceAnnotation — implicit annotateSource injection', () => {
-  it('prepends annotateSource on a bare inline glob target', () => {
-    const target = resolveDiffSide({ left: 'data/*.ttl' }, 'left');
-    const out = withAutoSourceAnnotation(target, { skipAuto: false });
-    expect(out.kind).toBe('glob');
-    if (out.kind !== 'glob') return;
-    expect(out.transforms?.[0]).toMatchObject({ key: 'annotateSource' });
+describe('diffSpec — --skip-auto-source-annotation flag removed (ADR-0032)', () => {
+  it('no longer declares a skipAutoSourceAnnotation field', () => {
+    expect(
+      diffSpec.fields.find((f) => f.key === 'skipAutoSourceAnnotation'),
+    ).toBeUndefined();
   });
 
-  it('is a no-op when skipAuto is true (--skip-auto-source-annotation)', () => {
-    const target = resolveDiffSide({ left: 'data/*.ttl' }, 'left');
-    const out = withAutoSourceAnnotation(target, { skipAuto: true });
-    expect(out).toBe(target);
-    if (out.kind === 'glob') {
-      expect(out.transforms).toBeUndefined();
-    }
-  });
-
-  it('preserves an explicit annotateSource declaration with custom predicates (no double-apply)', () => {
-    const target = resolveDiffSide(
-      {
-        sources: [
-          {
-            id: 'src',
-            glob: 'data/*.ttl',
-            transforms: [
-              {
-                annotateSource: {
-                  source: 'urn:custom:src',
-                  file: 'urn:custom:file',
-                  line: 'urn:custom:line',
-                },
-              },
-            ],
-          },
-        ],
-        left: '@src',
-      },
-      'left',
+  it('no longer declares a --skip-auto-source-annotation flag on any field', () => {
+    const allFlagSpecs = diffSpec.fields.flatMap((f) => f.flags ?? []).map(
+      (f) => f.spec,
     );
-    const out = withAutoSourceAnnotation(target, { skipAuto: false });
-    expect(out.kind).toBe('glob');
-    if (out.kind !== 'glob') return;
-    expect(out.transforms).toHaveLength(1);
-    expect(out.transforms?.[0]).toMatchObject({
-      key: 'annotateSource',
-      config: {
-        source: 'urn:custom:src',
-        file: 'urn:custom:file',
-        line: 'urn:custom:line',
-      },
-    });
-  });
-
-  it('does not mutate the input target.transforms array', () => {
-    const target = resolveDiffSide(
-      {
-        sources: [
-          {
-            id: 'src',
-            glob: 'data/*.ttl',
-            transforms: [{ graphName: 'forceAll' }],
-          },
-        ],
-        left: '@src',
-      },
-      'left',
-    );
-    if (target.kind !== 'glob') throw new Error('unreachable');
-    const before = target.transforms?.slice();
-    const out = withAutoSourceAnnotation(target, { skipAuto: false });
-    expect(target.transforms).toEqual(before);
-    expect(out).not.toBe(target);
-    if (out.kind !== 'glob') return;
-    expect(out.transforms?.[0]).toMatchObject({ key: 'annotateSource' });
-    expect(out.transforms?.[1]).toMatchObject({ key: 'graphName' });
-  });
-
-  it('is a no-op on a view target (annotations cannot propagate through views)', () => {
-    const target = resolveDiffSide(
-      {
-        sources: [
-          { id: 'raw', glob: 'data/*.ttl' },
-          {
-            id: 'kept',
-            from: '@raw',
-            query:
-              'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:p ?o } WHERE { ?s ex:p ?o }',
-          },
-        ],
-        left: '@kept',
-      },
-      'left',
-    );
-    const out = withAutoSourceAnnotation(target, { skipAuto: false });
-    expect(out).toBe(target);
-    expect(out.kind).toBe('view');
-  });
-
-  it('is a no-op on an endpoint target', () => {
-    const target = resolveDiffSide(
-      {
-        sources: [
-          { id: 'live', endpoint: 'https://example.com/sparql' },
-        ],
-        left: '@live',
-      },
-      'left',
-    );
-    const out = withAutoSourceAnnotation(target, { skipAuto: false });
-    expect(out).toBe(target);
-    expect(out.kind).toBe('endpoint');
-  });
-
-  it('with skipAuto=true, an explicit annotateSource still survives', () => {
-    const target = resolveDiffSide(
-      {
-        sources: [
-          {
-            id: 'src',
-            glob: 'data/*.ttl',
-            transforms: [{ annotateSource: { source: 'urn:custom:src' } }],
-          },
-        ],
-        left: '@src',
-      },
-      'left',
-    );
-    const out = withAutoSourceAnnotation(target, { skipAuto: true });
-    expect(out.kind).toBe('glob');
-    if (out.kind !== 'glob') return;
-    expect(out.transforms).toHaveLength(1);
-    expect(out.transforms?.[0]).toMatchObject({
-      key: 'annotateSource',
-      config: { source: 'urn:custom:src' },
-    });
-  });
-});
-
-describe('diffSpec — --skip-auto-source-annotation flag', () => {
-  it('declares the flag with a description that names the glob-target carve-out', () => {
-    const flags =
-      diffSpec.fields.find((f) => f.key === 'skipAutoSourceAnnotation')?.flags ??
-      [];
-    expect(flags.length).toBeGreaterThan(0);
-    expect(flags[0].spec).toBe('--skip-auto-source-annotation');
-    expect(flags[0].description).toMatch(/glob/);
-  });
-
-  it("notes the flag is a no-op in tabular diff mode (so users don't expect source records on tuple results)", () => {
-    const flags =
-      diffSpec.fields.find((f) => f.key === 'skipAutoSourceAnnotation')?.flags ??
-      [];
-    expect(flags[0].description).toMatch(/tabular|no-op/i);
-    expect(flags[0].description).toMatch(/tabular/i);
-  });
-
-  it('defaults to false', () => {
-    expect(defaultsFromFields(diffSpec.fields)).toMatchObject({
-      skipAutoSourceAnnotation: false,
-    });
-  });
-
-  it('coerces the string "true" to a boolean (env-style)', () => {
-    const schema = blockSchemaFromFields(diffSpec.fields);
-    const r = schema.safeParse({ skipAutoSourceAnnotation: 'true' });
-    expect(r.success).toBe(true);
-    if (r.success) {
-      expect(
-        (r.data as { skipAutoSourceAnnotation: boolean })
-          .skipAutoSourceAnnotation,
-      ).toBe(true);
+    for (const s of allFlagSpecs) {
+      expect(s).not.toMatch(/--skip-auto-source-annotation/);
     }
   });
 });

@@ -86,17 +86,16 @@ describe('sparqly diff --format=turtle', () => {
       ` + '\n',
     );
 
-    const result = await runCli([
-      'diff',
-      '--quiet',
-      '--skip-auto-source-annotation',
-      left,
-      right,
-    ]);
+    const result = await runCli(['diff', '--quiet', left, right]);
 
     expect(result.exitCode).toBe(1);
     const lines = diffBodyLines(result.stdout);
-    expect(lines).toEqual(['- ex:c ex:q ex:d .', '+ ex:e ex:r ex:f .']);
+    // Loader-attached source records (ADR-0032) append a trailing
+    // `# <path>:<line>` comment per +/- hunk on glob/file targets.
+    expect(lines).toEqual([
+      expect.stringMatching(/^- ex:c ex:q ex:d \. # .*left\.ttl:3$/),
+      expect.stringMatching(/^\+ ex:e ex:r ex:f \. # .*right\.ttl:3$/),
+    ]);
   });
 
   it('--format=json is unchanged: emits full IRIs', async () => {
@@ -150,21 +149,18 @@ describe('sparqly diff --format=turtle', () => {
     );
 
     const result = await runCli(
-      [
-        'diff',
-        '--quiet',
-        '--skip-auto-source-annotation',
-        '--format=rdf-patch',
-        left,
-        right,
-      ],
+      ['diff', '--quiet', '--format=rdf-patch', left, right],
       { cwd: dir },
     );
 
     expect(result.exitCode).toBe(1);
     const lines = diffBodyLines(result.stdout);
+    // Loader-attached source records (ADR-0032) append a trailing
+    // `# <path>:<line>` comment per A/D line on glob/file targets.
     expect(lines).toEqual([
-      'A <http://example.org/c> <http://example.org/q> <http://example.org/d> .',
+      expect.stringMatching(
+        /^A <http:\/\/example\.org\/c> <http:\/\/example\.org\/q> <http:\/\/example\.org\/d> \. # .*right\.ttl:3$/,
+      ),
     ]);
   });
 
@@ -233,9 +229,10 @@ describe('sparqly diff --format=turtle', () => {
     expect(lines[addedStmtIdx - 1]).toBe('# from right.ttl:3');
   });
 
-  it('emits flat statements (no `;` grouping) without any `# from` comments when --skip-auto-source-annotation is passed against inline globs', async () => {
-    const left = join(dir, 'left.ttl');
-    const right = join(dir, 'right.ttl');
+  it('emits flat statements (no `;` grouping) preceded by `# from` comments on inline globs (loader sidecar always-on, ADR-0032)', async () => {
+    const resolvedDir = await realpath(dir);
+    const left = join(resolvedDir, 'left.ttl');
+    const right = join(resolvedDir, 'right.ttl');
     await writeFile(
       left,
       dedent`
@@ -255,18 +252,13 @@ describe('sparqly diff --format=turtle', () => {
     );
 
     const result = await runCli(
-      [
-        'diff',
-        '--quiet',
-        '--format=turtle',
-        '--skip-auto-source-annotation',
-        left,
-        right,
-      ],
+      ['diff', '--quiet', '--format=turtle', left, right],
+      { cwd: resolvedDir },
     );
 
     expect(result.exitCode).toBe(1);
-    expect(result.stdout).not.toMatch(/^#\s*from\b/m);
+    // Sidecar-derived `# from <path>:<line>` precedes each statement.
+    expect(result.stdout).toMatch(/^# from right\.ttl:\d+$/m);
     // Added statement is on its own line.
     expect(result.stdout).toMatch(/\nex:a ex:q ex:c \.\n/);
     // No `;` grouping in the added block (each statement stands alone).

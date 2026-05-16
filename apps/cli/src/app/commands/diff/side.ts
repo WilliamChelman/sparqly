@@ -4,14 +4,13 @@ import { type Store } from 'n3';
 import type { SparqlyLogger } from 'common';
 import {
   extractAnnotationPredicates,
-  hasAnnotateTransform,
   parseSourceSpecs,
   resolveAnonymousView,
   resolveSource,
   selectTarget,
-  withAutoSourceAnnotation,
   type AnnotationPredicateIris,
   type ParsedSource,
+  type SourceRecordSidecar,
   type SourceSpecInput,
 } from 'core';
 import { DiffErrorSignal } from '../diff-error';
@@ -23,6 +22,7 @@ export interface SideResolved {
   store: Store;
   prefixes: Record<string, Record<string, string>>;
   annotationPredicates: AnnotationPredicateIris;
+  sourceRecords?: SourceRecordSidecar;
   annotated: boolean;
 }
 
@@ -59,16 +59,13 @@ export function anonymousUpstream(
 }
 
 export async function resolveSide(
-  rawTarget: ParsedSource,
+  target: ParsedSource,
   config: DiffConfig,
   inlineQuery: string | undefined,
   side: 'left' | 'right',
   logger: SparqlyLogger,
   registry?: ReadonlyArray<ParsedSource>,
 ): Promise<SideResolved> {
-  const target = withAutoSourceAnnotation(rawTarget, {
-    skipAuto: config.skipAutoSourceAnnotation === true,
-  });
   if (inlineQuery !== undefined) {
     const upstream = anonymousUpstream(target, side);
     const store = await resolveAnonymousView({
@@ -114,7 +111,8 @@ export async function resolveSide(
     store: sources.store,
     prefixes: sources.prefixes,
     annotationPredicates: extractAnnotationPredicates(transforms),
-    annotated: hasAnnotateTransform(transforms),
+    sourceRecords: sources.sourceRecords,
+    annotated: sources.sourceRecords !== undefined,
   };
 }
 

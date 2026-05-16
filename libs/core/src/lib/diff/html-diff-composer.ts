@@ -1,6 +1,6 @@
 import { basename } from 'node:path';
 import { bestPrefixEntryFor, shortenNQuadLine } from 'common';
-import type { SourceRecord } from './diff';
+import type { SourceRecord } from '../sources';
 import type {
   BnodePathStep,
   Hunk,
