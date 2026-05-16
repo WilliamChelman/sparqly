@@ -1,3 +1,27 @@
+## [0.25.0](https://github.com/WilliamChelman/sparqly/compare/v0.24.0...v0.25.0) (2026-05-16)
+
+### Features
+
+* **cli:** flip diff to loader sidecar; remove --skip-auto-source-annotation ([#293](https://github.com/WilliamChelman/sparqly/issues/293)) ([4ea407f](https://github.com/WilliamChelman/sparqly/commit/4ea407f0c3b333da8816e26d55b44851e5e06caf))
+* **core:** loader-attached Source record sidecar ([#292](https://github.com/WilliamChelman/sparqly/issues/292)) ([21d82bc](https://github.com/WilliamChelman/sparqly/commit/21d82bc5b7cb5e7f84fdac1b41f073905575289a))
+* **describe:** collapse expandedPaths to flat PathStep[][] coupled to endpoint source ([#297](https://github.com/WilliamChelman/sparqly/issues/297)) ([d7756e7](https://github.com/WilliamChelman/sparqly/commit/d7756e7fb779c34b2eaecabe66be03e7a81ba654))
+* **describe:** single-or-all request shape with split-glob meta absorbing children ([#296](https://github.com/WilliamChelman/sparqly/issues/296)) ([881c31a](https://github.com/WilliamChelman/sparqly/commit/881c31adbb9aac5317b3c7da63adf9b9ad9d9852))
+* **server,web:** flip diff to engine-map sidecar; drop skipAutoSourceAnnotation ([#294](https://github.com/WilliamChelman/sparqly/issues/294)) ([4def6b8](https://github.com/WilliamChelman/sparqly/commit/4def6b8996ee26828b10cef82388ff4a9681199f))
+* **web,server:** file-source ref discovery + reset results on source change ([bc913f6](https://github.com/WilliamChelman/sparqly/commit/bc913f6f6506b3e81d39eb4f45b9f4ce34a15ccf))
+* **web:** button + icons visual primitives, migrate call-sites ([#298](https://github.com/WilliamChelman/sparqly/issues/298)) ([c3d1508](https://github.com/WilliamChelman/sparqly/commit/c3d150898af270f14c3927795ceb188b9d88cfa3))
+* **web:** code-chip primitive, migrate call-sites ([9049311](https://github.com/WilliamChelman/sparqly/commit/9049311ef426bbb9527b04358a36d4b24bf3702f))
+* **web:** error-banner primitive, migrate call-sites ([#300](https://github.com/WilliamChelman/sparqly/issues/300)) ([843d324](https://github.com/WilliamChelman/sparqly/commit/843d324b9f5db9d009123f1606e2ede16d670cf8))
+* **web:** eyebrow primitive, migrate call-sites ([577a92d](https://github.com/WilliamChelman/sparqly/commit/577a92d4253783ff83cfda41de6c4dea61381b57))
+* **web:** migrate inline glyphs to icon components ([#299](https://github.com/WilliamChelman/sparqly/issues/299)) ([d283ab7](https://github.com/WilliamChelman/sparqly/commit/d283ab7645fafa801eeeb1ab21968cd10dd265d5))
+* **web:** polish sources-picker refs panel UX ([2e309c2](https://github.com/WilliamChelman/sparqly/commit/2e309c24b80c1053a70ffaf648e01b1d0e2383cd))
+* **web:** surface-card primitive, migrate call-sites ([b327241](https://github.com/WilliamChelman/sparqly/commit/b327241de0e8f9a8be006173fb187af7195c12e9))
+* **web:** tree view + actual hiding in sources picker ([2301ff3](https://github.com/WilliamChelman/sparqly/commit/2301ff3509e8016deb6821e5258b6a09d460297f))
+
+### Bug Fixes
+
+* **core:** sanitize bnode-label prefix to PN_CHARS-safe charset ([1df20d2](https://github.com/WilliamChelman/sparqly/commit/1df20d208491b7c7fdef608f4fd2dc558da59cc7))
+* **web:** floating-ref note points to Refresh Remotes, not restart ([7cca20a](https://github.com/WilliamChelman/sparqly/commit/7cca20a56a32f36a3556dade7776a5e1a45481ec))
+
 ## [0.24.0](https://github.com/WilliamChelman/sparqly/compare/v0.23.0...v0.24.0) (2026-05-16)
 
 ### Features
