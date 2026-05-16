@@ -1,9 +1,13 @@
 import { NgTemplateOutlet } from '@angular/common';
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
+  ElementRef,
   EventEmitter,
+  inject,
   input,
   Output,
 } from '@angular/core';
@@ -49,25 +53,41 @@ export type RefsPanelState =
   selector: 'app-refs-panel',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { class: 'flex h-full flex-col overflow-hidden' },
   template: `
     @let s = state();
     @if (s.kind !== 'no-git-repo') {
-      <div class="flex items-center gap-2 border-b border-border p-3">
-        <input
-          data-testid="refs-search"
-          type="text"
-          placeholder="Search refs…"
-          class="min-w-0 flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-foreground-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
-          [value]="refSearch()"
-          (input)="onSearchInput($event)"
-          (keydown.enter)="onEnter($event)"
-        />
-        <button
-          type="button"
-          data-testid="refs-refresh"
-          class="shrink-0 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[13px] text-foreground hover:border-foreground-faint"
-          (click)="refresh.emit()"
-        >⟳ Refresh remotes</button>
+      <div class="flex flex-col gap-1.5 border-b border-border p-3">
+        <div class="flex items-center gap-2">
+          <input
+            data-testid="refs-search"
+            type="text"
+            placeholder="Search refs…"
+            class="min-w-0 flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-foreground-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+            [value]="refSearch()"
+            (input)="onSearchInput($event)"
+            (keydown.enter)="onEnter($event)"
+          />
+          @if (stagedRef() !== '') {
+            <button
+              type="button"
+              data-testid="refs-clear"
+              title="Clear selected ref"
+              class="shrink-0 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[13px] text-foreground-muted hover:border-foreground-faint hover:text-foreground"
+              (click)="onClear()"
+            >Clear</button>
+          }
+          <button
+            type="button"
+            data-testid="refs-refresh"
+            class="shrink-0 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[13px] text-foreground hover:border-foreground-faint"
+            (click)="refresh.emit()"
+          >⟳ Refresh remotes</button>
+        </div>
+        <p class="text-[11px] text-foreground-faint">
+          Press <kbd class="rounded border border-border bg-surface-sunken px-1 font-mono text-[10px]">Enter</kbd>
+          to use a custom ref (e.g. <code class="font-mono">HEAD~3</code> or a SHA).
+        </p>
       </div>
       @if (refreshError(); as kind) {
         <p
@@ -77,7 +97,10 @@ export type RefsPanelState =
       }
     }
     @if (s.kind === 'no-git-repo') {
-      <p data-testid="refs-panel-no-git">
+      <p
+        data-testid="refs-panel-no-git"
+        class="p-4 text-[13px] text-foreground-muted"
+      >
         No git refs available for this source ({{ s.sourceKind }})
       </p>
     }
@@ -85,12 +108,16 @@ export type RefsPanelState =
       @let view = filtered();
       <div
         data-testid="refs-panel"
+        class="flex-1 overflow-y-auto p-1.5"
         [tabindex]="-1"
         (keydown.arrowdown)="move(1, $event)"
         (keydown.arrowup)="move(-1, $event)"
       >
         @if (view.head; as headRef) {
-          <h3 data-section="head">HEAD</h3>
+          <h3
+            data-section="head"
+            class="px-2.5 pb-1 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint"
+          >HEAD</h3>
           <ul class="list-none">
             <ng-container
               *ngTemplateOutlet="row; context: { $implicit: headRef, scope: 'head' }"
@@ -98,7 +125,10 @@ export type RefsPanelState =
           </ul>
         }
         @if (view.branches.length > 0) {
-          <h3 data-section="branches">Branches</h3>
+          <h3
+            data-section="branches"
+            class="px-2.5 pb-1 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint"
+          >Branches</h3>
           <ul class="list-none">
             @for (b of view.branches; track b.ref) {
               <ng-container
@@ -108,9 +138,10 @@ export type RefsPanelState =
           </ul>
         }
         @for (group of remoteSections(); track group.remote) {
-          <h3 [attr.data-section]="'remote:' + group.remote">
-            Remote ({{ group.remote }})
-          </h3>
+          <h3
+            [attr.data-section]="'remote:' + group.remote"
+            class="px-2.5 pb-1 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint"
+          >Remote ({{ group.remote }})</h3>
           <ul class="list-none">
             @for (rb of group.entries; track rb.ref) {
               <ng-container
@@ -120,7 +151,10 @@ export type RefsPanelState =
           </ul>
         }
         @if (view.tags.length > 0) {
-          <h3 data-section="tags">Tags</h3>
+          <h3
+            data-section="tags"
+            class="px-2.5 pb-1 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint"
+          >Tags</h3>
           <ul class="list-none">
             @for (t of view.tags; track t.ref) {
               <ng-container
@@ -141,15 +175,21 @@ export type RefsPanelState =
           [attr.data-reproducible]="isReproducible(entry) ? 'true' : null"
           [attr.aria-selected]="stagedRef() === entry.ref ? 'true' : null"
           [attr.tabindex]="stagedRef() === entry.ref ? 0 : -1"
+          class="flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] text-foreground-muted hover:bg-surface-sunken hover:text-foreground aria-selected:bg-surface-sunken aria-selected:text-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
           (click)="onPick(entry.ref)"
         >
-          <span>{{ entry.ref }}</span>
+          <span class="min-w-0 truncate font-mono">{{ entry.ref }}</span>
           @if (isReproducible(entry)) {
-            <span data-testid="reproducible-mark" aria-hidden="true">★</span>
+            <span
+              data-testid="reproducible-mark"
+              aria-hidden="true"
+              class="shrink-0 text-foreground-faint"
+            >★</span>
           } @else {
-            <span data-testid="ref-sha" class="text-foreground-faint">{{
-              shortSha(entry.sha)
-            }}</span>
+            <span
+              data-testid="ref-sha"
+              class="shrink-0 font-mono text-[11px] text-foreground-faint"
+            >{{ shortSha(entry.sha) }}</span>
           }
         </button>
       </li>
@@ -190,6 +230,34 @@ export class RefsPanelComponent {
   @Output() readonly appliedRef = new EventEmitter<string>();
   @Output() readonly refresh = new EventEmitter<void>();
 
+  private readonly host = inject(ElementRef<HTMLElement>);
+  private lastScrolledRef = '';
+
+  constructor() {
+    afterNextRender(() => this.scrollStagedIntoView('auto'));
+    effect(() => {
+      const ref = this.stagedRef();
+      const loaded = this.state().kind === 'loaded';
+      if (!loaded || ref === '') return;
+      if (ref === this.lastScrolledRef) return;
+      queueMicrotask(() => this.scrollStagedIntoView('smooth'));
+    });
+  }
+
+  private scrollStagedIntoView(behavior: ScrollBehavior): void {
+    const ref = this.stagedRef();
+    if (ref === '') return;
+    const root = this.host.nativeElement as HTMLElement;
+    const el = Array.from(root.querySelectorAll<HTMLElement>('[data-ref]')).find(
+      (node) => node.getAttribute('data-ref') === ref,
+    );
+    if (el === undefined) return;
+    if (typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'nearest', behavior });
+    }
+    this.lastScrolledRef = ref;
+  }
+
   move(delta: number, ev: Event): void {
     ev.preventDefault();
     ev.stopPropagation();
@@ -220,6 +288,10 @@ export class RefsPanelComponent {
   onSearchInput(ev: Event): void {
     const target = ev.target as HTMLInputElement;
     this.refSearchChange.emit(target.value);
+  }
+
+  onClear(): void {
+    this.stagedRefChange.emit('');
   }
 
   onEnter(ev: Event): void {

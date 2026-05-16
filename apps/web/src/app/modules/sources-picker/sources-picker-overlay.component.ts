@@ -1,9 +1,11 @@
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
   DestroyRef,
   effect,
+  ElementRef,
   EventEmitter,
   inject,
   input,
@@ -89,7 +91,7 @@ import { searchSources, type SourceSearchResult } from './source-search';
               </ul>
             }
           </div>
-          <div class="flex flex-col overflow-y-auto p-3">
+          <div class="flex flex-col overflow-hidden">
             <app-refs-panel
               [state]="refsState()"
               [stagedRef]="stagedRef()"
@@ -137,6 +139,8 @@ export class SourcesPickerOverlayComponent {
 
   private readonly refsApi = inject(RefsApiClient);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly host = inject(ElementRef<HTMLElement>);
+  private lastScrolledSource = '';
 
   @Output() readonly applied = new EventEmitter<string>();
   @Output() readonly canceled = new EventEmitter<void>();
@@ -145,6 +149,14 @@ export class SourcesPickerOverlayComponent {
     effect(() => {
       this.stagedId.set(this.initialSelectedId());
       this.stagedRef.set(this.initialRef());
+    });
+
+    afterNextRender(() => this.scrollStagedSourceIntoView('auto'));
+
+    effect(() => {
+      const id = this.stagedId();
+      if (id === '' || id === this.lastScrolledSource) return;
+      queueMicrotask(() => this.scrollStagedSourceIntoView('smooth'));
     });
 
     effect(() => {
@@ -167,6 +179,20 @@ export class SourcesPickerOverlayComponent {
           }
         });
     });
+  }
+
+  private scrollStagedSourceIntoView(behavior: ScrollBehavior): void {
+    const id = this.stagedId();
+    if (id === '') return;
+    const root = this.host.nativeElement as HTMLElement;
+    const el = Array.from(
+      root.querySelectorAll<HTMLElement>('[data-source-id]'),
+    ).find((node) => node.getAttribute('data-source-id') === id);
+    if (el === undefined) return;
+    if (typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'nearest', behavior });
+    }
+    this.lastScrolledSource = id;
   }
 
   onRefreshRemotes(): void {
