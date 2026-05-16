@@ -7,6 +7,7 @@ export * from './transform-pipeline';
 export * from './annotate-transform';
 export * from './graph-name-transform';
 export * from './source-record-builder';
+export * from './source-record-sidecar';
 export * from './source-path-display';
 export * from './load-sources';
 export * from './resolve-source';

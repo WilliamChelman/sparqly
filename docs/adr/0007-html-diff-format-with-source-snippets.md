@@ -1,6 +1,6 @@
 # HTML diff format with source-file snippets
 
-> **Status:** amended by [ADR-0008](0008-diff-implicit-annotate-source.md) — `diff` now auto-injects `annotateSource` on bare glob targets, so the HTML format renders snippets without an explicit transform declaration.
+> **Status:** amended by [ADR-0008](0008-diff-implicit-annotate-source.md) — `diff` now auto-injects `annotateSource` on bare glob targets, so the HTML format renders snippets without an explicit transform declaration. Further amended by [ADR-0032](0032-loader-attached-source-record-sidecar.md) — the per-side `SourceRecord[]` map the HTML renderer consumes now arrives from the loader-attached sidecar rather than from RDF-star extraction; rendered output is unchanged.
 
 ## Context
 

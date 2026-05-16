@@ -1,6 +1,6 @@
 # Glob source transforms and RDF-star source annotations
 
-> **Status:** amended by [ADR-0008](0008-diff-implicit-annotate-source.md) — the transform key was renamed `annotate` → `annotateSource`, and `diff` now auto-injects `annotateSource` on bare glob targets by default.
+> **Status:** amended by [ADR-0008](0008-diff-implicit-annotate-source.md) — the transform key was renamed `annotate` → `annotateSource`, and `diff` now auto-injects `annotateSource` on bare glob targets by default. Further amended by [ADR-0032](0032-loader-attached-source-record-sidecar.md) — the side-channel sidecar alternative this ADR rejected is now the canonical diff path; the `annotateSource` transform remains as an explicit-opt-in projection for SPARQL queryability and no longer feeds `diff`.
 
 ## Context
 
