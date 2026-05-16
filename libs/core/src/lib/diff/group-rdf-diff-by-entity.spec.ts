@@ -6,7 +6,13 @@ import type { RdfDiffWithSourcesResult } from './diff';
 import { groupRdfDiffByEntity } from './group-rdf-diff-by-entity';
 import type { Hunk } from './group-rdf-diff-by-entity';
 import { parseRdfFile } from '../engine';
-import { buildSourceRecord, DEFAULT_ANNOTATION_PREDICATE_IRIS } from '../sources';
+import {
+  buildSourceRecord,
+  buildSourceRecordSidecar,
+  DEFAULT_ANNOTATION_PREDICATE_IRIS,
+  type SidecarLoaderRecord,
+  type SourceRecordSidecar,
+} from '../sources';
 
 const ex = (iri: string): string => `http://example.org/${iri}`;
 const t = (iri: string): string => `<${ex(iri)}>`;
@@ -730,8 +736,16 @@ describe('groupRdfDiffByEntity — anchorSource (anchor definition site)', () =>
     line?: number;
   }
 
-  function annotatedStore(entries: ReadonlyArray<AnnEntry>): Store {
+  // Mirrors the "user declared explicit `annotateSource`" production case
+  // (ADR-0032): the loader emits a sidecar that drives diff's source-record
+  // map, and the explicit transform also writes RDF-star annotations into the
+  // store so `anchorDefinitionSite` can resolve the anchor's definition site.
+  function annotatedSide(entries: ReadonlyArray<AnnEntry>): {
+    store: Store;
+    sourceRecords: SourceRecordSidecar;
+  } {
     const store = new Store();
+    const perFile = new Map<string, SidecarLoaderRecord[]>();
     for (const e of entries) {
       const asserted = quad(namedNode(ex(e.s)), namedNode(ex(e.p)), namedNode(ex(e.o)));
       store.addQuad(asserted);
@@ -743,23 +757,31 @@ describe('groupRdfDiffByEntity — anchorSource (anchor definition site)', () =>
           predicates: DEFAULT_ANNOTATION_PREDICATE_IRIS,
         }),
       );
+      let bucket = perFile.get(e.file);
+      if (bucket === undefined) {
+        bucket = [];
+        perFile.set(e.file, bucket);
+      }
+      const rec: SidecarLoaderRecord = { quad: asserted };
+      if (e.line !== undefined) rec.line = e.line;
+      bucket.push(rec);
     }
-    return store;
+    return { store, sourceRecords: buildSourceRecordSidecar(perFile) };
   }
 
   it('a changed hunk where a property was only added to an existing subject: sourceRecords.left is empty and anchorSource.left points at the subject\'s earliest annotated line per left file', async () => {
-    const leftStore = annotatedStore([
+    const left = annotatedSide([
       { s: 'Alice', p: 'name', o: 'A', file: '/x/a.ttl', line: 5 },
     ]);
-    const rightStore = annotatedStore([
+    const right = annotatedSide([
       { s: 'Alice', p: 'name', o: 'A', file: '/x/a.ttl', line: 5 },
       { s: 'Alice', p: 'nick', o: 'Al', file: '/x/b.ttl', line: 9 },
     ]);
-    const diff = await diffStores({ store: leftStore }, { store: rightStore });
+    const diff = await diffStores(left, right);
     const hunked = groupRdfDiffByEntity({
       diff,
-      left: { store: leftStore },
-      right: { store: rightStore },
+      left: { store: left.store },
+      right: { store: right.store },
     });
 
     expect(hunked.hunks).toHaveLength(1);
@@ -775,18 +797,18 @@ describe('groupRdfDiffByEntity — anchorSource (anchor definition site)', () =>
   });
 
   it('mirror: a changed hunk whose changes are removal-only from a still-existing subject populates anchorSource.right symmetrically', async () => {
-    const leftStore = annotatedStore([
+    const left = annotatedSide([
       { s: 'Alice', p: 'name', o: 'A', file: '/x/a.ttl', line: 5 },
       { s: 'Alice', p: 'nick', o: 'Al', file: '/x/a.ttl', line: 6 },
     ]);
-    const rightStore = annotatedStore([
+    const right = annotatedSide([
       { s: 'Alice', p: 'name', o: 'A', file: '/x/b.ttl', line: 3 },
     ]);
-    const diff = await diffStores({ store: leftStore }, { store: rightStore });
+    const diff = await diffStores(left, right);
     const hunked = groupRdfDiffByEntity({
       diff,
-      left: { store: leftStore },
-      right: { store: rightStore },
+      left: { store: left.store },
+      right: { store: right.store },
     });
 
     expect(hunked.hunks).toHaveLength(1);
@@ -800,17 +822,17 @@ describe('groupRdfDiffByEntity — anchorSource (anchor definition site)', () =>
   });
 
   it('added / removed hunks carry no anchorSource (the subject genuinely does not exist on the other side)', async () => {
-    const leftStore = annotatedStore([
+    const left = annotatedSide([
       { s: 'Gone', p: 'name', o: 'G', file: '/x/a.ttl', line: 2 },
     ]);
-    const rightStore = annotatedStore([
+    const right = annotatedSide([
       { s: 'Fresh', p: 'name', o: 'F', file: '/x/b.ttl', line: 4 },
     ]);
-    const diff = await diffStores({ store: leftStore }, { store: rightStore });
+    const diff = await diffStores(left, right);
     const hunked = groupRdfDiffByEntity({
       diff,
-      left: { store: leftStore },
-      right: { store: rightStore },
+      left: { store: left.store },
+      right: { store: right.store },
     });
 
     expect(hunked.hunks.map((h) => [h.anchor, h.state])).toEqual([
@@ -823,17 +845,17 @@ describe('groupRdfDiffByEntity — anchorSource (anchor definition site)', () =>
   });
 
   it('a changed hunk where both sides contributed changed-line source records gets no anchorSource', async () => {
-    const leftStore = annotatedStore([
+    const left = annotatedSide([
       { s: 'Alice', p: 'name', o: 'Old', file: '/x/a.ttl', line: 5 },
     ]);
-    const rightStore = annotatedStore([
+    const right = annotatedSide([
       { s: 'Alice', p: 'name', o: 'New', file: '/x/b.ttl', line: 5 },
     ]);
-    const diff = await diffStores({ store: leftStore }, { store: rightStore });
+    const diff = await diffStores(left, right);
     const hunked = groupRdfDiffByEntity({
       diff,
-      left: { store: leftStore },
-      right: { store: rightStore },
+      left: { store: left.store },
+      right: { store: right.store },
     });
 
     expect(hunked.hunks).toHaveLength(1);

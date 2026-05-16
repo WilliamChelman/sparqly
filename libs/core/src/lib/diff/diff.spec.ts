@@ -21,7 +21,7 @@ interface ResolvedSide {
   sourceRecords?: SourceRecordSidecar;
 }
 
-async function resolveAnnotated(spec: unknown): Promise<ResolvedSide> {
+async function resolveSide(spec: unknown): Promise<ResolvedSide> {
   const parsed = parseSourceSpec(spec as never);
   const r = await resolveSource(parsed);
   if (r.mode !== 'materialized') throw new Error('expected materialized');
@@ -30,18 +30,15 @@ async function resolveAnnotated(spec: unknown): Promise<ResolvedSide> {
     annotationPredicates: extractAnnotationPredicates(
       parsed.kind === 'glob' ? parsed.transforms : undefined,
     ),
+    sourceRecords: r.sourceRecords,
   };
 }
 
-async function resolveSidecarOnly(spec: unknown): Promise<ResolvedSide> {
-  const parsed = parseSourceSpec(spec as never);
-  const r = await resolveSource(parsed);
-  if (r.mode !== 'materialized') throw new Error('expected materialized');
-  return {
-    store: r.store,
-    annotationPredicates: undefined,
-    sourceRecords: r.sourceRecords,
-  };
+async function resolveSideWithoutSidecar(
+  spec: unknown,
+): Promise<ResolvedSide> {
+  const side = await resolveSide(spec);
+  return { ...side, sourceRecords: undefined };
 }
 
 const t = (iri: string): string => `<http://example.org/${iri}>`;
@@ -49,12 +46,6 @@ const triple = (s: string, p: string, o: string): string =>
   `${t(s)} ${t(p)} ${t(o)} .`;
 const quad = (s: string, p: string, o: string, g: string): string =>
   `${t(s)} ${t(p)} ${t(o)} ${t(g)} .`;
-
-function mapToObject<V>(m: ReadonlyMap<string, V>): Record<string, V> {
-  const out: Record<string, V> = {};
-  for (const [k, v] of m) out[k] = v;
-  return out;
-}
 
 describe('diffCanonicalStatements + formatRdfDiff', () => {
   it('human format emits removed lines, then added lines, each prefixed and newline-terminated', () => {
@@ -308,7 +299,7 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
     expect(lines[1]).toMatch(/^A /);
   });
 
-  it('diffStores returns per-side source-record maps keyed by canonical N-Quads (annotated globs)', async () => {
+  it('diffStores returns per-side source-record maps keyed by canonical N-Quads (glob targets)', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sparqly-diff-srcrec-'));
     try {
       const leftFile = join(dir, 'left.ttl');
@@ -330,14 +321,8 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
         ` + '\n',
       );
 
-      const left = await resolveAnnotated({
-        glob: leftFile,
-        transforms: [{ annotateSource: {} }],
-      });
-      const right = await resolveAnnotated({
-        glob: rightFile,
-        transforms: [{ annotateSource: {} }],
-      });
+      const left = await resolveSide({ glob: leftFile });
+      const right = await resolveSide({ glob: rightFile });
 
       const result = await diffStores(left, right);
 
@@ -382,19 +367,13 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
 
       // Left contains the same triple in two files; right is empty-ish (a
       // different triple) so the shared triple shows up under `removed`.
-      const left = await resolveAnnotated({
-        glob: join(dir, '*.ttl'),
-        transforms: [{ annotateSource: {} }],
-      });
+      const left = await resolveSide({ glob: join(dir, '*.ttl') });
       const otherFile = join(dir, 'other.nt');
       await writeFile(
         otherFile,
         '<http://example.org/x> <http://example.org/y> <http://example.org/z> .\n',
       );
-      const right = await resolveAnnotated({
-        glob: otherFile,
-        transforms: [{ annotateSource: {} }],
-      });
+      const right = await resolveSide({ glob: otherFile });
 
       const result = await diffStores(left, right);
 
@@ -435,14 +414,8 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
         ` + '\n',
       );
 
-      const left = await resolveAnnotated({
-        glob: leftFile,
-        transforms: [{ annotateSource: {} }],
-      });
-      const right = await resolveAnnotated({
-        glob: rightFile,
-        transforms: [{ annotateSource: {} }],
-      });
+      const left = await resolveSide({ glob: leftFile });
+      const right = await resolveSide({ glob: rightFile });
 
       const result = await diffStores(left, right);
 
@@ -461,61 +434,8 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
     }
   });
 
-  it('diffStores sidecar input produces source-record maps byte-identical to the RDF-star extraction path (ADR-0032)', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'sparqly-diff-sidecar-eq-'));
-    try {
-      const leftFile = join(dir, 'left.ttl');
-      const rightFile = join(dir, 'right.ttl');
-      await writeFile(
-        leftFile,
-        dedent`
-          @prefix ex: <http://example.org/> .
-          ex:a ex:p ex:b .
-          ex:s ex:p _:x .
-          _:x ex:q "v" .
-          _:x ex:extra "only-on-left" .
-        ` + '\n',
-      );
-      await writeFile(
-        rightFile,
-        dedent`
-          @prefix ex: <http://example.org/> .
-          ex:a ex:p ex:b .
-          ex:s ex:p _:y .
-          _:y ex:q "v" .
-        ` + '\n',
-      );
-
-      const leftLegacy = await resolveAnnotated({
-        glob: leftFile,
-        transforms: [{ annotateSource: {} }],
-      });
-      const rightLegacy = await resolveAnnotated({
-        glob: rightFile,
-        transforms: [{ annotateSource: {} }],
-      });
-      const leftSidecar = await resolveSidecarOnly({ glob: leftFile });
-      const rightSidecar = await resolveSidecarOnly({ glob: rightFile });
-
-      const legacy = await diffStores(leftLegacy, rightLegacy);
-      const sidecar = await diffStores(leftSidecar, rightSidecar);
-
-      expect(sidecar.added).toEqual(legacy.added);
-      expect(sidecar.removed).toEqual(legacy.removed);
-      expect(sidecar.totals).toEqual(legacy.totals);
-      expect(mapToObject(sidecar.sourceRecords.left)).toEqual(
-        mapToObject(legacy.sourceRecords.left),
-      );
-      expect(mapToObject(sidecar.sourceRecords.right)).toEqual(
-        mapToObject(legacy.sourceRecords.right),
-      );
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('diffStores returns empty source-record maps when neither side declared annotateSource', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'sparqly-diff-noannot-'));
+  it('diffStores returns empty source-record maps when neither side carries a sidecar', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sparqly-diff-nosidecar-'));
     try {
       const leftFile = join(dir, 'left.ttl');
       await writeFile(
@@ -528,8 +448,8 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
         '@prefix ex: <http://example.org/> . ex:a ex:p ex:b . ex:e ex:r ex:f .\n',
       );
 
-      const left = await resolveAnnotated({ glob: leftFile });
-      const right = await resolveAnnotated({ glob: rightFile });
+      const left = await resolveSideWithoutSidecar({ glob: leftFile });
+      const right = await resolveSideWithoutSidecar({ glob: rightFile });
 
       const result = await diffStores(left, right);
 
