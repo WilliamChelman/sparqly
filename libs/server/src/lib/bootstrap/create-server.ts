@@ -156,8 +156,13 @@ export async function createServer(
     port: listeningPort,
     ms: Date.now() - startedAt,
   });
-  for (const id of engineMap.allIds()) {
-    logger.log(`SPARQL endpoint for @${id} at ${url}/api/sparql/${id}`);
+  const ids = engineMap.allIds();
+  if (ids.length === 1) {
+    logger.log(`SPARQL endpoint for @${ids[0]} at ${url}/api/sparql/${ids[0]}`);
+  } else if (ids.length > 1) {
+    logger.log(
+      `Serving ${ids.length} SPARQL endpoints at ${url}/api/sparql/<id> (see ${url}/api/config for the full list)`,
+    );
   }
   if (scope.defaultId !== undefined) {
     logger.log(`Default SPARQL endpoint at ${url}/api/sparql`);

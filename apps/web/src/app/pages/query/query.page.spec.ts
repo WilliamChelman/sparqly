@@ -374,6 +374,29 @@ describe('QueryPage', () => {
     http.verify();
   });
 
+  it('discards the prior result-pane state when the user picks a different source', async () => {
+    const { fixture, http } = await setup(TWO);
+    const root = fixture.nativeElement as HTMLElement;
+
+    pickerStub(fixture).valueChange.emit('a');
+    fixture.detectChanges();
+    (root.querySelector('button[data-testid=run-query]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    http.expectOne('/api/sparql/a').flush(
+      JSON.stringify({ head: { vars: [] }, results: { bindings: [] } }),
+      { headers: { 'Content-Type': 'application/sparql-results+json' } },
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(paneStub(fixture).state?.kind).toBe('result');
+
+    pickerStub(fixture).valueChange.emit('b');
+    fixture.detectChanges();
+
+    expect(paneStub(fixture).state?.kind).toBe('empty');
+    http.verify();
+  });
+
   it('mirrors picked source and editor text into URL query params', async () => {
     const { fixture, router } = await setup(TWO);
     const root = fixture.nativeElement as HTMLElement;

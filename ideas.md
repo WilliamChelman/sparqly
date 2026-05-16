@@ -44,4 +44,17 @@
 - quick queries (default select with or withou ?g, filled with prefixes from config) + saved queries that make sense
 - new source kind: remote file
 - i18n
-- diff could be side-by-side in some cases (same ?s and ?p ?)
+- init command to bootstrap a config file?
+- inverse dependency on source kind: need to implement contract instead of if/elsing/switching everywhere
+- config edit ui + config hot reload
+- describe and file vs. glob union redundance
+- decorralte diff from annotation triples
+- describe hints
+  - uri prefexies / pattern
+  - either one source or all (if one source, nice selector). All by default (following hints)
+- virtual files for diffing sparql endpoints
+- free text source in web for quick anon source (unsecure)
+- git interactions only through a dedicated cli class in BE to ensure nothing dangerous can happen (no push or whatever)
+- avoid expansion on single source glob
+- single file as ref target
+- design system (reusable buttons, ui kit page, etc)

@@ -76,7 +76,7 @@ function buildDefaultQuery(context: DisplayContext): string {
         <app-sources-picker
           label="source"
           [value]="sourceId()"
-          (valueChange)="sourceId.set($event)"
+          (valueChange)="onSourceChange($event)"
         />
         <app-editor-frame
           #frame
@@ -150,6 +150,12 @@ export class QueryPage implements OnInit {
         this.query.set(buildDefaultQuery(config.context));
       }
     });
+  }
+
+  onSourceChange(id: string): void {
+    if (id === this.sourceId()) return;
+    this.sourceId.set(id);
+    this.resultState.set({ kind: 'empty' });
   }
 
   run(): void {

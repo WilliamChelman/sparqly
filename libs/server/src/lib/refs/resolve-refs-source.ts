@@ -20,9 +20,11 @@ export type RefsSourceFailure =
  *
  * For a `kind: 'glob'` source the source itself is returned. For a
  * `kind: 'view'` source the resolver walks the `from:` chain (delegating to
- * core's view-chain walker) and returns the leaf glob; if the chain bottoms
- * on a non-glob kind the failure names that kind for the controller's 404
- * payload. All other source kinds are themselves the terminating kind.
+ * core's view-chain walker) and returns the leaf glob. For a `kind: 'file'`
+ * source (synthesized split-glob child, ADR-0027) the resolver walks up
+ * `parentId` and recurses — symmetric to the view down-walk, so a file →
+ * glob chain resolves to the parent glob's repo. If any chain bottoms on a
+ * non-glob kind the failure names that kind for the controller's 404 payload.
  *
  * Deep — callers receive either a glob source or a `terminatingKind` they
  * can put in the response body; they do not reason about chain shape.
@@ -46,6 +48,13 @@ export function resolveRefsSource(
       return err({ kind: 'no-git-repo', terminatingKind: 'view' });
     }
     return err({ kind: 'no-git-repo', terminatingKind: failure.terminatingKind });
+  }
+  if (source.kind === 'file') {
+    const parent = registry.find((s) => s.id === source.parentId);
+    if (parent === undefined) {
+      return err({ kind: 'no-git-repo', terminatingKind: 'file' });
+    }
+    return resolveRefsSource(source.parentId, registry);
   }
   return err({ kind: 'no-git-repo', terminatingKind: source.kind });
 }

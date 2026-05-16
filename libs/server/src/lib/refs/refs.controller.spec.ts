@@ -200,6 +200,28 @@ describe('GET /api/sources/:id/refs', () => {
     expect(json.kind).toBe('empty');
   });
 
+  it('returns the parent glob refs for a split-glob file child', async () => {
+    server = await createServer({
+      sources: [
+        { id: 'docs', glob: join(repo, '*.ttl'), splitByFile: true },
+      ],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/${encodeURIComponent(
+        'docs/a.ttl',
+      )}/refs`,
+    );
+    expect(resp.status).toBe(200);
+    const json = (await resp.json()) as {
+      head: { ref: string; sha: string };
+      branches: Array<{ ref: string }>;
+    };
+    expect(json.head.ref).toBe('HEAD');
+    expect(json.head.sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(json.branches.map((b) => b.ref)).toEqual(['main']);
+  });
+
   it('returns the leaf glob refs for a multi-hop view chain (view → view → glob)', async () => {
     server = await createServer({
       sources: [
@@ -309,6 +331,28 @@ describe('POST /api/sources/:id/refs/fetch', () => {
     const json = (await resp.json()) as { error?: string; kind?: string };
     expect(json.error).toBe('no-git-repo');
     expect(json.kind).toBe('empty');
+  });
+
+  it('fetches the parent glob refs for a split-glob file child', async () => {
+    server = await createServer({
+      sources: [
+        { id: 'docs', glob: join(repo, '*.ttl'), splitByFile: true },
+      ],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/${encodeURIComponent(
+        'docs/a.ttl',
+      )}/refs/fetch`,
+      { method: 'POST' },
+    );
+    expect(resp.status).toBe(200);
+    const json = (await resp.json()) as {
+      branches: Array<{ ref: string }>;
+      remoteBranches: Array<{ ref: string }>;
+    };
+    expect(json.branches.map((b) => b.ref)).toEqual(['main']);
+    expect(json.remoteBranches.map((r) => r.ref)).toContain('origin/main');
   });
 
   it('fetches the leaf glob refs for a view whose `from:` chain bottoms on a glob', async () => {

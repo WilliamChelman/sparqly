@@ -243,6 +243,60 @@ describe('DiffPage', () => {
     expect(root.querySelectorAll('[data-testid=added-line]').length).toBe(1);
   });
 
+  it('discards the prior diff result when the user picks a different left source', async () => {
+    const { fixture, diffStub } = await setup(TWO);
+    const root = fixture.nativeElement as HTMLElement;
+    const { left, right } = pickerStubs(fixture);
+    left.valueChange.emit('a');
+    right.valueChange.emit('b');
+    fixture.detectChanges();
+
+    (root.querySelector('button[data-testid=run-diff]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    diffStub.calls[0].responses.next({
+      kind: 'grouped',
+      hunked: { hunks: [], totals: { left: 0, right: 0 } },
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(root.querySelector('[data-testid=diff-totals]')).toBeTruthy();
+
+    left.valueChange.emit('b');
+    fixture.detectChanges();
+
+    expect(root.querySelector('[data-testid=diff-totals]')).toBeFalsy();
+  });
+
+  it('discards the prior diff errors when the user picks a different right source', async () => {
+    const { fixture, diffStub } = await setup(TWO);
+    const root = fixture.nativeElement as HTMLElement;
+    const { left, right } = pickerStubs(fixture);
+    left.valueChange.emit('a');
+    right.valueChange.emit('b');
+    fixture.detectChanges();
+
+    (root.querySelector('button[data-testid=run-diff]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    diffStub.calls[0].responses.next({
+      kind: 'error',
+      errors: {
+        left: { kind: 'legacy-message', message: 'left boom' },
+        right: { kind: 'legacy-message', message: 'right boom' },
+      },
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(root.querySelector('[data-testid=error-left]')).toBeTruthy();
+    expect(root.querySelector('[data-testid=error-right]')).toBeTruthy();
+
+    right.valueChange.emit('a');
+    fixture.detectChanges();
+
+    expect(root.querySelector('[data-testid=error-left]')).toBeFalsy();
+    expect(root.querySelector('[data-testid=error-right]')).toBeFalsy();
+    expect(root.querySelector('[data-testid=diff-totals]')).toBeFalsy();
+  });
+
   it('keeps editor text when the picked @id changes', async () => {
     const { fixture } = await setup(TWO);
     const root = fixture.nativeElement as HTMLElement;
