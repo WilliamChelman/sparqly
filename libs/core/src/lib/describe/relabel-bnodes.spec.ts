@@ -82,6 +82,22 @@ describe('relabelBnodes', () => {
     expect(reified.subject.value.startsWith('src__')).toBe(true);
   });
 
+  it('sanitizes prefix characters that are invalid in N-Triples bnode labels (e.g., "/")', () => {
+    // Source ids like `data/era-ontology.ttl` (split-glob children) contain
+    // `/`, which is not part of PN_CHARS — using such an id verbatim as a
+    // bnode-label prefix produces labels that cannot round-trip through
+    // N-Triples serialization (the wire format used by the describe API).
+    const { quads } = ttl`
+      @prefix ex: <http://example.org/> .
+      ex:alice ex:has _:b1 .
+    `;
+
+    const [out] = relabelBnodes(quads, 'data/era-ontology.ttl');
+    expect(out.object.termType).toBe('BlankNode');
+    // PN_CHARS-safe: letters, digits, underscore, hyphen, dot.
+    expect(out.object.value).toMatch(/^[A-Za-z0-9_.-]+$/);
+  });
+
   it('is deterministic: same input + same prefix => same labels each call', () => {
     const { quads } = ttl`
       @prefix ex: <http://example.org/> .
