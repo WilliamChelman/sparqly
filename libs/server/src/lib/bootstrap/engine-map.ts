@@ -1,5 +1,11 @@
+import { err, ok, ResultAsync, type Result } from 'neverthrow';
 import type { SparqlyLogger } from 'common';
-import { QueryEngine, resolveSource, type ParsedSource } from 'core';
+import {
+  QueryEngine,
+  resolveSourceResult,
+  type ParsedSource,
+  type SourceError,
+} from 'core';
 import type { StoreRef } from './tokens';
 
 interface LoadedEntry {
@@ -21,15 +27,19 @@ interface Entry {
    * `serve`'s lazy-materialization contract (ADR-0031): for materialized
    * entries this is `undefined` until the first {@link EngineMap.ensure} call
    * triggers the load, then a memoized in-flight (and eventually settled)
-   * promise of the fully built {@link LoadedEntry}. Endpoint pass-through
-   * entries are populated synchronously at construction time — no load to
-   * defer — and their `loaded` promise resolves immediately.
+   * promise of the {@link Result}-typed {@link LoadedEntry}. Endpoint
+   * pass-through entries are populated synchronously at construction time —
+   * no load to defer — and their `loaded` promise resolves immediately with
+   * `ok(loaded)`. When a load resolves with `err(SourceError)`, the slot is
+   * cleared so the next `ensure(id)` call retries fresh, letting the user fix
+   * the underlying file/ref/config without restarting the server (#290).
    */
-  loaded: Promise<LoadedEntry> | undefined;
+  loaded: Promise<Result<LoadedEntry, SourceError>> | undefined;
   /**
    * Synchronously-available view of the loaded shape, mirroring `loaded` once
-   * it has settled. Used by watcher / snippet wiring that needs to peek at
-   * the store ref without `await`ing.
+   * it has settled with `ok`. Used by watcher / snippet wiring that needs to
+   * peek at the store ref without `await`ing. Remains `undefined` while a
+   * load is in-flight or after a failed load.
    */
   current: LoadedEntry | undefined;
 }
@@ -42,8 +52,8 @@ export interface EngineMapOptions {
   resolutionRegistry?: ReadonlyArray<ParsedSource>;
   /**
    * Boundary logger threaded into each source's {@link QueryEngine} (and into
-   * `resolveSource` for view chains) so `serve`'s SPARQL executions emit the
-   * shared `query` debug event under `--verbose` (ADR-0020). Also emits a
+   * `resolveSourceResult` for view chains) so `serve`'s SPARQL executions emit
+   * the shared `query` debug event under `--verbose` (ADR-0020). Also emits a
    * `source-loaded` debug line per source with its load timing — fired on
    * first `ensure(id)`, not at boot.
    */
@@ -86,7 +96,7 @@ export class EngineMap {
         entries.set(src.id, {
           source: src,
           files: [],
-          loaded: Promise.resolve(loaded),
+          loaded: Promise.resolve(ok(loaded)),
           current: loaded,
         });
         continue;
@@ -108,31 +118,41 @@ export class EngineMap {
   /**
    * Returns the engine for `id`, triggering a one-shot lazy load on first call
    * for materialized entries (ADR-0031). Concurrent first-touch calls share
-   * the in-flight load promise — `resolveSource` runs exactly once per source
-   * for the life of the process.
+   * the in-flight load promise — `resolveSourceResult` runs exactly once per
+   * source per attempt. On `err`, the memoized load is cleared so a follow-up
+   * call retries fresh, allowing the user to fix the underlying file/ref
+   * without restarting the server (#290).
    */
-  async ensure(id: string): Promise<QueryEngine> {
+  ensure(id: string): ResultAsync<QueryEngine, SourceError> {
     const entry = this.entries.get(id);
     if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
     if (entry.loaded === undefined) {
       entry.loaded = this.loadEntry(entry);
     }
-    const loaded = await entry.loaded;
-    return loaded.engine;
+    return new ResultAsync(entry.loaded).map((loaded) => loaded.engine);
   }
 
-  private async loadEntry(entry: Entry): Promise<LoadedEntry> {
+  private async loadEntry(
+    entry: Entry,
+  ): Promise<Result<LoadedEntry, SourceError>> {
     const src = entry.source;
     const sourceId = src.id ?? '(source)';
     const start = Date.now();
-    const resolved = await resolveSource(src, {
+    const resolved = await resolveSourceResult(src, {
       registry: this.resolutionRegistry,
       logger: this.logger,
     });
+    if (resolved.isErr()) {
+      // Clear memoization so the next request retries — gives the user a
+      // self-healing path when they fix the underlying file/ref/config.
+      entry.loaded = undefined;
+      return err(resolved.error);
+    }
+    const sources = resolved.value;
     let loaded: LoadedEntry;
-    if (resolved.mode === 'pass-through') {
+    if (sources.mode === 'pass-through') {
       loaded = {
-        engine: new QueryEngine(resolved.endpoint, {
+        engine: new QueryEngine(sources.endpoint, {
           id: sourceId,
           mode: 'pass-through',
           logger: this.logger,
@@ -141,7 +161,7 @@ export class EngineMap {
       };
       entry.files = [];
     } else {
-      const storeRef: StoreRef = { current: resolved.store };
+      const storeRef: StoreRef = { current: sources.store };
       const ref = storeRef;
       loaded = {
         engine: new QueryEngine(() => ref.current, {
@@ -151,7 +171,7 @@ export class EngineMap {
         }),
         storeRef,
       };
-      entry.files = [...resolved.files];
+      entry.files = [...sources.files];
     }
     entry.current = loaded;
     const ms = Date.now() - start;
@@ -170,7 +190,7 @@ export class EngineMap {
         ms,
       });
     }
-    return loaded;
+    return ok(loaded);
   }
 
   /**

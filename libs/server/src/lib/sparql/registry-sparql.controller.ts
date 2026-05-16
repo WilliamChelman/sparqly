@@ -169,12 +169,18 @@ export class RegistrySparqlController {
     }
     // Lazy materialization (ADR-0031): ensure() drives a one-shot per-source
     // load on first request; concurrent first-touches share the in-flight
-    // promise so resolveSource runs at most once for the source.
-    const engine = await this.engineMap.ensure(target.id as string);
-    return await engine.executeResult(query, {
-      format,
-      mutable: this.config.mutable,
-    });
+    // promise so resolveSourceResult runs at most once per attempt. Load
+    // failures surface as a typed SourceError so the boundary `mapError` can
+    // route 4xx (bad ref/config) and 5xx (filesystem/IO) appropriately,
+    // instead of every load failure becoming an opaque 500 (#290).
+    return this.engineMap
+      .ensure(target.id as string)
+      .andThen<ExecuteResult, SourceError | TargetError>((engine) =>
+        engine.executeResult(query, {
+          format,
+          mutable: this.config.mutable,
+        }),
+      );
   }
 
   /**
