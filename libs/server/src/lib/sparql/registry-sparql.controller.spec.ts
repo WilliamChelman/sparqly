@@ -142,4 +142,25 @@ describe('RegistrySparqlController — /api/sparql alias', () => {
     expect(json.ref).toBe('@nope');
     expect(json.availableIds).toEqual(expect.arrayContaining(['alpha', 'beta']));
   });
+
+  it('accepts a path id that already carries the `@` address prefix without doubling it', async () => {
+    server = await createServer({
+      sources: [{ id: 'alpha', glob: join(dirA, '*.ttl') }],
+      port: 0,
+    });
+    const ok = await fetch(
+      `http://localhost:${server.port}/api/sparql/${encodeURIComponent(
+        '@alpha',
+      )}?query=${encodeURIComponent(SELECT_S)}`,
+    );
+    expect(ok.status).toBe(200);
+    const missing = await fetch(
+      `http://localhost:${server.port}/api/sparql/${encodeURIComponent(
+        '@nope',
+      )}?query=${encodeURIComponent(SELECT_S)}`,
+    );
+    expect(missing.status).toBe(400);
+    const json = (await missing.json()) as { ref?: string };
+    expect(json.ref).toBe('@nope');
+  });
 });

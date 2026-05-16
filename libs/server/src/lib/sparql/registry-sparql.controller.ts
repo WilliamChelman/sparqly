@@ -86,7 +86,7 @@ export class RegistrySparqlController {
     @Res() res: ResLike,
   ): Promise<void> {
     this.assertQuery(query);
-    await this.respond(`@${joinId(id)}`, query, accept, res);
+    await this.respond(toRef(id), query, accept, res);
   }
 
   @Post('*id')
@@ -98,7 +98,7 @@ export class RegistrySparqlController {
     @Res() res: ResLike,
   ): Promise<void> {
     const query = this.extractPostQuery(contentType, body);
-    await this.respond(`@${joinId(id)}`, query, accept, res);
+    await this.respond(toRef(id), query, accept, res);
   }
 
   private assertQuery(query: string | undefined): asserts query is string {
@@ -249,6 +249,11 @@ function statusToHttpException(
 
 function joinId(id: string | string[]): string {
   return Array.isArray(id) ? id.join('/') : id;
+}
+
+function toRef(id: string | string[]): string {
+  const joined = joinId(id);
+  return joined.startsWith('@') ? joined : `@${joined}`;
 }
 
 function pinOf(source: ParsedSource): {
