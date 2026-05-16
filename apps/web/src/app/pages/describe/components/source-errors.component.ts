@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ErrorBannerComponent } from '@app/modules/error-banner';
 import type { DescribePerSourceEntry } from '../services/describe.service';
 
 interface SourceErrorRow {
@@ -17,11 +18,13 @@ interface SourceErrorRow {
   selector: 'app-source-errors',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ErrorBannerComponent],
   template: `
     @if (rows().length > 0) {
       <ul
+        app-error-banner
         data-testid="source-errors"
-        class="flex flex-col gap-1 rounded border border-error-line bg-error-bg p-2 text-sm text-error"
+        class="flex flex-col gap-1"
       >
         @for (row of rows(); track row.id) {
           <li data-testid="source-error-row" class="font-mono text-xs">

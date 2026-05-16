@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ButtonComponent } from '@app/modules/button';
+import { ErrorBannerComponent } from '@app/modules/error-banner';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import { ConfigService, type DisplayContext } from '@app/core';
 import { FormattedResultComponent } from '@app/pages/query/components/result/formatted-result.component';
@@ -43,6 +44,7 @@ const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
   imports: [
     ButtonComponent,
     DescribeSectionsComponent,
+    ErrorBannerComponent,
     FormattedResultComponent,
     SourcesPickerComponent,
     SourceErrorsComponent,
@@ -85,10 +87,7 @@ const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
         </button>
       </div>
       @if (iriError(); as msg) {
-        <p
-          data-testid="iri-error"
-          class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
-        >
+        <p app-error-banner data-testid="iri-error">
           {{ msg }}
         </p>
       }

@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ErrorBannerComponent } from '@app/modules/error-banner';
 import {
   formatDiffError,
   type DiffError,
@@ -14,26 +15,18 @@ export interface DiffErrors {
   selector: 'app-diff-error-view',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ErrorBannerComponent],
   template: `
     @let errs = errors();
     @if (errs.top; as top) {
-      <p
-        data-testid="error-top"
-        class="flex items-start gap-2.5 rounded-lg border border-error-line bg-error-bg px-3.5 py-3 font-mono text-xs text-error"
-      >{{ format(top) }}</p>
+      <p app-error-banner size="md" data-testid="error-top">{{ format(top) }}</p>
     }
     <div class="grid grid-cols-2 gap-4">
       @if (errs.left; as left) {
-        <p
-          data-testid="error-left"
-          class="flex items-start gap-2.5 rounded-lg border border-error-line bg-error-bg px-3.5 py-3 font-mono text-xs text-error"
-        >{{ format(left) }}</p>
+        <p app-error-banner size="md" data-testid="error-left">{{ format(left) }}</p>
       }
       @if (errs.right; as right) {
-        <p
-          data-testid="error-right"
-          class="flex items-start gap-2.5 rounded-lg border border-error-line bg-error-bg px-3.5 py-3 font-mono text-xs text-error"
-        >{{ format(right) }}</p>
+        <p app-error-banner size="md" data-testid="error-right">{{ format(right) }}</p>
       }
     </div>
   `,
