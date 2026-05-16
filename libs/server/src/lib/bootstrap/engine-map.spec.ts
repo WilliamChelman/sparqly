@@ -78,7 +78,7 @@ describe('EngineMap', () => {
 
     const map = await EngineMap.create(registry, { logger: rec.logger });
     try {
-      const engine = await map.ensure('files');
+      const engine = (await map.ensure('files'))._unsafeUnwrap();
       const result = await engine.execute(
         'SELECT ?s WHERE { ?s ?p ?o }',
         { format: 'json' },
@@ -91,7 +91,7 @@ describe('EngineMap', () => {
       ]);
 
       // Second ensure() reuses the same engine and does not re-load.
-      const again = await map.ensure('files');
+      const again = (await map.ensure('files'))._unsafeUnwrap();
       expect(again).toBe(engine);
 
       const loaded = rec.entries.filter((e) => e.msg === 'source-loaded');
@@ -125,7 +125,7 @@ describe('EngineMap', () => {
         map.ensure('files'),
         map.ensure('files'),
       ]);
-      expect(a).toBe(b);
+      expect(a._unsafeUnwrap()).toBe(b._unsafeUnwrap());
       const loaded = rec.entries.filter((e) => e.msg === 'source-loaded');
       expect(loaded).toHaveLength(1);
     } finally {
@@ -143,7 +143,7 @@ describe('EngineMap', () => {
     try {
       expect(map.allIds()).toEqual(['remote']);
       // No load was needed; ensure() still resolves and returns the engine.
-      const engine = await map.ensure('remote');
+      const engine = (await map.ensure('remote'))._unsafeUnwrap();
       expect(engine).toBeDefined();
       expect(map.getStoreRef('remote')).toBeUndefined();
     } finally {
@@ -163,7 +163,7 @@ describe('EngineMap', () => {
 
     const map = await EngineMap.create(registry, { logger: rec.logger });
     try {
-      const engine = await map.ensure('files');
+      const engine = (await map.ensure('files'))._unsafeUnwrap();
       await engine.execute('SELECT ?s WHERE { ?s ?p ?o }', {
         format: 'json',
       });
@@ -227,7 +227,7 @@ describe('EngineMap', () => {
     const map = await EngineMap.create(registry);
     try {
       expect(map.allIds()).toEqual(['missing']);
-      const engine = await map.ensure('missing');
+      const engine = (await map.ensure('missing'))._unsafeUnwrap();
       expect(engine).toBeDefined();
     } finally {
       await map.close();
@@ -244,6 +244,86 @@ describe('EngineMap', () => {
       expect(map.allIds()).toEqual(['remote']);
       // Pass-through has no local store.
       expect(map.getStoreRef('remote')).toBeUndefined();
+    } finally {
+      await map.close();
+    }
+  });
+
+  it('two concurrent first-touch ensure() calls during a failing load share one in-flight rejection (resolveSourceResult runs exactly once per attempt) — #290', async () => {
+    await writeFile(join(dir, 'broken.ttl'), 'this is not valid turtle .');
+    const registry = parseSourceSpecs([
+      { id: 'files', glob: join(dir, '*.ttl') },
+    ]);
+
+    const map = await EngineMap.create(registry);
+    try {
+      const [a, b] = await Promise.all([
+        map.ensure('files'),
+        map.ensure('files'),
+      ]);
+      expect(a.isErr()).toBe(true);
+      expect(b.isErr()).toBe(true);
+      // Same in-flight load → both waiters observe the very same error
+      // payload by identity, not two independent loads producing two
+      // distinct error objects.
+      if (a.isErr() && b.isErr()) {
+        expect(a.error).toBe(b.error);
+        expect(a.error.kind).toBe('glob-load');
+      }
+    } finally {
+      await map.close();
+    }
+  });
+
+  it('ensure() returns Err with a typed SourceError when the underlying load fails (ADR-0024)', async () => {
+    await writeFile(join(dir, 'broken.ttl'), 'this is not valid turtle .');
+    const registry = parseSourceSpecs([
+      { id: 'files', glob: join(dir, '*.ttl') },
+    ]);
+
+    const map = await EngineMap.create(registry);
+    try {
+      const result = await map.ensure('files');
+      expect(result.isErr()).toBe(true);
+      if (result.isErr()) {
+        expect(result.error.kind).toBe('glob-load');
+      }
+    } finally {
+      await map.close();
+    }
+  });
+
+  it('a failing ensure() clears its memoized load so a follow-up call retries fresh — fix-the-file → next request succeeds, no restart (#290)', async () => {
+    const ttl = join(dir, 'data.ttl');
+    await writeFile(ttl, 'this is not valid turtle .');
+    const registry = parseSourceSpecs([
+      { id: 'files', glob: join(dir, '*.ttl') },
+    ]);
+
+    const map = await EngineMap.create(registry);
+    try {
+      const first = await map.ensure('files');
+      expect(first.isErr()).toBe(true);
+      if (first.isErr()) expect(first.error.kind).toBe('glob-load');
+
+      // Self-heal: fix the file in place; no map rebuild, no server restart.
+      await writeFile(
+        ttl,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+
+      const second = await map.ensure('files');
+      expect(second.isOk()).toBe(true);
+      const engine = second._unsafeUnwrap();
+      const exec = await engine.execute('SELECT ?s WHERE { ?s ?p ?o }', {
+        format: 'json',
+      });
+      const json = JSON.parse(exec.body) as {
+        results: { bindings: Array<{ s: { value: string } }> };
+      };
+      expect(json.results.bindings.map((b) => b.s.value)).toEqual([
+        'http://example.org/a',
+      ]);
     } finally {
       await map.close();
     }
