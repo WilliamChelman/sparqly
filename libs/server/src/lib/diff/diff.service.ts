@@ -6,14 +6,13 @@ import {
   groupRdfDiffByEntity,
   resolveAnonymousSelectBindings,
   resolveAnonymousView,
-  resolveSourceResult,
   tabularDiff,
-  withAutoSourceAnnotation,
   type DiffError,
   type HunkedRdfDiff,
   type ParsedSource,
   type SelectShapeReport,
   type SourceError,
+  type SourceRecordSidecar,
   type SourceSpecInput,
   type TabularDiffResult,
   type TabularRow,
@@ -27,13 +26,13 @@ import {
   type ResultAsync as ResultAsyncT,
 } from 'neverthrow';
 import type { Store } from 'n3';
+import type { EngineMap } from '../bootstrap';
 
 export interface DiffRequest {
   left: string;
   right: string;
   leftQuery?: string;
   rightQuery?: string;
-  skipAutoSourceAnnotation?: boolean;
 }
 
 export interface GroupedDiffResponse {
@@ -61,10 +60,14 @@ export type DiffResponse =
 @Injectable()
 export class DiffService {
   constructor(
-    /** Sources `serve` exposes — the only `@id`s a diff request may name. */
-    private readonly servedRegistry: ReadonlyArray<ParsedSource>,
-    /** Superset used to walk `from:` chains while materializing a side. */
-    private readonly resolutionRegistry: ReadonlyArray<ParsedSource> = servedRegistry,
+    /**
+     * Engine map for the served sources (ADR-0031). Lookups go through
+     * {@link EngineMap.ensureSources} so a diff against an `@id` `serve` has
+     * already warmed pays no fresh materialization (ADR-0032).
+     */
+    private readonly engineMap: EngineMap,
+    /** Superset used to walk `from:` chains while resolving anonymous SELECTs. */
+    private readonly resolutionRegistry: ReadonlyArray<ParsedSource> = [],
   ) {}
 
   async runDiff(req: DiffRequest): Promise<DiffResponse> {
@@ -92,12 +95,11 @@ export class DiffService {
     }
 
     return runGraph({
+      engineMap: this.engineMap,
       leftTarget: leftSel.value,
       rightTarget: rightSel.value,
       leftQuery: req.leftQuery,
       rightQuery: req.rightQuery,
-      skipAuto: req.skipAutoSourceAnnotation === true,
-      registry: this.resolutionRegistry,
     });
   }
 
@@ -106,30 +108,20 @@ export class DiffService {
     side: 'left' | 'right',
   ): Result<ParsedSource, DiffError> {
     const id = ref.startsWith('@') ? ref.slice(1) : ref;
-    const found = this.servedRegistry.find(
-      (src) => src.kind !== 'reference' && src.id === id,
-    );
-    if (!found) {
+    const found = this.engineMap.getSource(id);
+    if (!found || found.kind === 'reference') {
       return err({
         kind: 'target',
         side,
         target: {
           kind: 'unknown-ref',
           ref: ref.startsWith('@') ? ref : `@${ref}`,
-          availableIds: availableIds(this.servedRegistry),
+          availableIds: this.engineMap.allIds(),
         },
       });
     }
     return ok(found);
   }
-}
-
-function availableIds(
-  registry: ReadonlyArray<ParsedSource>,
-): ReadonlyArray<string> {
-  return registry
-    .filter((s) => s.kind !== 'reference' && s.id !== undefined)
-    .map((s) => s.id as string);
 }
 
 function packageSideErrors(
@@ -176,23 +168,23 @@ function detectTabularDispatch(
 }
 
 interface RunGraphArgs {
+  engineMap: EngineMap;
   leftTarget: ParsedSource;
   rightTarget: ParsedSource;
   leftQuery: string | undefined;
   rightQuery: string | undefined;
-  skipAuto: boolean;
-  registry: ReadonlyArray<ParsedSource>;
 }
 
 interface GraphSideOk {
   store: Store;
+  sourceRecords?: SourceRecordSidecar;
   annotationPredicates: ReturnType<typeof extractAnnotationPredicates>;
 }
 
 async function runGraph(args: RunGraphArgs): Promise<DiffResponse> {
   const [left, right] = await Promise.all([
-    resolveGraphSide(args.leftTarget, args.leftQuery, args.skipAuto, args.registry, 'left'),
-    resolveGraphSide(args.rightTarget, args.rightQuery, args.skipAuto, args.registry, 'right'),
+    resolveGraphSide(args.engineMap, args.leftTarget, args.leftQuery, 'left'),
+    resolveGraphSide(args.engineMap, args.rightTarget, args.rightQuery, 'right'),
   ]);
   if (left.isErr() || right.isErr()) {
     const errors: DiffErrorResponse['errors'] = {};
@@ -205,10 +197,12 @@ async function runGraph(args: RunGraphArgs): Promise<DiffResponse> {
     {
       store: left.value.store,
       annotationPredicates: left.value.annotationPredicates,
+      sourceRecords: left.value.sourceRecords,
     },
     {
       store: right.value.store,
       annotationPredicates: right.value.annotationPredicates,
+      sourceRecords: right.value.sourceRecords,
     },
   );
 
@@ -222,15 +216,12 @@ async function runGraph(args: RunGraphArgs): Promise<DiffResponse> {
 }
 
 function resolveGraphSide(
-  rawTarget: ParsedSource,
+  engineMap: EngineMap,
+  target: ParsedSource,
   inlineQuery: string | undefined,
-  skipAuto: boolean,
-  registry: ReadonlyArray<ParsedSource>,
   side: 'left' | 'right',
 ): ResultAsyncT<GraphSideOk, DiffError> {
   return safeTry(async function* () {
-    const target = withAutoSourceAnnotation(rawTarget, { skipAuto });
-
     if (inlineQuery !== undefined) {
       const upstream = yield* anonymousUpstream(target, side).safeUnwrap();
       const store = yield* resolveAnonymousViewAsync(upstream, inlineQuery, side).safeUnwrap();
@@ -248,7 +239,19 @@ function resolveGraphSide(
       });
     }
 
-    const sources = yield* resolveSourceResult(target, { registry })
+    if (target.id === undefined) {
+      // Defensive: every ParsedSource the served registry yields carries an id
+      // (engine-map's allIds enumerates exactly those entries). A target
+      // without one would have failed `selectFromRegistry`.
+      return err<GraphSideOk, DiffError>({
+        kind: 'inline-upstream-kind',
+        side,
+        targetKind: target.kind,
+      });
+    }
+
+    const sources = yield* engineMap
+      .ensureSources(target.id)
       .mapErr((source: SourceError): DiffError => ({ kind: 'source', side, source }))
       .safeUnwrap();
     if (sources.mode === 'pass-through') {
@@ -258,13 +261,10 @@ function resolveGraphSide(
         endpoint: sources.endpoint.endpoint,
       });
     }
-    const transforms =
-      target.kind === 'glob' || target.kind === 'file'
-        ? target.transforms
-        : undefined;
     return ok<GraphSideOk, DiffError>({
       store: sources.store,
-      annotationPredicates: extractAnnotationPredicates(transforms),
+      sourceRecords: sources.sourceRecords,
+      annotationPredicates: extractAnnotationPredicates(undefined),
     });
   });
 }

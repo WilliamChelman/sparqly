@@ -116,15 +116,6 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
           </summary>
           <div class="mt-2 flex flex-col gap-2">
             <label class="flex items-center gap-2">
-              <input
-                data-testid="skip-auto-source-annotation"
-                type="checkbox"
-                [checked]="skipAutoSourceAnnotation()"
-                (change)="skipAutoSourceAnnotation.set($any($event.target).checked)"
-              />
-              <span>Skip auto source annotation</span>
-            </label>
-            <label class="flex items-center gap-2">
               <span>Snippet context lines</span>
               <input
                 data-testid="snippet-context"
@@ -175,7 +166,6 @@ export class DiffPage implements OnInit {
   readonly result = signal<DiffResponse | null>(null);
   readonly errors = signal<DiffErrorResponse['errors'] | null>(null);
   readonly context = signal<number>(3);
-  readonly skipAutoSourceAnnotation = signal<boolean>(false);
   readonly displayContext = signal<DisplayContext>({ prefixes: {} });
 
   format(error: DiffError): string {
@@ -251,7 +241,6 @@ export class DiffPage implements OnInit {
       leftQuery: this.leftQuery(),
       rightQuery: this.rightQuery(),
     };
-    if (this.skipAutoSourceAnnotation()) req.skipAutoSourceAnnotation = true;
     this.diffService
       .run(req)
       .subscribe({

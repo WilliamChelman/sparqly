@@ -94,7 +94,7 @@ export class ServerModule {
         {
           provide: SPARQL_DIFF_SERVICE,
           useValue: new DiffService(
-            options.servedRegistry,
+            options.engineMap,
             options.resolutionRegistry,
           ),
         },

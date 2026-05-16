@@ -26,7 +26,6 @@ interface DiffRequestBody {
   right: string;
   leftQuery?: string;
   rightQuery?: string;
-  skipAutoSourceAnnotation?: boolean;
 }
 
 const DIFF_REQUEST_SCHEMA: z.ZodType<DiffRequestBody> = z
@@ -35,7 +34,6 @@ const DIFF_REQUEST_SCHEMA: z.ZodType<DiffRequestBody> = z
     right: z.string().min(1),
     leftQuery: z.string().optional(),
     rightQuery: z.string().optional(),
-    skipAutoSourceAnnotation: z.boolean().optional(),
   })
   .strict();
 
