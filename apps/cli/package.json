@@ -1,6 +1,6 @@
 {
   "name": "sparqly",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "description": "RDF CLI with SPARQL query and embedded YASGUI playground",
   "license": "MIT",
   "author": "William Chelman",

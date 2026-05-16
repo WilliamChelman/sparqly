@@ -1,3 +1,9 @@
+## [0.26.0](https://github.com/WilliamChelman/sparqly/compare/v0.25.0...v0.26.0) (2026-05-16)
+
+### Features
+
+* **cli:** `sparqly init` scaffolds a config file in CWD ([#305](https://github.com/WilliamChelman/sparqly/issues/305)) ([a3e5e69](https://github.com/WilliamChelman/sparqly/commit/a3e5e69d092da07628da56cc3913de354d6dc5f7))
+
 ## [0.25.0](https://github.com/WilliamChelman/sparqly/compare/v0.24.0...v0.25.0) (2026-05-16)
 
 ### Features
