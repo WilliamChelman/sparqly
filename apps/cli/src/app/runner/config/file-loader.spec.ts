@@ -312,7 +312,6 @@ describe('makeFileLoader — whole-project schema', () => {
     ['left', 'left: data/a.ttl'],
     ['right', 'right: data/b.ttl'],
     ['snippetContext', 'snippetContext: 5'],
-    ['skipAutoSourceAnnotation', 'skipAutoSourceAnnotation: true'],
     ['json', 'json: true'],
   ])(
     'rejects per-invocation key %s at root with a "per-invocation" message',
@@ -360,5 +359,14 @@ describe('makeFileLoader — whole-project schema', () => {
     await writeFile(path, 'serve:\n  bogus: 1\n');
     const load = makeFileLoader();
     await expect(load(path, dir)).rejects.toThrow(/bogus/);
+  });
+
+  it('rejects the removed skipAutoSourceAnnotation root key with a Zod unrecognized-key error (ADR-0032)', async () => {
+    const path = join(dir, 'sparqly.config.yaml');
+    await writeFile(path, 'skipAutoSourceAnnotation: true\n');
+    const load = makeFileLoader();
+    await expect(load(path, dir)).rejects.toThrow(
+      /[Uu]nrecognized.*skipAutoSourceAnnotation/s,
+    );
   });
 });

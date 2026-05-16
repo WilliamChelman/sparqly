@@ -56,7 +56,6 @@ const PER_INVOCATION_KEYS = new Set([
   'left',
   'right',
   'snippetContext',
-  'skipAutoSourceAnnotation',
   'json',
 ]);
 

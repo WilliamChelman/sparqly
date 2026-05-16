@@ -7,11 +7,12 @@ import {
   type FormatGroupedRdfDiffOptions,
 } from './grouped-diff-formatter';
 import type { HunkedRdfDiff } from './group-rdf-diff-by-entity';
-import { displaySourcePath } from '../sources';
 import {
   DEFAULT_ANNOTATION_PREDICATE_IRIS,
+  displaySourcePath,
   triplePatternKey,
   type AnnotationPredicateIris,
+  type SourceRecord,
   type SourceRecordSidecar,
 } from '../sources';
 
@@ -39,38 +40,6 @@ export interface RdfDiffResult {
 export interface DiffTotals {
   left: number;
   right: number;
-}
-
-/**
- * One source-tracking record reconstructed from an annotation triple authored
- * by the `annotate` transform. Identifies where a particular asserted triple
- * was authored.
- */
-export interface SourceRecord {
-  /** Absolute `file://` IRI of the source file the triple came from. */
-  file: string;
-  /**
-   * 1-based line of the predicate-object pair, when the parser supplied it
-   * (omitted for formats whose parsers do not surface line numbers).
-   */
-  line?: number;
-  /**
-   * 1-based last source line of the predicate-object pair when the object
-   * spans multiple lines (triple-quoted literal, multi-line `( … )` list,
-   * multi-line `[ … ]` blank node). Absent for single-line records.
-   */
-  endLine?: number;
-  /**
-   * User-facing git ref string the source was pinned to (tag, branch,
-   * SHA-as-typed). Populated for triples loaded from a pinned glob source
-   * (ADR-0029); absent for working-tree sources.
-   */
-  gitRef?: string;
-  /**
-   * Resolved commit SHA for the pinned glob source. Equals `gitRef` for
-   * SHA-typed refs; dereferenced commit SHA for annotated tags.
-   */
-  gitSha?: string;
 }
 
 export interface DiffSideStore {
@@ -156,11 +125,7 @@ function buildSideRecordMap(
   canonicalIdMap: Map<string, string>,
 ): Map<string, SourceRecord[]> {
   if (side.sourceRecords !== undefined) {
-    return sidecarToCanonicalRecordMap(
-      side.store,
-      side.sourceRecords,
-      canonicalIdMap,
-    );
+    return sidecarToCanonicalRecordMap(side.store, side.sourceRecords, canonicalIdMap);
   }
   return extractSourceRecordMap(
     side.store,

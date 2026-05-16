@@ -97,39 +97,6 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     ]);
   });
 
-  it('does not emit any trailing `#` comment when --skip-auto-source-annotation is passed against inline globs (regression guard)', async () => {
-    const leftPath = join(scratch, 'left.ttl');
-    const rightPath = join(scratch, 'right.ttl');
-    await writeFile(
-      leftPath,
-      dedent`
-        @prefix ex: <http://example.org/> .
-        ex:a ex:p ex:b .
-        ex:c ex:q ex:d .
-      ` + '\n',
-    );
-    await writeFile(
-      rightPath,
-      dedent`
-        @prefix ex: <http://example.org/> .
-        ex:a ex:p ex:b .
-        ex:e ex:r ex:f .
-      ` + '\n',
-    );
-
-    const result = await runCli(
-      ['diff', '--quiet', '--skip-auto-source-annotation', leftPath, rightPath],
-      { cwd: scratch },
-    );
-
-    expect(result.exitCode).toBe(1);
-    const lines = diffBodyLines(result.stdout);
-    expect(lines).toEqual(['- ex:c ex:q ex:d .', '+ ex:e ex:r ex:f .']);
-    for (const line of lines) {
-      expect(line).not.toMatch(/#/);
-    }
-  });
-
   it('appends a `sourceRecords` field per added/removed entry on `--format=json` when both sides declare `annotateSource`', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
@@ -192,47 +159,6 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     ]);
   });
 
-  it('omits `sourceRecords` from every json entry when --skip-auto-source-annotation is passed against inline globs (regression guard)', async () => {
-    const leftPath = join(scratch, 'left.ttl');
-    const rightPath = join(scratch, 'right.ttl');
-    await writeFile(
-      leftPath,
-      dedent`
-        @prefix ex: <http://example.org/> .
-        ex:a ex:p ex:b .
-        ex:c ex:q ex:d .
-      ` + '\n',
-    );
-    await writeFile(
-      rightPath,
-      dedent`
-        @prefix ex: <http://example.org/> .
-        ex:a ex:p ex:b .
-        ex:e ex:r ex:f .
-      ` + '\n',
-    );
-
-    const result = await runCli(
-      [
-        'diff',
-        '--quiet',
-        '--format=json',
-        '--skip-auto-source-annotation',
-        leftPath,
-        rightPath,
-      ],
-      { cwd: scratch },
-    );
-
-    expect(result.exitCode).toBe(1);
-    const parsed = JSON.parse(result.stdout);
-    expect(parsed.removed).toHaveLength(1);
-    expect(parsed.added).toHaveLength(1);
-    for (const entry of [...parsed.added, ...parsed.removed]) {
-      expect(entry.sourceRecords).toBeUndefined();
-    }
-  });
-
   it('appends a `# <relative-path>:<line>` trailing comment per D/A line on `--format=rdf-patch` when both sides declare `annotateSource`', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
@@ -291,50 +217,7 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
     ]);
   });
 
-  it('does not emit any trailing `#` comment on `--format=rdf-patch` when --skip-auto-source-annotation is passed against inline globs (regression guard)', async () => {
-    const leftPath = join(scratch, 'left.ttl');
-    const rightPath = join(scratch, 'right.ttl');
-    await writeFile(
-      leftPath,
-      dedent`
-        @prefix ex: <http://example.org/> .
-        ex:a ex:p ex:b .
-        ex:c ex:q ex:d .
-      ` + '\n',
-    );
-    await writeFile(
-      rightPath,
-      dedent`
-        @prefix ex: <http://example.org/> .
-        ex:a ex:p ex:b .
-        ex:e ex:r ex:f .
-      ` + '\n',
-    );
-
-    const result = await runCli(
-      [
-        'diff',
-        '--quiet',
-        '--format=rdf-patch',
-        '--skip-auto-source-annotation',
-        leftPath,
-        rightPath,
-      ],
-      { cwd: scratch },
-    );
-
-    expect(result.exitCode).toBe(1);
-    const lines = diffBodyLines(result.stdout);
-    expect(lines).toEqual([
-      'D <http://example.org/c> <http://example.org/q> <http://example.org/d> .',
-      'A <http://example.org/e> <http://example.org/r> <http://example.org/f> .',
-    ]);
-    for (const line of lines) {
-      expect(line).not.toMatch(/#/);
-    }
-  });
-
-  it('writes a stderr summary line when exactly one side declares `annotateSource` (with --skip-auto-source-annotation suppressing the implicit injection on the other side), suppressed by --quiet', async () => {
+  it('writes the asymmetric-records stderr warning when one side is a view (no sidecar) and the other is a glob (sidecar attached), suppressed by --quiet (ADR-0032)', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
     await writeFile(
@@ -358,25 +241,25 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
       configPath,
       dedent`
         sources:
-          - id: left
+          - id: leftRaw
             glob: "${leftPath}"
-            transforms:
-              - annotateSource: {}
-          - id: right
+          - id: rightRaw
             glob: "${rightPath}"
+          - id: rightView
+            from: "@rightRaw"
+            query: "PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }"
       ` + '\n',
     );
 
     const noisy = await runCli(
       [
         'diff',
-        '--skip-auto-source-annotation',
         '--config',
         configPath,
         '--left',
-        '@left',
+        '@leftRaw',
         '--right',
-        '@right',
+        '@rightView',
       ],
       { cwd: scratch },
     );
@@ -390,13 +273,12 @@ describe('sparqly diff -f human — source-record trailing comments', () => {
       [
         'diff',
         '--quiet',
-        '--skip-auto-source-annotation',
         '--config',
         configPath,
         '--left',
-        '@left',
+        '@leftRaw',
         '--right',
-        '@right',
+        '@rightView',
       ],
       { cwd: scratch },
     );

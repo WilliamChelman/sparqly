@@ -1,4 +1,4 @@
-import type { SourceRecord } from './diff';
+import type { SourceRecord } from '../sources';
 
 export interface CompressedSourceRecords {
   /** Absolute `file://` IRI of the source file. */

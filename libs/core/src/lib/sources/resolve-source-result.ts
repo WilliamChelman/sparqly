@@ -93,24 +93,11 @@ export function resolveSourceResult(
     const transformsResult = effectiveTransforms(target, options.graphMode);
     if (transformsResult.isErr()) return errAsync(transformsResult.error);
     const transforms = transformsResult.value;
-    return loadGlobIntoStore(target, transforms, options).map((loaded) =>
-      materialized(
-        loaded.store,
-        loaded.files,
-        loaded.prefixes,
-        loaded.sourceRecords,
-      ),
-    );
+    return loadGlobIntoStore(target, transforms, options).map(materializeLoad);
   }
   if (target.kind === 'file') {
     return loadFileIntoStore(target, target.transforms ?? [], options).map(
-      (loaded) =>
-        materialized(
-          loaded.store,
-          loaded.files,
-          loaded.prefixes,
-          loaded.sourceRecords,
-        ),
+      materializeLoad,
     );
   }
   return resolveViewTargetResult(target, options);
@@ -179,7 +166,7 @@ function pinAndLoadGlob(
     { port, repoDiscovery, logger: options.logger },
   )
     .mapErr<SourceError>((e) => e)
-    .andThen<LoadResult, SourceError>((pinned) => {
+    .andThen<MaterializedLoadResult, SourceError>((pinned) => {
       const transformPin = { ref: pinned.ref, sha: pinned.resolvedSha };
       if (source.splitByFile === true) {
         // Split-glob parents enumerate from the git tree at the resolved SHA
@@ -349,7 +336,7 @@ function applyGlobTransforms(
 
 function mapPinnedLoadError(
   err: SourceError,
-): ResultAsync<LoadResult, SourceError> {
+): ResultAsync<MaterializedLoadResult, SourceError> {
   // The contentReader can throw PinnedFileMissingError when a working-tree
   // match is absent from the git tree at the resolved revision. The loader
   // surfaces that as a glob-load error wrapping the thrown message; promote
@@ -358,13 +345,13 @@ function mapPinnedLoadError(
     err.kind === 'glob-load' &&
     err.message.includes('pinned source: file ')
   ) {
-    return errAsync<LoadResult, SourceError>({
+    return errAsync<MaterializedLoadResult, SourceError>({
       kind: 'git-pin',
       reason: 'pinned-file-missing',
       message: err.message,
     });
   }
-  return errAsync<LoadResult, SourceError>(err);
+  return errAsync<MaterializedLoadResult, SourceError>(err);
 }
 
 function loadFileIntoStore(
@@ -398,9 +385,9 @@ function loadFileIntoStore(
       message: err instanceof Error ? err.message : String(err),
     }),
   )
-    .andThen<LoadResult, SourceError>((buf) => {
+    .andThen<MaterializedLoadResult, SourceError>((buf) => {
       if (buf === null) {
-        return errAsync<LoadResult, SourceError>({
+        return errAsync<MaterializedLoadResult, SourceError>({
           kind: 'glob-load',
           glob: [source.path],
           file: source.path,
@@ -521,4 +508,8 @@ function materialized(
   return sourceRecords === undefined
     ? { mode: 'materialized', store, files, prefixes }
     : { mode: 'materialized', store, files, prefixes, sourceRecords };
+}
+
+function materializeLoad(loaded: MaterializedLoadResult): QuerySources {
+  return materialized(loaded.store, loaded.files, loaded.prefixes, loaded.sourceRecords);
 }

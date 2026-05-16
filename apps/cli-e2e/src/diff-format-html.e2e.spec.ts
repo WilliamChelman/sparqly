@@ -131,7 +131,7 @@ describe('sparqly diff -f html', () => {
     expect(result.stdout).toContain('id="right.ttl-L3"');
   });
 
-  it('emits a stderr warning when --skip-auto-source-annotation suppresses both sides, suppressed by --quiet, and still exits with the diff code', async () => {
+  it('emits a stderr warning on HTML when both sides are views (no sidecar), suppressed by --quiet, and still exits with the diff code (ADR-0032)', async () => {
     const leftPath = join(scratch, 'left.ttl');
     const rightPath = join(scratch, 'right.ttl');
     await writeFile(
@@ -148,9 +148,36 @@ describe('sparqly diff -f html', () => {
         ex:e ex:r ex:f .
       ` + '\n',
     );
+    const configPath = join(scratch, 'sparqly.diff.yaml');
+    await writeFile(
+      configPath,
+      dedent`
+        sources:
+          - id: leftRaw
+            glob: "${leftPath}"
+          - id: rightRaw
+            glob: "${rightPath}"
+          - id: leftView
+            from: "@leftRaw"
+            query: "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }"
+          - id: rightView
+            from: "@rightRaw"
+            query: "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }"
+      ` + '\n',
+    );
 
     const noisy = await runCli(
-      ['diff', '-f', 'html', '--skip-auto-source-annotation', leftPath, rightPath],
+      [
+        'diff',
+        '-f',
+        'html',
+        '--config',
+        configPath,
+        '--left',
+        '@leftView',
+        '--right',
+        '@rightView',
+      ],
       { cwd: scratch },
     );
 
@@ -164,9 +191,12 @@ describe('sparqly diff -f html', () => {
         '--quiet',
         '-f',
         'html',
-        '--skip-auto-source-annotation',
-        leftPath,
-        rightPath,
+        '--config',
+        configPath,
+        '--left',
+        '@leftView',
+        '--right',
+        '@rightView',
       ],
       { cwd: scratch },
     );

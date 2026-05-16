@@ -69,7 +69,6 @@ describe('sparqly diff --left-ref / --right-ref — per-side pinned globs (ADR-0
       [
         'diff',
         '--quiet',
-        '--skip-auto-source-annotation',
         '--config',
         configPath,
         '--left',
@@ -85,10 +84,12 @@ describe('sparqly diff --left-ref / --right-ref — per-side pinned globs (ADR-0
     );
     expect(result.exitCode, `stderr=${result.stderr}`).toBe(1);
     const lines = diffBodyLines(result.stdout);
-    expect(lines).toEqual([
-      '- ex:keep ex:p ex:old .',
-      '+ ex:keep ex:p ex:new .',
-    ]);
+    // Loader-attached source records (ADR-0032) append trailing
+    // `# foaf.ttl:<line>` comments — pinned-side line numbers come from the
+    // git-tree contents, foaf.ttl line 2 on both sides.
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatch(/^- ex:keep ex:p ex:old \. # .*foaf\.ttl:2$/);
+    expect(lines[1]).toMatch(/^\+ ex:keep ex:p ex:new \. # .*foaf\.ttl:2$/);
   });
 
   it('JSON diff source records carry per-side `gitRef` + `gitSha` for both --left-ref and --right-ref', async () => {
@@ -135,7 +136,6 @@ describe('sparqly diff --left-ref / --right-ref — per-side pinned globs (ADR-0
       [
         'diff',
         '--quiet',
-        '--skip-auto-source-annotation',
         '--config',
         configPath,
         '--left',
@@ -188,7 +188,6 @@ describe('sparqly diff --left-ref / --right-ref — per-side pinned globs (ADR-0
     const baseArgs = [
       'diff',
       '--quiet',
-      '--skip-auto-source-annotation',
       '--config',
       configPath,
     ];

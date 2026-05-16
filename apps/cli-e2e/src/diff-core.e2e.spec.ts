@@ -38,36 +38,26 @@ describe('sparqly diff — core properties', () => {
     const left = diffFixture('domain.ttl');
     const right = diffFixture('added.ttl');
 
-    const result = await runCli([
-      'diff',
-      '--quiet',
-      '--skip-auto-source-annotation',
-      left,
-      right,
-    ]);
+    const result = await runCli(['diff', '--quiet', left, right]);
 
     expect(result.exitCode).toBe(1);
     const lines = diffBodyLines(result.stdout);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toBe('+ ex:g ex:s ex:h .');
+    // Loader-attached source records (ADR-0032) append a trailing
+    // `# <path>:<line>` comment on glob/file targets.
+    expect(lines[0]).toMatch(/^\+ ex:g ex:s ex:h \. # .*added\.ttl:6$/);
   });
 
   it('exits 1 and prints a removal when the right side is missing a triple (human mode shortens via source prefixes)', async () => {
     const left = diffFixture('domain.ttl');
     const right = diffFixture('removed.ttl');
 
-    const result = await runCli([
-      'diff',
-      '--quiet',
-      '--skip-auto-source-annotation',
-      left,
-      right,
-    ]);
+    const result = await runCli(['diff', '--quiet', left, right]);
 
     expect(result.exitCode).toBe(1);
     const lines = diffBodyLines(result.stdout);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toBe('- ex:c ex:q ex:d .');
+    expect(lines[0]).toMatch(/^- ex:c ex:q ex:d \. # .*domain\.ttl:4$/);
   });
 
   it('writes the "# +<added> -<removed>" summary to stderr by default', async () => {

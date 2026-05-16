@@ -1,5 +1,5 @@
 import { compressSourceRecords } from './compress-source-records';
-import type { SourceRecord } from './diff';
+import type { SourceRecord } from '../sources';
 import { displaySourcePath } from '../sources';
 
 /**
