@@ -1,3 +1,41 @@
+## [0.24.0](https://github.com/WilliamChelman/sparqly/compare/v0.23.0...v0.24.0) (2026-05-16)
+
+### Features
+
+* **core,cli,server:** enumerate split-glob children from git tree at pinned ref ([#274](https://github.com/WilliamChelman/sparqly/issues/274)) ([4e99ded](https://github.com/WilliamChelman/sparqly/commit/4e99dedcd23ac1bddd1a3c1fcb54705ccdeb72d8))
+* **core,cli:** accept [@id](https://github.com/id):ref source addresses for views and CLI positionals ([#275](https://github.com/WilliamChelman/sparqly/issues/275)) ([b4e4a14](https://github.com/WilliamChelman/sparqly/commit/b4e4a14aece133633aa96218aa84b203d838cbf4)), closes [#6](https://github.com/WilliamChelman/sparqly/issues/6)
+* **core,cli:** classify pinned vs floating git refs + emit gitRef/gitSha source records ([#273](https://github.com/WilliamChelman/sparqly/issues/273)) ([b806ae8](https://github.com/WilliamChelman/sparqly/commit/b806ae8a7f47e2743191c2789163ad01374b0d6a))
+* **core,cli:** expandSplitGlobs + CLI tracer bullet ([#265](https://github.com/WilliamChelman/sparqly/issues/265)) ([10b6b65](https://github.com/WilliamChelman/sparqly/commit/10b6b6533e1905eaf1769bd1f044fd773e3f4c02))
+* **core,cli:** pin glob sources to a git revision ([#272](https://github.com/WilliamChelman/sparqly/issues/272)) ([0808e86](https://github.com/WilliamChelman/sparqly/commit/0808e86d55d5cc87af197416c68c099773de83d3))
+* **core,cli:** pin per-side glob sources for `diff` via --left-ref/--right-ref + [@id](https://github.com/id):ref ([#276](https://github.com/WilliamChelman/sparqly/issues/276)) ([73fc1d2](https://github.com/WilliamChelman/sparqly/commit/73fc1d20637ea6e917e24274a4aae8b8f6fb1fdf))
+* **core,cli:** propagate view pins down `from:` chain to leaf glob ([#277](https://github.com/WilliamChelman/sparqly/issues/277)) ([44b3108](https://github.com/WilliamChelman/sparqly/commit/44b3108bcc947118126a107a3f023c993c8940b6))
+* **core,server:** serve `@id:ref` pinned variants + watcher gate ([#278](https://github.com/WilliamChelman/sparqly/issues/278)) ([cce8aa2](https://github.com/WilliamChelman/sparqly/commit/cce8aa2d44f7dd799cd5c8947f882f2d6fca125b))
+* **core,server:** view-chain ref resolution for /api/sources/:id/refs ([#282](https://github.com/WilliamChelman/sparqly/issues/282)) ([a3eb13a](https://github.com/WilliamChelman/sparqly/commit/a3eb13a2c6b5005fc3e8928d0a9692464e16f918))
+* **core:** introduce kind: 'file' source + splitByFile parser flag ([#264](https://github.com/WilliamChelman/sparqly/issues/264)) ([c901703](https://github.com/WilliamChelman/sparqly/commit/c901703d391268758700b5a70fc6926e1613d460))
+* **core:** warn (not error) on empty glob match ([#263](https://github.com/WilliamChelman/sparqly/issues/263)) ([9550f6f](https://github.com/WilliamChelman/sparqly/commit/9550f6f68eacf076bd3c6d4a8c5bb40d62402f80))
+* **lint:** enforce max-lines 500 with grandfathered offenders ([#255](https://github.com/WilliamChelman/sparqly/issues/255)) ([7764e00](https://github.com/WilliamChelman/sparqly/commit/7764e0089e487a3d2635bf3b6dff5cef1f990847))
+* **server:** GET /api/sources/:id/refs for glob sources ([#281](https://github.com/WilliamChelman/sparqly/issues/281)) ([428a9fd](https://github.com/WilliamChelman/sparqly/commit/428a9fdf7df9fd13858fb68890e329d8ab74a427))
+* **server:** invalidate split-glob children cache on watcher events ([#268](https://github.com/WilliamChelman/sparqly/issues/268)) ([0fcd399](https://github.com/WilliamChelman/sparqly/commit/0fcd399353aec651bb672b105d9fc4886f8e70be))
+* **server:** lazy-materialize served sources on first request ([#289](https://github.com/WilliamChelman/sparqly/issues/289)) ([a7c6f9e](https://github.com/WilliamChelman/sparqly/commit/a7c6f9e83169707458c504556a4f45bd0224f7a8))
+* **server:** POST /api/sources/:id/refs/fetch with typed errors ([#283](https://github.com/WilliamChelman/sparqly/issues/283)) ([2044883](https://github.com/WilliamChelman/sparqly/commit/20448837f6c3afbc75e94f27120a9c7c625f0969))
+* **server:** wire expandSplitGlobs + wildcard sparql route ([#266](https://github.com/WilliamChelman/sparqly/issues/266)) ([14dd69c](https://github.com/WilliamChelman/sparqly/commit/14dd69c0b2e7ec8f239e607503a7ff22f8e7517e))
+* **web:** group source pickers by parentId ([#269](https://github.com/WilliamChelman/sparqly/issues/269)) ([1e042c3](https://github.com/WilliamChelman/sparqly/commit/1e042c3f3cf8061a93ddb84f5727845441ec358d))
+* **web:** pinned-address `@id:ref` in sources picker + URL ([#279](https://github.com/WilliamChelman/sparqly/issues/279)) ([3741aa8](https://github.com/WilliamChelman/sparqly/commit/3741aa85ed1545084ccbc579d9db2a0c72705bd1))
+* **web:** refresh remotes button in sources-picker ref panel ([#287](https://github.com/WilliamChelman/sparqly/issues/287)) ([fd7261c](https://github.com/WilliamChelman/sparqly/commit/fd7261ce0a84ca82989c9bad9478fcd9e86fd7f0))
+* **web:** sources-picker overlay shell with source search ([#284](https://github.com/WilliamChelman/sparqly/issues/284)) ([b69a3b0](https://github.com/WilliamChelman/sparqly/commit/b69a3b051a5e429180b67a0e345927c2a833b7a8))
+* **web:** sources-picker ref discovery panel ([#285](https://github.com/WilliamChelman/sparqly/issues/285)) ([2f2eb12](https://github.com/WilliamChelman/sparqly/commit/2f2eb122f9a5cd679db6a7442b9a9b35de9e5113))
+* **web:** sources-picker ref-search filter and free-form Enter ([#286](https://github.com/WilliamChelman/sparqly/issues/286)) ([b4ac9d1](https://github.com/WilliamChelman/sparqly/commit/b4ac9d18ffb0bc26fe5287a6bc83ced4ab8b971a))
+
+### Bug Fixes
+
+* **core,server:** surface pinned `@id:ref` query errors as 4xx instead of 500 ([7f2d91f](https://github.com/WilliamChelman/sparqly/commit/7f2d91f3d668df86aa6185bacb8e35308ffeeebf))
+* **core:** load ad-hoc pinned split-glob parents from the git tree ([9655f81](https://github.com/WilliamChelman/sparqly/commit/9655f8198b252bd2b47a502908bb77e32a93558e))
+* **server:** retry-on-rejection + Result-typed errors on lazy load ([#290](https://github.com/WilliamChelman/sparqly/issues/290)) ([5dbf51b](https://github.com/WilliamChelman/sparqly/commit/5dbf51b4d10dd1bcc36c0ae365a42f8c284e8e66))
+
+### Performance Improvements
+
+* **core:** batch pinned split-glob reads through `git cat-file --batch` ([2fc8a06](https://github.com/WilliamChelman/sparqly/commit/2fc8a060992451d9e349aacd6bcb72ad079505fe))
+
 ## [0.23.0](https://github.com/WilliamChelman/sparqly/compare/v0.22.0...v0.23.0) (2026-05-14)
 
 ### Features
