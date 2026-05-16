@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ButtonComponent } from '@app/modules/button';
+import { ErrorBannerComponent } from '@app/modules/error-banner';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import {
   ConfigService,
@@ -31,6 +32,7 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ButtonComponent,
+    ErrorBannerComponent,
     SourcesPickerComponent,
     DiffResultRendererComponent,
     YasqeEditorComponent,
@@ -71,10 +73,7 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
             </div>
 
             @if (errors()?.left; as left) {
-              <p
-                data-testid="error-left"
-                class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
-              >
+              <p app-error-banner data-testid="error-left">
                 {{ format(left) }}
               </p>
             }
@@ -95,20 +94,14 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
             </div>
 
             @if (errors()?.right; as right) {
-              <p
-                data-testid="error-right"
-                class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
-              >
+              <p app-error-banner data-testid="error-right">
                 {{ format(right) }}
               </p>
             }
           </div>
         </section>
         @if (errors()?.top; as top) {
-          <p
-            data-testid="error-top"
-            class="rounded border border-error-line bg-error-bg p-2 text-sm text-error"
-          >
+          <p app-error-banner data-testid="error-top">
             {{ format(top) }}
           </p>
         }
