@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ButtonComponent } from '@app/modules/button';
+import { CodeChipComponent } from '@app/modules/code-chip';
 import { ErrorBannerComponent } from '@app/modules/error-banner';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import {
@@ -32,6 +33,7 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ButtonComponent,
+    CodeChipComponent,
     ErrorBannerComponent,
     SourcesPickerComponent,
     DiffResultRendererComponent,
@@ -43,13 +45,13 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
     } @else if ((sources() ?? []).length <= 1) {
       <main data-testid="empty-state" class="p-4 text-sm text-foreground-muted">
         <p>
-          <code class="rounded bg-surface-sunken px-1 py-0.5 font-mono">/diff</code> needs at
+          <code app-code-chip>/diff</code> needs at
           least two registered sources.
         </p>
         <p class="text-foreground-faint">
           You're running <strong>serve</strong> in single-source mode (or with
           an empty registry); diffing is unavailable. Restart
-          <code class="rounded bg-surface-sunken px-1 py-0.5 font-mono">sparqly serve</code>
+          <code app-code-chip>sparqly serve</code>
           without a positional/<code>--source</code> flag, against a config
           that declares two or more sources, to enable this page.
         </p>
