@@ -35,6 +35,13 @@ describe('DescribeLinkComponent', () => {
     expect(a?.getAttribute('rel')).toContain('noopener');
   });
 
+  it('renders the IconTarget component inside an app-btn anchor', () => {
+    const el = setup('http://example.org/alice');
+    const a = el.querySelector<HTMLAnchorElement>('a[data-testid="describe-this"]');
+    expect(a?.hasAttribute('app-btn')).toBe(true);
+    expect(a?.querySelector('app-icon-target')).toBeTruthy();
+  });
+
   it('encodes IRIs containing reserved characters', () => {
     const el = setup('http://example.org/path?x=1&y=2#frag');
     const a = el.querySelector<HTMLAnchorElement>('a[data-testid="describe-this"]');
