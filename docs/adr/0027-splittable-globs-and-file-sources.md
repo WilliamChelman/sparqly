@@ -1,5 +1,7 @@
 # Splittable globs and file sources
 
+> **Status:** amended by [ADR-0032](0032-loader-attached-source-record-sidecar.md) — children inherit the parent meta's **Source record sidecar** by carrying their own (one-file) sidecar at load time, paralleling the transform-inheritance posture below.
+
 `sparqly`'s registry today treats a **Glob source** as one indivisible target: querying or diffing a single file out of a multi-file glob requires editing the project config and adding a second narrowly-scoped glob entry. The webapp picker reflects this — a glob that matches 30 files shows up as one selectable thing, and the user has no UI affordance to scope down. The stated user need is the opposite: *"easily select files in the query page or diff UI without having to touch the source config."* This ADR introduces a registry-level expansion that explodes a glob, when opted in, into the meta plus one selectable **File source** per matched file, without disturbing the single-target rule (ADR-0005) or the existing glob's semantics.
 
 ## Decision

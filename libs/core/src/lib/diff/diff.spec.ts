@@ -12,11 +12,13 @@ import {
 import { parseSourceSpec } from '../sources';
 import { resolveSource } from '../sources';
 import { extractAnnotationPredicates } from '../sources';
+import type { SourceRecordSidecar } from '../sources';
 import type { Store } from 'n3';
 
 interface ResolvedSide {
   store: Store;
   annotationPredicates: ReturnType<typeof extractAnnotationPredicates>;
+  sourceRecords?: SourceRecordSidecar;
 }
 
 async function resolveAnnotated(spec: unknown): Promise<ResolvedSide> {
@@ -31,11 +33,28 @@ async function resolveAnnotated(spec: unknown): Promise<ResolvedSide> {
   };
 }
 
+async function resolveSidecarOnly(spec: unknown): Promise<ResolvedSide> {
+  const parsed = parseSourceSpec(spec as never);
+  const r = await resolveSource(parsed);
+  if (r.mode !== 'materialized') throw new Error('expected materialized');
+  return {
+    store: r.store,
+    annotationPredicates: undefined,
+    sourceRecords: r.sourceRecords,
+  };
+}
+
 const t = (iri: string): string => `<http://example.org/${iri}>`;
 const triple = (s: string, p: string, o: string): string =>
   `${t(s)} ${t(p)} ${t(o)} .`;
 const quad = (s: string, p: string, o: string, g: string): string =>
   `${t(s)} ${t(p)} ${t(o)} ${t(g)} .`;
+
+function mapToObject<V>(m: ReadonlyMap<string, V>): Record<string, V> {
+  const out: Record<string, V> = {};
+  for (const [k, v] of m) out[k] = v;
+  return out;
+}
 
 describe('diffCanonicalStatements + formatRdfDiff', () => {
   it('human format emits removed lines, then added lines, each prefixed and newline-terminated', () => {
@@ -437,6 +456,59 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
       expect(records).toHaveLength(1);
       expect(records?.[0].file).toBe(`file://${leftFile}`);
       expect(records?.[0].line).toBe(4);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('diffStores sidecar input produces source-record maps byte-identical to the RDF-star extraction path (ADR-0032)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sparqly-diff-sidecar-eq-'));
+    try {
+      const leftFile = join(dir, 'left.ttl');
+      const rightFile = join(dir, 'right.ttl');
+      await writeFile(
+        leftFile,
+        dedent`
+          @prefix ex: <http://example.org/> .
+          ex:a ex:p ex:b .
+          ex:s ex:p _:x .
+          _:x ex:q "v" .
+          _:x ex:extra "only-on-left" .
+        ` + '\n',
+      );
+      await writeFile(
+        rightFile,
+        dedent`
+          @prefix ex: <http://example.org/> .
+          ex:a ex:p ex:b .
+          ex:s ex:p _:y .
+          _:y ex:q "v" .
+        ` + '\n',
+      );
+
+      const leftLegacy = await resolveAnnotated({
+        glob: leftFile,
+        transforms: [{ annotateSource: {} }],
+      });
+      const rightLegacy = await resolveAnnotated({
+        glob: rightFile,
+        transforms: [{ annotateSource: {} }],
+      });
+      const leftSidecar = await resolveSidecarOnly({ glob: leftFile });
+      const rightSidecar = await resolveSidecarOnly({ glob: rightFile });
+
+      const legacy = await diffStores(leftLegacy, rightLegacy);
+      const sidecar = await diffStores(leftSidecar, rightSidecar);
+
+      expect(sidecar.added).toEqual(legacy.added);
+      expect(sidecar.removed).toEqual(legacy.removed);
+      expect(sidecar.totals).toEqual(legacy.totals);
+      expect(mapToObject(sidecar.sourceRecords.left)).toEqual(
+        mapToObject(legacy.sourceRecords.left),
+      );
+      expect(mapToObject(sidecar.sourceRecords.right)).toEqual(
+        mapToObject(legacy.sourceRecords.right),
+      );
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

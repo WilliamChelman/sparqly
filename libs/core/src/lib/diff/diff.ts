@@ -10,7 +10,9 @@ import type { HunkedRdfDiff } from './group-rdf-diff-by-entity';
 import { displaySourcePath } from '../sources';
 import {
   DEFAULT_ANNOTATION_PREDICATE_IRIS,
+  triplePatternKey,
   type AnnotationPredicateIris,
+  type SourceRecordSidecar,
 } from '../sources';
 
 export type RdfDiffFormat =
@@ -82,9 +84,17 @@ export interface DiffSideStore {
    * Predicate IRIs used by the side's `annotate` transform, threaded from
    * {@link extractAnnotationPredicates}. Defaults to
    * {@link DEFAULT_ANNOTATION_PREDICATE_IRIS} when the source did not override
-   * any of them.
+   * any of them. Ignored when {@link sourceRecords} is supplied.
    */
   annotationPredicates?: AnnotationPredicateIris;
+  /**
+   * Loader-attached source-record sidecar (ADR-0032). When supplied, diff
+   * re-keys the sidecar's `(s, p, o)` map to canonical N-Quads — fanning out
+   * across graphs the same way the legacy RDF-star path does — and does
+   * not walk the Store for annotation triples. Output is byte-identical to
+   * the legacy path on equivalent inputs.
+   */
+  sourceRecords?: SourceRecordSidecar;
 }
 
 export interface RdfDiffWithSourcesResult extends RdfDiffResult {
@@ -131,22 +141,58 @@ export async function diffStores(
   return {
     ...diff,
     sourceRecords: {
-      left: extractSourceRecordMap(
-        left.store,
-        leftCanon.canonicalIdMap,
-        left.annotationPredicates ?? DEFAULT_ANNOTATION_PREDICATE_IRIS,
-      ),
-      right: extractSourceRecordMap(
-        right.store,
-        rightCanon.canonicalIdMap,
-        right.annotationPredicates ?? DEFAULT_ANNOTATION_PREDICATE_IRIS,
-      ),
+      left: buildSideRecordMap(left, leftCanon.canonicalIdMap),
+      right: buildSideRecordMap(right, rightCanon.canonicalIdMap),
     },
     canonicalIdMap: {
       left: leftCanon.canonicalIdMap,
       right: rightCanon.canonicalIdMap,
     },
   };
+}
+
+function buildSideRecordMap(
+  side: DiffSideStore,
+  canonicalIdMap: Map<string, string>,
+): Map<string, SourceRecord[]> {
+  if (side.sourceRecords !== undefined) {
+    return sidecarToCanonicalRecordMap(
+      side.store,
+      side.sourceRecords,
+      canonicalIdMap,
+    );
+  }
+  return extractSourceRecordMap(
+    side.store,
+    canonicalIdMap,
+    side.annotationPredicates ?? DEFAULT_ANNOTATION_PREDICATE_IRIS,
+  );
+}
+
+function sidecarToCanonicalRecordMap(
+  store: Store,
+  sidecar: SourceRecordSidecar,
+  canonicalIdMap: Map<string, string>,
+): Map<string, SourceRecord[]> {
+  const out = new Map<string, SourceRecord[]>();
+  for (const asserted of store.getQuads(null, null, null, null)) {
+    if ((asserted.subject.termType as string) === 'Quad') continue;
+    const patternKey = triplePatternKey(
+      asserted.subject,
+      asserted.predicate,
+      asserted.object,
+    );
+    const records = sidecar.get(patternKey);
+    if (records === undefined) continue;
+    const canonKey = canonicalQuadKey(asserted, canonicalIdMap);
+    let bucket = out.get(canonKey);
+    if (bucket === undefined) {
+      bucket = [];
+      out.set(canonKey, bucket);
+    }
+    for (const r of records) bucket.push(r);
+  }
+  return out;
 }
 
 function extractSourceRecordMap(

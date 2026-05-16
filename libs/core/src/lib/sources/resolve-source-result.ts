@@ -30,6 +30,10 @@ import {
 } from './git/pin-glob-source';
 import { normalizeRegistryPinsResult } from './git/normalize-registry-pins';
 import { walkGitTree, type WalkGitTreeError } from './git/walk-git-tree';
+import {
+  buildSourceRecordSidecar,
+  type SourceRecordSidecar,
+} from './source-record-sidecar';
 
 export {
   formatSourceError,
@@ -90,13 +94,23 @@ export function resolveSourceResult(
     if (transformsResult.isErr()) return errAsync(transformsResult.error);
     const transforms = transformsResult.value;
     return loadGlobIntoStore(target, transforms, options).map((loaded) =>
-      materialized(loaded.store, loaded.files, loaded.prefixes),
+      materialized(
+        loaded.store,
+        loaded.files,
+        loaded.prefixes,
+        loaded.sourceRecords,
+      ),
     );
   }
   if (target.kind === 'file') {
     return loadFileIntoStore(target, target.transforms ?? [], options).map(
       (loaded) =>
-        materialized(loaded.store, loaded.files, loaded.prefixes),
+        materialized(
+          loaded.store,
+          loaded.files,
+          loaded.prefixes,
+          loaded.sourceRecords,
+        ),
     );
   }
   return resolveViewTargetResult(target, options);
@@ -129,11 +143,20 @@ function resolveViewTargetResult(
     );
 }
 
+interface MaterializedLoadResult extends LoadResult {
+  /**
+   * Loader-attached source-record sidecar (ADR-0032). Always present on
+   * glob/file load paths — built from `perFileRecords` with `gitRef` /
+   * `gitSha` populated from the load's pin context, if any.
+   */
+  sourceRecords: SourceRecordSidecar;
+}
+
 function loadGlobIntoStore(
   source: ParsedGlobSource,
   transforms: ReadonlyArray<ParsedTransform>,
   options: ResolveSourceResultOptions,
-): ResultAsync<LoadResult, SourceError> {
+): ResultAsync<MaterializedLoadResult, SourceError> {
   if (source.gitRef === undefined) {
     return loadRdfResult({ sources: source.glob, logger: options.logger }).map(
       (sub) => applyGlobTransforms(sub, transforms),
@@ -146,7 +169,7 @@ function pinAndLoadGlob(
   source: ParsedGlobSource,
   transforms: ReadonlyArray<ParsedTransform>,
   options: ResolveSourceResultOptions,
-): ResultAsync<LoadResult, SourceError> {
+): ResultAsync<MaterializedLoadResult, SourceError> {
   const port = options.gitPort ?? new GitCliPort();
   const repoDiscovery = options.repoDiscovery ?? defaultRepoDiscovery;
   const configDir = options.configDir ?? process.cwd();
@@ -307,7 +330,7 @@ function applyGlobTransforms(
   sub: LoadResult,
   transforms: ReadonlyArray<ParsedTransform>,
   pin?: { ref: string; sha: string },
-): LoadResult {
+): MaterializedLoadResult {
   const transformed = applyTransformPipeline(sub.store, transforms, {
     perFileRecords: sub.perFileRecords,
     pin,
@@ -317,6 +340,10 @@ function applyGlobTransforms(
     files: [...sub.files],
     prefixes: { ...sub.prefixes },
     perFileRecords: sub.perFileRecords,
+    sourceRecords: buildSourceRecordSidecar(
+      sub.perFileRecords ?? new Map(),
+      pin,
+    ),
   };
 }
 
@@ -344,7 +371,7 @@ function loadFileIntoStore(
   source: ParsedFileSource,
   transforms: ReadonlyArray<ParsedTransform>,
   options: ResolveSourceResultOptions,
-): ResultAsync<LoadResult, SourceError> {
+): ResultAsync<MaterializedLoadResult, SourceError> {
   // A synthesized file child resolves like a one-file glob — same loader,
   // same transform pipeline (ADR-0027). When the child inherited a pin from
   // its parent split-glob meta (ADR-0029), the loader reads from the git tree
@@ -455,7 +482,7 @@ function materializeFileLoad(
   sub: LoadResult,
   transforms: ReadonlyArray<ParsedTransform>,
   pin?: { ref: string; sha: string },
-): LoadResult {
+): MaterializedLoadResult {
   const transformed = applyTransformPipeline(sub.store, transforms, {
     perFileRecords: sub.perFileRecords,
     pin,
@@ -465,6 +492,10 @@ function materializeFileLoad(
     files: [...sub.files],
     prefixes: { ...sub.prefixes },
     perFileRecords: sub.perFileRecords,
+    sourceRecords: buildSourceRecordSidecar(
+      sub.perFileRecords ?? new Map(),
+      pin,
+    ),
   };
 }
 
@@ -485,6 +516,9 @@ function materialized(
   store: Store,
   files: string[],
   prefixes: Record<string, Record<string, string>>,
+  sourceRecords?: SourceRecordSidecar,
 ): QuerySources {
-  return { mode: 'materialized', store, files, prefixes };
+  return sourceRecords === undefined
+    ? { mode: 'materialized', store, files, prefixes }
+    : { mode: 'materialized', store, files, prefixes, sourceRecords };
 }

@@ -1,5 +1,7 @@
 # Implicit `annotateSource` for diff, opt-out via flag
 
+> **Status:** superseded by [ADR-0032](0032-loader-attached-source-record-sidecar.md) — source records are produced by a loader-attached sidecar; auto-injection, the `--skip-auto-source-annotation` flag, and the `skipAutoSourceAnnotation` config field are removed.
+
 ## Context
 
 ADR-0006 made the `annotate` transform an explicit opt-in on glob sources, declared under `transforms:` in config. ADR-0007 then built the `html` diff format around the source records that transform produces. The two ADRs together created an awkward CLI seam: the natural one-shot invocation `sparqly diff --left=a.ttl --right=b.ttl --format=html --out=report.html` produces a degenerate HTML output (no line numbers, no source-file snippets) because inline glob targets have no place to attach a transform. The stderr warning "no source records present; HTML output will contain no line numbers" was a workaround for the very gap users were hitting; not a fix.

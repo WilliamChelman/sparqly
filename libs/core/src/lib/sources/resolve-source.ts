@@ -7,6 +7,7 @@ import {
   resolveSourceResult,
   type ResolveSourceResultOptions,
 } from './resolve-source-result';
+import type { SourceRecordSidecar } from './source-record-sidecar';
 
 export type QuerySources =
   | { mode: 'pass-through'; endpoint: ParsedEndpointSource }
@@ -15,6 +16,14 @@ export type QuerySources =
       store: Store;
       files: string[];
       prefixes: Record<string, Record<string, string>>;
+      /**
+       * Loader-attached source-record sidecar (ADR-0032). Populated for
+       * glob/file targets (working tree and pinned); absent for view,
+       * empty, and endpoint resolutions. The map's keys are
+       * graph-agnostic triple-pattern strings; re-key by canonical N-Quads
+       * at diff time via the canonicalizer's blank-node label map.
+       */
+      sourceRecords?: SourceRecordSidecar;
     };
 
 export interface ResolveSourceOptions {

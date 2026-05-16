@@ -1,5 +1,7 @@
 # Git-pinned glob sources via `gitRef`
 
+> **Status:** amended by [ADR-0032](0032-loader-attached-source-record-sidecar.md) — `gitRef` / `gitSha` populate directly into `SourceRecord` fields on the loader-attached sidecar; the RDF-star round-trip described below remains the explicit-opt-in projection authored by `annotateSource` for SPARQL queryability.
+
 A user wants to query, hash, or diff an RDF source *as it existed at a specific git revision* — the reference version of an ontology pinned to a tag, the previous release of a vocabulary, the working tree at `HEAD~1` for a pre/post-migration audit. The workaround today is shell scripts that `git checkout`, run `sparqly`, and `git checkout -` back; this loses reproducibility (mid-run working-tree mutation), can't express "diff this glob between v1.2 and v1.3" cleanly, and doesn't compose into the webapp at all. This ADR makes a git revision a first-class scoping axis on **Glob source** resolution, parallel to (and independent of) the SPARQL-query scoping a **View** provides.
 
 ADR-0027 already foresaw this — the rejected alternative "reuse `kind: 'glob'` for children" called out that "the future direction of versioning a single file at a git revision needs a real revision identity, not grafted onto a glob." This ADR delivers that, but at the **Glob source** level rather than introducing user-declared `kind: 'file'` (see below).
