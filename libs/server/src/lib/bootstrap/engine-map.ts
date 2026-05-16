@@ -2,18 +2,36 @@ import type { SparqlyLogger } from 'common';
 import { QueryEngine, resolveSource, type ParsedSource } from 'core';
 import type { StoreRef } from './tokens';
 
-interface Entry {
-  source: ParsedSource;
+interface LoadedEntry {
   engine: QueryEngine;
   storeRef: StoreRef | undefined;
+}
+
+interface Entry {
+  source: ParsedSource;
   /**
-   * Absolute paths the loader actually opened for this source on its most
-   * recent materialized resolution. Empty for pass-through (endpoint) sources
-   * or anything else that did not touch the filesystem. Refreshed by
-   * `setFiles` after watcher rebuilds so the snippet allow-list can be
-   * recomputed atomically.
+   * Absolute paths attributed to this source for the snippet allow-list.
+   * Pre-seeded at boot via `walkGlobPaths` (ADR-0031) for un-touched
+   * materialized sources, then overwritten by {@link EngineMap.setFiles} on
+   * watcher rebuilds and inside `loadEntry` once the source actually
+   * resolves. Empty for endpoint/pass-through entries.
    */
   files: string[];
+  /**
+   * `serve`'s lazy-materialization contract (ADR-0031): for materialized
+   * entries this is `undefined` until the first {@link EngineMap.ensure} call
+   * triggers the load, then a memoized in-flight (and eventually settled)
+   * promise of the fully built {@link LoadedEntry}. Endpoint pass-through
+   * entries are populated synchronously at construction time — no load to
+   * defer — and their `loaded` promise resolves immediately.
+   */
+  loaded: Promise<LoadedEntry> | undefined;
+  /**
+   * Synchronously-available view of the loaded shape, mirroring `loaded` once
+   * it has settled. Used by watcher / snippet wiring that needs to peek at
+   * the store ref without `await`ing.
+   */
+  current: LoadedEntry | undefined;
 }
 
 export interface EngineMapOptions {
@@ -26,16 +44,25 @@ export interface EngineMapOptions {
    * Boundary logger threaded into each source's {@link QueryEngine} (and into
    * `resolveSource` for view chains) so `serve`'s SPARQL executions emit the
    * shared `query` debug event under `--verbose` (ADR-0020). Also emits a
-   * `source-loaded` debug line per source with its load timing. Defaults to none.
+   * `source-loaded` debug line per source with its load timing — fired on
+   * first `ensure(id)`, not at boot.
    */
   logger?: SparqlyLogger;
 }
 
 export class EngineMap {
   private readonly entries: Map<string, Entry>;
+  private readonly resolutionRegistry: ReadonlyArray<ParsedSource>;
+  private readonly logger: SparqlyLogger | undefined;
 
-  private constructor(entries: Map<string, Entry>) {
+  private constructor(
+    entries: Map<string, Entry>,
+    resolutionRegistry: ReadonlyArray<ParsedSource>,
+    logger: SparqlyLogger | undefined,
+  ) {
     this.entries = entries;
+    this.resolutionRegistry = resolutionRegistry;
+    this.logger = logger;
   }
 
   static async create(
@@ -47,37 +74,103 @@ export class EngineMap {
     for (const src of servedRegistry) {
       if (src.kind === 'reference') continue;
       if (src.id === undefined) continue;
-      const start = Date.now();
-      const entry = await buildEntry(src, resolutionRegistry, options.logger);
-      entries.set(src.id, entry);
-      const ms = Date.now() - start;
-      if (entry.storeRef) {
-        options.logger?.debug('source-loaded', {
-          source: src.id,
-          kind: src.kind,
-          files: entry.files.length,
-          quads: entry.storeRef.current.size,
-          ms,
+      if (src.kind === 'endpoint') {
+        const loaded: LoadedEntry = {
+          engine: new QueryEngine(src, {
+            id: src.id ?? src.endpoint,
+            mode: 'pass-through',
+            logger: options.logger,
+          }),
+          storeRef: undefined,
+        };
+        entries.set(src.id, {
+          source: src,
+          files: [],
+          loaded: Promise.resolve(loaded),
+          current: loaded,
         });
-      } else {
-        options.logger?.debug('source-loaded', {
-          source: src.id,
-          kind: src.kind,
-          ms,
-        });
+        continue;
       }
+      entries.set(src.id, {
+        source: src,
+        files: [],
+        loaded: undefined,
+        current: undefined,
+      });
     }
-    return new EngineMap(entries);
+    return new EngineMap(entries, resolutionRegistry, options.logger);
   }
 
   allIds(): string[] {
     return Array.from(this.entries.keys());
   }
 
-  get(id: string): QueryEngine {
+  /**
+   * Returns the engine for `id`, triggering a one-shot lazy load on first call
+   * for materialized entries (ADR-0031). Concurrent first-touch calls share
+   * the in-flight load promise — `resolveSource` runs exactly once per source
+   * for the life of the process.
+   */
+  async ensure(id: string): Promise<QueryEngine> {
     const entry = this.entries.get(id);
     if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
-    return entry.engine;
+    if (entry.loaded === undefined) {
+      entry.loaded = this.loadEntry(entry);
+    }
+    const loaded = await entry.loaded;
+    return loaded.engine;
+  }
+
+  private async loadEntry(entry: Entry): Promise<LoadedEntry> {
+    const src = entry.source;
+    const sourceId = src.id ?? '(source)';
+    const start = Date.now();
+    const resolved = await resolveSource(src, {
+      registry: this.resolutionRegistry,
+      logger: this.logger,
+    });
+    let loaded: LoadedEntry;
+    if (resolved.mode === 'pass-through') {
+      loaded = {
+        engine: new QueryEngine(resolved.endpoint, {
+          id: sourceId,
+          mode: 'pass-through',
+          logger: this.logger,
+        }),
+        storeRef: undefined,
+      };
+      entry.files = [];
+    } else {
+      const storeRef: StoreRef = { current: resolved.store };
+      const ref = storeRef;
+      loaded = {
+        engine: new QueryEngine(() => ref.current, {
+          id: sourceId,
+          mode: src.kind === 'view' ? 'view' : 'materialized',
+          logger: this.logger,
+        }),
+        storeRef,
+      };
+      entry.files = [...resolved.files];
+    }
+    entry.current = loaded;
+    const ms = Date.now() - start;
+    if (loaded.storeRef) {
+      this.logger?.debug('source-loaded', {
+        source: sourceId,
+        kind: src.kind,
+        files: entry.files.length,
+        quads: loaded.storeRef.current.size,
+        ms,
+      });
+    } else {
+      this.logger?.debug('source-loaded', {
+        source: sourceId,
+        kind: src.kind,
+        ms,
+      });
+    }
+    return loaded;
   }
 
   /**
@@ -93,7 +186,7 @@ export class EngineMap {
   }
 
   getStoreRef(id: string): StoreRef | undefined {
-    return this.entries.get(id)?.storeRef;
+    return this.entries.get(id)?.current?.storeRef;
   }
 
   getFiles(id: string): ReadonlyArray<string> {
@@ -117,49 +210,4 @@ export class EngineMap {
   async close(): Promise<void> {
     this.entries.clear();
   }
-}
-
-async function buildEntry(
-  source: ParsedSource,
-  registry: ReadonlyArray<ParsedSource>,
-  logger: SparqlyLogger | undefined,
-): Promise<Entry> {
-  const sourceId = source.id ?? '(source)';
-  if (source.kind === 'endpoint') {
-    return {
-      source,
-      engine: new QueryEngine(source, {
-        id: source.id ?? source.endpoint,
-        mode: 'pass-through',
-        logger,
-      }),
-      storeRef: undefined,
-      files: [],
-    };
-  }
-  const resolved = await resolveSource(source, { registry, logger });
-  if (resolved.mode === 'pass-through') {
-    return {
-      source,
-      engine: new QueryEngine(resolved.endpoint, {
-        id: source.id ?? resolved.endpoint.endpoint,
-        mode: 'pass-through',
-        logger,
-      }),
-      storeRef: undefined,
-      files: [],
-    };
-  }
-  const storeRef: StoreRef = { current: resolved.store };
-  const ref = storeRef;
-  return {
-    source,
-    engine: new QueryEngine(() => ref.current, {
-      id: sourceId,
-      mode: source.kind === 'view' ? 'view' : 'materialized',
-      logger,
-    }),
-    storeRef,
-    files: [...resolved.files],
-  };
 }

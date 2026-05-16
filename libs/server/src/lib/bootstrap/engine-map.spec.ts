@@ -41,7 +41,7 @@ describe('EngineMap', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it('exposes a working engine for a materialized glob source', async () => {
+  it('create() returns immediately without resolving materialized sources (no boot-time source-loaded log) — ADR-0031', async () => {
     await writeFile(
       join(dir, 'data.ttl'),
       '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
@@ -49,12 +49,36 @@ describe('EngineMap', () => {
     const registry = parseSourceSpecs([
       { id: 'files', glob: join(dir, '*.ttl') },
     ]);
+    const rec = recordingLogger();
 
-    const map = await EngineMap.create(registry);
+    const map = await EngineMap.create(registry, { logger: rec.logger });
     try {
+      const loadedAtBoot = rec.entries.filter(
+        (e) => e.msg === 'source-loaded',
+      );
+      expect(loadedAtBoot).toHaveLength(0);
       expect(map.allIds()).toEqual(['files']);
+      // Until first ensure(), there is no Store and no opened files.
+      expect(map.getStoreRef('files')).toBeUndefined();
+      expect(map.getFiles('files')).toEqual([]);
+    } finally {
+      await map.close();
+    }
+  });
 
-      const engine = map.get('files');
+  it('ensure(id) lazily resolves a materialized source on first call, then memoizes the engine and store', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const registry = parseSourceSpecs([
+      { id: 'files', glob: join(dir, '*.ttl') },
+    ]);
+    const rec = recordingLogger();
+
+    const map = await EngineMap.create(registry, { logger: rec.logger });
+    try {
+      const engine = await map.ensure('files');
       const result = await engine.execute(
         'SELECT ?s WHERE { ?s ?p ?o }',
         { format: 'json' },
@@ -65,6 +89,63 @@ describe('EngineMap', () => {
       expect(json.results.bindings.map((b) => b.s.value)).toEqual([
         'http://example.org/a',
       ]);
+
+      // Second ensure() reuses the same engine and does not re-load.
+      const again = await map.ensure('files');
+      expect(again).toBe(engine);
+
+      const loaded = rec.entries.filter((e) => e.msg === 'source-loaded');
+      expect(loaded).toHaveLength(1);
+      expect(loaded[0].fields).toMatchObject({
+        source: 'files',
+        kind: 'glob',
+        files: 1,
+        quads: 1,
+      });
+      expect(map.getStoreRef('files')).toBeDefined();
+      expect(map.getFiles('files')).toEqual([join(dir, 'data.ttl')]);
+    } finally {
+      await map.close();
+    }
+  });
+
+  it('two concurrent first-touch ensure() calls share one in-flight load (resolveSource runs exactly once)', async () => {
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const registry = parseSourceSpecs([
+      { id: 'files', glob: join(dir, '*.ttl') },
+    ]);
+    const rec = recordingLogger();
+
+    const map = await EngineMap.create(registry, { logger: rec.logger });
+    try {
+      const [a, b] = await Promise.all([
+        map.ensure('files'),
+        map.ensure('files'),
+      ]);
+      expect(a).toBe(b);
+      const loaded = rec.entries.filter((e) => e.msg === 'source-loaded');
+      expect(loaded).toHaveLength(1);
+    } finally {
+      await map.close();
+    }
+  });
+
+  it('endpoint pass-through entries are built synchronously at construction; ensure() resolves with the pre-built engine', async () => {
+    const registry = parseSourceSpecs([
+      { id: 'remote', endpoint: 'http://127.0.0.1:1/sparql' },
+    ]);
+    const rec = recordingLogger();
+
+    const map = await EngineMap.create(registry, { logger: rec.logger });
+    try {
+      expect(map.allIds()).toEqual(['remote']);
+      // No load was needed; ensure() still resolves and returns the engine.
+      const engine = await map.ensure('remote');
+      expect(engine).toBeDefined();
+      expect(map.getStoreRef('remote')).toBeUndefined();
     } finally {
       await map.close();
     }
@@ -82,7 +163,8 @@ describe('EngineMap', () => {
 
     const map = await EngineMap.create(registry, { logger: rec.logger });
     try {
-      await map.get('files').execute('SELECT ?s WHERE { ?s ?p ?o }', {
+      const engine = await map.ensure('files');
+      await engine.execute('SELECT ?s WHERE { ?s ?p ?o }', {
         format: 'json',
       });
     } finally {
@@ -99,34 +181,6 @@ describe('EngineMap', () => {
       type: 'SELECT',
     });
     expect(typeof queryEvents[0].fields?.['ms']).toBe('number');
-  });
-
-  it('emits a `source-loaded` debug event per source with its load timing', async () => {
-    await writeFile(
-      join(dir, 'data.ttl'),
-      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
-    );
-    const registry = parseSourceSpecs([
-      { id: 'files', glob: join(dir, '*.ttl') },
-    ]);
-    const rec = recordingLogger();
-
-    const map = await EngineMap.create(registry, { logger: rec.logger });
-    try {
-      const loaded = rec.entries.filter(
-        (e) => e.level === 'debug' && e.msg === 'source-loaded',
-      );
-      expect(loaded).toHaveLength(1);
-      expect(loaded[0].fields).toMatchObject({
-        source: 'files',
-        kind: 'glob',
-        files: 1,
-        quads: 1,
-      });
-      expect(typeof loaded[0].fields?.['ms']).toBe('number');
-    } finally {
-      await map.close();
-    }
   });
 
   it('close() releases entries and is idempotent', async () => {
@@ -165,7 +219,7 @@ describe('EngineMap', () => {
     }
   });
 
-  it('boots successfully with an empty store when a materialized source matches no files (ADR-0028)', async () => {
+  it('ensure() resolves with an empty-store engine when a materialized source matches no files (ADR-0028)', async () => {
     const registry = parseSourceSpecs([
       { id: 'missing', glob: join(dir, '*.does-not-exist') },
     ]);
@@ -173,6 +227,8 @@ describe('EngineMap', () => {
     const map = await EngineMap.create(registry);
     try {
       expect(map.allIds()).toEqual(['missing']);
+      const engine = await map.ensure('missing');
+      expect(engine).toBeDefined();
     } finally {
       await map.close();
     }

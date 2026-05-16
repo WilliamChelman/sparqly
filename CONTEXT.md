@@ -45,6 +45,10 @@ _Avoid_: "in-memory mode", "fetch-then-query"
 Forwarding the user's query to the upstream endpoint so the endpoint executes it and returns only the result. Used by `query` when its target is an endpoint, and by views whose `from:` is an endpoint ref.
 _Avoid_: "pushdown", "federation"
 
+**Lazy materialization** (`serve`):
+The contract that a **Served registry** source's **Materialized resolution** is deferred to the first request that touches its engine, then memoized for the life of the process. Independent of resolution *shape* (materialized vs pass-through): it speaks only to *when* the Store is built. The registry, its split-glob children, and the snippet allow-list's glob-path enumeration remain eager so `/api/config` and shared-link snippet requests work before any source is touched. Single-target CLI commands always build the target's Store immediately and do not use this contract.
+_Avoid_: "lazy loading", "on-demand resolution", "deferred boot"
+
 **Source registry**:
 The set of declared sources a command sees, derived from the config file (and/or a single inline positional). A command runs against exactly one of them — the **target source** — except `serve`, which operates on the whole registry.
 
@@ -56,7 +60,7 @@ _Avoid_: "selected source", "active source"
 The registry entry marked `default: true`; at most one per registry. In single-target commands it is the **target source** when no positional/flag is given. In `serve` it is the source the web UI pre-selects and the unparameterized `/api/sparql` route forwards to; a one-source **served registry** treats its sole entry as the default even without the marker.
 
 **Served registry** (`serve`):
-The set of sources `serve` exposes. By default every non-`reference` source in the **source registry**; `--source` narrows it (an `@id` ref scopes to that entry; an inline glob/URL synthesizes a single `@default` entry). Sources reached only through `from:` chains stay resolvable but are not themselves served. **Materialized** sources resolve eagerly at boot; **pass-through** sources are lazy.
+The set of sources `serve` exposes. By default every non-`reference` source in the **source registry**; `--source` narrows it (an `@id` ref scopes to that entry; an inline glob/URL synthesizes a single `@default` entry). Sources reached only through `from:` chains stay resolvable but are not themselves served. Every served source resolves under **lazy materialization**; **pass-through** sources are inherently lazy as well.
 _Avoid_: "registry mode", "single-source mode"
 
 **Result cache**:

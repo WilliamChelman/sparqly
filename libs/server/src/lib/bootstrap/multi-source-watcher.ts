@@ -73,17 +73,10 @@ export async function maybeStartWatcher(
   const targets: WatchedSource[] = [];
   for (const plan of chain.sources) {
     if (plan.id === undefined) continue;
-    const storeRef = opts.engineMap.getStoreRef(plan.id);
-    if (!storeRef) {
-      opts.logger.warn(
-        `--watch: skipping @${plan.id}; resolves pass-through to an endpoint.`,
-      );
-      continue;
-    }
     const sourceId = plan.id;
     targets.push({
       plan,
-      storeRef,
+      engineMap: opts.engineMap,
       target: plan.source,
       registry: opts.resolutionRegistry,
       onRebuiltFiles: (files) => {
@@ -111,7 +104,12 @@ export async function maybeStartWatcher(
 
 interface WatchedSource {
   plan: WatcherSourcePlan;
-  storeRef: StoreRef;
+  /**
+   * ADR-0031: storeRef lookup is deferred to event time. An un-touched source
+   * has no storeRef yet — the runner short-circuits the rebuild for it so a
+   * chokidar event does not subvert laziness.
+   */
+  engineMap: { getStoreRef: (id: string) => StoreRef | undefined };
   target: ParsedSource;
   registry: ReadonlyArray<ParsedSource>;
   /**
@@ -246,6 +244,15 @@ function createSourceRunner(
     }
     inFlight = true;
     try {
+      const planId = target.plan.id;
+      // ADR-0031: un-touched sources have no live storeRef. Don't load on
+      // their behalf in response to FS / TTL / freshness events — the next
+      // `ensure(id)` from a request will build the store fresh.
+      const storeRef =
+        planId !== undefined
+          ? target.engineMap.getStoreRef(planId)
+          : undefined;
+      if (!storeRef) return;
       const refreshedIds =
         trigger.kind === 'file-change' ? inChainViewIds : [trigger.viewId];
       for (const id of refreshedIds) {
@@ -262,7 +269,7 @@ function createSourceRunner(
         logger: deps.boundaryLogger,
       });
       if (refreshed.mode === 'materialized') {
-        target.storeRef.current = refreshed.store;
+        storeRef.current = refreshed.store;
         target.onRebuiltFiles?.(refreshed.files);
         deps.boundaryLogger.info('view-rebuilt', {
           ...sourceField,

@@ -12,9 +12,11 @@ import {
   defaultGlobWalker,
   expandSplitGlobs,
   type GraphMode,
+  type ParsedSource,
   parseSourceSpecs,
   resolveServeScope,
   type SourceSpecInput,
+  walkGlobPaths,
 } from 'core';
 import { DEFAULT_DESCRIBE_CONFIG, type DescribeConfig } from '../describe';
 import { EngineMap } from './engine-map';
@@ -109,6 +111,18 @@ export async function createServer(
     logger: boundaryLogger,
   });
 
+  // Lazy materialization (ADR-0031): the snippet allow-list and per-source
+  // file paths are seeded eagerly via `walkGlobPaths` (cheap FS / git-tree
+  // walk, no parsing) so `/api/source-snippet` requests succeed for files
+  // under sources whose Stores have not yet been built.
+  const walkGitGlobForSnippets = createGitTreeWalker({
+    configDir: process.cwd(),
+    logger: boundaryLogger,
+  });
+  await seedSnippetPaths(scope.servedRegistry, engineMap, {
+    walkGlob: defaultGlobWalker,
+    walkGitGlob: walkGitGlobForSnippets,
+  });
   const snippetAllowList = new SnippetAllowList();
   snippetAllowList.update(engineMap.allFiles());
 
@@ -183,6 +197,25 @@ export async function createServer(
       await engineMap.close();
     },
   };
+}
+
+async function seedSnippetPaths(
+  servedRegistry: ReadonlyArray<ParsedSource>,
+  engineMap: EngineMap,
+  deps: {
+    walkGlob: Parameters<typeof walkGlobPaths>[1]['walkGlob'];
+    walkGitGlob: Parameters<typeof walkGlobPaths>[1]['walkGitGlob'];
+  },
+): Promise<void> {
+  for (const src of servedRegistry) {
+    if (src.id === undefined) continue;
+    if (src.kind === 'glob') {
+      const paths = await walkGlobPaths(src, deps);
+      engineMap.setFiles(src.id, paths);
+    } else if (src.kind === 'file') {
+      engineMap.setFiles(src.id, [src.path]);
+    }
+  }
 }
 
 function resolveDescribeConfig(
