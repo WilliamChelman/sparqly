@@ -2,10 +2,16 @@ import { TestBed } from '@angular/core/testing';
 import type { ParameterBindings, ParameterDeclaration } from 'common';
 import { ParameterFormComponent } from './parameter-form.component';
 
-function setup(parameters: ReadonlyArray<ParameterDeclaration>) {
+function setup(
+  parameters: ReadonlyArray<ParameterDeclaration>,
+  initialBindings?: ParameterBindings,
+) {
   TestBed.configureTestingModule({ imports: [ParameterFormComponent] });
   const fixture = TestBed.createComponent(ParameterFormComponent);
   fixture.componentRef.setInput('parameters', parameters);
+  if (initialBindings !== undefined) {
+    fixture.componentRef.setInput('initialBindings', initialBindings);
+  }
   fixture.detectChanges();
   return {
     fixture,
@@ -262,6 +268,69 @@ describe('ParameterFormComponent', () => {
         '[data-testid="param-error-country"]',
       );
       expect(err).toBeTruthy();
+    });
+  });
+
+  describe('initialBindings input', () => {
+    it('pre-fills a field from initialBindings overriding the declared default', () => {
+      const parameters: ParameterDeclaration[] = [
+        {
+          name: 'country',
+          type: 'string',
+          cardinality: '1..1',
+          default: 'CA',
+        },
+      ];
+      const { root } = setup(parameters, { country: 'FR' });
+      expect(input(root, 'country').value).toBe('FR');
+    });
+
+    it('surfaces a field error for an invalid initial binding without blocking render', () => {
+      const parameters: ParameterDeclaration[] = [
+        { name: 'year', type: 'integer', cardinality: '1..1' },
+        { name: 'country', type: 'string', cardinality: '1..1' },
+      ];
+      const { root } = setup(parameters, { year: 'notanumber' });
+      expect(field(root, 'year')).toBeTruthy();
+      expect(field(root, 'country')).toBeTruthy();
+      const err = field(root, 'year').querySelector(
+        '[data-testid="param-error-year"]',
+      );
+      expect(err).toBeTruthy();
+    });
+
+    it('falls back to declared defaults for fields not present in initialBindings', () => {
+      const parameters: ParameterDeclaration[] = [
+        {
+          name: 'country',
+          type: 'string',
+          cardinality: '1..1',
+          default: 'CA',
+        },
+        {
+          name: 'year',
+          type: 'string',
+          cardinality: '1..1',
+          default: '2024',
+        },
+      ];
+      const { root } = setup(parameters, { country: 'FR' });
+      expect(input(root, 'country').value).toBe('FR');
+      expect(input(root, 'year').value).toBe('2024');
+    });
+
+    it('pre-fills the chip-multi widget from an array initialBinding', () => {
+      const parameters: ParameterDeclaration[] = [
+        { name: 'tag', type: 'string', cardinality: '1..n' },
+      ];
+      const { root } = setup(parameters, { tag: ['a', 'b'] });
+      const chips = field(root, 'tag').querySelectorAll(
+        '[data-testid="param-chip"]',
+      );
+      expect(Array.from(chips).map((c) => c.textContent?.trim())).toEqual([
+        'a',
+        'b',
+      ]);
     });
   });
 

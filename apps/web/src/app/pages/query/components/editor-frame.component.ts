@@ -71,6 +71,7 @@ import { ParameterFormComponent } from './parameter-form.component';
         <div class="my-parameters border-t border-border-muted bg-surface px-3.5 py-2">
           <app-parameter-form
             [parameters]="parameters"
+            [initialBindings]="initialBindings"
             (submitBindings)="submitBindings.emit($event)"
           />
         </div>
@@ -135,6 +136,7 @@ export class EditorFrameComponent {
   @Input() loadError?: { kind: 'not-found'; slug: string };
   @Input() writable = true;
   @Input() parameters?: ReadonlyArray<ParameterDeclaration>;
+  @Input() initialBindings?: ParameterBindings;
 
   @Output() valueChange = new EventEmitter<string>();
   @Output() save = new EventEmitter<void>();

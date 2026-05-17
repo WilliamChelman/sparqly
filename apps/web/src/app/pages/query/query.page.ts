@@ -36,31 +36,12 @@ import {
   ResultPaneComponent,
   type ResultPaneState,
 } from './components/result/result-pane.component';
-
-function acceptForQueryType(queryType: string | undefined): string | undefined {
-  switch (queryType) {
-    case 'SELECT':
-    case 'ASK':
-      return 'application/sparql-results+json';
-    case 'CONSTRUCT':
-    case 'DESCRIBE':
-      return 'text/turtle';
-    default:
-      return undefined;
-  }
-}
-
-const DEFAULT_BODY = 'SELECT ?s ?p ?o WHERE {\n  ?s ?p ?o .\n} LIMIT 10';
-
-function buildDefaultQuery(context: DisplayContext): string {
-  const lines: string[] = [];
-  if (context.base) lines.push(`BASE <${context.base}>`);
-  for (const [prefix, iri] of Object.entries(context.prefixes)) {
-    lines.push(`PREFIX ${prefix}: <${iri}>`);
-  }
-  if (lines.length > 0) lines.push('');
-  return lines.join('\n') + '\n' + DEFAULT_BODY;
-}
+import { encodeBindings, parseBindings } from './utils/bindings-url';
+import { parseErrorBody } from './utils/parse-error-body';
+import {
+  acceptForQueryType,
+  buildDefaultQuery,
+} from './utils/sparql-defaults';
 
 @Component({
   selector: 'app-query-page',
@@ -103,6 +84,7 @@ function buildDefaultQuery(context: DisplayContext): string {
           [loadError]="loadError() ?? undefined"
           [writable]="writable()"
           [parameters]="loadedParameters() ?? undefined"
+          [initialBindings]="initialBindings() ?? undefined"
           (valueChange)="query.set($event)"
           (save)="onSave()"
           (saveAs)="onSaveAs()"
@@ -242,6 +224,9 @@ export class QueryPage implements OnInit {
   readonly saveAsError = signal<string | null>(null);
   readonly writable = signal<boolean>(true);
   readonly loadError = signal<{ kind: 'not-found'; slug: string } | null>(null);
+  readonly initialBindings = signal<ParameterBindings | null>(null);
+  private readonly bindings = signal<ParameterBindings | null>(null);
+  private readonly knownBindKeys = signal<ReadonlySet<string>>(new Set());
   private readonly hasUrlQuery: boolean;
   private readonly bootSavedQuerySlug: string | null;
 
@@ -254,18 +239,34 @@ export class QueryPage implements OnInit {
     this.bootSavedQuerySlug = savedQuery;
     this.hasUrlQuery = savedQuery === null && query !== null;
     if (savedQuery === null && query !== null) this.query.set(query);
+    if (savedQuery !== null) {
+      const parsed = parseBindings(params);
+      if (parsed !== null) {
+        this.initialBindings.set(parsed);
+        this.bindings.set(parsed);
+        this.knownBindKeys.set(new Set(Object.keys(parsed)));
+      }
+    }
 
     effect(() => {
       const slug = this.loadedSlug();
       const loadedBody = this.loadedBody();
       const body = this.query();
       const pinnedToSlug = slug !== null && body === loadedBody;
+      const bindings = this.bindings();
+      const known = this.knownBindKeys();
+      const bindParams: Record<string, string | string[] | null> = {};
+      for (const key of known) bindParams[`bind.${key}`] = null;
+      if (pinnedToSlug && bindings !== null) {
+        Object.assign(bindParams, encodeBindings(bindings));
+      }
       this.router.navigate([], {
         relativeTo: this.route,
         queryParams: {
           source: this.sourceId() || null,
           query: pinnedToSlug ? null : body || null,
           savedQuery: pinnedToSlug ? slug : null,
+          ...bindParams,
         },
         queryParamsHandling: 'merge',
         replaceUrl: true,
@@ -449,6 +450,12 @@ export class QueryPage implements OnInit {
       bindings,
     );
     if (result.isErr()) return;
+    this.bindings.set(bindings);
+    this.knownBindKeys.update((prev) => {
+      const next = new Set(prev);
+      for (const k of Object.keys(bindings)) next.add(k);
+      return next;
+    });
     this.executeSparql(result.value);
   }
 
@@ -496,21 +503,4 @@ export class QueryPage implements OnInit {
         },
       });
   }
-}
-
-function parseErrorBody(body: unknown): string | undefined {
-  if (typeof body === 'string') {
-    try {
-      const parsed = JSON.parse(body) as { message?: string };
-      if (parsed && typeof parsed.message === 'string') return parsed.message;
-    } catch {
-      return body || undefined;
-    }
-    return body || undefined;
-  }
-  if (body && typeof body === 'object' && 'message' in body) {
-    const msg = (body as { message?: unknown }).message;
-    if (typeof msg === 'string') return msg;
-  }
-  return undefined;
 }
