@@ -6,7 +6,8 @@ import {
 } from '@angular/common/http/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideRouter, Router } from '@angular/router';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import { EditorFrameComponent } from './components/editor-frame.component';
 import { QueryPage } from './query.page';
@@ -53,6 +54,11 @@ class SourcesPickerStub {
       <span data-testid="stub-editor-badge"
         >modified from {{ loadedSlug }}</span
       >
+    }
+    @if (loadError) {
+      <span data-testid="stub-editor-load-error"
+        >{{ loadError.kind }}: {{ loadError.slug }}</span
+      >
     }`,
 })
 class EditorFrameStub {
@@ -61,6 +67,7 @@ class EditorFrameStub {
   @Input() loadedSlug?: string;
   @Input() loadedBody?: string;
   @Input() writable = true;
+  @Input() loadError?: { kind: 'not-found'; slug: string };
   @Output() valueChange = new EventEmitter<string>();
   @Output() save = new EventEmitter<void>();
   @Output() saveAs = new EventEmitter<void>();
@@ -155,7 +162,16 @@ function makeSavedQueriesStub(
       get: (slug: string) => {
         state.calls.get.push({ slug });
         const found = state.entries[slug];
-        if (!found) throw new Error(`stub: unknown slug ${slug}`);
+        if (!found) {
+          return throwError(
+            () =>
+              new HttpErrorResponse({
+                status: 404,
+                statusText: 'Not Found',
+                url: `/api/saved-queries/${slug}`,
+              }),
+          );
+        }
         return of<LoadedSavedQuery>({ entry: found.entry, etag: found.etag });
       },
       put: (slug: string, body: SavedQueryWriteBody, ifMatch?: string) => {
@@ -559,6 +575,131 @@ describe('QueryPage', () => {
       });
       expect(editorStub(fixture).writable).toBe(false);
       expect(libraryStub(fixture).writable).toBe(false);
+    });
+  });
+
+  describe('saved-query URL contract', () => {
+    it('boots from ?savedQuery=<slug>: loads the entry body and tracks its ETag, source picker untouched', async () => {
+      const { fixture, savedQueriesState } = await setup(
+        TWO,
+        '/query?savedQuery=alpha',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'alpha', hasParameters: false }],
+          entries: {
+            alpha: {
+              entry: { slug: 'alpha', body: 'SELECT ?fromSlug' },
+              etag: 'e-alpha',
+            },
+          },
+        },
+      );
+      expect(savedQueriesState.calls.get).toEqual([{ slug: 'alpha' }]);
+      const editor = editorStub(fixture);
+      expect(editor.value).toBe('SELECT ?fromSlug');
+      expect(editor.loadedSlug).toBe('alpha');
+      expect(editor.loadedBody).toBe('SELECT ?fromSlug');
+      // Source picker is whatever default the config provided, not affected by savedQuery.
+      expect(pickerStub(fixture).value).toBe('b');
+    });
+
+    it('keeps the URL as ?savedQuery=<slug> (no ?query=) while the editor body matches the loaded entry', async () => {
+      const { fixture, router } = await setup(
+        TWO,
+        '/query?savedQuery=alpha',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'alpha', hasParameters: false }],
+          entries: {
+            alpha: {
+              entry: { slug: 'alpha', body: 'SELECT ?loaded' },
+              etag: 'e-alpha',
+            },
+          },
+        },
+      );
+      await fixture.whenStable();
+      fixture.detectChanges();
+      const tree = router.parseUrl(router.url);
+      expect(tree.queryParamMap.get('savedQuery')).toBe('alpha');
+      expect(tree.queryParamMap.get('query')).toBeNull();
+    });
+
+    it('transitions URL from ?savedQuery=<slug> to ?query=<sparql> when the editor body diverges from the loaded entry', async () => {
+      const { fixture, router } = await setup(
+        TWO,
+        '/query?savedQuery=alpha',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'alpha', hasParameters: false }],
+          entries: {
+            alpha: {
+              entry: { slug: 'alpha', body: 'SELECT ?loaded' },
+              etag: 'e-alpha',
+            },
+          },
+        },
+      );
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      editorStub(fixture).valueChange.emit('SELECT ?edited');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const tree = router.parseUrl(router.url);
+      expect(tree.queryParamMap.get('savedQuery')).toBeNull();
+      expect(tree.queryParamMap.get('query')).toBe('SELECT ?edited');
+    });
+
+    it('when both ?savedQuery= and ?query= are present, ?savedQuery= wins and ?query= is dropped on load', async () => {
+      const initialUrl =
+        '/query?savedQuery=alpha&query=' +
+        encodeURIComponent('SELECT ?ignored');
+      const { fixture, router } = await setup(
+        TWO,
+        initialUrl,
+        { prefixes: {} },
+        {
+          list: [{ slug: 'alpha', hasParameters: false }],
+          entries: {
+            alpha: {
+              entry: { slug: 'alpha', body: 'SELECT ?loaded' },
+              etag: 'e-alpha',
+            },
+          },
+        },
+      );
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const editor = editorStub(fixture);
+      expect(editor.value).toBe('SELECT ?loaded');
+      expect(editor.loadedSlug).toBe('alpha');
+
+      const tree = router.parseUrl(router.url);
+      expect(tree.queryParamMap.get('savedQuery')).toBe('alpha');
+      expect(tree.queryParamMap.get('query')).toBeNull();
+    });
+
+    it('surfaces a not-found error in the editor frame when ?savedQuery=<unknown-slug> cannot be loaded', async () => {
+      const { fixture } = await setup(
+        TWO,
+        '/query?savedQuery=ghost',
+        { prefixes: {} },
+        { list: [], entries: {} },
+      );
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const editor = editorStub(fixture);
+      expect(editor.loadError).toEqual({ kind: 'not-found', slug: 'ghost' });
+      expect(editor.loadedSlug).toBeUndefined();
+      const root = fixture.nativeElement as HTMLElement;
+      expect(
+        root.querySelector('[data-testid="stub-editor-load-error"]'),
+      ).toBeTruthy();
     });
   });
 

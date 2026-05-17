@@ -37,6 +37,15 @@ import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
           <span class="my-meta">{{ prefixLabel() }}</span>
         </span>
       </div>
+      @if (loadError?.kind === 'not-found') {
+        <div
+          class="border-b border-border-muted bg-surface px-3.5 py-2 text-sm text-danger"
+          data-testid="editor-not-found"
+          role="alert"
+        >
+          Saved query <code>{{ loadError?.slug }}</code> was not found.
+        </div>
+      }
       <div class="my-body flex resize-y flex-col overflow-hidden bg-surface h-80 min-h-32">
         <app-yasqe-editor
           #editor
@@ -93,6 +102,7 @@ export class EditorFrameComponent {
   @Input() value = '';
   @Input() loadedSlug?: string;
   @Input() loadedBody?: string;
+  @Input() loadError?: { kind: 'not-found'; slug: string };
   @Input() writable = true;
 
   @Output() valueChange = new EventEmitter<string>();
