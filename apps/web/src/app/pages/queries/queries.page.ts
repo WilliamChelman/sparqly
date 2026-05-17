@@ -1,4 +1,9 @@
 import {
+  HttpClient,
+  HttpErrorResponse,
+  HttpHeaders,
+} from '@angular/common/http';
+import {
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -9,10 +14,25 @@ import {
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   SavedQueriesService,
+  decodeSparqlResult,
+  detectQueryType,
   type LoadedSavedQuery,
   type SavedQuerySummary,
 } from '@app/core';
 import { ButtonComponent } from '@app/modules/button';
+import { SourcesPickerComponent } from '@app/modules/sources-picker';
+import {
+  substitute,
+  type ParameterBindings,
+  type ParameterDeclaration,
+} from 'common';
+import { ParameterFormComponent } from '../query/components/parameter-form.component';
+import {
+  ResultPaneComponent,
+  type ResultPaneState,
+} from '../query/components/result/result-pane.component';
+import { parseErrorBody } from '../query/utils/parse-error-body';
+import { acceptForQueryType } from '../query/utils/sparql-defaults';
 
 type DetailState =
   | { kind: 'empty' }
@@ -24,7 +44,12 @@ type DetailState =
   selector: 'app-queries-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonComponent],
+  imports: [
+    ButtonComponent,
+    SourcesPickerComponent,
+    ResultPaneComponent,
+    ParameterFormComponent,
+  ],
   template: `
     <header class="border-b border-border-muted bg-surface px-4 py-3">
       <h1 class="font-serif text-2xl italic text-foreground">saved queries</h1>
@@ -98,6 +123,31 @@ type DetailState =
               data-testid="queries-detail-body"
               class="overflow-auto rounded border border-border-muted bg-surface p-3 font-mono text-sm text-foreground"
             >{{ loadedBody() }}</pre>
+            <div class="mt-3 flex flex-col gap-3">
+              <app-sources-picker
+                label="source"
+                [value]="sourceId()"
+                (valueChange)="onSourceChange($event)"
+              />
+              <div>
+                <button
+                  type="button"
+                  data-testid="queries-run"
+                  [disabled]="!sourceId()"
+                  (click)="onRun()"
+                  class="inline-flex items-center rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Run
+                </button>
+              </div>
+              @if (hasParameters()) {
+                <app-parameter-form
+                  [parameters]="loadedParameters()"
+                  (submitBindings)="onSubmitBindings($event)"
+                />
+              }
+              <app-result-pane [state]="resultState()" />
+            </div>
           }
         }
       </section>
@@ -108,11 +158,14 @@ export class QueriesPage implements OnInit {
   private readonly service = inject(SavedQueriesService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly http = inject(HttpClient);
 
   readonly entries = signal<readonly SavedQuerySummary[]>([]);
   readonly filter = signal<string>('');
   readonly selectedSlug = signal<string | null>(null);
   readonly detail = signal<DetailState>({ kind: 'empty' });
+  readonly sourceId = signal<string>('');
+  readonly resultState = signal<ResultPaneState>({ kind: 'empty' });
 
   readonly visibleEntries = computed(() => {
     const needle = this.filter().trim().toLowerCase();
@@ -133,8 +186,20 @@ export class QueriesPage implements OnInit {
     return d.kind === 'not-found' ? d.slug : '';
   });
 
+  readonly loadedParameters = computed<ReadonlyArray<ParameterDeclaration>>(
+    () => {
+      const d = this.detail();
+      if (d.kind !== 'loaded') return [];
+      return d.entry.parameters ?? [];
+    },
+  );
+
+  readonly hasParameters = computed(() => this.loadedParameters().length > 0);
+
   ngOnInit(): void {
     const slug = this.route.snapshot.paramMap.get('slug');
+    const source = this.route.snapshot.queryParamMap.get('source');
+    if (source) this.sourceId.set(source);
     this.service.list().subscribe((entries) => {
       this.entries.set(entries);
       if (slug !== null) this.loadSlug(slug);
@@ -145,10 +210,75 @@ export class QueriesPage implements OnInit {
     this.filter.set((event.target as HTMLInputElement).value);
   }
 
+  onSourceChange(id: string): void {
+    if (id === this.sourceId()) return;
+    this.sourceId.set(id);
+    this.resultState.set({ kind: 'empty' });
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { source: id || null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
+
   onSelect(slug: string): void {
     // Navigation re-mounts the component for the new param; the fresh
-    // instance's ngOnInit reads the slug and loads the entry.
-    void this.router.navigate(['/queries', slug], { replaceUrl: true });
+    // instance's ngOnInit reads the slug and loads the entry. Preserve
+    // page-level query params (?source=…) across the slug switch.
+    void this.router.navigate(['/queries', slug], {
+      replaceUrl: true,
+      queryParamsHandling: 'preserve',
+    });
+  }
+
+  onRun(): void {
+    const d = this.detail();
+    if (d.kind !== 'loaded') return;
+    if (!this.sourceId()) return;
+    this.executeSparql(d.entry.body);
+  }
+
+  onSubmitBindings(bindings: ParameterBindings): void {
+    const d = this.detail();
+    if (d.kind !== 'loaded') return;
+    if (!this.sourceId()) return;
+    const parameters = d.entry.parameters ?? [];
+    const result = substitute({ body: d.entry.body, parameters }, bindings);
+    if (result.isErr()) return;
+    this.executeSparql(result.value);
+  }
+
+  private executeSparql(sparql: string): void {
+    this.resultState.set({ kind: 'loading' });
+    const url = `/api/sparql/${encodeURIComponent(this.sourceId())}`;
+    const accept = acceptForQueryType(detectQueryType(sparql));
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/sparql-query',
+    };
+    if (accept) headers['Accept'] = accept;
+    this.http
+      .post(url, sparql, {
+        headers: new HttpHeaders(headers),
+        observe: 'response',
+        responseType: 'text',
+      })
+      .subscribe({
+        next: (response) => {
+          const contentType =
+            response.headers.get('Content-Type') ?? 'application/octet-stream';
+          const body = response.body ?? '';
+          this.resultState.set({
+            kind: 'result',
+            result: decodeSparqlResult(body, contentType),
+          });
+        },
+        error: (e: HttpErrorResponse) => {
+          const errBody = parseErrorBody(e?.error);
+          const message = errBody ?? e?.message ?? 'request failed';
+          this.resultState.set({ kind: 'error', message });
+        },
+      });
   }
 
   private loadSlug(slug: string): void {
