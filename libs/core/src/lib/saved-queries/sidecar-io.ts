@@ -5,7 +5,11 @@ import {
   parseDocument,
   Scalar,
   YAMLMap,
+  YAMLSeq,
 } from 'yaml';
+import { lint, type LintError, ParameterDeclarationSchema } from 'common';
+import type { ParameterDeclaration } from 'common';
+import type { Result } from 'neverthrow';
 import type { SavedQueryEntry } from './saved-query-entry';
 
 /**
@@ -70,7 +74,19 @@ export function getEntry(
   const entry: SavedQueryEntry = { slug, body };
   const description = optionalString(node, 'description');
   if (description !== undefined) entry.description = description;
+  const parameters = optionalParameters(node);
+  if (parameters !== undefined) entry.parameters = parameters;
   return entry;
+}
+
+function optionalParameters(
+  map: YAMLMap,
+): ParameterDeclaration[] | undefined {
+  const node = map.get('parameters', true);
+  if (!(node instanceof YAMLSeq)) return undefined;
+  const plain = node.toJSON();
+  if (!Array.isArray(plain)) return undefined;
+  return plain.map((p) => ParameterDeclarationSchema.parse(p));
 }
 
 export function upsertEntry(
@@ -82,15 +98,27 @@ export function upsertEntry(
   if (isMap(existing)) {
     setStringField(existing, 'description', entry.description);
     setBodyField(existing, entry.body);
+    setParametersField(existing, entry.parameters);
     return { created: false };
   }
   const newMap = new YAMLMap();
+  newMap.flow = false;
   if (entry.description !== undefined) {
     newMap.set('description', entry.description);
   }
   newMap.set('body', makeBodyScalar(entry.body));
+  if (entry.parameters !== undefined && entry.parameters.length > 0) {
+    newMap.set('parameters', makeParametersSeq(entry.parameters));
+  }
+  root.flow = false;
   root.set(entry.slug, newMap);
   return { created: true };
+}
+
+export function lintEntry(
+  entry: SavedQueryEntry,
+): Result<void, LintError> {
+  return lint(entry.parameters ?? [], entry.body);
 }
 
 export function removeEntry(doc: SidecarDocument, slug: string): boolean {
@@ -162,6 +190,33 @@ function setStringField(
 
 function setBodyField(map: YAMLMap, body: string): void {
   map.set('body', makeBodyScalar(body));
+}
+
+function setParametersField(
+  map: YAMLMap,
+  parameters: ReadonlyArray<ParameterDeclaration> | undefined,
+): void {
+  if (parameters === undefined || parameters.length === 0) {
+    if (map.has('parameters')) map.delete('parameters');
+    return;
+  }
+  map.set('parameters', makeParametersSeq(parameters));
+}
+
+function makeParametersSeq(
+  parameters: ReadonlyArray<ParameterDeclaration>,
+): YAMLSeq {
+  const seq = new YAMLSeq();
+  seq.flow = false;
+  for (const p of parameters) {
+    const m = new YAMLMap();
+    m.flow = false;
+    for (const [k, v] of Object.entries(p)) {
+      if (v !== undefined) m.set(k, v);
+    }
+    seq.add(m);
+  }
+  return seq;
 }
 
 function makeBodyScalar(body: string): Scalar {

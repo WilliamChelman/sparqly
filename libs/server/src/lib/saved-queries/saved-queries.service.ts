@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import type { ParameterDeclaration } from 'common';
 import {
   atomicWriteFile,
   deriveEntryEtag,
@@ -43,7 +44,11 @@ export class SavedQueriesService {
 
   async put(
     slug: string,
-    payload: { description?: string; body: string },
+    payload: {
+      description?: string;
+      body: string;
+      parameters?: ReadonlyArray<ParameterDeclaration>;
+    },
     ifMatch: string | undefined,
   ): Promise<
     | { kind: 'created'; etag: string }
@@ -63,6 +68,9 @@ export class SavedQueriesService {
       const entry: SavedQueryEntry = { slug, body: payload.body };
       if (payload.description !== undefined) {
         entry.description = payload.description;
+      }
+      if (payload.parameters !== undefined) {
+        entry.parameters = [...payload.parameters];
       }
       const result = upsertEntry(doc, entry);
       await atomicWriteFile(this.config.path, serializeSidecar(doc));

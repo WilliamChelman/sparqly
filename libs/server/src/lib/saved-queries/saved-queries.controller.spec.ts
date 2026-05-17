@@ -189,6 +189,52 @@ describe('PUT /api/saved-queries/:slug', () => {
     expect(resp.status).toBe(412);
   });
 
+  it('creates an entry with parameters and persists the parameters list', async () => {
+    harness = await startHarness();
+    const resp = await fetch(`${harness.base}/api/saved-queries/by-country`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        slug: 'by-country',
+        body: 'SELECT * WHERE { ?country ?p ?o }',
+        parameters: [
+          { name: 'country', type: 'iri', cardinality: '1..1' },
+        ],
+      }),
+    });
+    expect(resp.status).toBe(201);
+    const json = (await resp.json()) as {
+      parameters?: ReadonlyArray<{ name: string }>;
+    };
+    expect(json.parameters?.[0].name).toBe('country');
+    const onDisk = await readFile(harness.sidecarPath, 'utf8');
+    expect(onDisk).toMatch(/- name: country/);
+  });
+
+  it('returns a structured 4xx when lint fails (declared param missing from body)', async () => {
+    harness = await startHarness();
+    const resp = await fetch(`${harness.base}/api/saved-queries/by-country`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        slug: 'by-country',
+        body: 'SELECT * WHERE { ?s ?p ?o }',
+        parameters: [
+          { name: 'country', type: 'iri', cardinality: '1..1' },
+        ],
+      }),
+    });
+    expect(resp.status).toBeGreaterThanOrEqual(400);
+    expect(resp.status).toBeLessThan(500);
+    const json = (await resp.json()) as {
+      error?: string;
+      lint?: { kind?: string; name?: string };
+    };
+    expect(json.error).toBe('lint-failed');
+    expect(json.lint?.kind).toBe('declared-but-unused');
+    expect(json.lint?.name).toBe('country');
+  });
+
   it('returns 409 when a PUT without If-Match targets an existing slug (Save-as collision)', async () => {
     harness = await startHarness(
       [
