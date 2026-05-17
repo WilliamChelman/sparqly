@@ -7,3 +7,4 @@ export * from './lib/describe-provenance';
 export * from './lib/describe-path';
 export * from './lib/sparqly-logger';
 export * from './lib/log-format';
+export * from './lib/templates';

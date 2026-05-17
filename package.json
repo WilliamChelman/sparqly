@@ -102,12 +102,14 @@
     "commander": "^11.1.0",
     "js-yaml": "^4.1.0",
     "n3": "^2.0.3",
+    "neverthrow": "^8.2.0",
     "rdf-canonize": "^5.0.0",
     "rdf-parse": "^5.0.0",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.0",
     "tailwind-merge": "^3.6.0",
     "tinyglobby": "^0.2.16",
+    "yaml": "^2.8.0",
     "zod": "^4.3.6"
   }
 }

@@ -6,3 +6,4 @@ export * from './lib/views';
 export * from './lib/describe';
 export * from './lib/target';
 export * from './lib/diff';
+export * from './lib/saved-queries';

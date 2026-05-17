@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -63,6 +63,17 @@ export interface CreateServerOptions {
    * Defaults to the no-op logger so non-CLI callers stay silent.
    */
   logger?: SparqlyLogger;
+  /**
+   * Absolute or config-relative path to the saved-query sidecar (ADR-0036).
+   * Defaults to `<cwd>/.sparqly-queries.yaml`. Surfaced on `/api/config` so the
+   * webapp can name the file in tooltips.
+   */
+  savedQueriesPath?: string;
+  /**
+   * Override the `configDir` used to resolve a relative `savedQueriesPath` to
+   * an absolute path. Defaults to `process.cwd()`.
+   */
+  configDir?: string;
 }
 
 export interface CreatedServer {
@@ -137,6 +148,7 @@ export async function createServer(
       context: options.context ?? { prefixes: {} },
       describe: resolveDescribeConfig(options.describe),
       snippetAllowList,
+      savedQueries: { path: resolveSavedQueriesPath(options) },
     }),
     { abortOnError: false },
   );
@@ -221,6 +233,17 @@ async function seedSnippetPaths(
       engineMap.setFiles(src.id, [src.path]);
     }
   }
+}
+
+const DEFAULT_SAVED_QUERIES_FILENAME = '.sparqly-queries.yaml';
+
+function resolveSavedQueriesPath(options: CreateServerOptions): string {
+  const configDir = options.configDir ?? process.cwd();
+  const raw = options.savedQueriesPath;
+  if (raw === undefined) {
+    return resolve(configDir, DEFAULT_SAVED_QUERIES_FILENAME);
+  }
+  return isAbsolute(raw) ? raw : resolve(configDir, raw);
 }
 
 function resolveDescribeConfig(

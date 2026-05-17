@@ -34,6 +34,15 @@ const cacheBlockSchema = z
   .partial()
   .strict();
 
+const savedQueriesBlockSchema = z
+  .object({
+    // Path to the saved-query sidecar YAML file (ADR-0036). Relative paths are
+    // resolved against the project config dir; absolute paths are honored as-is.
+    path: z.string().min(1),
+  })
+  .partial()
+  .strict();
+
 const describeBlockSchema = z
   .object({
     // Per-source quad cap applied when a request omits `perSourceLimit`.
@@ -83,6 +92,7 @@ const KNOWN_TOP_LEVEL = new Set([
   'cache',
   'context',
   'describe',
+  'savedQueries',
 ]);
 
 const baseProjectSchema = z
@@ -93,6 +103,7 @@ const baseProjectSchema = z
     cache: cacheBlockSchema.optional(),
     context: contextBlockSchema.optional(),
     describe: describeBlockSchema.optional(),
+    savedQueries: savedQueriesBlockSchema.optional(),
   })
   .strict();
 

@@ -31,6 +31,7 @@ interface ServeConfig {
   perSourceSoftLimit?: number;
   perSourceHardLimit?: number;
   fromSourcePredicate?: string;
+  savedQueriesPath?: string;
   verbose?: boolean;
   quiet?: boolean;
   logFormat?: 'text' | 'json';
@@ -111,6 +112,14 @@ const describeFromSourcePredicateField: FieldDescriptor = {
   schema: z.string().min(1),
 };
 
+// Saved-query sidecar path, read from the top-level `savedQueries.path` config
+// block (ADR-0036). No CLI flag — saved-query state is project-shaped, not
+// per-invocation.
+const savedQueriesPathField: FieldDescriptor = {
+  key: 'savedQueriesPath',
+  schema: z.string().min(1),
+};
+
 export const serveSpec: CommandSpec<ServeConfig> = {
   name: 'serve',
   description:
@@ -128,6 +137,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     describeSoftLimitField,
     describeHardLimitField,
     describeFromSourcePredicateField,
+    savedQueriesPathField,
     ...verbosityFieldsFor('serve'),
   ],
   positionals: [{ field: 'source', name: 'glob' }],
@@ -179,6 +189,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
         perSourceHardLimit: config.perSourceHardLimit,
         fromSourcePredicate: config.fromSourcePredicate,
       },
+      savedQueriesPath: config.savedQueriesPath,
       logger: boundaryLog,
     });
   },
