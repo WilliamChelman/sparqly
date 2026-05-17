@@ -95,6 +95,7 @@ function buildDefaultQuery(context: DisplayContext): string {
           [value]="query()"
           [loadedSlug]="loadedSlug() ?? undefined"
           [loadedBody]="loadedBody() ?? undefined"
+          [loadError]="loadError() ?? undefined"
           [writable]="writable()"
           (valueChange)="query.set($event)"
           (save)="onSave()"
@@ -229,22 +230,31 @@ export class QueryPage implements OnInit {
   readonly saveAsSlug = signal<string>('');
   readonly saveAsError = signal<string | null>(null);
   readonly writable = signal<boolean>(true);
+  readonly loadError = signal<{ kind: 'not-found'; slug: string } | null>(null);
   private readonly hasUrlQuery: boolean;
+  private readonly bootSavedQuerySlug: string | null;
 
   constructor() {
     const params = this.route.snapshot.queryParamMap;
     const source = params.get('source');
     const query = params.get('query');
+    const savedQuery = params.get('savedQuery');
     if (source) this.sourceId.set(source);
-    this.hasUrlQuery = query !== null;
-    if (query !== null) this.query.set(query);
+    this.bootSavedQuerySlug = savedQuery;
+    this.hasUrlQuery = savedQuery === null && query !== null;
+    if (savedQuery === null && query !== null) this.query.set(query);
 
     effect(() => {
+      const slug = this.loadedSlug();
+      const loadedBody = this.loadedBody();
+      const body = this.query();
+      const pinnedToSlug = slug !== null && body === loadedBody;
       this.router.navigate([], {
         relativeTo: this.route,
         queryParams: {
           source: this.sourceId() || null,
-          query: this.query() || null,
+          query: pinnedToSlug ? null : body || null,
+          savedQuery: pinnedToSlug ? slug : null,
         },
         queryParamsHandling: 'merge',
         replaceUrl: true,
@@ -262,11 +272,14 @@ export class QueryPage implements OnInit {
         const initial = def?.id ?? config.sources[0]?.id ?? '';
         if (initial !== '') this.sourceId.set(initial);
       }
-      if (!this.hasUrlQuery) {
+      if (!this.hasUrlQuery && this.bootSavedQuerySlug === null) {
         this.query.set(buildDefaultQuery(config.context));
       }
     });
     this.refreshLibrary();
+    if (this.bootSavedQuerySlug !== null) {
+      this.onLoad(this.bootSavedQuerySlug);
+    }
   }
 
   private refreshLibrary(): void {
@@ -276,11 +289,19 @@ export class QueryPage implements OnInit {
   }
 
   onLoad(slug: string): void {
-    this.savedQueriesService.get(slug).subscribe((loaded) => {
-      this.query.set(loaded.entry.body);
-      this.loadedSlug.set(loaded.entry.slug);
-      this.loadedBody.set(loaded.entry.body);
-      this.loadedEtag.set(loaded.etag);
+    this.savedQueriesService.get(slug).subscribe({
+      next: (loaded) => {
+        this.loadError.set(null);
+        this.query.set(loaded.entry.body);
+        this.loadedSlug.set(loaded.entry.slug);
+        this.loadedBody.set(loaded.entry.body);
+        this.loadedEtag.set(loaded.etag);
+      },
+      error: (err: HttpErrorResponse) => {
+        if (err?.status === 404) {
+          this.loadError.set({ kind: 'not-found', slug });
+        }
+      },
     });
   }
 
