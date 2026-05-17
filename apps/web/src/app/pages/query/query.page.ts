@@ -108,6 +108,7 @@ function buildDefaultQuery(context: DisplayContext): string {
           (saveAs)="onSaveAs()"
           (delete)="onDelete()"
           (submitBindings)="onSubmitBindings($event)"
+          (parametersDraftChange)="onParametersDraftChange($event)"
         />
         <app-library-picker
           [entries]="savedQueries()"
@@ -321,7 +322,7 @@ export class QueryPage implements OnInit {
     const etag = this.loadedEtag();
     if (slug === null || etag === null) return;
     this.savedQueriesService
-      .put(slug, { body: this.query() }, etag)
+      .put(slug, this.buildWriteBody(), etag)
       .subscribe((result) => {
         if (result.kind === 'saved') {
           this.loadedBody.set(this.query());
@@ -331,6 +332,18 @@ export class QueryPage implements OnInit {
           this.staleConflict.set(slug);
         }
       });
+  }
+
+  onParametersDraftChange(parameters: ReadonlyArray<ParameterDeclaration>): void {
+    this.loadedParameters.set(parameters.length === 0 ? null : parameters);
+  }
+
+  private buildWriteBody() {
+    const params = this.loadedParameters();
+    return {
+      body: this.query(),
+      ...(params && params.length > 0 ? { parameters: params } : {}),
+    };
   }
 
   onStaleReload(): void {
@@ -350,7 +363,7 @@ export class QueryPage implements OnInit {
     if (slug === null) return;
     this.savedQueriesService.get(slug).subscribe((loaded) => {
       this.savedQueriesService
-        .put(slug, { body: this.query() }, loaded.etag)
+        .put(slug, this.buildWriteBody(), loaded.etag)
         .subscribe((result) => {
           if (result.kind === 'saved') {
             this.loadedSlug.set(slug);
@@ -378,7 +391,7 @@ export class QueryPage implements OnInit {
     const slug = this.saveAsSlug().trim();
     if (slug === '') return;
     this.savedQueriesService
-      .put(slug, { body: this.query() })
+      .put(slug, this.buildWriteBody())
       .subscribe((result) => {
         if (result.kind === 'saved') {
           this.loadedSlug.set(slug);

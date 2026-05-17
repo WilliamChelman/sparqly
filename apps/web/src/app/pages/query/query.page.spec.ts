@@ -78,6 +78,9 @@ class EditorFrameStub {
   @Output() saveAs = new EventEmitter<void>();
   @Output() delete = new EventEmitter<void>();
   @Output() submitBindings = new EventEmitter<ParameterBindings>();
+  @Output() parametersDraftChange = new EventEmitter<
+    ReadonlyArray<ParameterDeclaration>
+  >();
   isModifiedFromLoaded(): boolean {
     return (
       this.loadedSlug !== undefined &&
@@ -1135,6 +1138,155 @@ describe('QueryPage', () => {
         { headers: { 'Content-Type': 'application/sparql-results+json' } },
       );
       http.verify();
+    });
+  });
+
+  describe('templated saved query authoring', () => {
+    it('includes edited parameters in the Save PUT body', async () => {
+      const { fixture, savedQueriesState } = await setup(
+        TWO,
+        '/query?savedQuery=alpha',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'alpha', hasParameters: false }],
+          entries: {
+            alpha: {
+              entry: { slug: 'alpha', body: 'SELECT ?country' },
+              etag: 'e1',
+            },
+          },
+        },
+      );
+      const editor = editorStub(fixture);
+      const edited: ParameterDeclaration[] = [
+        { name: 'country', type: 'string', cardinality: '1..1' },
+      ];
+      editor.parametersDraftChange.emit(edited);
+      fixture.detectChanges();
+
+      editor.save.emit();
+      fixture.detectChanges();
+
+      const call = savedQueriesState.calls.put.at(-1);
+      expect(call?.body.parameters).toEqual(edited);
+      expect(call?.ifMatch).toBe('e1');
+    });
+
+    it('omits parameters from the PUT body when the editor draft is empty', async () => {
+      const { fixture, savedQueriesState } = await setup(
+        TWO,
+        '/query?savedQuery=alpha',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'alpha', hasParameters: false }],
+          entries: {
+            alpha: {
+              entry: { slug: 'alpha', body: 'SELECT *' },
+              etag: 'e1',
+            },
+          },
+        },
+      );
+      const editor = editorStub(fixture);
+      editor.parametersDraftChange.emit([]);
+      fixture.detectChanges();
+      editor.save.emit();
+      fixture.detectChanges();
+
+      const call = savedQueriesState.calls.put.at(-1);
+      expect(call?.body).not.toHaveProperty('parameters');
+    });
+
+    it('stale conflict on a parameter-only edit reuses the existing dialog and re-PUTs parameters on overwrite', async () => {
+      let putCount = 0;
+      const { fixture, savedQueriesState } = await setup(
+        TWO,
+        '/query?savedQuery=alpha',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'alpha', hasParameters: false }],
+          entries: {
+            alpha: {
+              entry: { slug: 'alpha', body: 'SELECT ?country' },
+              etag: 'e1',
+            },
+          },
+          putBehavior: () => {
+            putCount += 1;
+            return putCount === 1
+              ? { kind: 'stale' }
+              : { kind: 'saved', etag: 'e3' };
+          },
+        },
+      );
+
+      // External update bumps server etag to e2 while the user is editing
+      savedQueriesState.entries['alpha'] = {
+        entry: { slug: 'alpha', body: 'SELECT ?country' },
+        etag: 'e2',
+      };
+
+      const editor = editorStub(fixture);
+      const edited: ParameterDeclaration[] = [
+        { name: 'country', type: 'string', cardinality: '1..1' },
+      ];
+      editor.parametersDraftChange.emit(edited);
+      fixture.detectChanges();
+      editor.save.emit();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const root = fixture.nativeElement as HTMLElement;
+      expect(
+        root.querySelector('[data-testid="stale-dialog"]'),
+      ).not.toBeNull();
+
+      (
+        root.querySelector(
+          '[data-testid="stale-overwrite"]',
+        ) as HTMLButtonElement
+      ).click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const calls = savedQueriesState.calls.put;
+      expect(calls.length).toBe(2);
+      expect(calls[1].ifMatch).toBe('e2');
+      expect(calls[1].body.parameters).toEqual(edited);
+      expect(root.querySelector('[data-testid="stale-dialog"]')).toBeNull();
+    });
+
+    it('Save-as carries the edited parameters', async () => {
+      const { fixture, savedQueriesState } = await setup(TWO);
+      const root = fixture.nativeElement as HTMLElement;
+      const ta = root.querySelector('textarea') as HTMLTextAreaElement;
+      ta.value = 'SELECT ?country';
+      ta.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+
+      const editor = editorStub(fixture);
+      const edited: ParameterDeclaration[] = [
+        { name: 'country', type: 'string', cardinality: '1..1' },
+      ];
+      editor.parametersDraftChange.emit(edited);
+      fixture.detectChanges();
+
+      editor.saveAs.emit();
+      fixture.detectChanges();
+      const slugInput = root.querySelector(
+        '[data-testid="save-as-slug"]',
+      ) as HTMLInputElement;
+      slugInput.value = 'gamma';
+      slugInput.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      (
+        root.querySelector('[data-testid="save-as-submit"]') as HTMLButtonElement
+      ).click();
+      fixture.detectChanges();
+
+      const call = savedQueriesState.calls.put.at(-1);
+      expect(call?.slug).toBe('gamma');
+      expect(call?.body.parameters).toEqual(edited);
     });
   });
 

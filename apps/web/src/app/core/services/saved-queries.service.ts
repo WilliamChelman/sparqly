@@ -28,6 +28,7 @@ export interface LoadedSavedQuery {
 export interface SavedQueryWriteBody {
   body: string;
   description?: string;
+  parameters?: ReadonlyArray<ParameterDeclaration>;
 }
 
 export type PutResult =

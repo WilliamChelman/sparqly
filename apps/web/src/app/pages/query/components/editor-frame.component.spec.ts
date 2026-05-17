@@ -209,6 +209,38 @@ describe('EditorFrameComponent', () => {
     expect(deleted).toEqual([1]);
   });
 
+  describe('parameter editor (author pane)', () => {
+    it('shows the editor pane when writable=true (even with no declared parameters yet)', () => {
+      const { root } = setup({ writable: true });
+      expect(root.querySelector('app-parameter-editor')).not.toBeNull();
+    });
+
+    it('does not show the editor pane when writable=false', () => {
+      const { root } = setup({ writable: false });
+      expect(root.querySelector('app-parameter-editor')).toBeNull();
+    });
+
+    it('emits parametersDraftChange when the embedded editor emits parametersChange', () => {
+      const { fixture, root } = setup({
+        writable: true,
+        parameters: [
+          { name: 'country', type: 'string', cardinality: '1..1' },
+        ],
+      });
+      const emitted: ReadonlyArray<ParameterDeclaration>[] = [];
+      fixture.componentInstance.parametersDraftChange.subscribe(
+        (p: ReadonlyArray<ParameterDeclaration>) => emitted.push(p),
+      );
+      const name = root.querySelector<HTMLInputElement>(
+        '[data-testid="param-row-country"] [data-testid="param-name"]',
+      )!;
+      name.value = 'place';
+      name.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      expect(emitted[0]?.map((p) => p.name)).toEqual(['place']);
+    });
+  });
+
   describe('parameter form integration', () => {
     it('does not render a parameter form when no parameters are declared', () => {
       const { root } = setup();
