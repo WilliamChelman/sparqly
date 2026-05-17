@@ -9,6 +9,10 @@ import {
 import { DiffController, DiffService } from '../diff';
 import type { EngineMap } from './engine-map';
 import type { MetaChildrenCache } from './meta-children-cache';
+import {
+  SavedQueriesController,
+  SavedQueriesService,
+} from '../saved-queries';
 import { RegistrySparqlController } from '../sparql';
 import { RefsController } from '../refs';
 import {
@@ -28,8 +32,11 @@ import {
   SPARQL_ENGINE_MAP,
   SPARQL_META_CHILDREN_CACHE,
   SPARQL_RESOLUTION_REGISTRY,
+  SPARQL_SAVED_QUERIES_CONFIG,
+  SPARQL_SAVED_QUERIES_SERVICE,
   SPARQL_SERVED_REGISTRY,
   SPARQL_SNIPPET_ALLOW_LIST,
+  type SavedQueriesServerConfig,
   type SparqlContext,
   type SparqlServerConfig,
 } from './tokens';
@@ -60,6 +67,7 @@ export interface ServerModuleOptions {
   context: SparqlContext;
   describe: DescribeConfig;
   snippetAllowList: SnippetAllowList;
+  savedQueries: SavedQueriesServerConfig;
 }
 
 @Module({})
@@ -74,6 +82,7 @@ export class ServerModule {
         DiffController,
         DescribeController,
         SnippetController,
+        SavedQueriesController,
       ],
       providers: [
         { provide: SPARQL_CONFIG, useValue: options.config },
@@ -108,6 +117,11 @@ export class ServerModule {
         },
         { provide: SNIPPET_READER, useValue: createDefaultSnippetReader() },
         SnippetService,
+        { provide: SPARQL_SAVED_QUERIES_CONFIG, useValue: options.savedQueries },
+        {
+          provide: SPARQL_SAVED_QUERIES_SERVICE,
+          useValue: new SavedQueriesService(options.savedQueries),
+        },
       ],
     };
   }

@@ -159,6 +159,34 @@ The top-level `describe:` block in the project config, carrying registry-wide de
 The top-level `context:` block in the project config, carrying registry-wide IRI display config: `{ prefixes: Record<string, string>, base?: string }`. The effective renderer prefix map is `DEFAULT_PREFIXES` (rdf, rdfs, owl, xsd) ∪ `context.prefixes` with config winning on conflicts; `context.base` is a strict-fallback short-form for IRIs no prefix matches. Config-only — there are no per-command CLI overrides.
 _Avoid_: "format block", "display config", "prefix block"
 
+**Saved query**:
+A named SPARQL query persisted in the **Saved-query sidecar** and exposed in the webapp's editor surfaces (`query` page; both sides of the `diff` page). Not a **Source**: never appears in the **source registry**, never resolvable via `@id`, never reachable through `from:` — distinct from a **View**, which is the durable, config-declared, source-bound counterpart. A saved query carries an explicit `parameters:` list; when empty (or absent) the entry is a literal query loaded verbatim into the editor; when non-empty the entry is a **templated saved query** and load also opens its **parameter form**. One global library shared across surfaces; on `diff`, save and load are per-side. Substitution into runnable SPARQL is **client-side** — the server sees the substituted query through the existing `/api/sparql` route.
+_Avoid_: "snippet", "bookmark", conflating with **View**
+
+**Templated saved query**:
+A **Saved query** with a non-empty `parameters:` list. The body is a valid SPARQL string that references each declared parameter by its `?name` variable; at run time the executor composes a `VALUES (?p1 ?p2 …) { (v1 v2 …) }` clause from the **parameter bindings** and prepends it to the body. Parameter substitution is **SPARQL-native** — the template body itself is always parseable, lintable, and shape-detectable; there is no text-level placeholder syntax (no `{{var}}`). Cross-validation rule: every declared parameter name must appear as `?name` in the body, and every body variable that is neither a projection nor a pattern-bound variable should be a declared parameter (load-time lint).
+_Avoid_: "parameterized query", "query template", conflating "template" with a separate artifact kind
+
+**Parameter declaration**:
+One entry in a **Templated saved query**'s `parameters:` list. Fields: `name` (the SPARQL variable name without the `?`), `type` (one of the curated convenience types — `iri`, `string`, `integer`, `decimal`, `boolean`, `date`, `dateTime`, `langString`, or `literal` with an open `datatype:` IRI as escape hatch), `cardinality` (one of `0..1`, `1..1`, `0..n`, `1..n` — the single multiplicity field replaces a separate `required` flag; lower bound `0` means optional, `1` means required; upper bound `1` means scalar, `n` means multi-row `VALUES`). Form-presentation fields (label, description, default, enum) belong here too. The declaration is the single source of truth: the form is rendered from it, the wire-format **parameter bindings** are validated against it, and the substitution algorithm reads it.
+_Avoid_: "input", "form field", "argument", separate "required" flag
+
+**Parameter binding**:
+A run-time value supplied for one **Parameter declaration**. For upper-bound `1` (`0..1` / `1..1`) a binding is a single typed value; for upper-bound `n` (`0..n` / `1..n`) a binding is a list of typed values. Bindings are serialized into the prepended `VALUES` clause as RDF terms shaped by the parameter's `type`. Binding validation (type, cardinality, lower-bound) runs in the browser at the **client-side substitution** boundary. When a parameter's lower bound is `0` and no binding is supplied, that parameter's column is omitted from the prepended `VALUES` clause entirely — the body's `?name` variable runs free as it would in any plain SPARQL query.
+_Avoid_: "argument value", "form value"
+
+**Saved-query sidecar**:
+A YAML file alongside the project config holding the **Saved query** library. Default discovery: `<configDir>/.sparqly-queries.yaml`; the path is overridable via a top-level config key. YAML (not JSON) because entries are dual-authored — the webapp writes most entries, but multi-line SPARQL bodies are still occasionally hand-edited and `|` literal blocks beat escaped JSON strings. Loaded by `serve` and exposed through CRUD endpoints; writes from the webapp are the **only** path by which `serve` mutates project files (a deliberate departure from the otherwise read-only contract). Each entry's id is a user-supplied slug serving as both the YAML key and the URL identifier — no separate display name. Hand-edits round-trip cleanly through the webapp's structure-aware writer (`yaml` Document API): unknown fields, user comments, and formatting around untouched entries are preserved.
+_Avoid_: "queries file", "saved-query store", "library file"
+
+**Saved-query ETag**:
+A short content hash derived per **Saved query** entry on read (e.g., `sha256(serialized-entry).slice(0, 16)`); not persisted. Returned in `ETag` headers on `GET /api/saved-queries/:id` and required as `If-Match` on `PUT`/`DELETE`. Mismatch yields `412 Precondition Failed` so concurrent edits from two browsers surface as visible conflicts instead of silent data loss. The derivation-not-storage choice keeps the YAML free of versioning clutter and eliminates content-vs-version drift by construction.
+_Avoid_: "version field", "revision number"
+
+**Webapp writability capability**:
+The `savedQueries.writable: boolean` field on the `/api/config` envelope, declaring whether the running `serve` will accept writes to the **Saved-query sidecar**. Driven by a `serve --read-only` flag (or equivalent config). The webapp reads this at boot alongside the rest of the config and hides Save / Save-as / parameter-edit affordances when `false`. Consolidated into `/api/config` rather than a separate `/api/capabilities` endpoint: write-capability is a config-level fact, not a runtime probe, and the boot path already fetches the registry-aware config envelope (ADR-0011).
+_Avoid_: separate "capabilities endpoint", "permissions API"
+
 ## Relationships
 
 - A **View** has exactly one **Upstream** source via `from:`.
@@ -179,6 +207,10 @@ _Avoid_: "format block", "display config", "prefix block"
 - Every command that renders IRIs reads from the **Context block** under one rule: prefix map = `DEFAULT_PREFIXES` ∪ `context.prefixes` (config wins); base = `context.base` as strict fallback after prefix match.
 - The **Describe page** runs **describe** against the registry, which dispatches per source kind: `glob`/`view` targets materialize and run the full describe fixpoint; `endpoint` targets fetch depth-0 only, with deeper expansion driven by **describe expansion paths**; `empty` is rejected as a top-level describe target; `reference` is rejected. Per-source caps come from the **Describe block**.
 - A describe request is best-effort multi-origin: one source failing does not fail the request. **Describe provenance** annotations are stripped by the webapp renderer and surfaced as UI badges; they never conflate with user-authored RDF-star or with **Source records**.
+- A **Saved query** is webapp-scoped state: it is *not* a **Source**, never appears in the **source registry**, never resolvable via `@id`, and never reachable through `from:`. The durable, source-bound, config-declared counterpart is a **View**. A **Templated saved query** carries a `parameters:` list (one entry per **Parameter declaration**); at run time the webapp builds a `VALUES` clause from the user's **parameter bindings** and prepends it to the body via **client-side substitution**, then posts the substituted SPARQL through the existing `/api/sparql` route — `serve` does not learn about templates.
+- Reading and writing the **Saved-query sidecar** is the **only** path by which `serve` mutates project files. Writes use optimistic concurrency via a **Saved-query ETag** (derived content hash, `If-Match` required on `PUT`/`DELETE`, `412` on mismatch). The **Webapp writability capability** surfaced on `/api/config` gates the UI's write affordances; when `--read-only`, the webapp library is loadable but immutable.
+- The webapp's URL contract for a **Saved query** is `?savedQuery=<slug>&bind.<name>=<value>...` (repeated keys for multi-cardinality bindings). This is mutually exclusive with the inline `?query=<sparql>` URL — editing a loaded saved-query in place transitions the URL to `?query=` and the UI surfaces a "modified from `<slug>`" affordance until `Save` or `Save as`.
+- Loading a **Saved query** is source-agnostic: the user's currently-selected source is untouched, and the artifact persists no `lastUsedSource` or `intendedSource` field. A user who wants a query durably bound to a specific source declares a **View** instead — the same axis along which a **Saved query** and a **View** already differ (transient/UI vs. durable/config) extends to source binding.
 
 ## Example dialogue
 

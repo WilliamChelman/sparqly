@@ -12,6 +12,8 @@ export const SPARQL_DESCRIBE_SERVICE = Symbol('SPARQL_DESCRIBE_SERVICE');
 export const SPARQL_DESCRIBE_CONFIG = Symbol('SPARQL_DESCRIBE_CONFIG');
 export const SPARQL_SNIPPET_ALLOW_LIST = Symbol('SPARQL_SNIPPET_ALLOW_LIST');
 export const SPARQL_META_CHILDREN_CACHE = Symbol('SPARQL_META_CHILDREN_CACHE');
+export const SPARQL_SAVED_QUERIES_CONFIG = Symbol('SPARQL_SAVED_QUERIES_CONFIG');
+export const SPARQL_SAVED_QUERIES_SERVICE = Symbol('SPARQL_SAVED_QUERIES_SERVICE');
 
 export interface SparqlContext {
   prefixes: Record<string, string>;
@@ -24,6 +26,11 @@ export interface StoreRef {
 
 export interface SparqlServerConfig {
   mutable: boolean;
+}
+
+export interface SavedQueriesServerConfig {
+  /** Absolute path to the saved-query sidecar YAML file. */
+  path: string;
 }
 
 export type SourceKind = 'glob' | 'endpoint' | 'empty' | 'view' | 'file';

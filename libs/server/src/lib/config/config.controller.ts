@@ -6,7 +6,9 @@ import {
   SPARQL_CONTEXT,
   SPARQL_DESCRIBE_CONFIG,
   SPARQL_META_CHILDREN_CACHE,
+  SPARQL_SAVED_QUERIES_CONFIG,
   SPARQL_SERVED_REGISTRY,
+  type SavedQueriesServerConfig,
   type SourceListingEntry,
   type SparqlContext,
 } from '../bootstrap';
@@ -22,6 +24,8 @@ export class ConfigController {
     private readonly context: SparqlContext,
     @Inject(SPARQL_DESCRIBE_CONFIG)
     private readonly describe: DescribeConfig,
+    @Inject(SPARQL_SAVED_QUERIES_CONFIG)
+    private readonly savedQueries: SavedQueriesServerConfig,
   ) {}
 
   @Get()
@@ -29,12 +33,14 @@ export class ConfigController {
     sources: ReadonlyArray<SourceListingEntry>;
     context: SparqlContext;
     describe: DescribeConfig;
+    savedQueries: { path: string };
   }> {
     const sources = await this.buildListing();
     return {
       sources,
       context: this.context,
       describe: this.describe,
+      savedQueries: { path: this.savedQueries.path },
     };
   }
 
