@@ -9,10 +9,12 @@ import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import type { SavedQuerySummary } from '@app/core';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
+import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
 import type {
   ParameterBindings,
   ParameterDeclaration,
 } from 'common';
+import { ParameterEditorComponent } from '../query/components/parameter-editor.component';
 import { ParameterFormComponent } from '../query/components/parameter-form.component';
 import {
   ResultPaneComponent,
@@ -76,6 +78,37 @@ class ParameterFormStub {
   nextBindings: ParameterBindings = {};
 }
 
+@Component({
+  selector: 'app-yasqe-editor',
+  standalone: true,
+  template: `<textarea
+    data-testid="stub-yasqe"
+    [value]="value"
+    (input)="valueChange.emit($any($event.target).value)"
+  ></textarea>`,
+})
+class YasqeEditorStub {
+  @Input() value = '';
+  @Output() valueChange = new EventEmitter<string>();
+}
+
+@Component({
+  selector: 'app-parameter-editor',
+  standalone: true,
+  template: `<div data-testid="stub-parameter-editor">
+    @for (p of parameters; track p.name) {
+      <span [attr.data-testid]="'stub-param-decl-' + p.name"></span>
+    }
+  </div>`,
+})
+class ParameterEditorStub {
+  @Input() parameters: ReadonlyArray<ParameterDeclaration> = [];
+  @Input() body = '';
+  @Output() parametersChange = new EventEmitter<
+    ReadonlyArray<ParameterDeclaration>
+  >();
+}
+
 const LIBRARY: SavedQuerySummary[] = [
   { slug: 'zebra', hasParameters: false },
   { slug: 'alpha', hasParameters: false },
@@ -99,10 +132,18 @@ async function setup(initialUrl = '/queries') {
           SourcesPickerComponent,
           ResultPaneComponent,
           ParameterFormComponent,
+          YasqeEditorComponent,
+          ParameterEditorComponent,
         ],
       },
       add: {
-        imports: [SourcesPickerStub, ResultPaneStub, ParameterFormStub],
+        imports: [
+          SourcesPickerStub,
+          ResultPaneStub,
+          ParameterFormStub,
+          YasqeEditorStub,
+          ParameterEditorStub,
+        ],
       },
     })
     .compileComponents();
@@ -150,6 +191,25 @@ function paramFormStub(fixture: {
     (n) => n.componentInstance instanceof ParameterFormStub,
   );
   return node ? (node.componentInstance as ParameterFormStub) : null;
+}
+
+function yasqeStub(fixture: {
+  debugElement: import('@angular/core').DebugElement;
+}): YasqeEditorStub {
+  const node = fixture.debugElement.query(
+    (n) => n.componentInstance instanceof YasqeEditorStub,
+  );
+  if (!node) throw new Error('expected a yasqe editor stub');
+  return node.componentInstance as YasqeEditorStub;
+}
+
+function parameterEditorStub(fixture: {
+  debugElement: import('@angular/core').DebugElement;
+}): ParameterEditorStub | null {
+  const node = fixture.debugElement.query(
+    (n) => n.componentInstance instanceof ParameterEditorStub,
+  );
+  return node ? (node.componentInstance as ParameterEditorStub) : null;
 }
 
 function flushList(
@@ -233,10 +293,7 @@ describe('QueriesPage', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    const body = fixture.nativeElement.querySelector(
-      '[data-testid=queries-detail-body]',
-    );
-    expect(body?.textContent).toContain('SELECT * WHERE { ?b a :Bee }');
+    expect(yasqeStub(fixture).value).toBe('SELECT * WHERE { ?b a :Bee }');
     http.verify();
   });
 
@@ -261,9 +318,7 @@ describe('QueriesPage', () => {
       '[data-testid=queries-entry][aria-current="true"]',
     );
     expect(current?.getAttribute('data-slug')).toBe('alpha');
-    expect(
-      root.querySelector('[data-testid=queries-detail-body]')?.textContent,
-    ).toContain('ASK { ?s ?p ?o }');
+    expect(yasqeStub(fixture).value).toBe('ASK { ?s ?p ?o }');
     http.verify();
   });
 
@@ -537,11 +592,379 @@ describe('QueriesPage', () => {
     const notFound = root.querySelector('[data-testid=queries-detail-not-found]');
     expect(notFound).toBeTruthy();
     expect(notFound?.textContent).toContain('ghost');
-    expect(
-      root.querySelector('[data-testid=queries-detail-body]'),
-    ).toBeFalsy();
+    expect(root.querySelector('[data-testid=stub-yasqe]')).toBeFalsy();
     // No GET for the entry should be issued when the slug isn't in the list.
     http.expectNone('/api/saved-queries/ghost');
     http.verify();
+  });
+
+  describe('authoring surface — Save', () => {
+    async function setupLoaded(
+      slug = 'alpha',
+      entry: {
+        body: string;
+        parameters?: ReadonlyArray<ParameterDeclaration>;
+      } = { body: 'SELECT * WHERE { ?s ?p ?o }' },
+      etag = 'e1',
+    ) {
+      const ctx = await setup(`/queries/${slug}`);
+      flushList(ctx.http);
+      ctx.fixture.detectChanges();
+      await ctx.fixture.whenStable();
+      ctx.fixture.detectChanges();
+      ctx.http
+        .expectOne(`/api/saved-queries/${slug}`)
+        .flush(
+          { slug, ...entry },
+          { headers: { ETag: `"${etag}"` } },
+        );
+      ctx.fixture.detectChanges();
+      await ctx.fixture.whenStable();
+      ctx.fixture.detectChanges();
+      return ctx;
+    }
+
+    it('does not render a Save button before an entry is loaded', async () => {
+      const { fixture, http } = await setup('/queries');
+      flushList(http);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('[data-testid=queries-save]')).toBeNull();
+      http.verify();
+    });
+
+    it('renders a Save button when an entry is loaded', async () => {
+      const { fixture, http } = await setupLoaded();
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('[data-testid=queries-save]')).toBeTruthy();
+      http.verify();
+    });
+
+    it('Save PUTs /api/saved-queries/:slug with If-Match of the stored ETag, then stores the new ETag for a subsequent save', async () => {
+      const { fixture, http } = await setupLoaded(
+        'alpha',
+        { body: 'SELECT ?orig' },
+        'e1',
+      );
+
+      yasqeStub(fixture).valueChange.emit('SELECT ?edited');
+      fixture.detectChanges();
+
+      const root = fixture.nativeElement as HTMLElement;
+      (root.querySelector('[data-testid=queries-save]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+
+      const put = http.expectOne('/api/saved-queries/alpha');
+      expect(put.request.method).toBe('PUT');
+      expect(put.request.headers.get('If-Match')).toBe('"e1"');
+      expect(put.request.body).toEqual({ body: 'SELECT ?edited' });
+      put.flush({ slug: 'alpha', body: 'SELECT ?edited' }, {
+        headers: { ETag: '"e2"' },
+      });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      // Save also refreshes the left rail.
+      flushList(http);
+      fixture.detectChanges();
+
+      // A subsequent Save uses the new ETag.
+      yasqeStub(fixture).valueChange.emit('SELECT ?edited2');
+      fixture.detectChanges();
+      (root.querySelector('[data-testid=queries-save]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+
+      const put2 = http.expectOne('/api/saved-queries/alpha');
+      expect(put2.request.headers.get('If-Match')).toBe('"e2"');
+      put2.flush({ slug: 'alpha', body: 'SELECT ?edited2' }, {
+        headers: { ETag: '"e3"' },
+      });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      flushList(http);
+      http.verify();
+    });
+
+    it('after a successful Save, re-fetches the saved-queries list to refresh the left rail', async () => {
+      const { fixture, http } = await setupLoaded(
+        'alpha',
+        { body: 'SELECT ?orig' },
+        'e1',
+      );
+      yasqeStub(fixture).valueChange.emit('SELECT ?edited');
+      fixture.detectChanges();
+      const root = fixture.nativeElement as HTMLElement;
+      (root.querySelector('[data-testid=queries-save]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+      http
+        .expectOne('/api/saved-queries/alpha')
+        .flush(
+          { slug: 'alpha', body: 'SELECT ?edited' },
+          { headers: { ETag: '"e2"' } },
+        );
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const listReq = http.expectOne('/api/saved-queries');
+      expect(listReq.request.method).toBe('GET');
+      listReq.flush([
+        { slug: 'alpha', hasParameters: false },
+        { slug: 'beta', description: 'B', hasParameters: false },
+      ]);
+      fixture.detectChanges();
+      http.verify();
+    });
+
+    it('renders app-parameter-editor below the body for a loaded entry and includes the parameter-declarations draft in the PUT body', async () => {
+      const { fixture, http } = await setupLoaded(
+        'alpha',
+        { body: 'SELECT ?country' },
+        'e1',
+      );
+
+      const editor = parameterEditorStub(fixture);
+      expect(editor).toBeTruthy();
+
+      const edited: ParameterDeclaration[] = [
+        { name: 'country', type: 'string', cardinality: '1..1' },
+      ];
+      editor!.parametersChange.emit(edited);
+      fixture.detectChanges();
+
+      const root = fixture.nativeElement as HTMLElement;
+      (root.querySelector('[data-testid=queries-save]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+
+      const put = http.expectOne('/api/saved-queries/alpha');
+      expect(put.request.body).toEqual({
+        body: 'SELECT ?country',
+        parameters: edited,
+      });
+      put.flush(
+        { slug: 'alpha', body: 'SELECT ?country', parameters: edited },
+        { headers: { ETag: '"e2"' } },
+      );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      flushList(http);
+      http.verify();
+    });
+
+    it('omits parameters from the PUT body when the parameter-declarations draft is empty', async () => {
+      const { fixture, http } = await setupLoaded(
+        'alpha',
+        { body: 'SELECT *' },
+        'e1',
+      );
+      parameterEditorStub(fixture)!.parametersChange.emit([]);
+      fixture.detectChanges();
+      yasqeStub(fixture).valueChange.emit('SELECT ?x');
+      fixture.detectChanges();
+      const root = fixture.nativeElement as HTMLElement;
+      (root.querySelector('[data-testid=queries-save]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+      const put = http.expectOne('/api/saved-queries/alpha');
+      expect(put.request.body).toEqual({ body: 'SELECT ?x' });
+      expect(put.request.body).not.toHaveProperty('parameters');
+      put.flush(
+        { slug: 'alpha', body: 'SELECT ?x' },
+        { headers: { ETag: '"e2"' } },
+      );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      flushList(http);
+      http.verify();
+    });
+
+    it('shows "modified from <slug>" when the body diverges from the loaded entry; hides it before any edit and after a successful save', async () => {
+      const { fixture, http } = await setupLoaded(
+        'alpha',
+        { body: 'SELECT ?orig' },
+        'e1',
+      );
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('[data-testid=queries-modified-badge]')).toBeNull();
+
+      yasqeStub(fixture).valueChange.emit('SELECT ?edited');
+      fixture.detectChanges();
+      const badge = root.querySelector(
+        '[data-testid=queries-modified-badge]',
+      ) as HTMLElement | null;
+      expect(badge).toBeTruthy();
+      expect(badge?.textContent ?? '').toContain('alpha');
+
+      (root.querySelector('[data-testid=queries-save]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+      http
+        .expectOne('/api/saved-queries/alpha')
+        .flush(
+          { slug: 'alpha', body: 'SELECT ?edited' },
+          { headers: { ETag: '"e2"' } },
+        );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      flushList(http);
+      fixture.detectChanges();
+
+      expect(
+        root.querySelector('[data-testid=queries-modified-badge]'),
+      ).toBeNull();
+      http.verify();
+    });
+
+    it('surfaces "modified from <slug>" when parameter declarations diverge from the loaded entry', async () => {
+      const { fixture, http } = await setupLoaded(
+        'alpha',
+        { body: 'SELECT ?country' },
+        'e1',
+      );
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('[data-testid=queries-modified-badge]')).toBeNull();
+
+      parameterEditorStub(fixture)!.parametersChange.emit([
+        { name: 'country', type: 'string', cardinality: '1..1' },
+      ]);
+      fixture.detectChanges();
+
+      expect(
+        root.querySelector('[data-testid=queries-modified-badge]'),
+      ).toBeTruthy();
+      http.verify();
+    });
+
+    it('on 412 from Save, renders the stale-conflict dialog with Reload and Overwrite buttons', async () => {
+      const { fixture, http } = await setupLoaded(
+        'alpha',
+        { body: 'SELECT ?orig' },
+        'e1',
+      );
+      yasqeStub(fixture).valueChange.emit('SELECT ?edited');
+      fixture.detectChanges();
+      const root = fixture.nativeElement as HTMLElement;
+      (root.querySelector('[data-testid=queries-save]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+      http
+        .expectOne('/api/saved-queries/alpha')
+        .flush(
+          { message: 'stale' },
+          { status: 412, statusText: 'Precondition Failed' },
+        );
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const dialog = root.querySelector('[data-testid=queries-stale-dialog]');
+      expect(dialog).toBeTruthy();
+      expect(
+        dialog?.querySelector('[data-testid=queries-stale-reload]'),
+      ).toBeTruthy();
+      expect(
+        dialog?.querySelector('[data-testid=queries-stale-overwrite]'),
+      ).toBeTruthy();
+      http.verify();
+    });
+
+    it('Reload in the stale dialog re-fetches the entry, replaces local edits with the server body, and closes the dialog', async () => {
+      const { fixture, http } = await setupLoaded(
+        'alpha',
+        { body: 'SELECT ?orig' },
+        'e1',
+      );
+      yasqeStub(fixture).valueChange.emit('SELECT ?edited');
+      fixture.detectChanges();
+      const root = fixture.nativeElement as HTMLElement;
+      (root.querySelector('[data-testid=queries-save]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+      http
+        .expectOne('/api/saved-queries/alpha')
+        .flush({ message: 'stale' }, { status: 412, statusText: '' });
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      (
+        root.querySelector(
+          '[data-testid=queries-stale-reload]',
+        ) as HTMLButtonElement
+      ).click();
+      fixture.detectChanges();
+      http
+        .expectOne('/api/saved-queries/alpha')
+        .flush(
+          { slug: 'alpha', body: 'SELECT ?serverNew' },
+          { headers: { ETag: '"e2"' } },
+        );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(yasqeStub(fixture).value).toBe('SELECT ?serverNew');
+      expect(
+        root.querySelector('[data-testid=queries-stale-dialog]'),
+      ).toBeNull();
+      http.verify();
+    });
+
+    it('Overwrite in the stale dialog re-fetches the new ETag and re-PUTs with the user body and that ETag', async () => {
+      const { fixture, http } = await setupLoaded(
+        'alpha',
+        { body: 'SELECT ?orig' },
+        'e1',
+      );
+      yasqeStub(fixture).valueChange.emit('SELECT ?edited');
+      fixture.detectChanges();
+      const root = fixture.nativeElement as HTMLElement;
+      (root.querySelector('[data-testid=queries-save]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+      http
+        .expectOne('/api/saved-queries/alpha')
+        .flush({ message: 'stale' }, { status: 412, statusText: '' });
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      (
+        root.querySelector(
+          '[data-testid=queries-stale-overwrite]',
+        ) as HTMLButtonElement
+      ).click();
+      fixture.detectChanges();
+
+      // Overwrite first re-fetches to get the new ETag…
+      http
+        .expectOne('/api/saved-queries/alpha')
+        .flush(
+          { slug: 'alpha', body: 'SELECT ?serverNew' },
+          { headers: { ETag: '"e2"' } },
+        );
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      // …then PUTs with the user's body and the fresh ETag.
+      const put = http.expectOne('/api/saved-queries/alpha');
+      expect(put.request.method).toBe('PUT');
+      expect(put.request.headers.get('If-Match')).toBe('"e2"');
+      expect(put.request.body).toEqual({ body: 'SELECT ?edited' });
+      put.flush(
+        { slug: 'alpha', body: 'SELECT ?edited' },
+        { headers: { ETag: '"e3"' } },
+      );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      flushList(http);
+
+      expect(
+        root.querySelector('[data-testid=queries-stale-dialog]'),
+      ).toBeNull();
+      http.verify();
+    });
   });
 });

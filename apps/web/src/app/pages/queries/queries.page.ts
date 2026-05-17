@@ -18,14 +18,17 @@ import {
   detectQueryType,
   type LoadedSavedQuery,
   type SavedQuerySummary,
+  type SavedQueryWriteBody,
 } from '@app/core';
 import { ButtonComponent } from '@app/modules/button';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
+import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
 import {
   substitute,
   type ParameterBindings,
   type ParameterDeclaration,
 } from 'common';
+import { ParameterEditorComponent } from '../query/components/parameter-editor.component';
 import { ParameterFormComponent } from '../query/components/parameter-form.component';
 import {
   ResultPaneComponent,
@@ -37,8 +40,21 @@ import { acceptForQueryType } from '../query/utils/sparql-defaults';
 type DetailState =
   | { kind: 'empty' }
   | { kind: 'loading'; slug: string }
-  | { kind: 'loaded'; entry: LoadedSavedQuery['entry'] }
+  | {
+      kind: 'loaded';
+      slug: string;
+      loadedBody: string;
+      loadedEtag: string;
+      loadedParameters: ReadonlyArray<ParameterDeclaration>;
+    }
   | { kind: 'not-found'; slug: string };
+
+function parametersEqual(
+  a: ReadonlyArray<ParameterDeclaration>,
+  b: ReadonlyArray<ParameterDeclaration>,
+): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
 
 @Component({
   selector: 'app-queries-page',
@@ -49,12 +65,14 @@ type DetailState =
     SourcesPickerComponent,
     ResultPaneComponent,
     ParameterFormComponent,
+    YasqeEditorComponent,
+    ParameterEditorComponent,
   ],
   template: `
     <header class="border-b border-border-muted bg-surface px-4 py-3">
       <h1 class="font-serif text-2xl italic text-foreground">saved queries</h1>
       <p class="text-sm text-foreground-muted">
-        Browse the saved-query library. Select an entry to view its body.
+        Browse, edit, and save entries in the saved-query library.
       </p>
     </header>
     <main class="flex gap-4 p-4">
@@ -119,17 +137,49 @@ type DetailState =
             </p>
           }
           @case ('loaded') {
-            <pre
-              data-testid="queries-detail-body"
-              class="overflow-auto rounded border border-border-muted bg-surface p-3 font-mono text-sm text-foreground"
-            >{{ loadedBody() }}</pre>
+            <div class="flex items-center justify-between">
+              <h2
+                class="font-mono text-sm text-foreground"
+                data-testid="queries-detail-slug"
+              >
+                {{ loadedSlug() }}
+              </h2>
+              @if (isModifiedFromLoaded()) {
+                <span
+                  data-testid="queries-modified-badge"
+                  class="font-mono text-xs text-warning"
+                >
+                  modified from <code>{{ loadedSlug() }}</code>
+                </span>
+              }
+            </div>
+            <app-yasqe-editor
+              class="mt-2 block"
+              [value]="draftBody()"
+              (valueChange)="onBodyChange($event)"
+            />
+            <div class="mt-3">
+              <app-parameter-editor
+                [parameters]="draftParameters()"
+                [body]="draftBody()"
+                (parametersChange)="onParametersDraftChange($event)"
+              />
+            </div>
             <div class="mt-3 flex flex-col gap-3">
               <app-sources-picker
                 label="source"
                 [value]="sourceId()"
                 (valueChange)="onSourceChange($event)"
               />
-              <div>
+              <div class="flex gap-2">
+                <button
+                  type="button"
+                  data-testid="queries-save"
+                  (click)="onSave()"
+                  class="inline-flex items-center rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground shadow-sm"
+                >
+                  Save
+                </button>
                 <button
                   type="button"
                   data-testid="queries-run"
@@ -140,9 +190,43 @@ type DetailState =
                   Run
                 </button>
               </div>
-              @if (hasParameters()) {
+              @if (staleConflict()) {
+                <div
+                  data-testid="queries-stale-dialog"
+                  role="dialog"
+                  class="rounded border border-warning bg-surface p-3 text-sm"
+                >
+                  <p>
+                    <strong>{{ staleConflict() }}</strong> was changed
+                    elsewhere. Reload to see the current version, or overwrite.
+                  </p>
+                  <div class="mt-2 flex gap-2">
+                    <button
+                      app-btn
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      data-testid="queries-stale-reload"
+                      (click)="onStaleReload()"
+                    >
+                      Reload
+                    </button>
+                    <button
+                      app-btn
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      data-testid="queries-stale-overwrite"
+                      (click)="onStaleOverwrite()"
+                    >
+                      Overwrite
+                    </button>
+                  </div>
+                </div>
+              }
+              @if (hasDraftParameters()) {
                 <app-parameter-form
-                  [parameters]="loadedParameters()"
+                  [parameters]="draftParameters()"
                   (submitBindings)="onSubmitBindings($event)"
                 />
               }
@@ -166,6 +250,9 @@ export class QueriesPage implements OnInit {
   readonly detail = signal<DetailState>({ kind: 'empty' });
   readonly sourceId = signal<string>('');
   readonly resultState = signal<ResultPaneState>({ kind: 'empty' });
+  readonly draftBody = signal<string>('');
+  readonly draftParameters = signal<ReadonlyArray<ParameterDeclaration>>([]);
+  readonly staleConflict = signal<string | null>(null);
 
   readonly visibleEntries = computed(() => {
     const needle = this.filter().trim().toLowerCase();
@@ -176,9 +263,9 @@ export class QueriesPage implements OnInit {
     return sorted.filter((e) => e.slug.toLowerCase().includes(needle));
   });
 
-  readonly loadedBody = computed(() => {
+  readonly loadedSlug = computed(() => {
     const d = this.detail();
-    return d.kind === 'loaded' ? d.entry.body : '';
+    return d.kind === 'loaded' ? d.slug : '';
   });
 
   readonly notFoundSlug = computed(() => {
@@ -186,22 +273,22 @@ export class QueriesPage implements OnInit {
     return d.kind === 'not-found' ? d.slug : '';
   });
 
-  readonly loadedParameters = computed<ReadonlyArray<ParameterDeclaration>>(
-    () => {
-      const d = this.detail();
-      if (d.kind !== 'loaded') return [];
-      return d.entry.parameters ?? [];
-    },
+  readonly hasDraftParameters = computed(
+    () => this.draftParameters().length > 0,
   );
 
-  readonly hasParameters = computed(() => this.loadedParameters().length > 0);
+  readonly isModifiedFromLoaded = computed(() => {
+    const d = this.detail();
+    if (d.kind !== 'loaded') return false;
+    if (this.draftBody() !== d.loadedBody) return true;
+    return !parametersEqual(this.draftParameters(), d.loadedParameters);
+  });
 
   ngOnInit(): void {
     const slug = this.route.snapshot.paramMap.get('slug');
     const source = this.route.snapshot.queryParamMap.get('source');
     if (source) this.sourceId.set(source);
-    this.service.list().subscribe((entries) => {
-      this.entries.set(entries);
+    this.refreshLibrary(() => {
       if (slug !== null) this.loadSlug(slug);
     });
   }
@@ -223,28 +310,92 @@ export class QueriesPage implements OnInit {
   }
 
   onSelect(slug: string): void {
-    // Navigation re-mounts the component for the new param; the fresh
-    // instance's ngOnInit reads the slug and loads the entry. Preserve
-    // page-level query params (?source=…) across the slug switch.
     void this.router.navigate(['/queries', slug], {
       replaceUrl: true,
       queryParamsHandling: 'preserve',
     });
   }
 
-  onRun(): void {
+  onBodyChange(value: string): void {
+    this.draftBody.set(value);
+  }
+
+  onParametersDraftChange(
+    parameters: ReadonlyArray<ParameterDeclaration>,
+  ): void {
+    this.draftParameters.set(parameters);
+  }
+
+  onSave(): void {
     const d = this.detail();
     if (d.kind !== 'loaded') return;
+    const slug = d.slug;
+    const writeBody = this.buildWriteBody();
+    this.service.put(slug, writeBody, d.loadedEtag).subscribe((result) => {
+      if (result.kind === 'saved') {
+        this.detail.set({
+          kind: 'loaded',
+          slug,
+          loadedBody: writeBody.body,
+          loadedEtag: result.etag,
+          loadedParameters: writeBody.parameters ?? [],
+        });
+        this.refreshLibrary();
+      } else if (result.kind === 'stale') {
+        this.staleConflict.set(slug);
+      }
+    });
+  }
+
+  onStaleReload(): void {
+    const slug = this.staleConflict();
+    if (slug === null) return;
+    this.service.get(slug).subscribe((loaded) => {
+      this.staleConflict.set(null);
+      this.applyLoaded(loaded);
+    });
+  }
+
+  onStaleOverwrite(): void {
+    const slug = this.staleConflict();
+    if (slug === null) return;
+    this.service.get(slug).subscribe((loaded) => {
+      const writeBody = this.buildWriteBody();
+      this.service.put(slug, writeBody, loaded.etag).subscribe((result) => {
+        if (result.kind === 'saved') {
+          this.detail.set({
+            kind: 'loaded',
+            slug,
+            loadedBody: writeBody.body,
+            loadedEtag: result.etag,
+            loadedParameters: writeBody.parameters ?? [],
+          });
+          this.staleConflict.set(null);
+          this.refreshLibrary();
+        }
+      });
+    });
+  }
+
+  private buildWriteBody(): SavedQueryWriteBody {
+    const params = this.draftParameters();
+    return {
+      body: this.draftBody(),
+      ...(params.length > 0 ? { parameters: params } : {}),
+    };
+  }
+
+  onRun(): void {
     if (!this.sourceId()) return;
-    this.executeSparql(d.entry.body);
+    this.executeSparql(this.draftBody());
   }
 
   onSubmitBindings(bindings: ParameterBindings): void {
-    const d = this.detail();
-    if (d.kind !== 'loaded') return;
     if (!this.sourceId()) return;
-    const parameters = d.entry.parameters ?? [];
-    const result = substitute({ body: d.entry.body, parameters }, bindings);
+    const result = substitute(
+      { body: this.draftBody(), parameters: this.draftParameters() },
+      bindings,
+    );
     if (result.isErr()) return;
     this.executeSparql(result.value);
   }
@@ -281,6 +432,13 @@ export class QueriesPage implements OnInit {
       });
   }
 
+  private refreshLibrary(after?: () => void): void {
+    this.service.list().subscribe((entries) => {
+      this.entries.set(entries);
+      if (after) after();
+    });
+  }
+
   private loadSlug(slug: string): void {
     this.selectedSlug.set(slug);
     const known = this.entries().some((e) => e.slug === slug);
@@ -292,12 +450,25 @@ export class QueriesPage implements OnInit {
     this.service.get(slug).subscribe({
       next: (loaded) => {
         if (this.selectedSlug() !== slug) return;
-        this.detail.set({ kind: 'loaded', entry: loaded.entry });
+        this.applyLoaded(loaded);
       },
       error: () => {
         if (this.selectedSlug() !== slug) return;
         this.detail.set({ kind: 'not-found', slug });
       },
     });
+  }
+
+  private applyLoaded(loaded: LoadedSavedQuery): void {
+    const parameters = loaded.entry.parameters ?? [];
+    this.detail.set({
+      kind: 'loaded',
+      slug: loaded.entry.slug,
+      loadedBody: loaded.entry.body,
+      loadedEtag: loaded.etag,
+      loadedParameters: parameters,
+    });
+    this.draftBody.set(loaded.entry.body);
+    this.draftParameters.set(parameters);
   }
 }
