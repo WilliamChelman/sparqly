@@ -15,13 +15,16 @@ import {
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   ConfigService,
+  SavedQueriesService,
   decodeSparqlResult,
   detectQueryType,
   type DisplayContext,
+  type SavedQuerySummary,
   type SourceListingEntry,
 } from '@app/core';
 import { ButtonComponent } from '@app/modules/button';
 import { CodeChipComponent } from '@app/modules/code-chip';
+import { LibraryPickerComponent } from '@app/modules/library-picker';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import { EditorFrameComponent } from './components/editor-frame.component';
 import {
@@ -63,6 +66,7 @@ function buildDefaultQuery(context: DisplayContext): string {
     CodeChipComponent,
     SourcesPickerComponent,
     EditorFrameComponent,
+    LibraryPickerComponent,
     ResultPaneComponent,
   ],
   template: `
@@ -89,8 +93,99 @@ function buildDefaultQuery(context: DisplayContext): string {
           data-testid="editor"
           name="query"
           [value]="query()"
+          [loadedSlug]="loadedSlug() ?? undefined"
+          [loadedBody]="loadedBody() ?? undefined"
           (valueChange)="query.set($event)"
+          (save)="onSave()"
+          (saveAs)="onSaveAs()"
+          (delete)="onDelete()"
         />
+        <app-library-picker
+          [entries]="savedQueries()"
+          (load)="onLoad($event)"
+          (delete)="onLibraryDelete($event)"
+        />
+        @if (saveAsOpen()) {
+          <div
+            data-testid="save-as-dialog"
+            role="dialog"
+            class="flex flex-col gap-2 rounded border border-border-muted bg-surface p-3 text-sm"
+          >
+            <label class="flex flex-col gap-1">
+              <span class="text-foreground-muted">Save as (slug):</span>
+              <input
+                type="text"
+                data-testid="save-as-slug"
+                [value]="saveAsSlug()"
+                (input)="onSaveAsSlugInput($event)"
+              />
+            </label>
+            @if (saveAsError()) {
+              <p
+                data-testid="save-as-collision"
+                class="text-danger"
+              >
+                {{ saveAsError() }}
+              </p>
+            }
+            <div class="flex gap-2">
+              <button
+                app-btn
+                type="button"
+                variant="primary"
+                size="sm"
+                data-testid="save-as-submit"
+                (click)="onSaveAsSubmit()"
+              >
+                Save
+              </button>
+              <button
+                app-btn
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-testid="save-as-cancel"
+                (click)="onSaveAsCancel()"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        }
+        @if (staleConflict()) {
+          <div
+            data-testid="stale-dialog"
+            role="dialog"
+            class="rounded border border-warning bg-surface p-3 text-sm"
+          >
+            <p>
+              <strong>{{ staleConflict() }}</strong> was changed elsewhere.
+              Reload to see the current version, or overwrite.
+            </p>
+            <div class="mt-2 flex gap-2">
+              <button
+                app-btn
+                type="button"
+                variant="secondary"
+                size="sm"
+                data-testid="stale-reload"
+                (click)="onStaleReload()"
+              >
+                Reload
+              </button>
+              <button
+                app-btn
+                type="button"
+                variant="primary"
+                size="sm"
+                data-testid="stale-overwrite"
+                (click)="onStaleOverwrite()"
+              >
+                Overwrite
+              </button>
+            </div>
+          </div>
+        }
         <div>
           <button
             app-btn
@@ -111,6 +206,7 @@ function buildDefaultQuery(context: DisplayContext): string {
 })
 export class QueryPage implements OnInit {
   private readonly configService = inject(ConfigService);
+  private readonly savedQueriesService = inject(SavedQueriesService);
   private readonly http = inject(HttpClient);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -122,6 +218,14 @@ export class QueryPage implements OnInit {
   readonly resultState = signal<ResultPaneState>({ kind: 'empty' });
   readonly context = signal<DisplayContext>({ prefixes: {} });
   readonly queryType = computed(() => detectQueryType(this.query()));
+  readonly savedQueries = signal<readonly SavedQuerySummary[]>([]);
+  readonly loadedSlug = signal<string | null>(null);
+  readonly loadedBody = signal<string | null>(null);
+  readonly loadedEtag = signal<string | null>(null);
+  readonly staleConflict = signal<string | null>(null);
+  readonly saveAsOpen = signal<boolean>(false);
+  readonly saveAsSlug = signal<string>('');
+  readonly saveAsError = signal<string | null>(null);
   private readonly hasUrlQuery: boolean;
 
   constructor() {
@@ -157,6 +261,134 @@ export class QueryPage implements OnInit {
       if (!this.hasUrlQuery) {
         this.query.set(buildDefaultQuery(config.context));
       }
+    });
+    this.refreshLibrary();
+  }
+
+  private refreshLibrary(): void {
+    this.savedQueriesService.list().subscribe((entries) => {
+      this.savedQueries.set(entries);
+    });
+  }
+
+  onLoad(slug: string): void {
+    this.savedQueriesService.get(slug).subscribe((loaded) => {
+      this.query.set(loaded.entry.body);
+      this.loadedSlug.set(loaded.entry.slug);
+      this.loadedBody.set(loaded.entry.body);
+      this.loadedEtag.set(loaded.etag);
+    });
+  }
+
+  onSave(): void {
+    const slug = this.loadedSlug();
+    const etag = this.loadedEtag();
+    if (slug === null || etag === null) return;
+    this.savedQueriesService
+      .put(slug, { body: this.query() }, etag)
+      .subscribe((result) => {
+        if (result.kind === 'saved') {
+          this.loadedBody.set(this.query());
+          this.loadedEtag.set(result.etag);
+          this.refreshLibrary();
+        } else if (result.kind === 'stale') {
+          this.staleConflict.set(slug);
+        }
+      });
+  }
+
+  onStaleReload(): void {
+    const slug = this.staleConflict();
+    if (slug === null) return;
+    this.savedQueriesService.get(slug).subscribe((loaded) => {
+      this.query.set(loaded.entry.body);
+      this.loadedSlug.set(loaded.entry.slug);
+      this.loadedBody.set(loaded.entry.body);
+      this.loadedEtag.set(loaded.etag);
+      this.staleConflict.set(null);
+    });
+  }
+
+  onStaleOverwrite(): void {
+    const slug = this.staleConflict();
+    if (slug === null) return;
+    this.savedQueriesService.get(slug).subscribe((loaded) => {
+      this.savedQueriesService
+        .put(slug, { body: this.query() }, loaded.etag)
+        .subscribe((result) => {
+          if (result.kind === 'saved') {
+            this.loadedSlug.set(slug);
+            this.loadedBody.set(this.query());
+            this.loadedEtag.set(result.etag);
+            this.staleConflict.set(null);
+            this.refreshLibrary();
+          }
+        });
+    });
+  }
+
+  onSaveAs(): void {
+    this.saveAsSlug.set('');
+    this.saveAsError.set(null);
+    this.saveAsOpen.set(true);
+  }
+
+  onSaveAsSlugInput(event: Event): void {
+    this.saveAsSlug.set((event.target as HTMLInputElement).value);
+    this.saveAsError.set(null);
+  }
+
+  onSaveAsSubmit(): void {
+    const slug = this.saveAsSlug().trim();
+    if (slug === '') return;
+    this.savedQueriesService
+      .put(slug, { body: this.query() })
+      .subscribe((result) => {
+        if (result.kind === 'saved') {
+          this.loadedSlug.set(slug);
+          this.loadedBody.set(this.query());
+          this.loadedEtag.set(result.etag);
+          this.saveAsOpen.set(false);
+          this.refreshLibrary();
+        } else if (result.kind === 'slug-exists') {
+          this.saveAsError.set(`A query with slug "${slug}" already exists.`);
+        }
+      });
+  }
+
+  onSaveAsCancel(): void {
+    this.saveAsOpen.set(false);
+    this.saveAsError.set(null);
+  }
+
+  onDelete(): void {
+    const slug = this.loadedSlug();
+    const etag = this.loadedEtag();
+    if (slug === null || etag === null) return;
+    this.savedQueriesService.delete(slug, etag).subscribe((result) => {
+      if (result.kind === 'deleted') {
+        this.loadedSlug.set(null);
+        this.loadedBody.set(null);
+        this.loadedEtag.set(null);
+        this.refreshLibrary();
+      }
+    });
+  }
+
+  onLibraryDelete(slug: string): void {
+    this.savedQueriesService.get(slug).subscribe((loaded) => {
+      this.savedQueriesService
+        .delete(slug, loaded.etag)
+        .subscribe((result) => {
+          if (result.kind === 'deleted') {
+            if (this.loadedSlug() === slug) {
+              this.loadedSlug.set(null);
+              this.loadedBody.set(null);
+              this.loadedEtag.set(null);
+            }
+            this.refreshLibrary();
+          }
+        });
     });
   }
 

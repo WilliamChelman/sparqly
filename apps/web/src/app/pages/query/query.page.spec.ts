@@ -16,10 +16,18 @@ import {
 } from './components/result/result-pane.component';
 import {
   ConfigService,
+  SavedQueriesService,
   type ConfigPayload,
+  type DeleteResult,
   type DisplayContext,
+  type LoadedSavedQuery,
+  type PutResult,
+  type SavedQueryEntry,
+  type SavedQuerySummary,
+  type SavedQueryWriteBody,
   type SourceListing,
 } from '@app/core';
+import { LibraryPickerComponent } from '@app/modules/library-picker';
 
 @Component({
   selector: 'app-sources-picker',
@@ -38,14 +46,46 @@ class SourcesPickerStub {
   selector: 'app-editor-frame',
   standalone: true,
   template: `<textarea
-    [value]="value"
-    (input)="valueChange.emit($any($event.target).value)"
-  ></textarea>`,
+      [value]="value"
+      (input)="valueChange.emit($any($event.target).value)"
+    ></textarea>
+    @if (isModifiedFromLoaded()) {
+      <span data-testid="stub-editor-badge"
+        >modified from {{ loadedSlug }}</span
+      >
+    }`,
 })
 class EditorFrameStub {
   @Input() value = '';
   @Input() name = 'query';
+  @Input() loadedSlug?: string;
+  @Input() loadedBody?: string;
   @Output() valueChange = new EventEmitter<string>();
+  @Output() save = new EventEmitter<void>();
+  @Output() saveAs = new EventEmitter<void>();
+  @Output() delete = new EventEmitter<void>();
+  isModifiedFromLoaded(): boolean {
+    return (
+      this.loadedSlug !== undefined &&
+      this.loadedBody !== undefined &&
+      this.value !== this.loadedBody
+    );
+  }
+}
+
+@Component({
+  selector: 'app-library-picker',
+  standalone: true,
+  template: `<ul data-testid="stub-library">
+    @for (e of entries; track e.slug) {
+      <li data-testid="stub-library-entry">{{ e.slug }}</li>
+    }
+  </ul>`,
+})
+class LibraryPickerStub {
+  @Input() entries: readonly SavedQuerySummary[] = [];
+  @Output() load = new EventEmitter<string>();
+  @Output() delete = new EventEmitter<string>();
 }
 
 @Component({
@@ -73,10 +113,84 @@ const TWO: SourceListing = {
   ],
 };
 
+interface SavedQueriesStubState {
+  list: SavedQuerySummary[];
+  entries: Record<string, { entry: SavedQueryEntry; etag: string }>;
+  putBehavior?: (
+    slug: string,
+    body: SavedQueryWriteBody,
+    ifMatch?: string,
+  ) => PutResult;
+  deleteBehavior?: (slug: string, ifMatch: string) => DeleteResult;
+  calls: {
+    list: number;
+    get: Array<{ slug: string }>;
+    put: Array<{ slug: string; body: SavedQueryWriteBody; ifMatch?: string }>;
+    delete: Array<{ slug: string; ifMatch: string }>;
+  };
+}
+
+function makeSavedQueriesStub(
+  initial: Partial<SavedQueriesStubState> = {},
+): {
+  state: SavedQueriesStubState;
+  service: Pick<SavedQueriesService, 'list' | 'get' | 'put' | 'delete'>;
+} {
+  const state: SavedQueriesStubState = {
+    list: initial.list ?? [],
+    entries: initial.entries ?? {},
+    putBehavior: initial.putBehavior,
+    deleteBehavior: initial.deleteBehavior,
+    calls: { list: 0, get: [], put: [], delete: [] },
+  };
+  const service: Pick<SavedQueriesService, 'list' | 'get' | 'put' | 'delete'> =
+    {
+      list: () => {
+        state.calls.list += 1;
+        return of(state.list as readonly SavedQuerySummary[]);
+      },
+      get: (slug: string) => {
+        state.calls.get.push({ slug });
+        const found = state.entries[slug];
+        if (!found) throw new Error(`stub: unknown slug ${slug}`);
+        return of<LoadedSavedQuery>({ entry: found.entry, etag: found.etag });
+      },
+      put: (slug: string, body: SavedQueryWriteBody, ifMatch?: string) => {
+        state.calls.put.push({ slug, body, ifMatch });
+        const result: PutResult = state.putBehavior
+          ? state.putBehavior(slug, body, ifMatch)
+          : { kind: 'saved', etag: `etag-${slug}-${state.calls.put.length}` };
+        if (result.kind === 'saved') {
+          state.entries[slug] = {
+            entry: { slug, body: body.body, description: body.description },
+            etag: result.etag,
+          };
+          if (!state.list.some((e) => e.slug === slug)) {
+            state.list = [...state.list, { slug, hasParameters: false }];
+          }
+        }
+        return of(result);
+      },
+      delete: (slug: string, ifMatch: string) => {
+        state.calls.delete.push({ slug, ifMatch });
+        const result: DeleteResult = state.deleteBehavior
+          ? state.deleteBehavior(slug, ifMatch)
+          : { kind: 'deleted' };
+        if (result.kind === 'deleted') {
+          delete state.entries[slug];
+          state.list = state.list.filter((e) => e.slug !== slug);
+        }
+        return of(result);
+      },
+    };
+  return { state, service };
+}
+
 async function setup(
   listing: SourceListing,
   initialUrl = '/query',
   context: DisplayContext = { prefixes: {} },
+  savedQueries: Partial<SavedQueriesStubState> = {},
 ) {
   const payload: ConfigPayload = {
     sources: listing.sources,
@@ -92,6 +206,7 @@ async function setup(
     config: () => of(payload),
     context: () => of(payload.context),
   };
+  const savedQueriesStub = makeSavedQueriesStub(savedQueries);
 
   TestBed.configureTestingModule({
     imports: [QueryPage],
@@ -100,6 +215,7 @@ async function setup(
       provideHttpClient(),
       provideHttpClientTesting(),
       { provide: ConfigService, useValue: configStub },
+      { provide: SavedQueriesService, useValue: savedQueriesStub.service },
     ],
   })
     .overrideComponent(QueryPage, {
@@ -108,9 +224,17 @@ async function setup(
           SourcesPickerComponent,
           EditorFrameComponent,
           ResultPaneComponent,
+          LibraryPickerComponent,
         ],
       },
-      add: { imports: [SourcesPickerStub, EditorFrameStub, ResultPaneStub] },
+      add: {
+        imports: [
+          SourcesPickerStub,
+          EditorFrameStub,
+          ResultPaneStub,
+          LibraryPickerStub,
+        ],
+      },
     })
     .compileComponents();
 
@@ -121,7 +245,27 @@ async function setup(
   await fixture.whenStable();
   fixture.detectChanges();
   const http = TestBed.inject(HttpTestingController);
-  return { fixture, router, http };
+  return { fixture, router, http, savedQueriesState: savedQueriesStub.state };
+}
+
+function editorStub(fixture: {
+  debugElement: import('@angular/core').DebugElement;
+}): EditorFrameStub {
+  const node = fixture.debugElement.query(
+    (n) => n.componentInstance instanceof EditorFrameStub,
+  );
+  if (!node) throw new Error('expected an editor frame stub');
+  return node.componentInstance as EditorFrameStub;
+}
+
+function libraryStub(fixture: {
+  debugElement: import('@angular/core').DebugElement;
+}): LibraryPickerStub {
+  const node = fixture.debugElement.query(
+    (n) => n.componentInstance instanceof LibraryPickerStub,
+  );
+  if (!node) throw new Error('expected a library picker stub');
+  return node.componentInstance as LibraryPickerStub;
 }
 
 function pickerStub(fixture: {
@@ -395,6 +539,367 @@ describe('QueryPage', () => {
 
     expect(paneStub(fixture).state?.kind).toBe('empty');
     http.verify();
+  });
+
+  describe('saved-queries integration', () => {
+    it('renders the library picker populated from SavedQueriesService.list()', async () => {
+      const { fixture, savedQueriesState } = await setup(
+        TWO,
+        '/query',
+        { prefixes: {} },
+        { list: [{ slug: 'alpha', hasParameters: false }] },
+      );
+      expect(savedQueriesState.calls.list).toBe(1);
+      expect(libraryStub(fixture).entries.map((e) => e.slug)).toEqual([
+        'alpha',
+      ]);
+    });
+
+    it('loads an entry on library load: editor body populates from the entry and slug is tracked', async () => {
+      const { fixture, savedQueriesState } = await setup(
+        TWO,
+        '/query',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'alpha', hasParameters: false }],
+          entries: {
+            alpha: {
+              entry: { slug: 'alpha', body: 'SELECT ?loaded' },
+              etag: 'e-alpha',
+            },
+          },
+        },
+      );
+      libraryStub(fixture).load.emit('alpha');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(savedQueriesState.calls.get).toEqual([{ slug: 'alpha' }]);
+      const editor = editorStub(fixture);
+      expect(editor.value).toBe('SELECT ?loaded');
+      expect(editor.loadedSlug).toBe('alpha');
+      expect(editor.loadedBody).toBe('SELECT ?loaded');
+    });
+
+    it('after loading, Save PUTs with If-Match of the stored ETag and stores the new ETag', async () => {
+      const { fixture, savedQueriesState } = await setup(
+        TWO,
+        '/query',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'alpha', hasParameters: false }],
+          entries: {
+            alpha: {
+              entry: { slug: 'alpha', body: 'SELECT ?loaded' },
+              etag: 'e1',
+            },
+          },
+        },
+      );
+      libraryStub(fixture).load.emit('alpha');
+      fixture.detectChanges();
+
+      const editor = editorStub(fixture);
+      editor.valueChange.emit('SELECT ?edited');
+      fixture.detectChanges();
+
+      editor.save.emit();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(savedQueriesState.calls.put).toEqual([
+        { slug: 'alpha', body: { body: 'SELECT ?edited' }, ifMatch: 'e1' },
+      ]);
+      // After save, the editor's loadedBody now equals the saved value (no badge).
+      expect(editorStub(fixture).loadedBody).toBe('SELECT ?edited');
+    });
+
+    it('shows "modified from <slug>" once the editor body diverges from the loaded entry', async () => {
+      const { fixture } = await setup(
+        TWO,
+        '/query',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'alpha', hasParameters: false }],
+          entries: {
+            alpha: {
+              entry: { slug: 'alpha', body: 'SELECT ?loaded' },
+              etag: 'e1',
+            },
+          },
+        },
+      );
+      libraryStub(fixture).load.emit('alpha');
+      fixture.detectChanges();
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('[data-testid="stub-editor-badge"]')).toBeNull();
+
+      editorStub(fixture).valueChange.emit('SELECT ?edited');
+      fixture.detectChanges();
+      const badge = root.querySelector(
+        '[data-testid="stub-editor-badge"]',
+      ) as HTMLElement | null;
+      expect(badge).toBeTruthy();
+      expect(badge?.textContent ?? '').toContain('alpha');
+    });
+
+    it('Save-as opens an inline dialog; submitting PUTs without If-Match and the new entry appears in the library', async () => {
+      const { fixture, savedQueriesState } = await setup(
+        TWO,
+        '/query',
+        { prefixes: {} },
+        { list: [{ slug: 'alpha', hasParameters: false }] },
+      );
+      const editor = editorStub(fixture);
+      editor.valueChange.emit('SELECT ?body');
+      fixture.detectChanges();
+
+      editor.saveAs.emit();
+      fixture.detectChanges();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const dialog = root.querySelector(
+        '[data-testid="save-as-dialog"]',
+      ) as HTMLElement | null;
+      expect(dialog).toBeTruthy();
+
+      const slugInput = dialog!.querySelector(
+        '[data-testid="save-as-slug"]',
+      ) as HTMLInputElement;
+      slugInput.value = 'beta';
+      slugInput.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      (
+        dialog!.querySelector(
+          '[data-testid="save-as-submit"]',
+        ) as HTMLButtonElement
+      ).click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(savedQueriesState.calls.put).toEqual([
+        { slug: 'beta', body: { body: 'SELECT ?body' }, ifMatch: undefined },
+      ]);
+      expect(libraryStub(fixture).entries.map((e) => e.slug).sort()).toEqual([
+        'alpha',
+        'beta',
+      ]);
+      expect(root.querySelector('[data-testid="save-as-dialog"]')).toBeNull();
+    });
+
+    it('Save-as on a colliding slug surfaces an inline slug-collision error in the dialog', async () => {
+      const { fixture } = await setup(
+        TWO,
+        '/query',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'alpha', hasParameters: false }],
+          putBehavior: () => ({ kind: 'slug-exists' }),
+        },
+      );
+      editorStub(fixture).valueChange.emit('SELECT ?body');
+      fixture.detectChanges();
+      editorStub(fixture).saveAs.emit();
+      fixture.detectChanges();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const dialog = root.querySelector(
+        '[data-testid="save-as-dialog"]',
+      ) as HTMLElement;
+      const slugInput = dialog.querySelector(
+        '[data-testid="save-as-slug"]',
+      ) as HTMLInputElement;
+      slugInput.value = 'alpha';
+      slugInput.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      (
+        dialog.querySelector(
+          '[data-testid="save-as-submit"]',
+        ) as HTMLButtonElement
+      ).click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      // Dialog stays open with an inline collision error.
+      expect(
+        root.querySelector('[data-testid="save-as-dialog"]'),
+      ).toBeTruthy();
+      const err = root.querySelector(
+        '[data-testid="save-as-collision"]',
+      ) as HTMLElement | null;
+      expect(err).toBeTruthy();
+      expect(err?.textContent ?? '').toMatch(/already exists|slug/i);
+    });
+
+    it('on 412 from Save, surfaces a reload-or-overwrite dialog', async () => {
+      const { fixture } = await setup(
+        TWO,
+        '/query',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'alpha', hasParameters: false }],
+          entries: {
+            alpha: {
+              entry: { slug: 'alpha', body: 'SELECT ?loaded' },
+              etag: 'e1',
+            },
+          },
+          putBehavior: () => ({ kind: 'stale' }),
+        },
+      );
+      libraryStub(fixture).load.emit('alpha');
+      fixture.detectChanges();
+
+      editorStub(fixture).valueChange.emit('SELECT ?edited');
+      fixture.detectChanges();
+      editorStub(fixture).save.emit();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const dialog = root.querySelector('[data-testid="stale-dialog"]');
+      expect(dialog).toBeTruthy();
+      expect(
+        dialog?.querySelector('[data-testid="stale-reload"]'),
+      ).toBeTruthy();
+      expect(
+        dialog?.querySelector('[data-testid="stale-overwrite"]'),
+      ).toBeTruthy();
+    });
+
+    it('reload in the stale dialog re-fetches the entry and replaces the editor body', async () => {
+      const { fixture, savedQueriesState } = await setup(
+        TWO,
+        '/query',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'alpha', hasParameters: false }],
+          entries: {
+            alpha: {
+              entry: { slug: 'alpha', body: 'SELECT ?original' },
+              etag: 'e1',
+            },
+          },
+          putBehavior: () => ({ kind: 'stale' }),
+        },
+      );
+      libraryStub(fixture).load.emit('alpha');
+      fixture.detectChanges();
+
+      // External update: bump server-side content + etag
+      savedQueriesState.entries['alpha'] = {
+        entry: { slug: 'alpha', body: 'SELECT ?serverNew' },
+        etag: 'e2',
+      };
+
+      editorStub(fixture).valueChange.emit('SELECT ?edited');
+      fixture.detectChanges();
+      editorStub(fixture).save.emit();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const root = fixture.nativeElement as HTMLElement;
+      (
+        root.querySelector('[data-testid="stale-reload"]') as HTMLButtonElement
+      ).click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const editor = editorStub(fixture);
+      expect(editor.value).toBe('SELECT ?serverNew');
+      expect(editor.loadedBody).toBe('SELECT ?serverNew');
+      expect(root.querySelector('[data-testid="stale-dialog"]')).toBeNull();
+    });
+
+    it('overwrite in the stale dialog re-fetches the etag and re-PUTs with the user\'s body', async () => {
+      // First PUT returns stale; second PUT succeeds.
+      let putCount = 0;
+      const { fixture, savedQueriesState } = await setup(
+        TWO,
+        '/query',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'alpha', hasParameters: false }],
+          entries: {
+            alpha: {
+              entry: { slug: 'alpha', body: 'SELECT ?original' },
+              etag: 'e1',
+            },
+          },
+          putBehavior: () => {
+            putCount += 1;
+            return putCount === 1
+              ? { kind: 'stale' }
+              : { kind: 'saved', etag: 'e3' };
+          },
+        },
+      );
+      libraryStub(fixture).load.emit('alpha');
+      fixture.detectChanges();
+
+      // External update bumps server etag to e2
+      savedQueriesState.entries['alpha'] = {
+        entry: { slug: 'alpha', body: 'SELECT ?serverNew' },
+        etag: 'e2',
+      };
+
+      editorStub(fixture).valueChange.emit('SELECT ?edited');
+      fixture.detectChanges();
+      editorStub(fixture).save.emit();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const root = fixture.nativeElement as HTMLElement;
+      (
+        root.querySelector(
+          '[data-testid="stale-overwrite"]',
+        ) as HTMLButtonElement
+      ).click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const calls = savedQueriesState.calls.put;
+      expect(calls.length).toBe(2);
+      expect(calls[0]).toEqual({
+        slug: 'alpha',
+        body: { body: 'SELECT ?edited' },
+        ifMatch: 'e1',
+      });
+      expect(calls[1]).toEqual({
+        slug: 'alpha',
+        body: { body: 'SELECT ?edited' },
+        ifMatch: 'e2',
+      });
+      expect(root.querySelector('[data-testid="stale-dialog"]')).toBeNull();
+    });
+
+    it('Delete from EditorFrame issues DELETE with the stored ETag and clears the loaded slug', async () => {
+      const { fixture, savedQueriesState } = await setup(
+        TWO,
+        '/query',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'alpha', hasParameters: false }],
+          entries: {
+            alpha: {
+              entry: { slug: 'alpha', body: 'SELECT ?loaded' },
+              etag: 'e1',
+            },
+          },
+        },
+      );
+      libraryStub(fixture).load.emit('alpha');
+      fixture.detectChanges();
+
+      editorStub(fixture).delete.emit();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(savedQueriesState.calls.delete).toEqual([
+        { slug: 'alpha', ifMatch: 'e1' },
+      ]);
+      expect(editorStub(fixture).loadedSlug).toBeUndefined();
+      expect(libraryStub(fixture).entries.map((e) => e.slug)).toEqual([]);
+    });
   });
 
   it('mirrors picked source and editor text into URL query params', async () => {

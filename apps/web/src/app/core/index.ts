@@ -7,6 +7,15 @@ export {
   type SourceListingEntry,
 } from './services/config.service';
 export {
+  SavedQueriesService,
+  type DeleteResult,
+  type LoadedSavedQuery,
+  type PutResult,
+  type SavedQueryEntry,
+  type SavedQuerySummary,
+  type SavedQueryWriteBody,
+} from './services/saved-queries.service';
+export {
   ThemeService,
   type ResolvedTheme,
   type ThemeMode,
