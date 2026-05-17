@@ -74,6 +74,12 @@ export interface CreateServerOptions {
    * an absolute path. Defaults to `process.cwd()`.
    */
   configDir?: string;
+  /**
+   * When `true`, `serve` refuses writes to the saved-query sidecar: PUT/DELETE
+   * return 405 and `/api/config` advertises `savedQueries.writable: false`.
+   * Defaults to `false` (writes allowed).
+   */
+  readOnly?: boolean;
 }
 
 export interface CreatedServer {
@@ -148,7 +154,10 @@ export async function createServer(
       context: options.context ?? { prefixes: {} },
       describe: resolveDescribeConfig(options.describe),
       snippetAllowList,
-      savedQueries: { path: resolveSavedQueriesPath(options) },
+      savedQueries: {
+        path: resolveSavedQueriesPath(options),
+        writable: options.readOnly !== true,
+      },
     }),
     { abortOnError: false },
   );

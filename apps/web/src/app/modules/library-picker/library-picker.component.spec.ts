@@ -2,10 +2,15 @@ import { TestBed } from '@angular/core/testing';
 import { LibraryPickerComponent } from './library-picker.component';
 import type { SavedQuerySummary } from '@app/core';
 
-function setup(entries: readonly SavedQuerySummary[]) {
+function setup(
+  entries: readonly SavedQuerySummary[],
+  options: { writable?: boolean } = {},
+) {
   TestBed.configureTestingModule({ imports: [LibraryPickerComponent] });
   const fixture = TestBed.createComponent(LibraryPickerComponent);
   fixture.componentRef.setInput('entries', entries);
+  if (options.writable !== undefined)
+    fixture.componentRef.setInput('writable', options.writable);
   fixture.detectChanges();
   return {
     fixture,
@@ -58,6 +63,22 @@ describe('LibraryPickerComponent', () => {
     buttons[1].click();
     fixture.detectChanges();
     expect(emitted).toEqual(['beta']);
+  });
+
+  it('hides per-row delete buttons when writable=false; load stays available', () => {
+    const { root } = setup(
+      [
+        { slug: 'alpha', hasParameters: false },
+        { slug: 'beta', hasParameters: false },
+      ],
+      { writable: false },
+    );
+    expect(
+      root.querySelectorAll('[data-testid="library-entry-delete"]').length,
+    ).toBe(0);
+    expect(
+      root.querySelectorAll('[data-testid="library-entry-load"]').length,
+    ).toBe(2);
   });
 
   it('emits delete when a delete button is clicked, with the row slug', () => {

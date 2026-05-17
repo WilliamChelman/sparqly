@@ -33,14 +33,17 @@ export class ConfigController {
     sources: ReadonlyArray<SourceListingEntry>;
     context: SparqlContext;
     describe: DescribeConfig;
-    savedQueries: { path: string };
+    savedQueries: { path: string; writable: boolean };
   }> {
     const sources = await this.buildListing();
     return {
       sources,
       context: this.context,
       describe: this.describe,
-      savedQueries: { path: this.savedQueries.path },
+      savedQueries: {
+        path: this.savedQueries.path,
+        writable: this.savedQueries.writable,
+      },
     };
   }
 

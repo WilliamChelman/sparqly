@@ -14,6 +14,7 @@ interface Harness {
 
 async function startHarness(
   initialSidecarContents?: string,
+  options: { readOnly?: boolean } = {},
 ): Promise<Harness> {
   Logger.overrideLogger(false);
   const dir = await mkdtemp(join(tmpdir(), 'sparqly-saved-queries-'));
@@ -25,6 +26,7 @@ async function startHarness(
     sources: [{ id: 'blank', empty: true }],
     port: 0,
     savedQueriesPath: sidecarPath,
+    readOnly: options.readOnly,
   });
   return {
     server,
@@ -271,6 +273,79 @@ describe('/api/config envelope', () => {
       savedQueries?: { path?: string };
     };
     expect(json.savedQueries?.path).toBe(harness.sidecarPath);
+  });
+});
+
+describe('--read-only posture', () => {
+  let harness: Harness | undefined;
+  afterEach(async () => {
+    if (harness) await harness.cleanup();
+    harness = undefined;
+  });
+
+  it('returns 405 on PUT when read-only', async () => {
+    harness = await startHarness(undefined, { readOnly: true });
+    const resp = await fetch(`${harness.base}/api/saved-queries/alpha`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        slug: 'alpha',
+        body: 'SELECT * WHERE { ?s ?p ?o }',
+      }),
+    });
+    expect(resp.status).toBe(405);
+  });
+
+  it('returns 405 on DELETE when read-only', async () => {
+    harness = await startHarness(
+      [
+        'savedQueries:',
+        '  alpha:',
+        '    body: |',
+        '      SELECT * WHERE { ?s ?p ?o }',
+        '',
+      ].join('\n'),
+      { readOnly: true },
+    );
+    const resp = await fetch(`${harness.base}/api/saved-queries/alpha`, {
+      method: 'DELETE',
+    });
+    expect(resp.status).toBe(405);
+  });
+
+  it('continues to serve GET when read-only', async () => {
+    harness = await startHarness(
+      [
+        'savedQueries:',
+        '  alpha:',
+        '    body: |',
+        '      SELECT * WHERE { ?s ?p ?o }',
+        '',
+      ].join('\n'),
+      { readOnly: true },
+    );
+    const list = await fetch(`${harness.base}/api/saved-queries`);
+    expect(list.status).toBe(200);
+    const one = await fetch(`${harness.base}/api/saved-queries/alpha`);
+    expect(one.status).toBe(200);
+  });
+
+  it('reports savedQueries.writable=false on /api/config when read-only', async () => {
+    harness = await startHarness(undefined, { readOnly: true });
+    const resp = await fetch(`${harness.base}/api/config`);
+    const json = (await resp.json()) as {
+      savedQueries?: { writable?: boolean };
+    };
+    expect(json.savedQueries?.writable).toBe(false);
+  });
+
+  it('reports savedQueries.writable=true on /api/config by default', async () => {
+    harness = await startHarness();
+    const resp = await fetch(`${harness.base}/api/config`);
+    const json = (await resp.json()) as {
+      savedQueries?: { writable?: boolean };
+    };
+    expect(json.savedQueries?.writable).toBe(true);
   });
 });
 

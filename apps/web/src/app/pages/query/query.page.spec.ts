@@ -60,6 +60,7 @@ class EditorFrameStub {
   @Input() name = 'query';
   @Input() loadedSlug?: string;
   @Input() loadedBody?: string;
+  @Input() writable = true;
   @Output() valueChange = new EventEmitter<string>();
   @Output() save = new EventEmitter<void>();
   @Output() saveAs = new EventEmitter<void>();
@@ -84,6 +85,8 @@ class EditorFrameStub {
 })
 class LibraryPickerStub {
   @Input() entries: readonly SavedQuerySummary[] = [];
+  @Input() writable = true;
+  // eslint-disable-next-line @angular-eslint/no-output-native
   @Output() load = new EventEmitter<string>();
   @Output() delete = new EventEmitter<string>();
 }
@@ -191,6 +194,7 @@ async function setup(
   initialUrl = '/query',
   context: DisplayContext = { prefixes: {} },
   savedQueries: Partial<SavedQueriesStubState> = {},
+  capabilities: { writable?: boolean } = {},
 ) {
   const payload: ConfigPayload = {
     sources: listing.sources,
@@ -200,6 +204,7 @@ async function setup(
       perSourceHardLimit: 100000,
       fromSourcePredicate: 'urn:sparqly:fromSource',
     },
+    savedQueries: { writable: capabilities.writable ?? true },
   };
   const configStub: Pick<ConfigService, 'list' | 'config' | 'context'> = {
     list: () => of(listing),
@@ -539,6 +544,22 @@ describe('QueryPage', () => {
 
     expect(paneStub(fixture).state?.kind).toBe('empty');
     http.verify();
+  });
+
+  describe('read-only capability', () => {
+    it('threads writable=true from /api/config to the editor and library picker by default', async () => {
+      const { fixture } = await setup(TWO);
+      expect(editorStub(fixture).writable).toBe(true);
+      expect(libraryStub(fixture).writable).toBe(true);
+    });
+
+    it('threads writable=false from /api/config to the editor and library picker', async () => {
+      const { fixture } = await setup(TWO, '/query', { prefixes: {} }, {}, {
+        writable: false,
+      });
+      expect(editorStub(fixture).writable).toBe(false);
+      expect(libraryStub(fixture).writable).toBe(false);
+    });
   });
 
   describe('saved-queries integration', () => {

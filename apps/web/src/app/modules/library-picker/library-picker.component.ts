@@ -33,13 +33,15 @@ import type { SavedQuerySummary } from '@app/core';
             >
               load
             </button>
-            <button
-              type="button"
-              data-testid="library-entry-delete"
-              (click)="delete.emit(entry.slug)"
-            >
-              delete
-            </button>
+            @if (writable()) {
+              <button
+                type="button"
+                data-testid="library-entry-delete"
+                (click)="delete.emit(entry.slug)"
+              >
+                delete
+              </button>
+            }
           </li>
         }
       </ul>
@@ -48,6 +50,8 @@ import type { SavedQuerySummary } from '@app/core';
 })
 export class LibraryPickerComponent {
   readonly entries = input.required<readonly SavedQuerySummary[]>();
+  readonly writable = input<boolean>(true);
+  // eslint-disable-next-line @angular-eslint/no-output-native
   @Output() readonly load = new EventEmitter<string>();
   @Output() readonly delete = new EventEmitter<string>();
 

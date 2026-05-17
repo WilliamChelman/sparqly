@@ -2,6 +2,7 @@ export {
   ConfigService,
   type ConfigPayload,
   type DisplayContext,
+  type SavedQueriesCapability,
   type SourceKind,
   type SourceListing,
   type SourceListingEntry,
