@@ -22,6 +22,11 @@ import {
   type SavedQuerySummary,
   type SourceListingEntry,
 } from '@app/core';
+import {
+  substitute,
+  type ParameterBindings,
+  type ParameterDeclaration,
+} from 'common';
 import { ButtonComponent } from '@app/modules/button';
 import { CodeChipComponent } from '@app/modules/code-chip';
 import { LibraryPickerComponent } from '@app/modules/library-picker';
@@ -97,10 +102,12 @@ function buildDefaultQuery(context: DisplayContext): string {
           [loadedBody]="loadedBody() ?? undefined"
           [loadError]="loadError() ?? undefined"
           [writable]="writable()"
+          [parameters]="loadedParameters() ?? undefined"
           (valueChange)="query.set($event)"
           (save)="onSave()"
           (saveAs)="onSaveAs()"
           (delete)="onDelete()"
+          (submitBindings)="onSubmitBindings($event)"
         />
         <app-library-picker
           [entries]="savedQueries()"
@@ -225,6 +232,9 @@ export class QueryPage implements OnInit {
   readonly loadedSlug = signal<string | null>(null);
   readonly loadedBody = signal<string | null>(null);
   readonly loadedEtag = signal<string | null>(null);
+  readonly loadedParameters = signal<ReadonlyArray<ParameterDeclaration> | null>(
+    null,
+  );
   readonly staleConflict = signal<string | null>(null);
   readonly saveAsOpen = signal<boolean>(false);
   readonly saveAsSlug = signal<string>('');
@@ -296,6 +306,7 @@ export class QueryPage implements OnInit {
         this.loadedSlug.set(loaded.entry.slug);
         this.loadedBody.set(loaded.entry.body);
         this.loadedEtag.set(loaded.etag);
+        this.loadedParameters.set(loaded.entry.parameters ?? null);
       },
       error: (err: HttpErrorResponse) => {
         if (err?.status === 404) {
@@ -417,6 +428,17 @@ export class QueryPage implements OnInit {
     });
   }
 
+  onSubmitBindings(bindings: ParameterBindings): void {
+    const parameters = this.loadedParameters();
+    if (parameters === null) return;
+    const result = substitute(
+      { body: this.query(), parameters },
+      bindings,
+    );
+    if (result.isErr()) return;
+    this.executeSparql(result.value);
+  }
+
   onSourceChange(id: string): void {
     if (id === this.sourceId()) return;
     this.sourceId.set(id);
@@ -424,16 +446,20 @@ export class QueryPage implements OnInit {
   }
 
   run(): void {
+    this.executeSparql(this.query());
+  }
+
+  private executeSparql(sparql: string): void {
     this.running.set(true);
     this.resultState.set({ kind: 'loading' });
     const url = `/api/sparql/${encodeURIComponent(this.sourceId())}`;
-    const accept = acceptForQueryType(this.queryType());
+    const accept = acceptForQueryType(detectQueryType(sparql));
     const headers: Record<string, string> = {
       'Content-Type': 'application/sparql-query',
     };
     if (accept) headers['Accept'] = accept;
     this.http
-      .post(url, this.query(), {
+      .post(url, sparql, {
         headers: new HttpHeaders(headers),
         observe: 'response',
         responseType: 'text',
