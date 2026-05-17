@@ -16,10 +16,13 @@ import {
   Res,
 } from '@nestjs/common';
 import {
+  lintEntry,
   SAVED_QUERY_SLUG_REGEX,
   type SavedQueryEntry,
   type SavedQueryEntrySummary,
 } from 'core';
+import { ParameterDeclarationSchema } from 'common';
+import type { ParameterDeclaration } from 'common';
 import {
   SPARQL_SAVED_QUERIES_CONFIG,
   SPARQL_SAVED_QUERIES_SERVICE,
@@ -39,6 +42,7 @@ interface PutBody {
   slug?: string;
   description?: string;
   body?: string;
+  parameters?: unknown;
 }
 
 @Controller('saved-queries')
@@ -89,10 +93,24 @@ export class SavedQueriesController {
         HttpStatus.BAD_REQUEST,
       );
     }
+    const parameters = this.parseParameters(body.parameters);
+    const candidate: SavedQueryEntry = {
+      slug,
+      body: body.body,
+    };
+    if (body.description !== undefined) candidate.description = body.description;
+    if (parameters !== undefined) candidate.parameters = parameters;
+    const linted = lintEntry(candidate);
+    if (linted.isErr()) {
+      throw new HttpException(
+        { error: 'lint-failed', slug, lint: linted.error },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
     const ifMatch = unquoteEtag(ifMatchHeader);
     const result = await this.service.put(
       slug,
-      { description: body.description, body: body.body },
+      { description: body.description, body: body.body, parameters },
       ifMatch,
     );
     if (result.kind === 'collision') {
@@ -106,9 +124,34 @@ export class SavedQueriesController {
     }
     res.setHeader('ETag', quoteEtag(result.etag));
     res.status(result.kind === 'created' ? HttpStatus.CREATED : HttpStatus.OK);
-    const entry: SavedQueryEntry = { slug, body: body.body };
-    if (body.description !== undefined) entry.description = body.description;
-    return entry;
+    return candidate;
+  }
+
+  private parseParameters(
+    raw: unknown,
+  ): ParameterDeclaration[] | undefined {
+    if (raw === undefined) return undefined;
+    if (!Array.isArray(raw)) {
+      throw new HttpException(
+        { error: 'invalid-parameters' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const out: ParameterDeclaration[] = [];
+    for (const item of raw) {
+      const parsed = ParameterDeclarationSchema.safeParse(item);
+      if (!parsed.success) {
+        throw new HttpException(
+          {
+            error: 'invalid-parameters',
+            issues: parsed.error.issues,
+          },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      out.push(parsed.data);
+    }
+    return out;
   }
 
   @Delete(':slug')

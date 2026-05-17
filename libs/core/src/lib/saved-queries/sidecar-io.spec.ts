@@ -6,6 +6,7 @@ import {
   removeEntry,
   listEntries,
   getEntry,
+  lintEntry,
 } from './sidecar-io';
 
 describe('parseSidecar / serializeSidecar', () => {
@@ -52,6 +53,26 @@ describe('parseSidecar / serializeSidecar', () => {
   it('returns undefined for an unknown slug', () => {
     const doc = parseSidecar('savedQueries: {}\n');
     expect(getEntry(doc, 'nope')).toBeUndefined();
+  });
+
+  it('returns parameters when the entry declares them', () => {
+    const doc = parseSidecar(
+      [
+        'savedQueries:',
+        '  by-country:',
+        '    body: |',
+        '      SELECT * WHERE { ?country ?p ?o }',
+        '    parameters:',
+        '      - name: country',
+        '        type: iri',
+        '        cardinality: 1..1',
+        '',
+      ].join('\n'),
+    );
+    const entry = getEntry(doc, 'by-country');
+    expect(entry?.parameters).toEqual([
+      { name: 'country', type: 'iri', cardinality: '1..1' },
+    ]);
   });
 });
 
@@ -190,5 +211,89 @@ describe('upsertEntry / removeEntry — structure-aware writes', () => {
   it('removeEntry returns false when the slug is not present', () => {
     const doc = parseSidecar('savedQueries: {}\n');
     expect(removeEntry(doc, 'missing')).toBe(false);
+  });
+
+  it('upserts a new entry with parameters serialized as a YAML list', () => {
+    const doc = parseSidecar('savedQueries: {}\n');
+    upsertEntry(doc, {
+      slug: 'by-country',
+      body: 'SELECT * WHERE { ?country ?p ?o }',
+      parameters: [
+        { name: 'country', type: 'iri', cardinality: '1..1' },
+      ],
+    });
+    const text = serializeSidecar(doc);
+    expect(text).toContain('parameters:');
+    expect(text).toMatch(/- name: country/);
+    expect(text).toMatch(/type: iri/);
+    expect(text).toMatch(/cardinality: 1\.\.1/);
+    // Sanity: round-trip.
+    const round = getEntry(parseSidecar(text), 'by-country');
+    expect(round?.parameters).toEqual([
+      { name: 'country', type: 'iri', cardinality: '1..1' },
+    ]);
+  });
+
+  it('lintEntry flags an entry whose declared parameter is missing from the body', () => {
+    const doc = parseSidecar(
+      [
+        'savedQueries:',
+        '  q:',
+        '    body: |',
+        '      SELECT * WHERE { ?s ?p ?o }',
+        '    parameters:',
+        '      - name: country',
+        '        type: iri',
+        '        cardinality: 1..1',
+        '',
+      ].join('\n'),
+    );
+    const entry = getEntry(doc, 'q');
+    expect(entry).toBeDefined();
+    const result = lintEntry(entry!);
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      expect(result.error.kind).toBe('declared-but-unused');
+    }
+  });
+
+  it('lintEntry passes when declarations match the body', () => {
+    const doc = parseSidecar(
+      [
+        'savedQueries:',
+        '  q:',
+        '    body: |',
+        '      SELECT * WHERE { ?country ?p ?o }',
+        '    parameters:',
+        '      - name: country',
+        '        type: iri',
+        '        cardinality: 1..1',
+        '',
+      ].join('\n'),
+    );
+    const entry = getEntry(doc, 'q');
+    expect(lintEntry(entry!).isOk()).toBe(true);
+  });
+
+  it('removes the parameters field when upserting with parameters absent', () => {
+    const doc = parseSidecar(
+      [
+        'savedQueries:',
+        '  q:',
+        '    body: |',
+        '      SELECT * WHERE { ?country ?p ?o }',
+        '    parameters:',
+        '      - name: country',
+        '        type: iri',
+        '        cardinality: 1..1',
+        '',
+      ].join('\n'),
+    );
+    upsertEntry(doc, {
+      slug: 'q',
+      body: 'SELECT * WHERE { ?s ?p ?o }',
+    });
+    const text = serializeSidecar(doc);
+    expect(text).not.toContain('parameters:');
   });
 });
