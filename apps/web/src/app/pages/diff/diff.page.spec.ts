@@ -1,17 +1,30 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { HttpErrorResponse } from '@angular/common/http';
 import { provideRouter, Router } from '@angular/router';
-import { of, Subject } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
+import { LibraryPickerComponent } from '@app/modules/library-picker';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
-import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
 import { DiffPage } from './diff.page';
 import { DiffHunkComponent } from './components/diff-hunk.component';
+import { EditorFrameComponent } from '../query/components/editor-frame.component';
 import { SourceSnippetComponent } from './components/source-snippet.component';
 import {
   ConfigService,
+  SavedQueriesService,
   type ConfigPayload,
+  type DeleteResult,
+  type LoadedSavedQuery,
+  type PutResult,
+  type SavedQueryEntry,
+  type SavedQuerySummary,
+  type SavedQueryWriteBody,
   type SourceListing,
 } from '@app/core';
+import type {
+  ParameterBindings,
+  ParameterDeclaration,
+} from 'common';
 import {
   DiffService,
   type DiffRequest,
@@ -50,16 +63,65 @@ class SourcesPickerStub {
 }
 
 @Component({
-  selector: 'app-yasqe-editor',
+  selector: 'app-editor-frame',
   standalone: true,
-  template: `<textarea
-    [value]="value"
-    (input)="valueChange.emit($any($event.target).value)"
-  ></textarea>`,
+  template: `<div [attr.data-testid]="'frame-' + name">
+    <textarea
+      [value]="value"
+      (input)="valueChange.emit($any($event.target).value)"
+    ></textarea>
+    @if (isModifiedFromLoaded()) {
+      <span data-testid="frame-badge">modified from {{ loadedSlug }}</span>
+    }
+    @if (loadError) {
+      <span data-testid="frame-load-error"
+        >{{ loadError.kind }}: {{ loadError.slug }}</span
+      >
+    }
+  </div>`,
 })
-class YasqeEditorStub {
+class EditorFrameStub {
   @Input() value = '';
+  @Input() name = 'query';
+  @Input() loadedSlug?: string;
+  @Input() loadedBody?: string;
+  @Input() writable = true;
+  @Input() loadError?: { kind: 'not-found'; slug: string };
+  @Input() parameters?: ReadonlyArray<ParameterDeclaration>;
+  @Input() initialBindings?: ParameterBindings;
   @Output() valueChange = new EventEmitter<string>();
+  @Output() save = new EventEmitter<void>();
+  @Output() saveAs = new EventEmitter<void>();
+  // eslint-disable-next-line @angular-eslint/no-output-native
+  @Output() delete = new EventEmitter<void>();
+  @Output() submitBindings = new EventEmitter<ParameterBindings>();
+  @Output() parametersDraftChange = new EventEmitter<
+    ReadonlyArray<ParameterDeclaration>
+  >();
+  isModifiedFromLoaded(): boolean {
+    return (
+      this.loadedSlug !== undefined &&
+      this.loadedBody !== undefined &&
+      this.value !== this.loadedBody
+    );
+  }
+}
+
+@Component({
+  selector: 'app-library-picker',
+  standalone: true,
+  template: `<ul data-testid="stub-library">
+    @for (e of entries; track e.slug) {
+      <li data-testid="stub-library-entry">{{ e.slug }}</li>
+    }
+  </ul>`,
+})
+class LibraryPickerStub {
+  @Input() entries: readonly SavedQuerySummary[] = [];
+  @Input() writable = true;
+  // eslint-disable-next-line @angular-eslint/no-output-native
+  @Output() load = new EventEmitter<string>();
+  @Output() delete = new EventEmitter<string>();
 }
 
 const TWO: SourceListing = {
@@ -97,7 +159,93 @@ function makeDiffStub(): DiffStub {
   return stub;
 }
 
-async function setup(listing: SourceListing, initialUrl = '/diff') {
+interface SavedQueriesStubState {
+  list: SavedQuerySummary[];
+  entries: Record<string, { entry: SavedQueryEntry; etag: string }>;
+  putBehavior?: (
+    slug: string,
+    body: SavedQueryWriteBody,
+    ifMatch?: string,
+  ) => PutResult;
+  deleteBehavior?: (slug: string, ifMatch: string) => DeleteResult;
+  calls: {
+    list: number;
+    get: Array<{ slug: string }>;
+    put: Array<{ slug: string; body: SavedQueryWriteBody; ifMatch?: string }>;
+    delete: Array<{ slug: string; ifMatch: string }>;
+  };
+}
+
+function makeSavedQueriesStub(
+  initial: Partial<SavedQueriesStubState> = {},
+): {
+  state: SavedQueriesStubState;
+  service: Pick<SavedQueriesService, 'list' | 'get' | 'put' | 'delete'>;
+} {
+  const state: SavedQueriesStubState = {
+    list: initial.list ?? [],
+    entries: initial.entries ?? {},
+    putBehavior: initial.putBehavior,
+    deleteBehavior: initial.deleteBehavior,
+    calls: { list: 0, get: [], put: [], delete: [] },
+  };
+  const service: Pick<SavedQueriesService, 'list' | 'get' | 'put' | 'delete'> = {
+    list: () => {
+      state.calls.list += 1;
+      return of(state.list as readonly SavedQuerySummary[]);
+    },
+    get: (slug: string) => {
+      state.calls.get.push({ slug });
+      const found = state.entries[slug];
+      if (!found) {
+        return throwError(
+          () =>
+            new HttpErrorResponse({
+              status: 404,
+              statusText: 'Not Found',
+              url: `/api/saved-queries/${slug}`,
+            }),
+        );
+      }
+      return of<LoadedSavedQuery>({ entry: found.entry, etag: found.etag });
+    },
+    put: (slug: string, body: SavedQueryWriteBody, ifMatch?: string) => {
+      state.calls.put.push({ slug, body, ifMatch });
+      const result: PutResult = state.putBehavior
+        ? state.putBehavior(slug, body, ifMatch)
+        : { kind: 'saved', etag: `etag-${slug}-${state.calls.put.length}` };
+      if (result.kind === 'saved') {
+        state.entries[slug] = {
+          entry: { slug, body: body.body, description: body.description },
+          etag: result.etag,
+        };
+        if (!state.list.some((e) => e.slug === slug)) {
+          state.list = [...state.list, { slug, hasParameters: false }];
+        }
+      }
+      return of(result);
+    },
+    delete: (slug: string, ifMatch: string) => {
+      state.calls.delete.push({ slug, ifMatch });
+      const result: DeleteResult = state.deleteBehavior
+        ? state.deleteBehavior(slug, ifMatch)
+        : { kind: 'deleted' };
+      if (result.kind === 'deleted') {
+        delete state.entries[slug];
+        state.list = state.list.filter((e) => e.slug !== slug);
+      }
+      return of(result);
+    },
+  };
+  return { state, service };
+}
+
+async function setup(
+  listing: SourceListing,
+  initialUrl = '/diff',
+  savedQueries: Partial<SavedQueriesStubState> = {},
+  capabilities: { writable?: boolean } = {},
+) {
   const payload: ConfigPayload = {
     sources: listing.sources,
     context: { prefixes: {} },
@@ -106,6 +254,7 @@ async function setup(listing: SourceListing, initialUrl = '/diff') {
       perSourceHardLimit: 100000,
       fromSourcePredicate: 'urn:sparqly:fromSource',
     },
+    savedQueries: { writable: capabilities.writable ?? true },
   };
   const configStub: Pick<ConfigService, 'list' | 'config' | 'context'> = {
     list: () => of(listing),
@@ -113,6 +262,7 @@ async function setup(listing: SourceListing, initialUrl = '/diff') {
     context: () => of(payload.context),
   };
   const diffStub = makeDiffStub();
+  const savedQueriesStub = makeSavedQueriesStub(savedQueries);
 
   TestBed.configureTestingModule({
     imports: [DiffPage],
@@ -120,11 +270,20 @@ async function setup(listing: SourceListing, initialUrl = '/diff') {
       provideRouter([{ path: 'diff', component: DiffPage }]),
       { provide: ConfigService, useValue: configStub },
       { provide: DiffService, useValue: diffStub },
+      { provide: SavedQueriesService, useValue: savedQueriesStub.service },
     ],
   })
     .overrideComponent(DiffPage, {
-      remove: { imports: [SourcesPickerComponent, YasqeEditorComponent] },
-      add: { imports: [SourcesPickerStub, YasqeEditorStub] },
+      remove: {
+        imports: [
+          SourcesPickerComponent,
+          EditorFrameComponent,
+          LibraryPickerComponent,
+        ],
+      },
+      add: {
+        imports: [SourcesPickerStub, EditorFrameStub, LibraryPickerStub],
+      },
     })
     .overrideComponent(DiffHunkComponent, {
       remove: { imports: [SourceSnippetComponent] },
@@ -138,7 +297,12 @@ async function setup(listing: SourceListing, initialUrl = '/diff') {
   fixture.detectChanges();
   await fixture.whenStable();
   fixture.detectChanges();
-  return { fixture, diffStub, router };
+  return {
+    fixture,
+    diffStub,
+    router,
+    savedQueriesState: savedQueriesStub.state,
+  };
 }
 
 function pickerStubs(fixture: {
@@ -159,6 +323,59 @@ function pickerStubs(fixture: {
   return { left, right };
 }
 
+function frameStubs(fixture: {
+  debugElement: import('@angular/core').DebugElement;
+}): { left: EditorFrameStub; right: EditorFrameStub } {
+  const all = fixture.debugElement
+    .queryAll((n) => n.componentInstance instanceof EditorFrameStub)
+    .map((d) => d.componentInstance as EditorFrameStub);
+  const left = all.find((f) => f.name === 'left');
+  const right = all.find((f) => f.name === 'right');
+  if (!left || !right) {
+    throw new Error(
+      `expected editor frames with name=left and name=right, got [${all
+        .map((f) => f.name)
+        .join(', ')}]`,
+    );
+  }
+  return { left, right };
+}
+
+function libraryStub(fixture: {
+  debugElement: import('@angular/core').DebugElement;
+}): LibraryPickerStub {
+  const node = fixture.debugElement.query(
+    (n) => n.componentInstance instanceof LibraryPickerStub,
+  );
+  if (!node) throw new Error('expected a library picker stub');
+  return node.componentInstance as LibraryPickerStub;
+}
+
+function libraryStubs(fixture: {
+  debugElement: import('@angular/core').DebugElement;
+}): { left: LibraryPickerStub; right: LibraryPickerStub } {
+  const nodes = fixture.debugElement.queryAll(
+    (n) => n.componentInstance instanceof LibraryPickerStub,
+  );
+  const lookup = (testid: string): LibraryPickerStub => {
+    const found = nodes.find(
+      (n) =>
+        (n.nativeElement as HTMLElement).getAttribute('data-testid') === testid,
+    );
+    if (!found)
+      throw new Error(
+        `expected a library picker with data-testid=${testid}, got [${nodes
+          .map(
+            (n) =>
+              (n.nativeElement as HTMLElement).getAttribute('data-testid') ?? '',
+          )
+          .join(', ')}]`,
+      );
+    return found.componentInstance as LibraryPickerStub;
+  };
+  return { left: lookup('library-left'), right: lookup('library-right') };
+}
+
 describe('DiffPage', () => {
   it('renders two pickers, two editors, and a Run button when registry has ≥2 entries', async () => {
     const { fixture } = await setup(TWO);
@@ -166,6 +383,476 @@ describe('DiffPage', () => {
     expect(root.querySelectorAll('app-sources-picker').length).toBe(2);
     expect(root.querySelectorAll('textarea').length).toBe(2);
     expect(root.querySelector('button[data-testid=run-diff]')).toBeTruthy();
+  });
+
+  it('renders an EditorFrame per side with names "left" and "right", plus a shared LibraryPicker', async () => {
+    const { fixture } = await setup(TWO, '/diff', {
+      list: [{ slug: 'sample', hasParameters: false }],
+    });
+    const { left, right } = frameStubs(fixture);
+    expect(left.name).toBe('left');
+    expect(right.name).toBe('right');
+    expect(libraryStub(fixture).entries.map((e) => e.slug)).toEqual(['sample']);
+  });
+
+  it('loading a saved query on the left side updates left frame only; right frame and source-pickers untouched', async () => {
+    const { fixture } = await setup(TWO, '/diff', {
+      list: [{ slug: 'sample', hasParameters: false }],
+      entries: {
+        sample: {
+          entry: { slug: 'sample', body: 'SELECT * { ?s ?p ?o }' },
+          etag: 'e1',
+        },
+      },
+    });
+    const { left: leftPicker, right: rightPicker } = pickerStubs(fixture);
+    const initialLeftSource = leftPicker.value;
+    const initialRightSource = rightPicker.value;
+
+    libraryStubs(fixture).left.load.emit('sample');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const { left: leftFrame, right: rightFrame } = frameStubs(fixture);
+    expect(leftFrame.value).toBe('SELECT * { ?s ?p ?o }');
+    expect(leftFrame.loadedSlug).toBe('sample');
+    expect(leftFrame.loadedBody).toBe('SELECT * { ?s ?p ?o }');
+    expect(rightFrame.value).toBe('');
+    expect(rightFrame.loadedSlug).toBeUndefined();
+    expect(rightFrame.loadedBody).toBeUndefined();
+    expect(pickerStubs(fixture).left.value).toBe(initialLeftSource);
+    expect(pickerStubs(fixture).right.value).toBe(initialRightSource);
+  });
+
+  it('Save on the left side PUTs with the left etag and updates left loadedBody+etag; right untouched', async () => {
+    const { fixture, savedQueriesState } = await setup(TWO, '/diff', {
+      list: [{ slug: 'sample', hasParameters: false }],
+      entries: {
+        sample: {
+          entry: { slug: 'sample', body: 'SELECT * { ?a ?a ?a }' },
+          etag: 'e1',
+        },
+      },
+    });
+    libraryStubs(fixture).left.load.emit('sample');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const { left: leftFrame, right: rightFrame } = frameStubs(fixture);
+    leftFrame.valueChange.emit('SELECT * { ?b ?b ?b }');
+    fixture.detectChanges();
+    leftFrame.save.emit();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(savedQueriesState.calls.put).toEqual([
+      {
+        slug: 'sample',
+        body: { body: 'SELECT * { ?b ?b ?b }' },
+        ifMatch: 'e1',
+      },
+    ]);
+
+    const refreshed = frameStubs(fixture);
+    expect(refreshed.left.loadedBody).toBe('SELECT * { ?b ?b ?b }');
+    expect(refreshed.right.loadedSlug).toBeUndefined();
+    expect(refreshed.right.loadedBody).toBeUndefined();
+    // Right's query body is also untouched
+    expect(rightFrame.value).toBe('');
+  });
+
+  it('Save on the right side PUTs with the right etag; left untouched', async () => {
+    const { fixture, savedQueriesState } = await setup(TWO, '/diff', {
+      list: [{ slug: 'sample', hasParameters: false }],
+      entries: {
+        sample: {
+          entry: { slug: 'sample', body: 'A' },
+          etag: 'e9',
+        },
+      },
+    });
+    libraryStubs(fixture).right.load.emit('sample');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const { right: rightFrame } = frameStubs(fixture);
+    rightFrame.valueChange.emit('B');
+    fixture.detectChanges();
+    rightFrame.save.emit();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(savedQueriesState.calls.put).toEqual([
+      { slug: 'sample', body: { body: 'B' }, ifMatch: 'e9' },
+    ]);
+    const refreshed = frameStubs(fixture);
+    expect(refreshed.right.loadedBody).toBe('B');
+    expect(refreshed.left.loadedSlug).toBeUndefined();
+  });
+
+  it('Save-as on left opens left dialog; submitting PUTs a new slug and binds left only', async () => {
+    const { fixture, savedQueriesState } = await setup(TWO);
+    const { left: leftFrame, right: rightFrame } = frameStubs(fixture);
+    leftFrame.valueChange.emit('SELECT * { ?l ?l ?l }');
+    fixture.detectChanges();
+    leftFrame.saveAs.emit();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    const dialog = root.querySelector(
+      '[data-testid=save-as-dialog-left]',
+    ) as HTMLElement | null;
+    expect(dialog).toBeTruthy();
+    expect(
+      root.querySelector('[data-testid=save-as-dialog-right]'),
+    ).toBeFalsy();
+
+    const slug = dialog!.querySelector(
+      '[data-testid=save-as-slug-left]',
+    ) as HTMLInputElement;
+    slug.value = 'mine';
+    slug.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    (
+      dialog!.querySelector(
+        '[data-testid=save-as-submit-left]',
+      ) as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(savedQueriesState.calls.put).toEqual([
+      {
+        slug: 'mine',
+        body: { body: 'SELECT * { ?l ?l ?l }' },
+        ifMatch: undefined,
+      },
+    ]);
+    const refreshed = frameStubs(fixture);
+    expect(refreshed.left.loadedSlug).toBe('mine');
+    expect(refreshed.left.loadedBody).toBe('SELECT * { ?l ?l ?l }');
+    expect(rightFrame.loadedSlug).toBeUndefined();
+    // dialog closes after success
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid=save-as-dialog-left]',
+      ),
+    ).toBeFalsy();
+  });
+
+  it('Save-as on left with slug collision surfaces an inline error in the LEFT dialog only', async () => {
+    const { fixture, savedQueriesState } = await setup(TWO, '/diff', {
+      list: [{ slug: 'taken', hasParameters: false }],
+      entries: {
+        taken: { entry: { slug: 'taken', body: 'old' }, etag: 'e0' },
+      },
+    });
+    savedQueriesState.putBehavior = () => ({ kind: 'slug-exists' });
+
+    const { left: leftFrame } = frameStubs(fixture);
+    leftFrame.valueChange.emit('X');
+    leftFrame.saveAs.emit();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    const slug = root.querySelector(
+      '[data-testid=save-as-slug-left]',
+    ) as HTMLInputElement;
+    slug.value = 'taken';
+    slug.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    (
+      root.querySelector(
+        '[data-testid=save-as-submit-left]',
+      ) as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const collision = root.querySelector(
+      '[data-testid=save-as-collision-left]',
+    );
+    expect(collision?.textContent).toContain('taken');
+    expect(root.querySelector('[data-testid=save-as-dialog-left]')).toBeTruthy();
+    expect(
+      root.querySelector('[data-testid=save-as-collision-right]'),
+    ).toBeFalsy();
+  });
+
+  it('Save-as on right opens right dialog only and binds right on success', async () => {
+    const { fixture, savedQueriesState } = await setup(TWO);
+    const { right: rightFrame } = frameStubs(fixture);
+    rightFrame.valueChange.emit('R');
+    rightFrame.saveAs.emit();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(
+      root.querySelector('[data-testid=save-as-dialog-left]'),
+    ).toBeFalsy();
+    const dialog = root.querySelector(
+      '[data-testid=save-as-dialog-right]',
+    ) as HTMLElement;
+    expect(dialog).toBeTruthy();
+
+    const slug = dialog.querySelector(
+      '[data-testid=save-as-slug-right]',
+    ) as HTMLInputElement;
+    slug.value = 'r-mine';
+    slug.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    (
+      dialog.querySelector(
+        '[data-testid=save-as-submit-right]',
+      ) as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(savedQueriesState.calls.put[0].slug).toBe('r-mine');
+    expect(frameStubs(fixture).right.loadedSlug).toBe('r-mine');
+    expect(frameStubs(fixture).left.loadedSlug).toBeUndefined();
+  });
+
+  it('Delete on left side DELETEs with left etag, clears left only, leaves right intact', async () => {
+    const { fixture, savedQueriesState } = await setup(TWO, '/diff', {
+      list: [
+        { slug: 'l', hasParameters: false },
+        { slug: 'r', hasParameters: false },
+      ],
+      entries: {
+        l: { entry: { slug: 'l', body: 'L' }, etag: 'el' },
+        r: { entry: { slug: 'r', body: 'R' }, etag: 'er' },
+      },
+    });
+    libraryStubs(fixture).left.load.emit('l');
+    libraryStubs(fixture).right.load.emit('r');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    frameStubs(fixture).left.delete.emit();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(savedQueriesState.calls.delete).toEqual([
+      { slug: 'l', ifMatch: 'el' },
+    ]);
+    const refreshed = frameStubs(fixture);
+    expect(refreshed.left.loadedSlug).toBeUndefined();
+    expect(refreshed.right.loadedSlug).toBe('r');
+    expect(refreshed.right.loadedBody).toBe('R');
+  });
+
+  it('Library Delete clears the slug from both sides if loaded; refreshes library', async () => {
+    const { fixture, savedQueriesState } = await setup(TWO, '/diff', {
+      list: [{ slug: 'shared', hasParameters: false }],
+      entries: {
+        shared: { entry: { slug: 'shared', body: 'S' }, etag: 'es' },
+      },
+    });
+    libraryStubs(fixture).left.load.emit('shared');
+    libraryStubs(fixture).right.load.emit('shared');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    libraryStubs(fixture).left.delete.emit('shared');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(savedQueriesState.calls.delete.length).toBe(1);
+    expect(savedQueriesState.list.map((e) => e.slug)).toEqual([]);
+    const refreshed = frameStubs(fixture);
+    expect(refreshed.left.loadedSlug).toBeUndefined();
+    expect(refreshed.right.loadedSlug).toBeUndefined();
+  });
+
+  it('412 stale on left Save shows left stale dialog only; Reload refreshes left from server', async () => {
+    let stale = true;
+    const { fixture, savedQueriesState } = await setup(TWO, '/diff', {
+      list: [{ slug: 's', hasParameters: false }],
+      entries: { s: { entry: { slug: 's', body: 'OLD' }, etag: 'e1' } },
+    });
+    savedQueriesState.putBehavior = () => {
+      if (stale) {
+        stale = false;
+        return { kind: 'stale' };
+      }
+      return { kind: 'saved', etag: 'eN' };
+    };
+    libraryStubs(fixture).left.load.emit('s');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    frameStubs(fixture).left.valueChange.emit('NEW');
+    fixture.detectChanges();
+    frameStubs(fixture).left.save.emit();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('[data-testid=stale-dialog-left]')).toBeTruthy();
+    expect(root.querySelector('[data-testid=stale-dialog-right]')).toBeFalsy();
+
+    // Server-side state moves on: someone else updated 's'
+    savedQueriesState.entries['s'] = {
+      entry: { slug: 's', body: 'SERVER' },
+      etag: 'eServer',
+    };
+
+    (
+      root.querySelector(
+        '[data-testid=stale-reload-left]',
+      ) as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const refreshed = frameStubs(fixture);
+    expect(refreshed.left.value).toBe('SERVER');
+    expect(refreshed.left.loadedBody).toBe('SERVER');
+    expect(root.querySelector('[data-testid=stale-dialog-left]')).toBeFalsy();
+  });
+
+  it('412 stale on left Save → Overwrite re-fetches etag and re-PUTs successfully', async () => {
+    let stale = true;
+    const { fixture, savedQueriesState } = await setup(TWO, '/diff', {
+      list: [{ slug: 's', hasParameters: false }],
+      entries: { s: { entry: { slug: 's', body: 'OLD' }, etag: 'e1' } },
+    });
+    savedQueriesState.putBehavior = () => {
+      if (stale) {
+        stale = false;
+        return { kind: 'stale' };
+      }
+      return { kind: 'saved', etag: 'eOverwrite' };
+    };
+    libraryStubs(fixture).left.load.emit('s');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    frameStubs(fixture).left.valueChange.emit('NEW');
+    frameStubs(fixture).left.save.emit();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // Server state moves to a new etag
+    savedQueriesState.entries['s'] = {
+      entry: { slug: 's', body: 'OLD' },
+      etag: 'eServer',
+    };
+
+    const root = fixture.nativeElement as HTMLElement;
+    (
+      root.querySelector(
+        '[data-testid=stale-overwrite-left]',
+      ) as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(savedQueriesState.calls.put.length).toBe(2);
+    expect(savedQueriesState.calls.put[1].ifMatch).toBe('eServer');
+    expect(root.querySelector('[data-testid=stale-dialog-left]')).toBeFalsy();
+    expect(frameStubs(fixture).left.loadedBody).toBe('NEW');
+  });
+
+  it('412 stale on right Save shows right stale dialog only; left untouched', async () => {
+    let stale = true;
+    const { fixture, savedQueriesState } = await setup(TWO, '/diff', {
+      list: [{ slug: 's', hasParameters: false }],
+      entries: { s: { entry: { slug: 's', body: 'OLD' }, etag: 'e1' } },
+    });
+    savedQueriesState.putBehavior = () => {
+      if (stale) {
+        stale = false;
+        return { kind: 'stale' };
+      }
+      return { kind: 'saved', etag: 'eN' };
+    };
+    libraryStubs(fixture).right.load.emit('s');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    frameStubs(fixture).right.valueChange.emit('NEW');
+    frameStubs(fixture).right.save.emit();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('[data-testid=stale-dialog-right]')).toBeTruthy();
+    expect(root.querySelector('[data-testid=stale-dialog-left]')).toBeFalsy();
+  });
+
+  it('"modified from" badge appears only on the side whose body diverges from its loadedBody', async () => {
+    const { fixture } = await setup(TWO, '/diff', {
+      list: [
+        { slug: 'l', hasParameters: false },
+        { slug: 'r', hasParameters: false },
+      ],
+      entries: {
+        l: { entry: { slug: 'l', body: 'L' }, etag: 'el' },
+        r: { entry: { slug: 'r', body: 'R' }, etag: 'er' },
+      },
+    });
+    libraryStubs(fixture).left.load.emit('l');
+    libraryStubs(fixture).right.load.emit('r');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    frameStubs(fixture).left.valueChange.emit('L-modified');
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(
+      root.querySelector('[data-testid=frame-left] [data-testid=frame-badge]'),
+    ).toBeTruthy();
+    expect(
+      root.querySelector('[data-testid=frame-right] [data-testid=frame-badge]'),
+    ).toBeFalsy();
+  });
+
+  it('loading a saved query on the right side updates right frame only; left frame untouched', async () => {
+    const { fixture } = await setup(TWO, '/diff', {
+      list: [{ slug: 'sample', hasParameters: false }],
+      entries: {
+        sample: {
+          entry: { slug: 'sample', body: 'ASK { ?s ?p ?o }' },
+          etag: 'e1',
+        },
+      },
+    });
+
+    libraryStubs(fixture).right.load.emit('sample');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const { left: leftFrame, right: rightFrame } = frameStubs(fixture);
+    expect(rightFrame.value).toBe('ASK { ?s ?p ?o }');
+    expect(rightFrame.loadedSlug).toBe('sample');
+    expect(leftFrame.value).toBe('');
+    expect(leftFrame.loadedSlug).toBeUndefined();
   });
 
   it('shows the empty-state when the registry has ≤1 entries (single-source mode)', async () => {
