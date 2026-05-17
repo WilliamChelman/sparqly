@@ -10,10 +10,13 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { ButtonComponent } from '@app/modules/button';
 import { CodeChipComponent } from '@app/modules/code-chip';
 import { ErrorBannerComponent } from '@app/modules/error-banner';
+import { LibraryPickerComponent } from '@app/modules/library-picker';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import {
   ConfigService,
+  SavedQueriesService,
   type DisplayContext,
+  type SavedQuerySummary,
   type SourceListingEntry,
 } from '@app/core';
 import {
@@ -24,8 +27,9 @@ import {
   type DiffRequest,
   type DiffResponse,
 } from './services/diff.service';
-import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
+import { EditorFrameComponent } from '../query/components/editor-frame.component';
 import { DiffResultRendererComponent } from './components/diff-result-renderer.component';
+import { EditorFrameController } from './editor-frame-controller';
 
 @Component({
   selector: 'app-diff-page',
@@ -37,7 +41,8 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
     ErrorBannerComponent,
     SourcesPickerComponent,
     DiffResultRendererComponent,
-    YasqeEditorComponent,
+    EditorFrameComponent,
+    LibraryPickerComponent,
   ],
   template: `
     @if (sources() === null) {
@@ -65,14 +70,105 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
               [value]="leftId()"
               (valueChange)="onLeftIdChange($event)"
             />
-            <div class="flex h-80 min-h-32 resize-y flex-col overflow-hidden rounded-lg border border-border bg-surface">
-              <app-yasqe-editor
-                class="min-h-0 flex-1"
-                data-testid="editor-left"
-                [value]="leftQuery()"
-                (valueChange)="leftQuery.set($event)"
-              />
-            </div>
+            <app-editor-frame
+              data-testid="editor-left"
+              name="left"
+              [value]="leftSide.query()"
+              [loadedSlug]="leftSide.loadedSlug() ?? undefined"
+              [loadedBody]="leftSide.loadedBody() ?? undefined"
+              [loadError]="leftSide.loadError() ?? undefined"
+              [parameters]="leftSide.loadedParameters() ?? undefined"
+              [writable]="writable()"
+              (valueChange)="leftSide.query.set($event)"
+              (save)="leftSide.save()"
+              (saveAs)="leftSide.openSaveAs()"
+              (delete)="leftSide.delete()"
+            />
+            <app-library-picker
+              data-testid="library-left"
+              [entries]="savedQueries()"
+              [writable]="writable()"
+              (load)="leftSide.load($event)"
+              (delete)="onLibraryDelete($event)"
+            />
+            @if (leftSide.staleConflict(); as staleSlug) {
+              <div
+                data-testid="stale-dialog-left"
+                role="dialog"
+                class="rounded border border-warning bg-surface p-3 text-sm"
+              >
+                <p>
+                  <strong>{{ staleSlug }}</strong> was changed elsewhere.
+                  Reload to see the current version, or overwrite.
+                </p>
+                <div class="mt-2 flex gap-2">
+                  <button
+                    app-btn
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    data-testid="stale-reload-left"
+                    (click)="leftSide.staleReload()"
+                  >
+                    Reload
+                  </button>
+                  <button
+                    app-btn
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    data-testid="stale-overwrite-left"
+                    (click)="leftSide.staleOverwrite()"
+                  >
+                    Overwrite
+                  </button>
+                </div>
+              </div>
+            }
+            @if (leftSide.saveAsOpen()) {
+              <div
+                data-testid="save-as-dialog-left"
+                role="dialog"
+                class="flex flex-col gap-2 rounded border border-border-muted bg-surface p-3 text-sm"
+              >
+                <label class="flex flex-col gap-1">
+                  <span class="text-foreground-muted">Save as (slug):</span>
+                  <input
+                    type="text"
+                    data-testid="save-as-slug-left"
+                    [value]="leftSide.saveAsSlug()"
+                    (input)="leftSide.setSaveAsSlug($any($event.target).value)"
+                  />
+                </label>
+                @if (leftSide.saveAsError(); as err) {
+                  <p data-testid="save-as-collision-left" class="text-danger">
+                    {{ err }}
+                  </p>
+                }
+                <div class="flex gap-2">
+                  <button
+                    app-btn
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    data-testid="save-as-submit-left"
+                    (click)="leftSide.submitSaveAs()"
+                  >
+                    Save
+                  </button>
+                  <button
+                    app-btn
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    data-testid="save-as-cancel-left"
+                    (click)="leftSide.closeSaveAs()"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            }
 
             @if (errors()?.left; as left) {
               <p app-error-banner data-testid="error-left">
@@ -86,14 +182,105 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
               [value]="rightId()"
               (valueChange)="onRightIdChange($event)"
             />
-            <div class="flex h-80 min-h-32 resize-y flex-col overflow-hidden rounded-lg border border-border bg-surface">
-              <app-yasqe-editor
-                class="min-h-0 flex-1"
-                data-testid="editor-right"
-                [value]="rightQuery()"
-                (valueChange)="rightQuery.set($event)"
-              />
-            </div>
+            <app-editor-frame
+              data-testid="editor-right"
+              name="right"
+              [value]="rightSide.query()"
+              [loadedSlug]="rightSide.loadedSlug() ?? undefined"
+              [loadedBody]="rightSide.loadedBody() ?? undefined"
+              [loadError]="rightSide.loadError() ?? undefined"
+              [parameters]="rightSide.loadedParameters() ?? undefined"
+              [writable]="writable()"
+              (valueChange)="rightSide.query.set($event)"
+              (save)="rightSide.save()"
+              (saveAs)="rightSide.openSaveAs()"
+              (delete)="rightSide.delete()"
+            />
+            <app-library-picker
+              data-testid="library-right"
+              [entries]="savedQueries()"
+              [writable]="writable()"
+              (load)="rightSide.load($event)"
+              (delete)="onLibraryDelete($event)"
+            />
+            @if (rightSide.staleConflict(); as staleSlug) {
+              <div
+                data-testid="stale-dialog-right"
+                role="dialog"
+                class="rounded border border-warning bg-surface p-3 text-sm"
+              >
+                <p>
+                  <strong>{{ staleSlug }}</strong> was changed elsewhere.
+                  Reload to see the current version, or overwrite.
+                </p>
+                <div class="mt-2 flex gap-2">
+                  <button
+                    app-btn
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    data-testid="stale-reload-right"
+                    (click)="rightSide.staleReload()"
+                  >
+                    Reload
+                  </button>
+                  <button
+                    app-btn
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    data-testid="stale-overwrite-right"
+                    (click)="rightSide.staleOverwrite()"
+                  >
+                    Overwrite
+                  </button>
+                </div>
+              </div>
+            }
+            @if (rightSide.saveAsOpen()) {
+              <div
+                data-testid="save-as-dialog-right"
+                role="dialog"
+                class="flex flex-col gap-2 rounded border border-border-muted bg-surface p-3 text-sm"
+              >
+                <label class="flex flex-col gap-1">
+                  <span class="text-foreground-muted">Save as (slug):</span>
+                  <input
+                    type="text"
+                    data-testid="save-as-slug-right"
+                    [value]="rightSide.saveAsSlug()"
+                    (input)="rightSide.setSaveAsSlug($any($event.target).value)"
+                  />
+                </label>
+                @if (rightSide.saveAsError(); as err) {
+                  <p data-testid="save-as-collision-right" class="text-danger">
+                    {{ err }}
+                  </p>
+                }
+                <div class="flex gap-2">
+                  <button
+                    app-btn
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    data-testid="save-as-submit-right"
+                    (click)="rightSide.submitSaveAs()"
+                  >
+                    Save
+                  </button>
+                  <button
+                    app-btn
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    data-testid="save-as-cancel-right"
+                    (click)="rightSide.closeSaveAs()"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            }
 
             @if (errors()?.right; as right) {
               <p app-error-banner data-testid="error-right">
@@ -152,19 +339,28 @@ import { DiffResultRendererComponent } from './components/diff-result-renderer.c
 export class DiffPage implements OnInit {
   private readonly configService = inject(ConfigService);
   private readonly diffService = inject(DiffService);
+  private readonly savedQueriesService = inject(SavedQueriesService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
   readonly sources = signal<SourceListingEntry[] | null>(null);
   readonly leftId = signal<string>('');
   readonly rightId = signal<string>('');
-  readonly leftQuery = signal<string>('');
-  readonly rightQuery = signal<string>('');
+  readonly leftSide = new EditorFrameController(
+    this.savedQueriesService,
+    () => this.refreshLibrary(),
+  );
+  readonly rightSide = new EditorFrameController(
+    this.savedQueriesService,
+    () => this.refreshLibrary(),
+  );
   readonly running = signal<boolean>(false);
   readonly result = signal<DiffResponse | null>(null);
   readonly errors = signal<DiffErrorResponse['errors'] | null>(null);
   readonly context = signal<number>(3);
   readonly displayContext = signal<DisplayContext>({ prefixes: {} });
+  readonly savedQueries = signal<readonly SavedQuerySummary[]>([]);
+  readonly writable = signal<boolean>(true);
 
   format(error: DiffError): string {
     return formatDiffError(error);
@@ -178,15 +374,15 @@ export class DiffPage implements OnInit {
     const rightQuery = params.get('rightQuery');
     if (left) this.leftId.set(left);
     if (right) this.rightId.set(right);
-    if (leftQuery !== null) this.leftQuery.set(leftQuery);
-    if (rightQuery !== null) this.rightQuery.set(rightQuery);
+    if (leftQuery !== null) this.leftSide.query.set(leftQuery);
+    if (rightQuery !== null) this.rightSide.query.set(rightQuery);
 
     effect(() => {
       const queryParams: Record<string, string | null> = {
         left: this.leftId() || null,
         right: this.rightId() || null,
-        leftQuery: this.leftQuery() || null,
-        rightQuery: this.rightQuery() || null,
+        leftQuery: this.leftSide.query() || null,
+        rightQuery: this.rightSide.query() || null,
       };
       this.router.navigate([], {
         relativeTo: this.route,
@@ -220,12 +416,32 @@ export class DiffPage implements OnInit {
     this.configService.config().subscribe((config) => {
       this.sources.set(config.sources);
       this.displayContext.set(config.context);
+      this.writable.set(config.savedQueries?.writable ?? true);
       const def = config.sources.find((s) => s.default === true);
       const initial = def?.id ?? config.sources[0]?.id ?? '';
       if (initial !== '') {
         if (this.leftId() === '') this.leftId.set(initial);
         if (this.rightId() === '') this.rightId.set(initial);
       }
+    });
+    this.refreshLibrary();
+  }
+
+  private refreshLibrary(): void {
+    this.savedQueriesService.list().subscribe((entries) => {
+      this.savedQueries.set(entries);
+    });
+  }
+
+  onLibraryDelete(slug: string): void {
+    this.savedQueriesService.get(slug).subscribe((loaded) => {
+      this.savedQueriesService.delete(slug, loaded.etag).subscribe((result) => {
+        if (result.kind === 'deleted') {
+          this.leftSide.clearIfMatches(slug);
+          this.rightSide.clearIfMatches(slug);
+          this.refreshLibrary();
+        }
+      });
     });
   }
 
@@ -236,8 +452,8 @@ export class DiffPage implements OnInit {
     const req: DiffRequest = {
       left: this.leftId(),
       right: this.rightId(),
-      leftQuery: this.leftQuery(),
-      rightQuery: this.rightQuery(),
+      leftQuery: this.leftSide.query(),
+      rightQuery: this.rightSide.query(),
     };
     this.diffService
       .run(req)
