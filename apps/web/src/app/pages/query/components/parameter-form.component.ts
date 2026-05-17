@@ -98,6 +98,7 @@ import {
 })
 export class ParameterFormComponent {
   readonly parameters = input.required<ReadonlyArray<ParameterDeclaration>>();
+  readonly initialBindings = input<ParameterBindings | undefined>(undefined);
 
   @Output() readonly submitBindings = new EventEmitter<ParameterBindings>();
 
@@ -109,8 +110,13 @@ export class ParameterFormComponent {
     }
     return seed;
   });
+  private readonly initial = computed<Record<string, unknown>>(() => {
+    const v = this.initialBindings();
+    return v ? { ...v } : {};
+  });
   private readonly resolved = computed<Record<string, unknown>>(() => ({
     ...this.defaults(),
+    ...this.initial(),
     ...this.overrides(),
   }));
 
@@ -216,17 +222,36 @@ export class ParameterFormComponent {
     this.overrides.update((prev) => ({ ...prev, [p.name]: value }));
   }
 
-  readonly errors = signal<Record<string, string>>({});
+  private readonly submitErrors = signal<Record<string, string>>({});
+  private readonly initialErrors = computed<Record<string, string>>(() => {
+    const ib = this.initialBindings();
+    if (!ib) return {};
+    const overrides = this.overrides();
+    const out: Record<string, string> = {};
+    for (const p of this.parameters()) {
+      if (overrides[p.name] !== undefined) continue;
+      if (ib[p.name] === undefined) continue;
+      const result = validate([p], { [p.name]: ib[p.name] });
+      if (result.isErr()) out[p.name] = errorMessage(result.error);
+    }
+    return out;
+  });
+  readonly errors = computed<Record<string, string>>(() => ({
+    ...this.initialErrors(),
+    ...this.submitErrors(),
+  }));
 
   onSubmit(event: Event): void {
     event.preventDefault();
     const bindings = this.buildBindings();
     const result = validate(this.parameters(), bindings);
     if (result.isErr()) {
-      this.errors.set({ [result.error.name]: errorMessage(result.error) });
+      this.submitErrors.set({
+        [result.error.name]: errorMessage(result.error),
+      });
       return;
     }
-    this.errors.set({});
+    this.submitErrors.set({});
     this.submitBindings.emit(bindings);
   }
 

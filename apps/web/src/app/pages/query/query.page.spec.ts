@@ -73,6 +73,7 @@ class EditorFrameStub {
   @Input() writable = true;
   @Input() loadError?: { kind: 'not-found'; slug: string };
   @Input() parameters?: ReadonlyArray<ParameterDeclaration>;
+  @Input() initialBindings?: ParameterBindings;
   @Output() valueChange = new EventEmitter<string>();
   @Output() save = new EventEmitter<void>();
   @Output() saveAs = new EventEmitter<void>();
@@ -1138,6 +1139,164 @@ describe('QueryPage', () => {
         { headers: { 'Content-Type': 'application/sparql-results+json' } },
       );
       http.verify();
+    });
+  });
+
+  describe('templated saved query URL bindings', () => {
+    const TEMPLATE_BODY = 'SELECT * WHERE { ?s ?p ?o ; <urn:c> ?country }';
+    const parameters: ParameterDeclaration[] = [
+      { name: 'country', type: 'string', cardinality: '1..1' },
+    ];
+
+    it('parses ?bind.<name>=<value> from the URL and threads initialBindings to the editor frame', async () => {
+      const { fixture } = await setup(
+        TWO,
+        '/query?savedQuery=byc&bind.country=CA',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'byc', hasParameters: true }],
+          entries: {
+            byc: {
+              entry: { slug: 'byc', body: TEMPLATE_BODY, parameters },
+              etag: 'e-byc',
+            },
+          },
+        },
+      );
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(editorStub(fixture).initialBindings).toEqual({ country: 'CA' });
+    });
+
+    it('history-replaces the URL with ?bind.<name>=<value> on form submit', async () => {
+      const { fixture, http, router } = await setup(
+        TWO,
+        '/query?source=a&savedQuery=byc',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'byc', hasParameters: true }],
+          entries: {
+            byc: {
+              entry: { slug: 'byc', body: TEMPLATE_BODY, parameters },
+              etag: 'e-byc',
+            },
+          },
+        },
+      );
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      editorStub(fixture).submitBindings.emit({ country: 'FR' });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const tree = router.parseUrl(router.url);
+      expect(tree.queryParamMap.get('savedQuery')).toBe('byc');
+      expect(tree.queryParamMap.get('bind.country')).toBe('FR');
+      expect(tree.queryParamMap.get('query')).toBeNull();
+
+      http.expectOne('/api/sparql/a').flush(
+        JSON.stringify({ head: { vars: [] }, results: { bindings: [] } }),
+        { headers: { 'Content-Type': 'application/sparql-results+json' } },
+      );
+      http.verify();
+    });
+
+    it('drops ?savedQuery= and ?bind.* keys when the editor body diverges from the loaded entry', async () => {
+      const { fixture, router } = await setup(
+        TWO,
+        '/query?savedQuery=byc&bind.country=CA',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'byc', hasParameters: true }],
+          entries: {
+            byc: {
+              entry: { slug: 'byc', body: TEMPLATE_BODY, parameters },
+              etag: 'e-byc',
+            },
+          },
+        },
+      );
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      editorStub(fixture).valueChange.emit('SELECT ?edited');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const tree = router.parseUrl(router.url);
+      expect(tree.queryParamMap.get('savedQuery')).toBeNull();
+      expect(tree.queryParamMap.get('bind.country')).toBeNull();
+      expect(tree.queryParamMap.get('query')).toBe('SELECT ?edited');
+    });
+
+    it('emits repeated ?bind.<name>= keys when the submitted binding is an array', async () => {
+      const multiParams: ParameterDeclaration[] = [
+        { name: 'tag', type: 'string', cardinality: '1..n' },
+      ];
+      const { fixture, http, router } = await setup(
+        TWO,
+        '/query?source=a&savedQuery=byc',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'byc', hasParameters: true }],
+          entries: {
+            byc: {
+              entry: {
+                slug: 'byc',
+                body: TEMPLATE_BODY,
+                parameters: multiParams,
+              },
+              etag: 'e-byc',
+            },
+          },
+        },
+      );
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      editorStub(fixture).submitBindings.emit({ tag: ['a', 'b'] });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const tree = router.parseUrl(router.url);
+      expect(tree.queryParamMap.getAll('bind.tag')).toEqual(['a', 'b']);
+
+      http.expectOne('/api/sparql/a').flush(
+        JSON.stringify({ head: { vars: [] }, results: { bindings: [] } }),
+        { headers: { 'Content-Type': 'application/sparql-results+json' } },
+      );
+      http.verify();
+    });
+
+    it('accumulates repeated ?bind.<name>= keys into an array for cardinality-n parameters', async () => {
+      const multiParams: ParameterDeclaration[] = [
+        { name: 'tag', type: 'string', cardinality: '1..n' },
+      ];
+      const { fixture } = await setup(
+        TWO,
+        '/query?savedQuery=byc&bind.tag=a&bind.tag=b',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'byc', hasParameters: true }],
+          entries: {
+            byc: {
+              entry: {
+                slug: 'byc',
+                body: TEMPLATE_BODY,
+                parameters: multiParams,
+              },
+              etag: 'e-byc',
+            },
+          },
+        },
+      );
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(editorStub(fixture).initialBindings).toEqual({ tag: ['a', 'b'] });
     });
   });
 
