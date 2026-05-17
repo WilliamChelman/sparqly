@@ -5,6 +5,7 @@ import {
 } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { catchError, map, of, throwError, type Observable } from 'rxjs';
+import type { ParameterDeclaration } from 'common';
 
 export interface SavedQuerySummary {
   slug: string;
@@ -16,6 +17,7 @@ export interface SavedQueryEntry {
   slug: string;
   description?: string;
   body: string;
+  parameters?: ReadonlyArray<ParameterDeclaration>;
 }
 
 export interface LoadedSavedQuery {

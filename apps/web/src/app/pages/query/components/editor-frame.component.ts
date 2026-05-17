@@ -11,12 +11,23 @@ import { ButtonComponent } from '@app/modules/button';
 import { CardComponent } from '@app/modules/card';
 import { EyebrowComponent } from '@app/modules/eyebrow';
 import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
+import type {
+  ParameterBindings,
+  ParameterDeclaration,
+} from 'common';
+import { ParameterFormComponent } from './parameter-form.component';
 
 @Component({
   selector: 'app-editor-frame',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonComponent, CardComponent, EyebrowComponent, YasqeEditorComponent],
+  imports: [
+    ButtonComponent,
+    CardComponent,
+    EyebrowComponent,
+    ParameterFormComponent,
+    YasqeEditorComponent,
+  ],
   host: { class: 'block' },
   template: `
     <div app-card>
@@ -54,6 +65,14 @@ import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
           (valueChange)="valueChange.emit($event)"
         />
       </div>
+      @if (parameters && parameters.length > 0) {
+        <div class="my-parameters border-t border-border-muted bg-surface px-3.5 py-2">
+          <app-parameter-form
+            [parameters]="parameters"
+            (submitBindings)="submitBindings.emit($event)"
+          />
+        </div>
+      }
       @if (writable) {
         <div
           class="my-actions flex items-center gap-2 border-t border-border-muted bg-surface-sunken px-3.5 py-2"
@@ -104,11 +123,13 @@ export class EditorFrameComponent {
   @Input() loadedBody?: string;
   @Input() loadError?: { kind: 'not-found'; slug: string };
   @Input() writable = true;
+  @Input() parameters?: ReadonlyArray<ParameterDeclaration>;
 
   @Output() valueChange = new EventEmitter<string>();
   @Output() save = new EventEmitter<void>();
   @Output() saveAs = new EventEmitter<void>();
   @Output() delete = new EventEmitter<void>();
+  @Output() submitBindings = new EventEmitter<ParameterBindings>();
 
   @ViewChild('editor', { static: true })
   private editor!: YasqeEditorComponent;

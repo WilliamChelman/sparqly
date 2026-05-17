@@ -28,6 +28,10 @@ import {
   type SavedQueryWriteBody,
   type SourceListing,
 } from '@app/core';
+import type {
+  ParameterBindings,
+  ParameterDeclaration,
+} from 'common';
 import { LibraryPickerComponent } from '@app/modules/library-picker';
 
 @Component({
@@ -68,10 +72,12 @@ class EditorFrameStub {
   @Input() loadedBody?: string;
   @Input() writable = true;
   @Input() loadError?: { kind: 'not-found'; slug: string };
+  @Input() parameters?: ReadonlyArray<ParameterDeclaration>;
   @Output() valueChange = new EventEmitter<string>();
   @Output() save = new EventEmitter<void>();
   @Output() saveAs = new EventEmitter<void>();
   @Output() delete = new EventEmitter<void>();
+  @Output() submitBindings = new EventEmitter<ParameterBindings>();
   isModifiedFromLoaded(): boolean {
     return (
       this.loadedSlug !== undefined &&
@@ -1061,6 +1067,74 @@ describe('QueryPage', () => {
       ]);
       expect(editorStub(fixture).loadedSlug).toBeUndefined();
       expect(libraryStub(fixture).entries.map((e) => e.slug)).toEqual([]);
+    });
+  });
+
+  describe('templated saved query runtime', () => {
+    const TEMPLATE_BODY = 'SELECT * WHERE { ?s ?p ?o ; <urn:c> ?country }';
+    const parameters: ParameterDeclaration[] = [
+      { name: 'country', type: 'string', cardinality: '1..1' },
+    ];
+
+    it('threads the loaded entry\'s parameters list down to the editor frame', async () => {
+      const { fixture } = await setup(
+        TWO,
+        '/query?savedQuery=byc',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'byc', hasParameters: true }],
+          entries: {
+            byc: {
+              entry: {
+                slug: 'byc',
+                body: TEMPLATE_BODY,
+                parameters,
+              },
+              etag: 'e-byc',
+            },
+          },
+        },
+      );
+      const editor = editorStub(fixture);
+      expect(editor.parameters).toEqual(parameters);
+      expect(editor.value).toBe(TEMPLATE_BODY);
+    });
+
+    it('posts the substituted SPARQL to /api/sparql when the parameter form is submitted', async () => {
+      const { fixture, http } = await setup(
+        TWO,
+        '/query?source=a&savedQuery=byc',
+        { prefixes: {} },
+        {
+          list: [{ slug: 'byc', hasParameters: true }],
+          entries: {
+            byc: {
+              entry: {
+                slug: 'byc',
+                body: TEMPLATE_BODY,
+                parameters,
+              },
+              etag: 'e-byc',
+            },
+          },
+        },
+      );
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      editorStub(fixture).submitBindings.emit({ country: 'CA' });
+      fixture.detectChanges();
+
+      const req = http.expectOne('/api/sparql/a');
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toBe(
+        'VALUES (?country) { ("CA") }\n' + TEMPLATE_BODY,
+      );
+      req.flush(
+        JSON.stringify({ head: { vars: [] }, results: { bindings: [] } }),
+        { headers: { 'Content-Type': 'application/sparql-results+json' } },
+      );
+      http.verify();
     });
   });
 

@@ -3,6 +3,10 @@ import { TestBed } from '@angular/core/testing';
 import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
 import { EditorFrameComponent } from './editor-frame.component';
 import type { QueryType } from '@app/core';
+import type {
+  ParameterBindings,
+  ParameterDeclaration,
+} from 'common';
 
 @Component({
   selector: 'app-yasqe-editor',
@@ -28,6 +32,7 @@ function setup(
     loadedSlug?: string;
     loadedBody?: string;
     writable?: boolean;
+    parameters?: ReadonlyArray<ParameterDeclaration>;
   } = {},
 ) {
   TestBed.configureTestingModule({ imports: [EditorFrameComponent] }).overrideComponent(
@@ -46,6 +51,8 @@ function setup(
     fixture.componentRef.setInput('loadedBody', initial.loadedBody);
   if (initial.writable !== undefined)
     fixture.componentRef.setInput('writable', initial.writable);
+  if (initial.parameters !== undefined)
+    fixture.componentRef.setInput('parameters', initial.parameters);
   fixture.detectChanges();
   const root = fixture.nativeElement as HTMLElement;
   const stub = fixture.debugElement.query((n) => n.componentInstance instanceof YasqeEditorStub)
@@ -200,5 +207,38 @@ describe('EditorFrameComponent', () => {
     ).click();
     expect(saved).toEqual([1]);
     expect(deleted).toEqual([1]);
+  });
+
+  describe('parameter form integration', () => {
+    it('does not render a parameter form when no parameters are declared', () => {
+      const { root } = setup();
+      expect(root.querySelector('app-parameter-form')).toBeNull();
+    });
+
+    it('renders the parameter form when a non-empty parameters list is provided', () => {
+      const { root } = setup({
+        parameters: [
+          { name: 'country', type: 'string', cardinality: '1..1', default: 'CA' },
+        ],
+      });
+      expect(root.querySelector('app-parameter-form')).toBeTruthy();
+    });
+
+    it('forwards submitted parameter bindings via the submitBindings output', () => {
+      const { fixture, root } = setup({
+        parameters: [
+          { name: 'country', type: 'string', cardinality: '1..1', default: 'CA' },
+        ],
+      });
+      const emitted: ParameterBindings[] = [];
+      fixture.componentInstance.submitBindings.subscribe(
+        (b: ParameterBindings) => emitted.push(b),
+      );
+      (root.querySelector('form') as HTMLFormElement).dispatchEvent(
+        new Event('submit'),
+      );
+      fixture.detectChanges();
+      expect(emitted).toEqual([{ country: 'CA' }]);
+    });
   });
 });
