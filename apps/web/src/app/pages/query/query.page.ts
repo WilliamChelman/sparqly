@@ -95,6 +95,7 @@ function buildDefaultQuery(context: DisplayContext): string {
           [value]="query()"
           [loadedSlug]="loadedSlug() ?? undefined"
           [loadedBody]="loadedBody() ?? undefined"
+          [writable]="writable()"
           (valueChange)="query.set($event)"
           (save)="onSave()"
           (saveAs)="onSaveAs()"
@@ -102,6 +103,7 @@ function buildDefaultQuery(context: DisplayContext): string {
         />
         <app-library-picker
           [entries]="savedQueries()"
+          [writable]="writable()"
           (load)="onLoad($event)"
           (delete)="onLibraryDelete($event)"
         />
@@ -226,6 +228,7 @@ export class QueryPage implements OnInit {
   readonly saveAsOpen = signal<boolean>(false);
   readonly saveAsSlug = signal<string>('');
   readonly saveAsError = signal<string | null>(null);
+  readonly writable = signal<boolean>(true);
   private readonly hasUrlQuery: boolean;
 
   constructor() {
@@ -253,6 +256,7 @@ export class QueryPage implements OnInit {
     this.configService.config().subscribe((config) => {
       this.sources.set(config.sources);
       this.context.set(config.context);
+      this.writable.set(config.savedQueries?.writable ?? true);
       if (this.sourceId() === '') {
         const def = config.sources.find((s) => s.default === true);
         const initial = def?.id ?? config.sources[0]?.id ?? '';

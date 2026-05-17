@@ -31,6 +31,12 @@ export interface SparqlServerConfig {
 export interface SavedQueriesServerConfig {
   /** Absolute path to the saved-query sidecar YAML file. */
   path: string;
+  /**
+   * Whether `serve` accepts writes to the sidecar (PUT/DELETE). When `false`
+   * the controller short-circuits writes with 405 and `/api/config` advertises
+   * `savedQueries.writable: false` so the webapp can hide affordances.
+   */
+  writable: boolean;
 }
 
 export type SourceKind = 'glob' | 'endpoint' | 'empty' | 'view' | 'file';

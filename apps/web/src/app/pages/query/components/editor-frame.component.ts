@@ -45,44 +45,46 @@ import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
           (valueChange)="valueChange.emit($event)"
         />
       </div>
-      <div
-        class="my-actions flex items-center gap-2 border-t border-border-muted bg-surface-sunken px-3.5 py-2"
-      >
-        @if (loadedSlug) {
-          <button
-            app-btn
-            type="button"
-            variant="primary"
-            size="sm"
-            data-testid="editor-save"
-            (click)="save.emit()"
-          >
-            Save
-          </button>
-        }
-        <button
-          app-btn
-          type="button"
-          variant="secondary"
-          size="sm"
-          data-testid="editor-save-as"
-          (click)="saveAs.emit()"
+      @if (writable) {
+        <div
+          class="my-actions flex items-center gap-2 border-t border-border-muted bg-surface-sunken px-3.5 py-2"
         >
-          Save as…
-        </button>
-        @if (loadedSlug) {
+          @if (loadedSlug) {
+            <button
+              app-btn
+              type="button"
+              variant="primary"
+              size="sm"
+              data-testid="editor-save"
+              (click)="save.emit()"
+            >
+              Save
+            </button>
+          }
           <button
             app-btn
             type="button"
-            variant="ghost"
+            variant="secondary"
             size="sm"
-            data-testid="editor-delete"
-            (click)="delete.emit()"
+            data-testid="editor-save-as"
+            (click)="saveAs.emit()"
           >
-            Delete
+            Save as…
           </button>
-        }
-      </div>
+          @if (loadedSlug) {
+            <button
+              app-btn
+              type="button"
+              variant="ghost"
+              size="sm"
+              data-testid="editor-delete"
+              (click)="delete.emit()"
+            >
+              Delete
+            </button>
+          }
+        </div>
+      }
     </div>
   `,
 })
@@ -91,6 +93,7 @@ export class EditorFrameComponent {
   @Input() value = '';
   @Input() loadedSlug?: string;
   @Input() loadedBody?: string;
+  @Input() writable = true;
 
   @Output() valueChange = new EventEmitter<string>();
   @Output() save = new EventEmitter<void>();

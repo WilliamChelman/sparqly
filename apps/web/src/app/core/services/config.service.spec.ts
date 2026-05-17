@@ -21,6 +21,7 @@ const PAYLOAD: ConfigPayload = {
     perSourceHardLimit: 100000,
     fromSourcePredicate: 'urn:sparqly:fromSource',
   },
+  savedQueries: { writable: true },
 };
 
 function setup() {
@@ -65,6 +66,28 @@ describe('ConfigService', () => {
     const req = http.expectOne('/api/config');
     req.flush(PAYLOAD);
     expect(await promise).toEqual(PAYLOAD.context);
+    http.verify();
+  });
+
+  it('savedQueries() returns just the savedQueries block from /api/config', async () => {
+    const { http, service } = setup();
+    const promise = new Promise<ConfigPayload['savedQueries']>((resolve) =>
+      service.savedQueries().subscribe(resolve),
+    );
+    const req = http.expectOne('/api/config');
+    req.flush(PAYLOAD);
+    expect(await promise).toEqual({ writable: true });
+    http.verify();
+  });
+
+  it('treats a missing savedQueries.writable as writable=true (read-only opt-in)', async () => {
+    const { http, service } = setup();
+    const promise = new Promise<ConfigPayload['savedQueries']>((resolve) =>
+      service.savedQueries().subscribe(resolve),
+    );
+    const req = http.expectOne('/api/config');
+    req.flush({ ...PAYLOAD, savedQueries: undefined });
+    expect(await promise).toEqual({ writable: true });
     http.verify();
   });
 

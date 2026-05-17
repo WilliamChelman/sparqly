@@ -20,7 +20,11 @@ import {
   type SavedQueryEntry,
   type SavedQueryEntrySummary,
 } from 'core';
-import { SPARQL_SAVED_QUERIES_SERVICE } from '../bootstrap';
+import {
+  SPARQL_SAVED_QUERIES_CONFIG,
+  SPARQL_SAVED_QUERIES_SERVICE,
+  type SavedQueriesServerConfig,
+} from '../bootstrap';
 import { SavedQueriesService } from './saved-queries.service';
 
 // Minimal subset of the express Response surface this controller uses. Avoids
@@ -42,6 +46,8 @@ export class SavedQueriesController {
   constructor(
     @Inject(SPARQL_SAVED_QUERIES_SERVICE)
     private readonly service: SavedQueriesService,
+    @Inject(SPARQL_SAVED_QUERIES_CONFIG)
+    private readonly config: SavedQueriesServerConfig,
   ) {}
 
   @Get()
@@ -69,6 +75,7 @@ export class SavedQueriesController {
     @Body() body: PutBody,
     @Res({ passthrough: true }) res: ResponseLike,
   ): Promise<SavedQueryEntry> {
+    this.assertWritable();
     this.assertSlug(slug);
     if (body.slug !== undefined && body.slug !== slug) {
       throw new HttpException(
@@ -110,6 +117,7 @@ export class SavedQueriesController {
     @Param('slug') slug: string,
     @Headers('if-match') ifMatchHeader: string | undefined,
   ): Promise<void> {
+    this.assertWritable();
     this.assertSlug(slug);
     const ifMatch = unquoteEtag(ifMatchHeader);
     const result = await this.service.delete(slug, ifMatch);
@@ -128,6 +136,14 @@ export class SavedQueriesController {
         HttpStatus.PRECONDITION_FAILED,
       );
     }
+  }
+
+  private assertWritable(): void {
+    if (this.config.writable) return;
+    throw new HttpException(
+      { error: 'read-only' },
+      HttpStatus.METHOD_NOT_ALLOWED,
+    );
   }
 
   private assertSlug(slug: string): void {

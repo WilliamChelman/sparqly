@@ -23,6 +23,7 @@ interface ServeConfig {
   source?: SourceSpecInput;
   port?: number;
   mutable?: boolean;
+  readOnly?: boolean;
   watch?: boolean;
   watchDebounce?: number;
   watchPoll?: number;
@@ -53,6 +54,19 @@ const portField: FieldDescriptor = {
     {
       spec: '-p, --port <port>',
       description: 'HTTP port (default: 3000)',
+    },
+  ],
+};
+
+const readOnlyField: FieldDescriptor = {
+  key: 'readOnly',
+  schema: coercedBooleanSchema,
+  default: false,
+  flags: [
+    {
+      spec: '--read-only',
+      description:
+        'Refuse writes to the saved-query sidecar. PUT/DELETE return 405 and the webapp hides Save / Save-as / Delete affordances. Default: writes allowed.',
     },
   ],
 };
@@ -129,6 +143,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     sourcesRegistryField,
     portField,
     ...mutableFieldsFor('serve'),
+    readOnlyField,
     watchField,
     watchDebounceField,
     watchPollField,
@@ -176,6 +191,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       scope,
       port,
       mutable,
+      readOnly: config.readOnly === true,
       webRootDir: WEB_BUNDLE_DIR,
       watch: config.watch === true,
       watchDebounceMs: config.watchDebounce,

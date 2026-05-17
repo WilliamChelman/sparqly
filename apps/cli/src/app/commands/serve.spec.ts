@@ -27,10 +27,19 @@ describe('serveSpec — single-target shape', () => {
       watch: false,
       watchDebounce: 250,
       mutable: false,
+      readOnly: false,
       verbose: false,
       quiet: false,
     });
     expect('graphMode' in defaults).toBe(false);
+  });
+
+  it('exposes a --read-only flag writing to the readOnly field, default false', () => {
+    const readOnly = serveSpec.fields.find((f) => f.key === 'readOnly');
+    expect(readOnly).toBeDefined();
+    expect(readOnly?.default).toBe(false);
+    const flagSpecs = (readOnly?.flags ?? []).map((f) => f.spec);
+    expect(flagSpecs.some((s) => /--read-only\b/.test(s))).toBe(true);
   });
 
   it('coerces "4000" string into port number', () => {

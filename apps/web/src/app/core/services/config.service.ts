@@ -23,10 +23,15 @@ export interface DescribeConfig {
   fromSourcePredicate: string;
 }
 
+export interface SavedQueriesCapability {
+  writable: boolean;
+}
+
 export interface ConfigPayload {
   sources: SourceListingEntry[];
   context: DisplayContext;
   describe: DescribeConfig;
+  savedQueries?: SavedQueriesCapability;
 }
 
 export interface SourceListing {
@@ -51,5 +56,11 @@ export class ConfigService {
 
   describe(): Observable<DescribeConfig> {
     return this.config().pipe(map((c) => c.describe));
+  }
+
+  savedQueries(): Observable<SavedQueriesCapability> {
+    return this.config().pipe(
+      map((c) => ({ writable: c.savedQueries?.writable ?? true })),
+    );
   }
 }

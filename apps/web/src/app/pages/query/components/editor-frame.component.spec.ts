@@ -27,6 +27,7 @@ function setup(
     name?: string;
     loadedSlug?: string;
     loadedBody?: string;
+    writable?: boolean;
   } = {},
 ) {
   TestBed.configureTestingModule({ imports: [EditorFrameComponent] }).overrideComponent(
@@ -43,6 +44,8 @@ function setup(
     fixture.componentRef.setInput('loadedSlug', initial.loadedSlug);
   if (initial.loadedBody !== undefined)
     fixture.componentRef.setInput('loadedBody', initial.loadedBody);
+  if (initial.writable !== undefined)
+    fixture.componentRef.setInput('writable', initial.writable);
   fixture.detectChanges();
   const root = fixture.nativeElement as HTMLElement;
   const stub = fixture.debugElement.query((n) => n.componentInstance instanceof YasqeEditorStub)
@@ -155,6 +158,28 @@ describe('EditorFrameComponent', () => {
     const { root } = setup();
     expect(root.querySelector('[data-testid="editor-save"]')).toBeNull();
     expect(root.querySelector('[data-testid="editor-delete"]')).toBeNull();
+  });
+
+  it('hides Save, Save-as and Delete when writable=false, even with a slug loaded', () => {
+    const { root } = setup({
+      value: 'SELECT ?s',
+      loadedSlug: 'alpha',
+      loadedBody: 'SELECT *',
+      writable: false,
+    });
+    expect(root.querySelector('[data-testid="editor-save"]')).toBeNull();
+    expect(root.querySelector('[data-testid="editor-save-as"]')).toBeNull();
+    expect(root.querySelector('[data-testid="editor-delete"]')).toBeNull();
+  });
+
+  it('still shows the modified-from badge when writable=false (read-only is not invisible)', () => {
+    const { root } = setup({
+      value: 'SELECT ?s',
+      loadedSlug: 'alpha',
+      loadedBody: 'SELECT *',
+      writable: false,
+    });
+    expect(root.querySelector('[data-testid="editor-modified-badge"]')).not.toBeNull();
   });
 
   it('shows Save and Delete when a slug is loaded; each emits when clicked', () => {
