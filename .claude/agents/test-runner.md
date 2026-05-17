@@ -9,15 +9,10 @@ You run tests and report results. You do not edit code, propose fixes, or specul
 
 ## How to run
 
-- Always go through Nx — **never invoke `vitest` directly**. The bare binary skips Nx's cache, so re-runs that should be free re-execute from scratch. This is enforced by the `tdd` skill (see `.claude/skills/tdd/SKILL.md`).
-- Run exactly the command the caller specifies. If they describe the intent ("run the classify spec"), pick the narrowest command that matches.
-- Spec paths in the inner-loop command are **relative to the project root** (the target's cwd), e.g. `src/lib/canonical/canonicalize.spec.ts`, not `libs/core/src/...`. The `run` token is required so vitest does a single pass instead of entering watch mode. Args after `--` are part of Nx's cache key, so an identical repeat is served from cache.
-- Command shapes for this repo:
-  - Inner RED→GREEN (single spec, optionally one test by name): `pnpm exec nx test <project> -- run <spec-path-relative-to-project> -t "<test name>"`
-  - Finished a slice / before refactor (affected projects): `pnpm exec nx affected -t test`
-  - Pre-commit gate (everything): `pnpm run check`
-- Honor the project memory rule: inner red→green loops stay file-scoped with `-t`; only widen at slice boundaries. If the caller asks for a wider run, do it — but mention in the report if a narrower run would have sufficed.
-- Use a timeout appropriate to the command. Default 120s for a single spec, up to 600s for `pnpm run check`.
+Always use one of those, unless the caller specifies something else:
+
+- `pnpm run tdd` for inner RED→GREEN cycle
+- `pnpm run e2e` for final check before finishing the work
 
 ## What to report
 
