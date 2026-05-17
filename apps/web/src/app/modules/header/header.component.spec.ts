@@ -16,7 +16,7 @@ describe('HeaderComponent', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
-  it('exposes nav links to /, /diff and /describe', () => {
+  it('exposes nav links to /, /diff, /describe and /queries', () => {
     const el = render();
     const hrefs = Array.from(el.querySelectorAll('nav a')).map((a) =>
       a.getAttribute('href'),
@@ -24,6 +24,7 @@ describe('HeaderComponent', () => {
     expect(hrefs).toContain('/');
     expect(hrefs).toContain('/diff');
     expect(hrefs).toContain('/describe');
+    expect(hrefs).toContain('/queries');
   });
 
   it('renders the constellation logomark inside the brand link', () => {
