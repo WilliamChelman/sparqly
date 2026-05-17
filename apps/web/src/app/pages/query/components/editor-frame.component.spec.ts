@@ -21,7 +21,14 @@ class YasqeEditorStub {
   readonly prefixCount = this.prefixCountSignal.asReadonly();
 }
 
-function setup(initial: { value?: string; name?: string } = {}) {
+function setup(
+  initial: {
+    value?: string;
+    name?: string;
+    loadedSlug?: string;
+    loadedBody?: string;
+  } = {},
+) {
   TestBed.configureTestingModule({ imports: [EditorFrameComponent] }).overrideComponent(
     EditorFrameComponent,
     {
@@ -32,6 +39,10 @@ function setup(initial: { value?: string; name?: string } = {}) {
   const fixture = TestBed.createComponent(EditorFrameComponent);
   if (initial.value !== undefined) fixture.componentRef.setInput('value', initial.value);
   if (initial.name !== undefined) fixture.componentRef.setInput('name', initial.name);
+  if (initial.loadedSlug !== undefined)
+    fixture.componentRef.setInput('loadedSlug', initial.loadedSlug);
+  if (initial.loadedBody !== undefined)
+    fixture.componentRef.setInput('loadedBody', initial.loadedBody);
   fixture.detectChanges();
   const root = fixture.nativeElement as HTMLElement;
   const stub = fixture.debugElement.query((n) => n.componentInstance instanceof YasqeEditorStub)
@@ -98,5 +109,71 @@ describe('EditorFrameComponent', () => {
     ta.dispatchEvent(new Event('input'));
     fixture.detectChanges();
     expect(emitted).toEqual(['ASK { ?s ?p ?o }']);
+  });
+
+  it('renders a Save-as button and emits saveAs when clicked', () => {
+    const { fixture, root } = setup();
+    const emitted: number[] = [];
+    fixture.componentInstance.saveAs.subscribe(() => emitted.push(1));
+    const btn = root.querySelector(
+      '[data-testid="editor-save-as"]',
+    ) as HTMLButtonElement;
+    expect(btn).toBeTruthy();
+    btn.click();
+    expect(emitted).toEqual([1]);
+  });
+
+  it('shows no "modified from" badge when nothing is loaded', () => {
+    const { root } = setup({ value: 'SELECT *' });
+    expect(root.querySelector('[data-testid="editor-modified-badge"]')).toBeNull();
+  });
+
+  it('shows the "modified from <slug>" badge when the editor body diverges from the loaded body', () => {
+    const { root } = setup({
+      value: 'SELECT ?s',
+      loadedSlug: 'alpha',
+      loadedBody: 'SELECT *',
+    });
+    const badge = root.querySelector(
+      '[data-testid="editor-modified-badge"]',
+    ) as HTMLElement | null;
+    expect(badge).toBeTruthy();
+    expect(badge?.textContent ?? '').toContain('modified from');
+    expect(badge?.textContent ?? '').toContain('alpha');
+  });
+
+  it('hides the badge when the editor body matches the loaded body', () => {
+    const { root } = setup({
+      value: 'SELECT *',
+      loadedSlug: 'alpha',
+      loadedBody: 'SELECT *',
+    });
+    expect(root.querySelector('[data-testid="editor-modified-badge"]')).toBeNull();
+  });
+
+  it('hides Save and Delete buttons when no slug is loaded', () => {
+    const { root } = setup();
+    expect(root.querySelector('[data-testid="editor-save"]')).toBeNull();
+    expect(root.querySelector('[data-testid="editor-delete"]')).toBeNull();
+  });
+
+  it('shows Save and Delete when a slug is loaded; each emits when clicked', () => {
+    const { fixture, root } = setup({
+      value: 'SELECT ?s',
+      loadedSlug: 'alpha',
+      loadedBody: 'SELECT *',
+    });
+    const saved: number[] = [];
+    const deleted: number[] = [];
+    fixture.componentInstance.save.subscribe(() => saved.push(1));
+    fixture.componentInstance.delete.subscribe(() => deleted.push(1));
+    (
+      root.querySelector('[data-testid="editor-save"]') as HTMLButtonElement
+    ).click();
+    (
+      root.querySelector('[data-testid="editor-delete"]') as HTMLButtonElement
+    ).click();
+    expect(saved).toEqual([1]);
+    expect(deleted).toEqual([1]);
   });
 });

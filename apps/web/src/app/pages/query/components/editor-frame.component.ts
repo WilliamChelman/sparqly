@@ -1,12 +1,13 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   EventEmitter,
   Input,
   Output,
   ViewChild,
-  computed,
 } from '@angular/core';
+import { ButtonComponent } from '@app/modules/button';
 import { CardComponent } from '@app/modules/card';
 import { EyebrowComponent } from '@app/modules/eyebrow';
 import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
@@ -15,7 +16,7 @@ import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
   selector: 'app-editor-frame',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CardComponent, EyebrowComponent, YasqeEditorComponent],
+  imports: [ButtonComponent, CardComponent, EyebrowComponent, YasqeEditorComponent],
   host: { class: 'block' },
   template: `
     <div app-card>
@@ -24,6 +25,14 @@ import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
       >
         <span app-eyebrow class="my-name">{{ name }}</span>
         <span class="flex gap-3.5 font-mono text-[10px] text-foreground-faint">
+          @if (isModifiedFromLoaded()) {
+            <span
+              class="my-modified font-medium text-warning"
+              data-testid="editor-modified-badge"
+            >
+              modified from <code>{{ loadedSlug }}</code>
+            </span>
+          }
           <span class="my-kind font-medium text-secondary">{{ kindLabel() }}</span>
           <span class="my-meta">{{ prefixLabel() }}</span>
         </span>
@@ -36,13 +45,57 @@ import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
           (valueChange)="valueChange.emit($event)"
         />
       </div>
+      <div
+        class="my-actions flex items-center gap-2 border-t border-border-muted bg-surface-sunken px-3.5 py-2"
+      >
+        @if (loadedSlug) {
+          <button
+            app-btn
+            type="button"
+            variant="primary"
+            size="sm"
+            data-testid="editor-save"
+            (click)="save.emit()"
+          >
+            Save
+          </button>
+        }
+        <button
+          app-btn
+          type="button"
+          variant="secondary"
+          size="sm"
+          data-testid="editor-save-as"
+          (click)="saveAs.emit()"
+        >
+          Save as…
+        </button>
+        @if (loadedSlug) {
+          <button
+            app-btn
+            type="button"
+            variant="ghost"
+            size="sm"
+            data-testid="editor-delete"
+            (click)="delete.emit()"
+          >
+            Delete
+          </button>
+        }
+      </div>
     </div>
   `,
 })
 export class EditorFrameComponent {
   @Input() name = 'query';
   @Input() value = '';
+  @Input() loadedSlug?: string;
+  @Input() loadedBody?: string;
+
   @Output() valueChange = new EventEmitter<string>();
+  @Output() save = new EventEmitter<void>();
+  @Output() saveAs = new EventEmitter<void>();
+  @Output() delete = new EventEmitter<void>();
 
   @ViewChild('editor', { static: true })
   private editor!: YasqeEditorComponent;
@@ -52,4 +105,12 @@ export class EditorFrameComponent {
     const n = this.editor.prefixCount();
     return n === 1 ? '1 prefix' : `${n} prefixes`;
   });
+
+  isModifiedFromLoaded(): boolean {
+    return (
+      this.loadedSlug !== undefined &&
+      this.loadedBody !== undefined &&
+      this.value !== this.loadedBody
+    );
+  }
 }
