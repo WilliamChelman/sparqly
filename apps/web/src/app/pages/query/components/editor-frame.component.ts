@@ -15,6 +15,7 @@ import type {
   ParameterBindings,
   ParameterDeclaration,
 } from 'common';
+import { ParameterEditorComponent } from './parameter-editor.component';
 import { ParameterFormComponent } from './parameter-form.component';
 
 @Component({
@@ -25,6 +26,7 @@ import { ParameterFormComponent } from './parameter-form.component';
     ButtonComponent,
     CardComponent,
     EyebrowComponent,
+    ParameterEditorComponent,
     ParameterFormComponent,
     YasqeEditorComponent,
   ],
@@ -70,6 +72,15 @@ import { ParameterFormComponent } from './parameter-form.component';
           <app-parameter-form
             [parameters]="parameters"
             (submitBindings)="submitBindings.emit($event)"
+          />
+        </div>
+      }
+      @if (writable) {
+        <div class="my-declarations border-t border-border-muted bg-surface px-3.5 py-2">
+          <app-parameter-editor
+            [parameters]="parameters ?? []"
+            [body]="value"
+            (parametersChange)="parametersDraftChange.emit($event)"
           />
         </div>
       }
@@ -130,6 +141,9 @@ export class EditorFrameComponent {
   @Output() saveAs = new EventEmitter<void>();
   @Output() delete = new EventEmitter<void>();
   @Output() submitBindings = new EventEmitter<ParameterBindings>();
+  @Output() parametersDraftChange = new EventEmitter<
+    ReadonlyArray<ParameterDeclaration>
+  >();
 
   @ViewChild('editor', { static: true })
   private editor!: YasqeEditorComponent;

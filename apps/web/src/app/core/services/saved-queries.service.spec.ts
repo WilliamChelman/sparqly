@@ -113,6 +113,33 @@ describe('SavedQueriesService', () => {
       http.verify();
     });
 
+    it('includes parameters in the PUT body when provided', async () => {
+      const { http, service } = setup();
+      service
+        .put('alpha', {
+          body: 'SELECT ?country WHERE { ?country a :Country }',
+          parameters: [
+            { name: 'country', type: 'string', cardinality: '1..1' },
+          ],
+        })
+        .subscribe();
+      const req = http.expectOne('/api/saved-queries/alpha');
+      expect(req.request.body).toEqual({
+        body: 'SELECT ?country WHERE { ?country a :Country }',
+        parameters: [
+          { name: 'country', type: 'string', cardinality: '1..1' },
+        ],
+      });
+      req.flush(
+        {
+          slug: 'alpha',
+          body: 'SELECT ?country WHERE { ?country a :Country }',
+        },
+        { status: 200, statusText: 'OK', headers: { ETag: '"e3"' } },
+      );
+      http.verify();
+    });
+
     it('maps 409 Conflict to kind: "slug-exists"', async () => {
       const { http, service } = setup();
       const promise = new Promise<PutResult>((resolve) =>
