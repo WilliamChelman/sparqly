@@ -38,6 +38,8 @@ import {
   type CreateNavState,
   type DetailState,
 } from './queries-detail-state';
+import { DeleteController } from './queries-delete-controller';
+import { QueriesStaleDeleteDialogComponent } from './queries-stale-delete-dialog.component';
 import { QueriesStaleDialogComponent } from './queries-stale-dialog.component';
 import { runSparql } from './utils/run-sparql';
 
@@ -54,6 +56,7 @@ import { runSparql } from './utils/run-sparql';
     ParameterEditorComponent,
     QueriesCreateDetailComponent,
     QueriesStaleDialogComponent,
+    QueriesStaleDeleteDialogComponent,
   ],
   template: `
     <header class="border-b border-border-muted bg-surface px-4 py-3">
@@ -197,6 +200,16 @@ import { runSparql } from './utils/run-sparql';
                   Save as…
                 </button>
                 <button
+                  app-btn
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  data-testid="queries-delete"
+                  (click)="onDelete()"
+                >
+                  Delete
+                </button>
+                <button
                   type="button"
                   data-testid="queries-run"
                   [disabled]="!sourceId()"
@@ -211,6 +224,13 @@ import { runSparql } from './utils/run-sparql';
                   [slug]="slug"
                   (reload)="onStaleReload()"
                   (overwrite)="onStaleOverwrite()"
+                />
+              }
+              @if (deleteController.staleConflict(); as slug) {
+                <app-queries-stale-delete-dialog
+                  [slug]="slug"
+                  (reload)="deleteController.reload()"
+                  (confirmDelete)="deleteController.confirmAfterStale()"
                 />
               }
               @if (hasDraftParameters()) {
@@ -242,6 +262,13 @@ export class QueriesPage implements OnInit {
   readonly draftBody = signal<string>('');
   readonly draftParameters = signal<ReadonlyArray<ParameterDeclaration>>([]);
   readonly staleConflict = signal<string | null>(null);
+  readonly deleteController = new DeleteController({
+    service: this.service,
+    router: this.router,
+    detail: this.detail,
+    selectedSlug: this.selectedSlug,
+    applyLoaded: (loaded) => this.applyLoaded(loaded),
+  });
   readonly createErrorSlug = signal<string | null>(null);
 
   readonly visibleEntries = computed(() => {
@@ -431,6 +458,12 @@ export class QueriesPage implements OnInit {
 
   private buildWriteBody(): SavedQueryWriteBody {
     return toWriteBody(this.draftBody(), this.draftParameters());
+  }
+
+  onDelete(): void {
+    const d = this.detail();
+    if (d.kind !== 'loaded') return;
+    this.deleteController.start(d.slug, d.loadedEtag);
   }
 
   onRun(): void {
