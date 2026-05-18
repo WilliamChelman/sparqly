@@ -434,6 +434,73 @@ describe('diffCanonicalStatements + formatRdfDiff', () => {
     }
   });
 
+  it('diffStores pairs structurally-isomorphic bnode subtrees that RDFC-1.0 labels differently across sides', async () => {
+    // Regression: RDFC-1.0 canonical bnode labels are stable within a dataset
+    // but can drift across two datasets even when a bnode's local subgraph is
+    // structurally identical on both sides. A pure string-diff over canonical
+    // N-Quads then reports those isomorphic subtrees as removed/added. The
+    // left side here carries an *extra* unrelated bnode chain (`ex:extra …`)
+    // that shifts RDFC-1.0's label assignment for the two `ex:s ex:p [ … ]`
+    // bnodes, but those two bnodes are otherwise identical to the right side.
+    const dir = await mkdtemp(join(tmpdir(), 'sparqly-diff-bnode-iso-'));
+    try {
+      const leftFile = join(dir, 'left.ttl');
+      await writeFile(
+        leftFile,
+        dedent`
+          @prefix ex: <http://example.org/> .
+          ex:s ex:p [ ex:n "A" ] , [ ex:n "B" ] .
+          ex:extra ex:q [ ex:r "x" ] .
+        ` + '\n',
+      );
+      const rightFile = join(dir, 'right.ttl');
+      await writeFile(
+        rightFile,
+        dedent`
+          @prefix ex: <http://example.org/> .
+          ex:s ex:p [ ex:n "A" ] , [ ex:n "B" ] .
+        ` + '\n',
+      );
+
+      const left = await resolveSide({ glob: leftFile });
+      const right = await resolveSide({ glob: rightFile });
+
+      const result = await diffStores(left, right);
+
+      // The two `ex:s ex:p [ … ]` bnode subtrees are isomorphic across sides
+      // — they must not surface as added/removed.
+      expect(
+        result.removed.filter((s) => s.includes('http://example.org/p')),
+      ).toEqual([]);
+      expect(
+        result.added.filter((s) => s.includes('http://example.org/p')),
+      ).toEqual([]);
+      expect(
+        result.removed.filter(
+          (s) => s.includes('"A"') || s.includes('"B"'),
+        ),
+      ).toEqual([]);
+      expect(
+        result.added.filter(
+          (s) => s.includes('"A"') || s.includes('"B"'),
+        ),
+      ).toEqual([]);
+
+      // The only real change — the `ex:extra` bnode chain — remains on
+      // `removed`. Two triples: the link and the bnode's outgoing `ex:r "x"`.
+      expect(result.added).toEqual([]);
+      expect(result.removed).toHaveLength(2);
+      expect(
+        result.removed.some((s) =>
+          s.includes('http://example.org/extra'),
+        ),
+      ).toBe(true);
+      expect(result.removed.some((s) => s.includes('"x"'))).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('diffStores returns empty source-record maps when neither side carries a sidecar', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sparqly-diff-nosidecar-'));
     try {

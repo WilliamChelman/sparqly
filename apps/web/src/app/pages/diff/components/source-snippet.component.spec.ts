@@ -21,12 +21,23 @@ function render(inputs: {
   focalStart: number;
   focalEnd?: number;
   context: number;
+  records?: { file: string; line: number; endLine?: number }[];
 }) {
   const fixture = TestBed.createComponent(SourceSnippetComponent);
   fixture.componentRef.setInput('file', inputs.file);
   fixture.componentRef.setInput('focalStart', inputs.focalStart);
   fixture.componentRef.setInput('focalEnd', inputs.focalEnd ?? inputs.focalStart);
   fixture.componentRef.setInput('context', inputs.context);
+  fixture.componentRef.setInput(
+    'records',
+    inputs.records ?? [
+      {
+        file: inputs.file,
+        line: inputs.focalStart,
+        endLine: inputs.focalEnd ?? inputs.focalStart,
+      },
+    ],
+  );
   fixture.detectChanges();
   return fixture;
 }
@@ -137,6 +148,44 @@ describe('SourceSnippetComponent', () => {
     const oob = root.querySelector('[data-testid=snippet-range-out-of-bounds]');
     expect(oob).toBeTruthy();
     expect(oob?.textContent).toContain('999');
+  });
+
+  it('does not mark gap lines between disjoint contributing records as focal', () => {
+    // Two records cover lines 10 and 14 with no record on 11/12/13. The
+    // outer focal pair (10..14) is the read window the server fetched, but
+    // the renderer must paint only lines covered by some contributing
+    // record — gap lines render as plain context.
+    setup({
+      kind: 'snippet',
+      startLine: 8,
+      focalStart: 10,
+      focalEnd: 14,
+      lines: ['L8', 'L9', 'L10', 'L11', 'L12', 'L13', 'L14', 'L15', 'L16'],
+    });
+    const fixture = render({
+      file: 'file:///tmp/x.ttl',
+      focalStart: 10,
+      focalEnd: 14,
+      context: 2,
+      records: [
+        { file: 'file:///tmp/x.ttl', line: 10 },
+        { file: 'file:///tmp/x.ttl', line: 14 },
+      ],
+    });
+
+    const root = fixture.nativeElement as HTMLElement;
+    const rows = Array.from(
+      root.querySelectorAll('[data-testid=snippet-line]'),
+    ) as HTMLElement[];
+    const focal = rows.filter((r) => r.getAttribute('data-focal') === 'true');
+    expect(focal.map((r) => r.getAttribute('data-line-number'))).toEqual(['10', '14']);
+    const gap = rows.filter((r) => {
+      const n = Number(r.getAttribute('data-line-number'));
+      return n >= 11 && n <= 13;
+    });
+    for (const row of gap) {
+      expect(row.getAttribute('data-focal')).toBeNull();
+    }
   });
 
   it('shows neither the <pre> nor the unavailable note until the result arrives', () => {

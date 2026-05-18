@@ -1,6 +1,10 @@
 import { Parser, type Quad, type Store, type Term } from 'n3';
 import { shortenNQuadLine } from 'common';
-import { canonicalizeStore } from '../canonical';
+import {
+  canonicalizeStore,
+  computeBnodeShapeMap,
+  shapeNormalizeCanonicalNQuad,
+} from '../canonical';
 import { formatHumanSourceComment } from './format-human-source-comment';
 import {
   formatGroupedRdfDiff,
@@ -104,9 +108,20 @@ export async function diffStores(
       annotationPredicates: right.annotationPredicates,
     }),
   ]);
-  const diff = diffCanonicalStatements(
+  // RDFC-1.0 canonical bnode labels are stable within a dataset but can
+  // drift across two datasets whose overall bnode topology differs, even
+  // when an individual bnode's local subgraph is structurally identical on
+  // both sides. {@link diffWithPairedBnodes} pairs bnodes whose
+  // bisimulation shape hashes match across sides, rewrites their labels to
+  // a shared token, and then runs a multiset diff — so isomorphic subtrees
+  // collapse to zero and only genuine content changes survive. Bnodes with
+  // no cross-side counterpart keep their canonical labels, preserving the
+  // string-set behavior that absorption / parent-link logic relies on.
+  const diff = diffWithPairedBnodes(
     leftCanon.canonicalStatements,
+    leftCanon.canonicalText,
     rightCanon.canonicalStatements,
+    rightCanon.canonicalText,
   );
   return {
     ...diff,
@@ -119,6 +134,117 @@ export async function diffStores(
       right: rightCanon.canonicalIdMap,
     },
   };
+}
+
+function diffWithPairedBnodes(
+  leftStatements: readonly string[],
+  leftCanonicalText: string,
+  rightStatements: readonly string[],
+  rightCanonicalText: string,
+): RdfDiffResult {
+  const leftHasBnode = leftStatements.some((s) => s.includes('_:'));
+  const rightHasBnode = rightStatements.some((s) => s.includes('_:'));
+  if (!leftHasBnode && !rightHasBnode) {
+    return diffCanonicalStatements(leftStatements, rightStatements);
+  }
+
+  const { leftPairMap, rightPairMap } = computeBnodePairing(
+    leftCanonicalText,
+    rightCanonicalText,
+  );
+
+  const leftBucket = bucketByRewrite(leftStatements, leftPairMap);
+  const rightBucket = bucketByRewrite(rightStatements, rightPairMap);
+
+  const removed: string[] = [];
+  const added: string[] = [];
+  const keys = new Set<string>();
+  for (const k of leftBucket.keys()) keys.add(k);
+  for (const k of rightBucket.keys()) keys.add(k);
+  for (const key of keys) {
+    const lArr = leftBucket.get(key) ?? [];
+    const rArr = rightBucket.get(key) ?? [];
+    const paired = Math.min(lArr.length, rArr.length);
+    if (lArr.length > paired) {
+      const sorted = lArr.slice().sort();
+      for (let i = paired; i < sorted.length; i++) removed.push(sorted[i]);
+    }
+    if (rArr.length > paired) {
+      const sorted = rArr.slice().sort();
+      for (let i = paired; i < sorted.length; i++) added.push(sorted[i]);
+    }
+  }
+  removed.sort();
+  added.sort();
+  return {
+    added,
+    removed,
+    totals: { left: leftStatements.length, right: rightStatements.length },
+  };
+}
+
+/**
+ * For each bnode shape hash present on both sides, pair the lexicographically
+ * smallest canonical-label bnodes from each side (up to the per-side count
+ * minimum) and assign them a side-shared token. Bnodes whose shape has no
+ * cross-side counterpart — or whose multiplicity exceeds the other side's —
+ * are left unmapped, so they keep their canonical labels and existing
+ * string-equal-across-sides behavior is preserved.
+ */
+function computeBnodePairing(
+  leftCanonicalText: string,
+  rightCanonicalText: string,
+): { leftPairMap: Map<string, string>; rightPairMap: Map<string, string> } {
+  const leftShape = computeBnodeShapeMap(leftCanonicalText);
+  const rightShape = computeBnodeShapeMap(rightCanonicalText);
+  const leftByShape = groupBnodeLabelsByShape(leftShape);
+  const rightByShape = groupBnodeLabelsByShape(rightShape);
+  const leftPairMap = new Map<string, string>();
+  const rightPairMap = new Map<string, string>();
+  const allShapes = new Set<string>();
+  for (const k of leftByShape.keys()) allShapes.add(k);
+  for (const k of rightByShape.keys()) allShapes.add(k);
+  for (const shape of allShapes) {
+    const l = leftByShape.get(shape) ?? [];
+    const r = rightByShape.get(shape) ?? [];
+    const n = Math.min(l.length, r.length);
+    for (let i = 0; i < n; i++) {
+      const token = `paired-${shape}-${i}`;
+      leftPairMap.set(l[i], token);
+      rightPairMap.set(r[i], token);
+    }
+  }
+  return { leftPairMap, rightPairMap };
+}
+
+function groupBnodeLabelsByShape(
+  shapeMap: Map<string, string>,
+): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const [label, shape] of shapeMap) {
+    const arr = out.get(shape);
+    if (arr === undefined) out.set(shape, [label]);
+    else arr.push(label);
+  }
+  for (const arr of out.values()) arr.sort();
+  return out;
+}
+
+function bucketByRewrite(
+  statements: readonly string[],
+  pairMap: Map<string, string>,
+): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const s of statements) {
+    const key =
+      pairMap.size > 0 && s.includes('_:')
+        ? shapeNormalizeCanonicalNQuad(s, pairMap)
+        : s;
+    const arr = out.get(key);
+    if (arr === undefined) out.set(key, [s]);
+    else arr.push(s);
+  }
+  return out;
 }
 
 function buildSideRecordMap(

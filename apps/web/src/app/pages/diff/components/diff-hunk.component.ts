@@ -12,6 +12,8 @@ import type { HunkClass } from '../utils/hunk-classifier';
 import {
   collectAnchorSourceRanges,
   collectSnippetRanges,
+  outerEnd,
+  outerStart,
   type SnippetRange,
 } from '../utils/source-snippet-ranges';
 import { curieOrIri, shortenObjectTerm } from '../utils/term-display';
@@ -66,12 +68,13 @@ import { SourceSnippetComponent } from './source-snippet.component';
               class="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-removed"
             >left</div>
             @if (leftRecords().length > 0) {
-              @for (rec of leftRecords(); track rec.focalStart) {
+              @for (rec of leftRecords(); track outerStart(rec)) {
                 <div data-testid="hunk-snippet">
                   <app-source-snippet
                     [file]="rec.file"
-                    [focalStart]="rec.focalStart"
-                    [focalEnd]="rec.focalEnd"
+                    [focalStart]="outerStart(rec)"
+                    [focalEnd]="outerEnd(rec)"
+                    [records]="rec.records"
                     [context]="context()"
                   />
                 </div>
@@ -81,12 +84,13 @@ import { SourceSnippetComponent } from './source-snippet.component';
                 data-testid="defined-here-left"
                 class="font-mono text-[10px] italic text-foreground-faint"
               >defined here</div>
-              @for (rec of leftDefinedHere(); track rec.focalStart) {
+              @for (rec of leftDefinedHere(); track outerStart(rec)) {
                 <div data-testid="hunk-snippet">
                   <app-source-snippet
                     [file]="rec.file"
-                    [focalStart]="rec.focalStart"
-                    [focalEnd]="rec.focalEnd"
+                    [focalStart]="outerStart(rec)"
+                    [focalEnd]="outerEnd(rec)"
+                    [records]="rec.records"
                     [context]="context()"
                   />
                 </div>
@@ -105,12 +109,13 @@ import { SourceSnippetComponent } from './source-snippet.component';
               class="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-added"
             >right</div>
             @if (rightRecords().length > 0) {
-              @for (rec of rightRecords(); track rec.focalStart) {
+              @for (rec of rightRecords(); track outerStart(rec)) {
                 <div data-testid="hunk-snippet">
                   <app-source-snippet
                     [file]="rec.file"
-                    [focalStart]="rec.focalStart"
-                    [focalEnd]="rec.focalEnd"
+                    [focalStart]="outerStart(rec)"
+                    [focalEnd]="outerEnd(rec)"
+                    [records]="rec.records"
                     [context]="context()"
                   />
                 </div>
@@ -120,12 +125,13 @@ import { SourceSnippetComponent } from './source-snippet.component';
                 data-testid="defined-here-right"
                 class="font-mono text-[10px] italic text-foreground-faint"
               >defined here</div>
-              @for (rec of rightDefinedHere(); track rec.focalStart) {
+              @for (rec of rightDefinedHere(); track outerStart(rec)) {
                 <div data-testid="hunk-snippet">
                   <app-source-snippet
                     [file]="rec.file"
-                    [focalStart]="rec.focalStart"
-                    [focalEnd]="rec.focalEnd"
+                    [focalStart]="outerStart(rec)"
+                    [focalEnd]="outerEnd(rec)"
+                    [records]="rec.records"
                     [context]="context()"
                   />
                 </div>
@@ -147,6 +153,9 @@ export class DiffHunkComponent {
   readonly cls = input.required<HunkClass>();
   readonly context = input<number>(3);
   readonly displayContext = input<DisplayContext>({ prefixes: {} });
+
+  readonly outerStart = outerStart;
+  readonly outerEnd = outerEnd;
 
   private readonly prefixes = computed<Record<string, string>>(() => ({
     ...DEFAULT_PREFIXES,

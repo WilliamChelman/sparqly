@@ -11,6 +11,7 @@ ex:Alice a ex:Person ;
     ex:Alex
     ex:Arboricia
   ) ;
+    ex:spouces (ex:Ernest ex:Fay) ;
 .
 
 ex:Carl a ex:Person ; 

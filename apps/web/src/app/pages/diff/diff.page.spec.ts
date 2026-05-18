@@ -44,6 +44,7 @@ class SourceSnippetStub {
   @Input() focalStart = 0;
   @Input() focalEnd = 0;
   @Input() context = 0;
+  @Input() records: ReadonlyArray<unknown> = [];
 }
 
 @Component({

@@ -115,7 +115,7 @@ The per-side magnitudes carried alongside every `diff` result. In **graph diff**
 _Avoid_: "row count", "store size"
 
 **Source-file snippet**:
-A span of snippet context lines covering a **Source record**'s focal line range, read from the source file at HTML diff render time. Window size set by `--snippet-context K` on `diff`. Rendered only by the `html` diff format.
+A span of snippet context lines covering one or more contributing **Source records**' focal line ranges, read from the source file at HTML diff render time. When adjacent records fall within `--snippet-context K`, their windows merge into one snippet box but each record's focal line range is highlighted independently — the unchanged lines in any gap between them render as plain context. Window size set by `--snippet-context K` on `diff`. Rendered only by the `html` diff format.
 _Avoid_: "context window", "hunk preview", bare "context lines"
 
 **Entity hunk**:
