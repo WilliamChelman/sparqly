@@ -1,8 +1,4 @@
-import {
-  HttpClient,
-  HttpErrorResponse,
-  HttpHeaders,
-} from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -14,8 +10,6 @@ import {
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   SavedQueriesService,
-  decodeSparqlResult,
-  detectQueryType,
   type LoadedSavedQuery,
   type SavedQuerySummary,
   type SavedQueryWriteBody,
@@ -34,27 +28,18 @@ import {
   ResultPaneComponent,
   type ResultPaneState,
 } from '../query/components/result/result-pane.component';
-import { parseErrorBody } from '../query/utils/parse-error-body';
-import { acceptForQueryType } from '../query/utils/sparql-defaults';
-
-type DetailState =
-  | { kind: 'empty' }
-  | { kind: 'loading'; slug: string }
-  | {
-      kind: 'loaded';
-      slug: string;
-      loadedBody: string;
-      loadedEtag: string;
-      loadedParameters: ReadonlyArray<ParameterDeclaration>;
-    }
-  | { kind: 'not-found'; slug: string };
-
-function parametersEqual(
-  a: ReadonlyArray<ParameterDeclaration>,
-  b: ReadonlyArray<ParameterDeclaration>,
-): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
+import {
+  QueriesCreateDetailComponent,
+  type CreatePayload,
+} from './queries-create-detail.component';
+import {
+  parametersEqual,
+  toWriteBody,
+  type CreateNavState,
+  type DetailState,
+} from './queries-detail-state';
+import { QueriesStaleDialogComponent } from './queries-stale-dialog.component';
+import { runSparql } from './utils/run-sparql';
 
 @Component({
   selector: 'app-queries-page',
@@ -67,6 +52,8 @@ function parametersEqual(
     ParameterFormComponent,
     YasqeEditorComponent,
     ParameterEditorComponent,
+    QueriesCreateDetailComponent,
+    QueriesStaleDialogComponent,
   ],
   template: `
     <header class="border-b border-border-muted bg-surface px-4 py-3">
@@ -88,6 +75,16 @@ function parametersEqual(
           (input)="onFilter($event)"
           class="rounded border border-border bg-surface px-2 py-1 text-sm text-foreground"
         />
+        <button
+          app-btn
+          type="button"
+          variant="secondary"
+          size="sm"
+          data-testid="queries-new"
+          (click)="onNew()"
+        >
+          + New
+        </button>
         <ul class="flex flex-col gap-1">
           @for (entry of visibleEntries(); track entry.slug) {
             <li>
@@ -136,6 +133,15 @@ function parametersEqual(
               No saved query with slug "{{ notFoundSlug() }}".
             </p>
           }
+          @case ('create') {
+            <app-queries-create-detail
+              [prefillBody]="createPrefillBody()"
+              [prefillParameters]="createPrefillParameters()"
+              [errorSlug]="createErrorSlug()"
+              (save)="onCreate($event)"
+              (cancel)="onCancelCreate()"
+            />
+          }
           @case ('loaded') {
             <div class="flex items-center justify-between">
               <h2
@@ -181,6 +187,16 @@ function parametersEqual(
                   Save
                 </button>
                 <button
+                  app-btn
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  data-testid="queries-save-as"
+                  (click)="onSaveAs()"
+                >
+                  Save as…
+                </button>
+                <button
                   type="button"
                   data-testid="queries-run"
                   [disabled]="!sourceId()"
@@ -190,39 +206,12 @@ function parametersEqual(
                   Run
                 </button>
               </div>
-              @if (staleConflict()) {
-                <div
-                  data-testid="queries-stale-dialog"
-                  role="dialog"
-                  class="rounded border border-warning bg-surface p-3 text-sm"
-                >
-                  <p>
-                    <strong>{{ staleConflict() }}</strong> was changed
-                    elsewhere. Reload to see the current version, or overwrite.
-                  </p>
-                  <div class="mt-2 flex gap-2">
-                    <button
-                      app-btn
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      data-testid="queries-stale-reload"
-                      (click)="onStaleReload()"
-                    >
-                      Reload
-                    </button>
-                    <button
-                      app-btn
-                      type="button"
-                      variant="primary"
-                      size="sm"
-                      data-testid="queries-stale-overwrite"
-                      (click)="onStaleOverwrite()"
-                    >
-                      Overwrite
-                    </button>
-                  </div>
-                </div>
+              @if (staleConflict(); as slug) {
+                <app-queries-stale-dialog
+                  [slug]="slug"
+                  (reload)="onStaleReload()"
+                  (overwrite)="onStaleOverwrite()"
+                />
               }
               @if (hasDraftParameters()) {
                 <app-parameter-form
@@ -253,6 +242,7 @@ export class QueriesPage implements OnInit {
   readonly draftBody = signal<string>('');
   readonly draftParameters = signal<ReadonlyArray<ParameterDeclaration>>([]);
   readonly staleConflict = signal<string | null>(null);
+  readonly createErrorSlug = signal<string | null>(null);
 
   readonly visibleEntries = computed(() => {
     const needle = this.filter().trim().toLowerCase();
@@ -277,6 +267,16 @@ export class QueriesPage implements OnInit {
     () => this.draftParameters().length > 0,
   );
 
+  readonly createPrefillBody = computed(() => {
+    const d = this.detail();
+    return d.kind === 'create' ? d.prefillBody : '';
+  });
+
+  readonly createPrefillParameters = computed(() => {
+    const d = this.detail();
+    return d.kind === 'create' ? d.prefillParameters : [];
+  });
+
   readonly isModifiedFromLoaded = computed(() => {
     const d = this.detail();
     if (d.kind !== 'loaded') return false;
@@ -285,11 +285,27 @@ export class QueriesPage implements OnInit {
   });
 
   ngOnInit(): void {
+    const mode = this.route.snapshot.data['mode'];
     const slug = this.route.snapshot.paramMap.get('slug');
     const source = this.route.snapshot.queryParamMap.get('source');
     if (source) this.sourceId.set(source);
+    if (mode === 'create') this.enterCreate();
     this.refreshLibrary(() => {
-      if (slug !== null) this.loadSlug(slug);
+      if (mode !== 'create' && slug !== null) this.loadSlug(slug);
+    });
+  }
+
+  private enterCreate(): void {
+    const nav = this.router.lastSuccessfulNavigation()?.extras.state as
+      | CreateNavState
+      | undefined;
+    this.selectedSlug.set(null);
+    this.createErrorSlug.set(null);
+    this.detail.set({
+      kind: 'create',
+      origin: nav?.origin ?? null,
+      prefillBody: nav?.prefill?.body ?? '',
+      prefillParameters: nav?.prefill?.parameters ?? [],
     });
   }
 
@@ -316,6 +332,24 @@ export class QueriesPage implements OnInit {
     });
   }
 
+  onNew(): void {
+    void this.router.navigate(['/queries', 'new']);
+  }
+
+  onSaveAs(): void {
+    const d = this.detail();
+    if (d.kind !== 'loaded') return;
+    void this.router.navigate(['/queries', 'new'], {
+      state: {
+        prefill: {
+          body: this.draftBody(),
+          parameters: this.draftParameters(),
+        },
+        origin: d.slug,
+      },
+    });
+  }
+
   onBodyChange(value: string): void {
     this.draftBody.set(value);
   }
@@ -326,6 +360,23 @@ export class QueriesPage implements OnInit {
     this.draftParameters.set(parameters);
   }
 
+  onCancelCreate(): void {
+    const d = this.detail();
+    const origin = d.kind === 'create' ? d.origin : null;
+    void this.router.navigate(origin ? ['/queries', origin] : ['/queries']);
+  }
+
+  onCreate(payload: CreatePayload): void {
+    const writeBody = toWriteBody(payload.body, payload.parameters);
+    this.service.put(payload.slug, writeBody).subscribe((result) => {
+      if (result.kind === 'saved') {
+        void this.router.navigate(['/queries', payload.slug]);
+      } else if (result.kind === 'slug-exists') {
+        this.createErrorSlug.set(payload.slug);
+      }
+    });
+  }
+
   onSave(): void {
     const d = this.detail();
     if (d.kind !== 'loaded') return;
@@ -333,14 +384,7 @@ export class QueriesPage implements OnInit {
     const writeBody = this.buildWriteBody();
     this.service.put(slug, writeBody, d.loadedEtag).subscribe((result) => {
       if (result.kind === 'saved') {
-        this.detail.set({
-          kind: 'loaded',
-          slug,
-          loadedBody: writeBody.body,
-          loadedEtag: result.etag,
-          loadedParameters: writeBody.parameters ?? [],
-        });
-        this.refreshLibrary();
+        this.setLoadedAfterSave(slug, writeBody, result.etag);
       } else if (result.kind === 'stale') {
         this.staleConflict.set(slug);
       }
@@ -363,26 +407,30 @@ export class QueriesPage implements OnInit {
       const writeBody = this.buildWriteBody();
       this.service.put(slug, writeBody, loaded.etag).subscribe((result) => {
         if (result.kind === 'saved') {
-          this.detail.set({
-            kind: 'loaded',
-            slug,
-            loadedBody: writeBody.body,
-            loadedEtag: result.etag,
-            loadedParameters: writeBody.parameters ?? [],
-          });
+          this.setLoadedAfterSave(slug, writeBody, result.etag);
           this.staleConflict.set(null);
-          this.refreshLibrary();
         }
       });
     });
   }
 
+  private setLoadedAfterSave(
+    slug: string,
+    writeBody: SavedQueryWriteBody,
+    etag: string,
+  ): void {
+    this.detail.set({
+      kind: 'loaded',
+      slug,
+      loadedBody: writeBody.body,
+      loadedEtag: etag,
+      loadedParameters: writeBody.parameters ?? [],
+    });
+    this.refreshLibrary();
+  }
+
   private buildWriteBody(): SavedQueryWriteBody {
-    const params = this.draftParameters();
-    return {
-      body: this.draftBody(),
-      ...(params.length > 0 ? { parameters: params } : {}),
-    };
+    return toWriteBody(this.draftBody(), this.draftParameters());
   }
 
   onRun(): void {
@@ -402,34 +450,9 @@ export class QueriesPage implements OnInit {
 
   private executeSparql(sparql: string): void {
     this.resultState.set({ kind: 'loading' });
-    const url = `/api/sparql/${encodeURIComponent(this.sourceId())}`;
-    const accept = acceptForQueryType(detectQueryType(sparql));
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/sparql-query',
-    };
-    if (accept) headers['Accept'] = accept;
-    this.http
-      .post(url, sparql, {
-        headers: new HttpHeaders(headers),
-        observe: 'response',
-        responseType: 'text',
-      })
-      .subscribe({
-        next: (response) => {
-          const contentType =
-            response.headers.get('Content-Type') ?? 'application/octet-stream';
-          const body = response.body ?? '';
-          this.resultState.set({
-            kind: 'result',
-            result: decodeSparqlResult(body, contentType),
-          });
-        },
-        error: (e: HttpErrorResponse) => {
-          const errBody = parseErrorBody(e?.error);
-          const message = errBody ?? e?.message ?? 'request failed';
-          this.resultState.set({ kind: 'error', message });
-        },
-      });
+    runSparql(this.http, this.sourceId(), sparql).subscribe((state) =>
+      this.resultState.set(state),
+    );
   }
 
   private refreshLibrary(after?: () => void): void {
