@@ -7,7 +7,12 @@ import {
 } from '@angular/common/http/testing';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import type { SavedQuerySummary } from '@app/core';
+import { of } from 'rxjs';
+import {
+  ConfigService,
+  type SavedQueriesCapability,
+  type SavedQuerySummary,
+} from '@app/core';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
 import type {
@@ -116,7 +121,16 @@ const LIBRARY: SavedQuerySummary[] = [
   { slug: 'beta', description: 'B', hasParameters: false },
 ];
 
-async function setup(initialUrl = '/queries') {
+async function setup(
+  initialUrl = '/queries',
+  options: { writable?: boolean } = {},
+) {
+  const capability: SavedQueriesCapability = {
+    writable: options.writable ?? true,
+  };
+  const configStub: Pick<ConfigService, 'savedQueries'> = {
+    savedQueries: () => of(capability),
+  };
   TestBed.configureTestingModule({
     providers: [
       provideRouter([
@@ -126,6 +140,7 @@ async function setup(initialUrl = '/queries') {
       ]),
       provideHttpClient(),
       provideHttpClientTesting(),
+      { provide: ConfigService, useValue: configStub },
     ],
   })
     .overrideComponent(QueriesPage, {
@@ -1540,6 +1555,135 @@ describe('QueriesPage', () => {
       ).toBeNull();
       http.verify();
       confirmSpy.mockRestore();
+    });
+  });
+
+  describe('read-only mode (savedQueries.writable: false)', () => {
+    async function setupLoadedReadOnly(
+      slug = 'alpha',
+      entry: {
+        body: string;
+        parameters?: ReadonlyArray<ParameterDeclaration>;
+      } = { body: 'SELECT * WHERE { ?s ?p ?o }' },
+      etag = 'e1',
+    ) {
+      const ctx = await setup(`/queries/${slug}`, { writable: false });
+      flushList(ctx.http);
+      ctx.fixture.detectChanges();
+      await ctx.fixture.whenStable();
+      ctx.fixture.detectChanges();
+      ctx.http
+        .expectOne(`/api/saved-queries/${slug}`)
+        .flush({ slug, ...entry }, { headers: { ETag: `"${etag}"` } });
+      ctx.fixture.detectChanges();
+      await ctx.fixture.whenStable();
+      ctx.fixture.detectChanges();
+      return ctx;
+    }
+
+    it('hides the + New button from the rail when writable=false', async () => {
+      const { fixture, http } = await setup('/queries', { writable: false });
+      flushList(http);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('[data-testid=queries-new]')).toBeNull();
+      http.verify();
+    });
+
+    it('hides Save, Save-as, and Delete buttons on the loaded detail when writable=false', async () => {
+      const { fixture, http } = await setupLoadedReadOnly();
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('[data-testid=queries-save]')).toBeNull();
+      expect(root.querySelector('[data-testid=queries-save-as]')).toBeNull();
+      expect(root.querySelector('[data-testid=queries-delete]')).toBeNull();
+      http.verify();
+    });
+
+    it('hides the app-parameter-editor authoring pane on the loaded detail when writable=false', async () => {
+      const { fixture, http } = await setupLoadedReadOnly('alpha', {
+        body: 'SELECT ?country',
+      });
+      expect(parameterEditorStub(fixture)).toBeNull();
+      http.verify();
+    });
+
+    it('renders the body as a non-editable preformatted view (no app-yasqe-editor) when writable=false', async () => {
+      const { fixture, http } = await setupLoadedReadOnly('alpha', {
+        body: 'ASK { ?s ?p ?o }',
+      });
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('[data-testid=stub-yasqe]')).toBeNull();
+      const ro = root.querySelector('[data-testid=queries-body-readonly]');
+      expect(ro).toBeTruthy();
+      expect(ro!.textContent).toContain('ASK { ?s ?p ?o }');
+      http.verify();
+    });
+
+    it('redirects /queries/new to /queries when writable=false', async () => {
+      const { fixture, http, router } = await setup('/queries/new', {
+        writable: false,
+      });
+      flushList(http);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      // Redirect re-mounts QueriesPage, which re-fetches the list.
+      flushList(http);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(router.url).toBe('/queries');
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('app-queries-create-detail')).toBeNull();
+      http.verify();
+    });
+
+    it('still renders the runtime parameter-form for a templated entry when writable=false', async () => {
+      const { fixture, http } = await setupLoadedReadOnly('beta', {
+        body: 'SELECT ?b WHERE { ?b a ?cls }',
+        parameters: [
+          { name: 'cls', type: 'iri', cardinality: '1..1' },
+        ],
+      });
+      const form = paramFormStub(fixture);
+      expect(form).toBeTruthy();
+      expect(form!.parameters).toEqual([
+        { name: 'cls', type: 'iri', cardinality: '1..1' },
+      ]);
+      http.verify();
+    });
+
+    it('Run still POSTs the loaded body when writable=false', async () => {
+      const { fixture, http } = await setupLoadedReadOnly('alpha', {
+        body: 'SELECT ?s WHERE { ?s ?p ?o }',
+      });
+      pickerStub(fixture).valueChange.emit('@a');
+      fixture.detectChanges();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const run = root.querySelector(
+        '[data-testid=queries-run]',
+      ) as HTMLButtonElement;
+      expect(run).toBeTruthy();
+      expect(run.disabled).toBe(false);
+      run.click();
+      fixture.detectChanges();
+
+      const req = http.expectOne(`/api/sparql/${encodeURIComponent('@a')}`);
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toBe('SELECT ?s WHERE { ?s ?p ?o }');
+      req.flush(
+        JSON.stringify({ head: { vars: ['s'] }, results: { bindings: [] } }),
+        { headers: { 'Content-Type': 'application/sparql-results+json' } },
+      );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(paneStub(fixture).state?.kind).toBe('result');
+      http.verify();
     });
   });
 });
