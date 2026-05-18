@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   inject,
   OnInit,
@@ -10,7 +11,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { ButtonComponent } from '@app/modules/button';
 import { CodeChipComponent } from '@app/modules/code-chip';
 import { ErrorBannerComponent } from '@app/modules/error-banner';
-import { LibraryPickerComponent } from '@app/modules/library-picker';
+import { LibraryComboboxComponent } from '@app/modules/library-combobox';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import {
   ConfigService,
@@ -42,7 +43,7 @@ import { EditorFrameController } from './editor-frame-controller';
     SourcesPickerComponent,
     DiffResultRendererComponent,
     EditorFrameComponent,
-    LibraryPickerComponent,
+    LibraryComboboxComponent,
   ],
   template: `
     @if (sources() === null) {
@@ -70,105 +71,20 @@ import { EditorFrameController } from './editor-frame-controller';
               [value]="leftId()"
               (valueChange)="onLeftIdChange($event)"
             />
+            <app-library-combobox
+              data-testid="library-left"
+              [entries]="savedQueries()"
+              [selectedSlug]="leftPinnedSlug()"
+              (load)="leftSide.load($event)"
+            />
             <app-editor-frame
               data-testid="editor-left"
               name="left"
               [value]="leftSide.query()"
-              [loadedSlug]="leftSide.loadedSlug() ?? undefined"
-              [loadedBody]="leftSide.loadedBody() ?? undefined"
               [loadError]="leftSide.loadError() ?? undefined"
               [parameters]="leftSide.loadedParameters() ?? undefined"
-              [writable]="writable()"
               (valueChange)="leftSide.query.set($event)"
-              (save)="leftSide.save()"
-              (saveAs)="leftSide.openSaveAs()"
-              (delete)="leftSide.delete()"
             />
-            <app-library-picker
-              data-testid="library-left"
-              [entries]="savedQueries()"
-              [writable]="writable()"
-              (load)="leftSide.load($event)"
-              (delete)="onLibraryDelete($event)"
-            />
-            @if (leftSide.staleConflict(); as staleSlug) {
-              <div
-                data-testid="stale-dialog-left"
-                role="dialog"
-                class="rounded border border-warning bg-surface p-3 text-sm"
-              >
-                <p>
-                  <strong>{{ staleSlug }}</strong> was changed elsewhere.
-                  Reload to see the current version, or overwrite.
-                </p>
-                <div class="mt-2 flex gap-2">
-                  <button
-                    app-btn
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    data-testid="stale-reload-left"
-                    (click)="leftSide.staleReload()"
-                  >
-                    Reload
-                  </button>
-                  <button
-                    app-btn
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    data-testid="stale-overwrite-left"
-                    (click)="leftSide.staleOverwrite()"
-                  >
-                    Overwrite
-                  </button>
-                </div>
-              </div>
-            }
-            @if (leftSide.saveAsOpen()) {
-              <div
-                data-testid="save-as-dialog-left"
-                role="dialog"
-                class="flex flex-col gap-2 rounded border border-border-muted bg-surface p-3 text-sm"
-              >
-                <label class="flex flex-col gap-1">
-                  <span class="text-foreground-muted">Save as (slug):</span>
-                  <input
-                    type="text"
-                    data-testid="save-as-slug-left"
-                    [value]="leftSide.saveAsSlug()"
-                    (input)="leftSide.setSaveAsSlug($any($event.target).value)"
-                  />
-                </label>
-                @if (leftSide.saveAsError(); as err) {
-                  <p data-testid="save-as-collision-left" class="text-danger">
-                    {{ err }}
-                  </p>
-                }
-                <div class="flex gap-2">
-                  <button
-                    app-btn
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    data-testid="save-as-submit-left"
-                    (click)="leftSide.submitSaveAs()"
-                  >
-                    Save
-                  </button>
-                  <button
-                    app-btn
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    data-testid="save-as-cancel-left"
-                    (click)="leftSide.closeSaveAs()"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            }
 
             @if (errors()?.left; as left) {
               <p app-error-banner data-testid="error-left">
@@ -182,105 +98,20 @@ import { EditorFrameController } from './editor-frame-controller';
               [value]="rightId()"
               (valueChange)="onRightIdChange($event)"
             />
+            <app-library-combobox
+              data-testid="library-right"
+              [entries]="savedQueries()"
+              [selectedSlug]="rightPinnedSlug()"
+              (load)="rightSide.load($event)"
+            />
             <app-editor-frame
               data-testid="editor-right"
               name="right"
               [value]="rightSide.query()"
-              [loadedSlug]="rightSide.loadedSlug() ?? undefined"
-              [loadedBody]="rightSide.loadedBody() ?? undefined"
               [loadError]="rightSide.loadError() ?? undefined"
               [parameters]="rightSide.loadedParameters() ?? undefined"
-              [writable]="writable()"
               (valueChange)="rightSide.query.set($event)"
-              (save)="rightSide.save()"
-              (saveAs)="rightSide.openSaveAs()"
-              (delete)="rightSide.delete()"
             />
-            <app-library-picker
-              data-testid="library-right"
-              [entries]="savedQueries()"
-              [writable]="writable()"
-              (load)="rightSide.load($event)"
-              (delete)="onLibraryDelete($event)"
-            />
-            @if (rightSide.staleConflict(); as staleSlug) {
-              <div
-                data-testid="stale-dialog-right"
-                role="dialog"
-                class="rounded border border-warning bg-surface p-3 text-sm"
-              >
-                <p>
-                  <strong>{{ staleSlug }}</strong> was changed elsewhere.
-                  Reload to see the current version, or overwrite.
-                </p>
-                <div class="mt-2 flex gap-2">
-                  <button
-                    app-btn
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    data-testid="stale-reload-right"
-                    (click)="rightSide.staleReload()"
-                  >
-                    Reload
-                  </button>
-                  <button
-                    app-btn
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    data-testid="stale-overwrite-right"
-                    (click)="rightSide.staleOverwrite()"
-                  >
-                    Overwrite
-                  </button>
-                </div>
-              </div>
-            }
-            @if (rightSide.saveAsOpen()) {
-              <div
-                data-testid="save-as-dialog-right"
-                role="dialog"
-                class="flex flex-col gap-2 rounded border border-border-muted bg-surface p-3 text-sm"
-              >
-                <label class="flex flex-col gap-1">
-                  <span class="text-foreground-muted">Save as (slug):</span>
-                  <input
-                    type="text"
-                    data-testid="save-as-slug-right"
-                    [value]="rightSide.saveAsSlug()"
-                    (input)="rightSide.setSaveAsSlug($any($event.target).value)"
-                  />
-                </label>
-                @if (rightSide.saveAsError(); as err) {
-                  <p data-testid="save-as-collision-right" class="text-danger">
-                    {{ err }}
-                  </p>
-                }
-                <div class="flex gap-2">
-                  <button
-                    app-btn
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    data-testid="save-as-submit-right"
-                    (click)="rightSide.submitSaveAs()"
-                  >
-                    Save
-                  </button>
-                  <button
-                    app-btn
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    data-testid="save-as-cancel-right"
-                    (click)="rightSide.closeSaveAs()"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            }
 
             @if (errors()?.right; as right) {
               <p app-error-banner data-testid="error-right">
@@ -346,21 +177,16 @@ export class DiffPage implements OnInit {
   readonly sources = signal<SourceListingEntry[] | null>(null);
   readonly leftId = signal<string>('');
   readonly rightId = signal<string>('');
-  readonly leftSide = new EditorFrameController(
-    this.savedQueriesService,
-    () => this.refreshLibrary(),
-  );
-  readonly rightSide = new EditorFrameController(
-    this.savedQueriesService,
-    () => this.refreshLibrary(),
-  );
+  readonly leftSide = new EditorFrameController(this.savedQueriesService);
+  readonly rightSide = new EditorFrameController(this.savedQueriesService);
   readonly running = signal<boolean>(false);
   readonly result = signal<DiffResponse | null>(null);
   readonly errors = signal<DiffErrorResponse['errors'] | null>(null);
   readonly context = signal<number>(3);
   readonly displayContext = signal<DisplayContext>({ prefixes: {} });
   readonly savedQueries = signal<readonly SavedQuerySummary[]>([]);
-  readonly writable = signal<boolean>(true);
+  readonly leftPinnedSlug = computed(() => pinnedSlugOf(this.leftSide));
+  readonly rightPinnedSlug = computed(() => pinnedSlugOf(this.rightSide));
 
   format(error: DiffError): string {
     return formatDiffError(error);
@@ -416,7 +242,6 @@ export class DiffPage implements OnInit {
     this.configService.config().subscribe((config) => {
       this.sources.set(config.sources);
       this.displayContext.set(config.context);
-      this.writable.set(config.savedQueries?.writable ?? true);
       const def = config.sources.find((s) => s.default === true);
       const initial = def?.id ?? config.sources[0]?.id ?? '';
       if (initial !== '') {
@@ -430,18 +255,6 @@ export class DiffPage implements OnInit {
   private refreshLibrary(): void {
     this.savedQueriesService.list().subscribe((entries) => {
       this.savedQueries.set(entries);
-    });
-  }
-
-  onLibraryDelete(slug: string): void {
-    this.savedQueriesService.get(slug).subscribe((loaded) => {
-      this.savedQueriesService.delete(slug, loaded.etag).subscribe((result) => {
-        if (result.kind === 'deleted') {
-          this.leftSide.clearIfMatches(slug);
-          this.rightSide.clearIfMatches(slug);
-          this.refreshLibrary();
-        }
-      });
     });
   }
 
@@ -496,4 +309,10 @@ export class DiffPage implements OnInit {
         },
       });
   }
+}
+
+function pinnedSlugOf(side: EditorFrameController): string | null {
+  const slug = side.loadedSlug();
+  const body = side.loadedBody();
+  return slug !== null && body !== null && side.query() === body ? slug : null;
 }

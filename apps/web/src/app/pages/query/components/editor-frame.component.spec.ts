@@ -29,10 +29,8 @@ function setup(
   initial: {
     value?: string;
     name?: string;
-    loadedSlug?: string;
-    loadedBody?: string;
-    writable?: boolean;
     parameters?: ReadonlyArray<ParameterDeclaration>;
+    loadError?: { kind: 'not-found'; slug: string };
   } = {},
 ) {
   TestBed.configureTestingModule({ imports: [EditorFrameComponent] }).overrideComponent(
@@ -45,14 +43,10 @@ function setup(
   const fixture = TestBed.createComponent(EditorFrameComponent);
   if (initial.value !== undefined) fixture.componentRef.setInput('value', initial.value);
   if (initial.name !== undefined) fixture.componentRef.setInput('name', initial.name);
-  if (initial.loadedSlug !== undefined)
-    fixture.componentRef.setInput('loadedSlug', initial.loadedSlug);
-  if (initial.loadedBody !== undefined)
-    fixture.componentRef.setInput('loadedBody', initial.loadedBody);
-  if (initial.writable !== undefined)
-    fixture.componentRef.setInput('writable', initial.writable);
   if (initial.parameters !== undefined)
     fixture.componentRef.setInput('parameters', initial.parameters);
+  if (initial.loadError !== undefined)
+    fixture.componentRef.setInput('loadError', initial.loadError);
   fixture.detectChanges();
   const root = fixture.nativeElement as HTMLElement;
   const stub = fixture.debugElement.query((n) => n.componentInstance instanceof YasqeEditorStub)
@@ -121,124 +115,22 @@ describe('EditorFrameComponent', () => {
     expect(emitted).toEqual(['ASK { ?s ?p ?o }']);
   });
 
-  it('renders a Save-as button and emits saveAs when clicked', () => {
-    const { fixture, root } = setup();
-    const emitted: number[] = [];
-    fixture.componentInstance.saveAs.subscribe(() => emitted.push(1));
-    const btn = root.querySelector(
-      '[data-testid="editor-save-as"]',
-    ) as HTMLButtonElement;
-    expect(btn).toBeTruthy();
-    btn.click();
-    expect(emitted).toEqual([1]);
-  });
-
-  it('shows no "modified from" badge when nothing is loaded', () => {
-    const { root } = setup({ value: 'SELECT *' });
-    expect(root.querySelector('[data-testid="editor-modified-badge"]')).toBeNull();
-  });
-
-  it('shows the "modified from <slug>" badge when the editor body diverges from the loaded body', () => {
-    const { root } = setup({
-      value: 'SELECT ?s',
-      loadedSlug: 'alpha',
-      loadedBody: 'SELECT *',
-    });
-    const badge = root.querySelector(
-      '[data-testid="editor-modified-badge"]',
-    ) as HTMLElement | null;
-    expect(badge).toBeTruthy();
-    expect(badge?.textContent ?? '').toContain('modified from');
-    expect(badge?.textContent ?? '').toContain('alpha');
-  });
-
-  it('hides the badge when the editor body matches the loaded body', () => {
-    const { root } = setup({
-      value: 'SELECT *',
-      loadedSlug: 'alpha',
-      loadedBody: 'SELECT *',
-    });
-    expect(root.querySelector('[data-testid="editor-modified-badge"]')).toBeNull();
-  });
-
-  it('hides Save and Delete buttons when no slug is loaded', () => {
-    const { root } = setup();
-    expect(root.querySelector('[data-testid="editor-save"]')).toBeNull();
-    expect(root.querySelector('[data-testid="editor-delete"]')).toBeNull();
-  });
-
-  it('hides Save, Save-as and Delete when writable=false, even with a slug loaded', () => {
-    const { root } = setup({
-      value: 'SELECT ?s',
-      loadedSlug: 'alpha',
-      loadedBody: 'SELECT *',
-      writable: false,
-    });
+  it('renders no authoring affordances (Save / Save-as / Delete / parameter-editor / modified badge) — run surface per ADR-0038', () => {
+    const { root } = setup({ value: 'SELECT ?s', parameters: [] });
     expect(root.querySelector('[data-testid="editor-save"]')).toBeNull();
     expect(root.querySelector('[data-testid="editor-save-as"]')).toBeNull();
     expect(root.querySelector('[data-testid="editor-delete"]')).toBeNull();
+    expect(root.querySelector('[data-testid="editor-modified-badge"]')).toBeNull();
+    expect(root.querySelector('app-parameter-editor')).toBeNull();
   });
 
-  it('still shows the modified-from badge when writable=false (read-only is not invisible)', () => {
-    const { root } = setup({
-      value: 'SELECT ?s',
-      loadedSlug: 'alpha',
-      loadedBody: 'SELECT *',
-      writable: false,
-    });
-    expect(root.querySelector('[data-testid="editor-modified-badge"]')).not.toBeNull();
-  });
-
-  it('shows Save and Delete when a slug is loaded; each emits when clicked', () => {
-    const { fixture, root } = setup({
-      value: 'SELECT ?s',
-      loadedSlug: 'alpha',
-      loadedBody: 'SELECT *',
-    });
-    const saved: number[] = [];
-    const deleted: number[] = [];
-    fixture.componentInstance.save.subscribe(() => saved.push(1));
-    fixture.componentInstance.delete.subscribe(() => deleted.push(1));
-    (
-      root.querySelector('[data-testid="editor-save"]') as HTMLButtonElement
-    ).click();
-    (
-      root.querySelector('[data-testid="editor-delete"]') as HTMLButtonElement
-    ).click();
-    expect(saved).toEqual([1]);
-    expect(deleted).toEqual([1]);
-  });
-
-  describe('parameter editor (author pane)', () => {
-    it('shows the editor pane when writable=true (even with no declared parameters yet)', () => {
-      const { root } = setup({ writable: true });
-      expect(root.querySelector('app-parameter-editor')).not.toBeNull();
-    });
-
-    it('does not show the editor pane when writable=false', () => {
-      const { root } = setup({ writable: false });
-      expect(root.querySelector('app-parameter-editor')).toBeNull();
-    });
-
-    it('emits parametersDraftChange when the embedded editor emits parametersChange', () => {
-      const { fixture, root } = setup({
-        writable: true,
-        parameters: [
-          { name: 'country', type: 'string', cardinality: '1..1' },
-        ],
-      });
-      const emitted: ReadonlyArray<ParameterDeclaration>[] = [];
-      fixture.componentInstance.parametersDraftChange.subscribe(
-        (p: ReadonlyArray<ParameterDeclaration>) => emitted.push(p),
-      );
-      const name = root.querySelector<HTMLInputElement>(
-        '[data-testid="param-row-country"] [data-testid="param-name"]',
-      )!;
-      name.value = 'place';
-      name.dispatchEvent(new Event('input'));
-      fixture.detectChanges();
-      expect(emitted[0]?.map((p) => p.name)).toEqual(['place']);
-    });
+  it('renders a saved-query-not-found banner when loadError is set', () => {
+    const { root } = setup({ loadError: { kind: 'not-found', slug: 'ghost' } });
+    const banner = root.querySelector(
+      '[data-testid="editor-not-found"]',
+    ) as HTMLElement | null;
+    expect(banner).not.toBeNull();
+    expect(banner?.textContent ?? '').toContain('ghost');
   });
 
   describe('parameter form integration', () => {

@@ -29,7 +29,7 @@ import {
 } from 'common';
 import { ButtonComponent } from '@app/modules/button';
 import { CodeChipComponent } from '@app/modules/code-chip';
-import { LibraryPickerComponent } from '@app/modules/library-picker';
+import { LibraryComboboxComponent } from '@app/modules/library-combobox';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import { EditorFrameComponent } from './components/editor-frame.component';
 import {
@@ -52,7 +52,7 @@ import {
     CodeChipComponent,
     SourcesPickerComponent,
     EditorFrameComponent,
-    LibraryPickerComponent,
+    LibraryComboboxComponent,
     ResultPaneComponent,
   ],
   template: `
@@ -74,111 +74,22 @@ import {
           [value]="sourceId()"
           (valueChange)="onSourceChange($event)"
         />
+        <app-library-combobox
+          [entries]="savedQueries()"
+          [selectedSlug]="pinnedSlug()"
+          (load)="onLoad($event)"
+        />
         <app-editor-frame
           #frame
           data-testid="editor"
           name="query"
           [value]="query()"
-          [loadedSlug]="loadedSlug() ?? undefined"
-          [loadedBody]="loadedBody() ?? undefined"
           [loadError]="loadError() ?? undefined"
-          [writable]="writable()"
           [parameters]="loadedParameters() ?? undefined"
           [initialBindings]="initialBindings() ?? undefined"
           (valueChange)="query.set($event)"
-          (save)="onSave()"
-          (saveAs)="onSaveAs()"
-          (delete)="onDelete()"
           (submitBindings)="onSubmitBindings($event)"
-          (parametersDraftChange)="onParametersDraftChange($event)"
         />
-        <app-library-picker
-          [entries]="savedQueries()"
-          [writable]="writable()"
-          (load)="onLoad($event)"
-          (delete)="onLibraryDelete($event)"
-        />
-        @if (saveAsOpen()) {
-          <div
-            data-testid="save-as-dialog"
-            role="dialog"
-            class="flex flex-col gap-2 rounded border border-border-muted bg-surface p-3 text-sm"
-          >
-            <label class="flex flex-col gap-1">
-              <span class="text-foreground-muted">Save as (slug):</span>
-              <input
-                type="text"
-                data-testid="save-as-slug"
-                [value]="saveAsSlug()"
-                (input)="onSaveAsSlugInput($event)"
-              />
-            </label>
-            @if (saveAsError()) {
-              <p
-                data-testid="save-as-collision"
-                class="text-danger"
-              >
-                {{ saveAsError() }}
-              </p>
-            }
-            <div class="flex gap-2">
-              <button
-                app-btn
-                type="button"
-                variant="primary"
-                size="sm"
-                data-testid="save-as-submit"
-                (click)="onSaveAsSubmit()"
-              >
-                Save
-              </button>
-              <button
-                app-btn
-                type="button"
-                variant="ghost"
-                size="sm"
-                data-testid="save-as-cancel"
-                (click)="onSaveAsCancel()"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        }
-        @if (staleConflict()) {
-          <div
-            data-testid="stale-dialog"
-            role="dialog"
-            class="rounded border border-warning bg-surface p-3 text-sm"
-          >
-            <p>
-              <strong>{{ staleConflict() }}</strong> was changed elsewhere.
-              Reload to see the current version, or overwrite.
-            </p>
-            <div class="mt-2 flex gap-2">
-              <button
-                app-btn
-                type="button"
-                variant="secondary"
-                size="sm"
-                data-testid="stale-reload"
-                (click)="onStaleReload()"
-              >
-                Reload
-              </button>
-              <button
-                app-btn
-                type="button"
-                variant="primary"
-                size="sm"
-                data-testid="stale-overwrite"
-                (click)="onStaleOverwrite()"
-              >
-                Overwrite
-              </button>
-            </div>
-          </div>
-        }
         <div>
           <button
             app-btn
@@ -214,17 +125,16 @@ export class QueryPage implements OnInit {
   readonly savedQueries = signal<readonly SavedQuerySummary[]>([]);
   readonly loadedSlug = signal<string | null>(null);
   readonly loadedBody = signal<string | null>(null);
-  readonly loadedEtag = signal<string | null>(null);
   readonly loadedParameters = signal<ReadonlyArray<ParameterDeclaration> | null>(
     null,
   );
-  readonly staleConflict = signal<string | null>(null);
-  readonly saveAsOpen = signal<boolean>(false);
-  readonly saveAsSlug = signal<string>('');
-  readonly saveAsError = signal<string | null>(null);
-  readonly writable = signal<boolean>(true);
   readonly loadError = signal<{ kind: 'not-found'; slug: string } | null>(null);
   readonly initialBindings = signal<ParameterBindings | null>(null);
+  readonly pinnedSlug = computed(() => {
+    const slug = this.loadedSlug();
+    const body = this.loadedBody();
+    return slug !== null && body !== null && this.query() === body ? slug : null;
+  });
   private readonly bindings = signal<ParameterBindings | null>(null);
   private readonly knownBindKeys = signal<ReadonlySet<string>>(new Set());
   private readonly hasUrlQuery: boolean;
@@ -249,23 +159,21 @@ export class QueryPage implements OnInit {
     }
 
     effect(() => {
-      const slug = this.loadedSlug();
-      const loadedBody = this.loadedBody();
+      const pinned = this.pinnedSlug();
       const body = this.query();
-      const pinnedToSlug = slug !== null && body === loadedBody;
       const bindings = this.bindings();
       const known = this.knownBindKeys();
       const bindParams: Record<string, string | string[] | null> = {};
       for (const key of known) bindParams[`bind.${key}`] = null;
-      if (pinnedToSlug && bindings !== null) {
+      if (pinned !== null && bindings !== null) {
         Object.assign(bindParams, encodeBindings(bindings));
       }
       this.router.navigate([], {
         relativeTo: this.route,
         queryParams: {
           source: this.sourceId() || null,
-          query: pinnedToSlug ? null : body || null,
-          savedQuery: pinnedToSlug ? slug : null,
+          query: pinned !== null ? null : body || null,
+          savedQuery: pinned,
           ...bindParams,
         },
         queryParamsHandling: 'merge',
@@ -278,7 +186,6 @@ export class QueryPage implements OnInit {
     this.configService.config().subscribe((config) => {
       this.sources.set(config.sources);
       this.context.set(config.context);
-      this.writable.set(config.savedQueries?.writable ?? true);
       if (this.sourceId() === '') {
         const def = config.sources.find((s) => s.default === true);
         const initial = def?.id ?? config.sources[0]?.id ?? '';
@@ -307,7 +214,6 @@ export class QueryPage implements OnInit {
         this.query.set(loaded.entry.body);
         this.loadedSlug.set(loaded.entry.slug);
         this.loadedBody.set(loaded.entry.body);
-        this.loadedEtag.set(loaded.etag);
         this.loadedParameters.set(loaded.entry.parameters ?? null);
       },
       error: (err: HttpErrorResponse) => {
@@ -315,130 +221,6 @@ export class QueryPage implements OnInit {
           this.loadError.set({ kind: 'not-found', slug });
         }
       },
-    });
-  }
-
-  onSave(): void {
-    const slug = this.loadedSlug();
-    const etag = this.loadedEtag();
-    if (slug === null || etag === null) return;
-    this.savedQueriesService
-      .put(slug, this.buildWriteBody(), etag)
-      .subscribe((result) => {
-        if (result.kind === 'saved') {
-          this.loadedBody.set(this.query());
-          this.loadedEtag.set(result.etag);
-          this.refreshLibrary();
-        } else if (result.kind === 'stale') {
-          this.staleConflict.set(slug);
-        }
-      });
-  }
-
-  onParametersDraftChange(parameters: ReadonlyArray<ParameterDeclaration>): void {
-    this.loadedParameters.set(parameters.length === 0 ? null : parameters);
-  }
-
-  private buildWriteBody() {
-    const params = this.loadedParameters();
-    return {
-      body: this.query(),
-      ...(params && params.length > 0 ? { parameters: params } : {}),
-    };
-  }
-
-  onStaleReload(): void {
-    const slug = this.staleConflict();
-    if (slug === null) return;
-    this.savedQueriesService.get(slug).subscribe((loaded) => {
-      this.query.set(loaded.entry.body);
-      this.loadedSlug.set(loaded.entry.slug);
-      this.loadedBody.set(loaded.entry.body);
-      this.loadedEtag.set(loaded.etag);
-      this.staleConflict.set(null);
-    });
-  }
-
-  onStaleOverwrite(): void {
-    const slug = this.staleConflict();
-    if (slug === null) return;
-    this.savedQueriesService.get(slug).subscribe((loaded) => {
-      this.savedQueriesService
-        .put(slug, this.buildWriteBody(), loaded.etag)
-        .subscribe((result) => {
-          if (result.kind === 'saved') {
-            this.loadedSlug.set(slug);
-            this.loadedBody.set(this.query());
-            this.loadedEtag.set(result.etag);
-            this.staleConflict.set(null);
-            this.refreshLibrary();
-          }
-        });
-    });
-  }
-
-  onSaveAs(): void {
-    this.saveAsSlug.set('');
-    this.saveAsError.set(null);
-    this.saveAsOpen.set(true);
-  }
-
-  onSaveAsSlugInput(event: Event): void {
-    this.saveAsSlug.set((event.target as HTMLInputElement).value);
-    this.saveAsError.set(null);
-  }
-
-  onSaveAsSubmit(): void {
-    const slug = this.saveAsSlug().trim();
-    if (slug === '') return;
-    this.savedQueriesService
-      .put(slug, this.buildWriteBody())
-      .subscribe((result) => {
-        if (result.kind === 'saved') {
-          this.loadedSlug.set(slug);
-          this.loadedBody.set(this.query());
-          this.loadedEtag.set(result.etag);
-          this.saveAsOpen.set(false);
-          this.refreshLibrary();
-        } else if (result.kind === 'slug-exists') {
-          this.saveAsError.set(`A query with slug "${slug}" already exists.`);
-        }
-      });
-  }
-
-  onSaveAsCancel(): void {
-    this.saveAsOpen.set(false);
-    this.saveAsError.set(null);
-  }
-
-  onDelete(): void {
-    const slug = this.loadedSlug();
-    const etag = this.loadedEtag();
-    if (slug === null || etag === null) return;
-    this.savedQueriesService.delete(slug, etag).subscribe((result) => {
-      if (result.kind === 'deleted') {
-        this.loadedSlug.set(null);
-        this.loadedBody.set(null);
-        this.loadedEtag.set(null);
-        this.refreshLibrary();
-      }
-    });
-  }
-
-  onLibraryDelete(slug: string): void {
-    this.savedQueriesService.get(slug).subscribe((loaded) => {
-      this.savedQueriesService
-        .delete(slug, loaded.etag)
-        .subscribe((result) => {
-          if (result.kind === 'deleted') {
-            if (this.loadedSlug() === slug) {
-              this.loadedSlug.set(null);
-              this.loadedBody.set(null);
-              this.loadedEtag.set(null);
-            }
-            this.refreshLibrary();
-          }
-        });
     });
   }
 
