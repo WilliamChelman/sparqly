@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
+  ConfigService,
   SavedQueriesService,
   type LoadedSavedQuery,
   type SavedQuerySummary,
@@ -78,16 +79,18 @@ import { runSparql } from './utils/run-sparql';
           (input)="onFilter($event)"
           class="rounded border border-border bg-surface px-2 py-1 text-sm text-foreground"
         />
-        <button
-          app-btn
-          type="button"
-          variant="secondary"
-          size="sm"
-          data-testid="queries-new"
-          (click)="onNew()"
-        >
-          + New
-        </button>
+        @if (writable()) {
+          <button
+            app-btn
+            type="button"
+            variant="secondary"
+            size="sm"
+            data-testid="queries-new"
+            (click)="onNew()"
+          >
+            + New
+          </button>
+        }
         <ul class="flex flex-col gap-1">
           @for (entry of visibleEntries(); track entry.slug) {
             <li>
@@ -162,18 +165,27 @@ import { runSparql } from './utils/run-sparql';
                 </span>
               }
             </div>
-            <app-yasqe-editor
-              class="mt-2 block"
-              [value]="draftBody()"
-              (valueChange)="onBodyChange($event)"
-            />
-            <div class="mt-3">
-              <app-parameter-editor
-                [parameters]="draftParameters()"
-                [body]="draftBody()"
-                (parametersChange)="onParametersDraftChange($event)"
+            @if (writable()) {
+              <app-yasqe-editor
+                class="mt-2 block"
+                [value]="draftBody()"
+                (valueChange)="onBodyChange($event)"
               />
-            </div>
+            } @else {
+              <pre
+                data-testid="queries-body-readonly"
+                class="mt-2 block overflow-auto rounded border border-border-muted bg-surface p-2 font-mono text-sm text-foreground"
+              >{{ draftBody() }}</pre>
+            }
+            @if (writable()) {
+              <div class="mt-3">
+                <app-parameter-editor
+                  [parameters]="draftParameters()"
+                  [body]="draftBody()"
+                  (parametersChange)="onParametersDraftChange($event)"
+                />
+              </div>
+            }
             <div class="mt-3 flex flex-col gap-3">
               <app-sources-picker
                 label="source"
@@ -181,34 +193,36 @@ import { runSparql } from './utils/run-sparql';
                 (valueChange)="onSourceChange($event)"
               />
               <div class="flex gap-2">
-                <button
-                  type="button"
-                  data-testid="queries-save"
-                  (click)="onSave()"
-                  class="inline-flex items-center rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground shadow-sm"
-                >
-                  Save
-                </button>
-                <button
-                  app-btn
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  data-testid="queries-save-as"
-                  (click)="onSaveAs()"
-                >
-                  Save as…
-                </button>
-                <button
-                  app-btn
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  data-testid="queries-delete"
-                  (click)="onDelete()"
-                >
-                  Delete
-                </button>
+                @if (writable()) {
+                  <button
+                    type="button"
+                    data-testid="queries-save"
+                    (click)="onSave()"
+                    class="inline-flex items-center rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground shadow-sm"
+                  >
+                    Save
+                  </button>
+                  <button
+                    app-btn
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    data-testid="queries-save-as"
+                    (click)="onSaveAs()"
+                  >
+                    Save as…
+                  </button>
+                  <button
+                    app-btn
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    data-testid="queries-delete"
+                    (click)="onDelete()"
+                  >
+                    Delete
+                  </button>
+                }
                 <button
                   type="button"
                   data-testid="queries-run"
@@ -249,6 +263,7 @@ import { runSparql } from './utils/run-sparql';
 })
 export class QueriesPage implements OnInit {
   private readonly service = inject(SavedQueriesService);
+  private readonly configService = inject(ConfigService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly http = inject(HttpClient);
@@ -270,6 +285,7 @@ export class QueriesPage implements OnInit {
     applyLoaded: (loaded) => this.applyLoaded(loaded),
   });
   readonly createErrorSlug = signal<string | null>(null);
+  readonly writable = signal<boolean>(true);
 
   readonly visibleEntries = computed(() => {
     const needle = this.filter().trim().toLowerCase();
@@ -316,6 +332,12 @@ export class QueriesPage implements OnInit {
     const slug = this.route.snapshot.paramMap.get('slug');
     const source = this.route.snapshot.queryParamMap.get('source');
     if (source) this.sourceId.set(source);
+    this.configService.savedQueries().subscribe((c) => {
+      this.writable.set(c.writable);
+      if (mode === 'create' && !c.writable) {
+        void this.router.navigate(['/queries'], { replaceUrl: true });
+      }
+    });
     if (mode === 'create') this.enterCreate();
     this.refreshLibrary(() => {
       if (mode !== 'create' && slug !== null) this.loadSlug(slug);

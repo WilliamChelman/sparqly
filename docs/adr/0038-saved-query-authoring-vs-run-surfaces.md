@@ -1,0 +1,37 @@
+---
+status: accepted
+---
+
+# Split saved-query authoring onto a dedicated `/queries` page; run pages stay read-only against the sidecar
+
+## Context
+
+ADR-0036 introduced the **Saved-query sidecar** as the first webapp-writable surface and bolted its CRUD (Save / Save-as / Delete) plus **parameter declaration** authoring directly onto the existing editor surfaces — the `query` page (`/`) and both sides of the `diff` page (`/diff`). Shipping it that way got the feature out the door but left the run-time surfaces visibly cluttered: the parameter-authoring pane (`app-parameter-editor`) renders unconditionally whenever `savedQueries.writable` is `true`, even with nothing loaded, and `diff` doubles every authoring affordance (one Save / Save-as / Delete / library-picker / save-as-dialog / stale-conflict-dialog per side). The clunk is structural, not stylistic — the same `EditorFrameComponent` is being asked to be a console for one user and a code editor for another.
+
+The trade we explicitly considered and rejected: keeping a partial Save path on `/` ("Load is fine, just hide authoring") to preserve "tweak-and-save" without leaving the page. We rejected it because every partial-Save story re-introduces the modified-from-loaded badge and the stale-conflict dialog, both of which only justify their UI weight when Save-as and parameter-declaration editing are co-located — and once you co-locate all three you're back to today's clunky run surface.
+
+## Decision
+
+- **`/queries` is the single Saved-query authoring surface.** Master/detail: left rail = filterable slug list + `+ New`; right pane = slug header + source picker + body editor + parameter-declarations authoring pane + parameter-form (runtime bindings) + Save / Save-as / Delete + Run + result. URL is `/queries` (no selection), `/queries/:slug` (selection), `/queries/new` (create / save-as flow with an inline slug input). Save in create mode stays disabled until the slug is valid and not already present; slug collision still surfaces as the 409 from ADR-0036's server.
+- **`/` and `/diff` are Saved-query run surfaces.** They keep Load (a compact filterable combobox per editor), the body editor, and the runtime **parameter form** when a templated entry is loaded. They lose Save, Save-as, Delete, the parameter-authoring pane, the "modified from `<slug>`" badge, and the stale-conflict dialog. Editing a loaded saved-query body transitions the URL from `?savedQuery=<slug>` to `?query=<sparql>` and is purely transient; to persist, the user opens `/queries/:slug`.
+- **Saved queries remain not source-bound.** The source picker on `/queries` is page-level URL state (`?source=@foo`), identical in semantics to `/`. No `source:` field is added to the **Saved-query sidecar** schema, no migration, no change to the structure-aware writer.
+- **Read-only mode (`savedQueries.writable: false`) lives entirely on `/queries`.** When `false`, `+ New` / Save / Save-as / Delete / parameter-authoring are hidden; list + detail view + Run still work, so `/queries` remains a useful library browser. `/` and `/diff` are unaffected because they never wrote.
+- **`EditorFrameComponent` splits along the authoring/run axis** — either as a `mode: 'run' | 'authoring'` switch or as two sibling components. The run shape is small (header + body + parameter-form + not-found banner); the authoring shape carries the full chrome.
+
+## Considered options
+
+- **Keep authoring on `/` and `/diff`, just hide the parameter-authoring pane until a templated query is loaded.** Rejected. It scrapes off the most visible piece of clunk but doesn't address the load-bearing problem: `/diff` still doubles Save / Save-as / Delete / library-picker / save-as-dialog / stale-conflict-dialog, and `/` still mixes "console" and "code editor" responsibilities into one component.
+- **Hybrid: `/` keeps Save but loses Save-as and parameter-authoring.** Rejected as the worst of both worlds. Save without Save-as is asymmetric and leaves users without a discoverable rename/clone path; keeping Save means keeping the stale-conflict dialog and the modified badge, which only earn their weight in an authoring context.
+- **`/queries` as pure authoring (no source picker, no Run).** Rejected at Q1 in the design interview. A "code editor" surface that can't execute its own queries forces users to bounce to `/` to validate every edit; the duplicate-Run cost is small compared to the workflow cost.
+- **Bind a saved query to a source via a new `source:` field.** Rejected. Saved queries are deliberately source-agnostic (see CONTEXT.md: a query durably bound to a source is a **View**, not a saved query). Adding `source:` blurs the **View** / **Saved query** axis we already articulated, requires a sidecar schema migration, and the round-trip-through-the-Document-API writer would have to learn a new field — all to encode something a URL parameter already conveys.
+- **Drop the library from `/` and `/diff` entirely; saved queries are only reachable via `/queries`.** Rejected. The "pull a saved query into a scratch query" workflow is the headline value of having a library at all on a console surface.
+
+## Consequences
+
+- **The `EditorFrameComponent` refactor is load-bearing for this ADR.** The run shape and the authoring shape both consume the same `YasqeEditorComponent`, but their surrounding chrome diverges. A single component with a `mode` switch is fine to start; a split into `RunEditorFrame` + `AuthoringEditorFrame` is fine too. What's *not* fine is leaving authoring-only Inputs (`writable`, parameter-authoring slot, save/save-as/delete Outputs) hanging on the run surface as dead props.
+- **`LibraryPickerComponent` is replaced (on run surfaces) by a compact filterable combobox.** The list-with-filter survives on `/queries` as the master-rail list; the run-surface combobox is a new component (or the same one with a `compact` mode).
+- **URL contract additions:** `/queries/:slug` and `/queries/new`. The existing `?savedQuery=`, `?bind.*`, `?query=`, `?source=` parameters keep their meanings; the inline-`?query=` ↔ `?savedQuery=` mutual-exclusion in CONTEXT.md still holds, but the run-surface UI no longer renders a "modified from `<slug>`" affordance during the transition.
+- **`EditorFrameController` (the per-side state machine on `/diff`) collapses.** Save / Save-as / Delete / stale-conflict / modified-from-loaded state machines all move to the authoring surface; the run-surface controller is just `query` + `loadedParameters` + `loadError`.
+- **No backend / sidecar / API change.** `GET / PUT / DELETE /api/saved-queries[/:id]`, ETag derivation, the `If-Match` / `412` contract, the structure-aware writer, and the `savedQueries.writable` capability all stay exactly as ADR-0036 specifies. This ADR is a UI restructure, not a data-model one.
+- **CONTEXT.md additions:** **Saved-query authoring surface**, **Saved-query run surface**. The **Saved query** definition is amended to drop its enumeration of editor surfaces and to call out source-non-binding explicitly. The relationships section is updated so the URL-transition clause no longer claims a "modified from `<slug>`" affordance on run surfaces.
+- **Migration cost is small but not zero.** Users with bookmarks like `/?savedQuery=foo` continue to work (Load still functions on `/`); users who relied on inline Save on `/` will need to learn the `/queries/:slug` flow. No data migration. No URL aliases needed.
