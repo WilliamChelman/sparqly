@@ -9,5 +9,6 @@ export const appRoutes: Route[] = [
   { path: 'diff', component: DiffPage },
   { path: 'describe', component: DescribePage },
   { path: 'queries', component: QueriesPage },
+  { path: 'queries/new', component: QueriesPage, data: { mode: 'create' } },
   { path: 'queries/:slug', component: QueriesPage },
 ];

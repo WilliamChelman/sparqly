@@ -20,6 +20,7 @@ import {
   ResultPaneComponent,
   type ResultPaneState,
 } from '../query/components/result/result-pane.component';
+import { QueriesCreateDetailComponent } from './queries-create-detail.component';
 import { QueriesPage } from './queries.page';
 
 @Component({
@@ -120,6 +121,7 @@ async function setup(initialUrl = '/queries') {
     providers: [
       provideRouter([
         { path: 'queries', component: QueriesPage },
+        { path: 'queries/new', component: QueriesPage, data: { mode: 'create' } },
         { path: 'queries/:slug', component: QueriesPage },
       ]),
       provideHttpClient(),
@@ -144,6 +146,14 @@ async function setup(initialUrl = '/queries') {
           YasqeEditorStub,
           ParameterEditorStub,
         ],
+      },
+    })
+    .overrideComponent(QueriesCreateDetailComponent, {
+      remove: {
+        imports: [YasqeEditorComponent, ParameterEditorComponent],
+      },
+      add: {
+        imports: [YasqeEditorStub, ParameterEditorStub],
       },
     })
     .compileComponents();
@@ -964,6 +974,360 @@ describe('QueriesPage', () => {
       expect(
         root.querySelector('[data-testid=queries-stale-dialog]'),
       ).toBeNull();
+      http.verify();
+    });
+  });
+
+  describe('authoring surface — /queries/new create flow', () => {
+    it('the rail "+ New" button navigates to /queries/new', async () => {
+      const { fixture, http, router } = await setup('/queries');
+      flushList(http);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const newBtn = root.querySelector(
+        '[data-testid=queries-new]',
+      ) as HTMLButtonElement | null;
+      expect(newBtn).toBeTruthy();
+      newBtn!.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(router.url).toBe('/queries/new');
+      // Re-mount of QueriesPage refreshes the rail; no GET for an entry is
+      // issued because /queries/new is the create surface.
+      flushList(http);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      http.expectNone('/api/saved-queries/new');
+      http.verify();
+    });
+
+    it('renders an empty body editor and an inline slug input on /queries/new without GETting any entry', async () => {
+      const { fixture, http } = await setup('/queries/new');
+      flushList(http);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const slugInput = root.querySelector(
+        '[data-testid=queries-create-slug]',
+      ) as HTMLInputElement | null;
+      expect(slugInput).toBeTruthy();
+      expect(slugInput!.value).toBe('');
+      expect(yasqeStub(fixture).value).toBe('');
+      // Parameter editor is part of the authoring chrome.
+      expect(parameterEditorStub(fixture)).toBeTruthy();
+      // No GET for an entry on the create surface.
+      http.expectNone('/api/saved-queries/new');
+      http.verify();
+    });
+
+    it('disables Save until the slug matches the ADR-0036 regex', async () => {
+      const { fixture, http } = await setup('/queries/new');
+      flushList(http);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const save = root.querySelector(
+        '[data-testid=queries-save]',
+      ) as HTMLButtonElement;
+      expect(save).toBeTruthy();
+      // Empty slug → disabled
+      expect(save.disabled).toBe(true);
+
+      const slug = root.querySelector(
+        '[data-testid=queries-create-slug]',
+      ) as HTMLInputElement;
+
+      // Uppercase → disabled
+      slug.value = 'BadSlug';
+      slug.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      expect(save.disabled).toBe(true);
+
+      // Leading dash → disabled
+      slug.value = '-leads-with-dash';
+      slug.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      expect(save.disabled).toBe(true);
+
+      // Valid → enabled
+      slug.value = 'my-new-query';
+      slug.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      expect(save.disabled).toBe(false);
+
+      http.verify();
+    });
+
+    it('Save on /queries/new PUTs without If-Match, navigates to /queries/:slug, and refreshes the rail', async () => {
+      const { fixture, http, router } = await setup('/queries/new');
+      flushList(http);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const slug = root.querySelector(
+        '[data-testid=queries-create-slug]',
+      ) as HTMLInputElement;
+      slug.value = 'fresh-slug';
+      slug.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+
+      yasqeStub(fixture).valueChange.emit('SELECT * WHERE { ?s ?p ?o }');
+      fixture.detectChanges();
+
+      (root.querySelector('[data-testid=queries-save]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+
+      const put = http.expectOne('/api/saved-queries/fresh-slug');
+      expect(put.request.method).toBe('PUT');
+      expect(put.request.headers.has('If-Match')).toBe(false);
+      expect(put.request.body).toEqual({
+        body: 'SELECT * WHERE { ?s ?p ?o }',
+      });
+      put.flush(
+        { slug: 'fresh-slug', body: 'SELECT * WHERE { ?s ?p ?o }' },
+        { status: 201, statusText: 'Created', headers: { ETag: '"e-fresh"' } },
+      );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(router.url).toBe('/queries/fresh-slug');
+
+      // Re-mount on the new slug refreshes the list and loads the entry.
+      flushList(http, [
+        ...LIBRARY,
+        { slug: 'fresh-slug', hasParameters: false },
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      http
+        .expectOne('/api/saved-queries/fresh-slug')
+        .flush(
+          { slug: 'fresh-slug', body: 'SELECT * WHERE { ?s ?p ?o }' },
+          { headers: { ETag: '"e-fresh"' } },
+        );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      http.verify();
+    });
+
+    it('on 409, renders an inline slug-exists error next to the slug input; editing the slug clears the error and a retry succeeds', async () => {
+      const { fixture, http, router } = await setup('/queries/new');
+      flushList(http);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const slug = root.querySelector(
+        '[data-testid=queries-create-slug]',
+      ) as HTMLInputElement;
+      slug.value = 'beta';
+      slug.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      yasqeStub(fixture).valueChange.emit('SELECT ?x');
+      fixture.detectChanges();
+
+      (root.querySelector('[data-testid=queries-save]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+
+      http.expectOne('/api/saved-queries/beta').flush(
+        { message: 'slug exists' },
+        { status: 409, statusText: 'Conflict' },
+      );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const err = root.querySelector(
+        '[data-testid=queries-create-slug-error]',
+      );
+      expect(err).toBeTruthy();
+      expect(err?.textContent?.toLowerCase()).toContain('beta');
+
+      // Still on /queries/new — no navigation.
+      expect(router.url).toBe('/queries/new');
+
+      // Edit slug → error clears, Save again succeeds.
+      slug.value = 'beta-2';
+      slug.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(
+        root.querySelector('[data-testid=queries-create-slug-error]'),
+      ).toBeNull();
+
+      const saveBtn = root.querySelector(
+        '[data-testid=queries-save]',
+      ) as HTMLButtonElement;
+      expect(saveBtn.disabled).toBe(false);
+      saveBtn.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      const retry = http.expectOne('/api/saved-queries/beta-2');
+      expect(retry.request.method).toBe('PUT');
+      retry.flush(
+        { slug: 'beta-2', body: 'SELECT ?x' },
+        { status: 201, statusText: 'Created', headers: { ETag: '"e-b2"' } },
+      );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(router.url).toBe('/queries/beta-2');
+
+      flushList(http, [...LIBRARY, { slug: 'beta-2', hasParameters: false }]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      http
+        .expectOne('/api/saved-queries/beta-2')
+        .flush(
+          { slug: 'beta-2', body: 'SELECT ?x' },
+          { headers: { ETag: '"e-b2"' } },
+        );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      http.verify();
+    });
+
+    it('Save-as on a loaded entry navigates to /queries/new with body and parameter declarations pre-filled', async () => {
+      const { fixture, http, router } = await setup('/queries/beta?source=@a');
+      flushList(http);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      http.expectOne('/api/saved-queries/beta').flush(
+        {
+          slug: 'beta',
+          body: 'SELECT ?b WHERE { ?b a ?cls }',
+          parameters: [
+            { name: 'cls', type: 'iri', cardinality: '1..1' },
+          ] satisfies ParameterDeclaration[],
+        },
+        { headers: { ETag: '"e-beta"' } },
+      );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const saveAs = root.querySelector(
+        '[data-testid=queries-save-as]',
+      ) as HTMLButtonElement | null;
+      expect(saveAs).toBeTruthy();
+      saveAs!.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(router.url).toBe('/queries/new');
+
+      // Re-mount on /queries/new refreshes the rail; create-mode pre-fills.
+      flushList(http);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      // The new editor and parameter editor are pre-populated from the source entry.
+      expect(yasqeStub(fixture).value).toBe('SELECT ?b WHERE { ?b a ?cls }');
+      expect(parameterEditorStub(fixture)!.parameters).toEqual([
+        { name: 'cls', type: 'iri', cardinality: '1..1' },
+      ]);
+      // Slug input is empty — the user picks a new one.
+      const newRoot = fixture.nativeElement as HTMLElement;
+      const slug = newRoot.querySelector(
+        '[data-testid=queries-create-slug]',
+      ) as HTMLInputElement;
+      expect(slug.value).toBe('');
+
+      http.verify();
+    });
+
+    it('Cancel on /queries/new returns to /queries when opened from the rail', async () => {
+      const { fixture, http, router } = await setup('/queries/new');
+      flushList(http);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const root = fixture.nativeElement as HTMLElement;
+      const cancel = root.querySelector(
+        '[data-testid=queries-cancel]',
+      ) as HTMLButtonElement;
+      expect(cancel).toBeTruthy();
+      cancel.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(router.url).toBe('/queries');
+      // Drain the re-mount's list fetch.
+      flushList(http);
+      http.verify();
+    });
+
+    it('Cancel on a Save-as flow returns to the origin /queries/:slug', async () => {
+      const { fixture, http, router } = await setup('/queries/beta');
+      flushList(http);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      http.expectOne('/api/saved-queries/beta').flush(
+        { slug: 'beta', body: 'SELECT ?b' },
+        { headers: { ETag: '"e-beta"' } },
+      );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const root = fixture.nativeElement as HTMLElement;
+      (root.querySelector('[data-testid=queries-save-as]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      flushList(http);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(router.url).toBe('/queries/new');
+
+      const newRoot = fixture.nativeElement as HTMLElement;
+      (newRoot.querySelector('[data-testid=queries-cancel]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(router.url).toBe('/queries/beta');
+      // Re-mount on /queries/beta refreshes list + GETs entry.
+      flushList(http);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      http
+        .expectOne('/api/saved-queries/beta')
+        .flush(
+          { slug: 'beta', body: 'SELECT ?b' },
+          { headers: { ETag: '"e-beta"' } },
+        );
+      fixture.detectChanges();
+      await fixture.whenStable();
       http.verify();
     });
   });
