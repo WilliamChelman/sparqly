@@ -1331,4 +1331,215 @@ describe('QueriesPage', () => {
       http.verify();
     });
   });
+
+  describe('authoring surface — Delete', () => {
+    async function setupLoaded(
+      slug = 'alpha',
+      body = 'SELECT ?orig',
+      etag = 'e1',
+    ) {
+      const ctx = await setup(`/queries/${slug}`);
+      flushList(ctx.http);
+      ctx.fixture.detectChanges();
+      await ctx.fixture.whenStable();
+      ctx.fixture.detectChanges();
+      ctx.http
+        .expectOne(`/api/saved-queries/${slug}`)
+        .flush({ slug, body }, { headers: { ETag: `"${etag}"` } });
+      ctx.fixture.detectChanges();
+      await ctx.fixture.whenStable();
+      ctx.fixture.detectChanges();
+      return ctx;
+    }
+
+    it('renders a Delete button when an entry is loaded', async () => {
+      const { fixture, http } = await setupLoaded();
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('[data-testid=queries-delete]')).toBeTruthy();
+      http.verify();
+    });
+
+    it('does not issue a DELETE when the confirmation prompt is cancelled', async () => {
+      const { fixture, http } = await setupLoaded('alpha', 'SELECT ?o', 'e1');
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      const root = fixture.nativeElement as HTMLElement;
+      (root.querySelector('[data-testid=queries-delete]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+      expect(confirmSpy).toHaveBeenCalled();
+      http.expectNone('/api/saved-queries/alpha');
+      http.verify();
+      confirmSpy.mockRestore();
+    });
+
+    it('on confirm, DELETEs /api/saved-queries/:slug with If-Match of the stored ETag, then navigates to /queries and refreshes the list', async () => {
+      const { fixture, http, router } = await setupLoaded(
+        'alpha',
+        'SELECT ?o',
+        'e1',
+      );
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const root = fixture.nativeElement as HTMLElement;
+      (root.querySelector('[data-testid=queries-delete]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+
+      const del = http.expectOne('/api/saved-queries/alpha');
+      expect(del.request.method).toBe('DELETE');
+      expect(del.request.headers.get('If-Match')).toBe('"e1"');
+      del.flush(null, { status: 204, statusText: 'No Content' });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(router.url).toBe('/queries');
+      flushList(http, [
+        { slug: 'beta', description: 'B', hasParameters: false },
+        { slug: 'zebra', hasParameters: false },
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const slugs = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll(
+          '[data-testid=queries-entry]',
+        ),
+      ).map((b) => b.getAttribute('data-slug'));
+      expect(slugs).toEqual(['beta', 'zebra']);
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid=queries-detail-empty]',
+        ),
+      ).toBeTruthy();
+      http.verify();
+      confirmSpy.mockRestore();
+    });
+
+    it('on 412 from DELETE, renders a stale-delete dialog with Reload and Confirm-delete buttons', async () => {
+      const { fixture, http } = await setupLoaded('alpha', 'SELECT ?o', 'e1');
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const root = fixture.nativeElement as HTMLElement;
+      (root.querySelector('[data-testid=queries-delete]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+      http
+        .expectOne('/api/saved-queries/alpha')
+        .flush(
+          { message: 'stale' },
+          { status: 412, statusText: 'Precondition Failed' },
+        );
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const dialog = root.querySelector(
+        '[data-testid=queries-stale-delete-dialog]',
+      );
+      expect(dialog).toBeTruthy();
+      expect(
+        dialog?.querySelector('[data-testid=queries-stale-delete-reload]'),
+      ).toBeTruthy();
+      expect(
+        dialog?.querySelector('[data-testid=queries-stale-delete-confirm]'),
+      ).toBeTruthy();
+      http.verify();
+      confirmSpy.mockRestore();
+    });
+
+    it('Reload in the stale-delete dialog re-fetches the entry, replaces local state, closes the dialog, and does not DELETE', async () => {
+      const { fixture, http } = await setupLoaded('alpha', 'SELECT ?o', 'e1');
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const root = fixture.nativeElement as HTMLElement;
+      (root.querySelector('[data-testid=queries-delete]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+      http
+        .expectOne('/api/saved-queries/alpha')
+        .flush({ message: 'stale' }, { status: 412, statusText: '' });
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      (
+        root.querySelector(
+          '[data-testid=queries-stale-delete-reload]',
+        ) as HTMLButtonElement
+      ).click();
+      fixture.detectChanges();
+      const reGet = http.expectOne('/api/saved-queries/alpha');
+      expect(reGet.request.method).toBe('GET');
+      reGet.flush(
+        { slug: 'alpha', body: 'SELECT ?serverNew' },
+        { headers: { ETag: '"e2"' } },
+      );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(yasqeStub(fixture).value).toBe('SELECT ?serverNew');
+      expect(
+        root.querySelector('[data-testid=queries-stale-delete-dialog]'),
+      ).toBeNull();
+      http.verify();
+      confirmSpy.mockRestore();
+    });
+
+    it('Confirm-delete in the stale dialog re-fetches the new ETag, re-issues DELETE with that ETag, then navigates to /queries and refreshes the list', async () => {
+      const { fixture, http, router } = await setupLoaded(
+        'alpha',
+        'SELECT ?o',
+        'e1',
+      );
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const root = fixture.nativeElement as HTMLElement;
+      (root.querySelector('[data-testid=queries-delete]') as HTMLButtonElement)
+        .click();
+      fixture.detectChanges();
+      http
+        .expectOne('/api/saved-queries/alpha')
+        .flush({ message: 'stale' }, { status: 412, statusText: '' });
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      (
+        root.querySelector(
+          '[data-testid=queries-stale-delete-confirm]',
+        ) as HTMLButtonElement
+      ).click();
+      fixture.detectChanges();
+
+      // Re-fetch to learn the fresh ETag…
+      http
+        .expectOne('/api/saved-queries/alpha')
+        .flush(
+          { slug: 'alpha', body: 'SELECT ?serverNew' },
+          { headers: { ETag: '"e2"' } },
+        );
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      // …then re-issue DELETE with the new ETag.
+      const reDel = http.expectOne('/api/saved-queries/alpha');
+      expect(reDel.request.method).toBe('DELETE');
+      expect(reDel.request.headers.get('If-Match')).toBe('"e2"');
+      reDel.flush(null, { status: 204, statusText: 'No Content' });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(router.url).toBe('/queries');
+      flushList(http, [
+        { slug: 'beta', description: 'B', hasParameters: false },
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid=queries-stale-delete-dialog]',
+        ),
+      ).toBeNull();
+      http.verify();
+      confirmSpy.mockRestore();
+    });
+  });
 });
