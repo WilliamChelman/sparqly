@@ -13,6 +13,7 @@ ex:Alice a ex:Person ;
            "alice@example.net",
            "alice@example.ch" ;
   ex:friends (ex:Bob ex:Carl) ;
+  ex:spouces (ex:Ernest ex:Fay) ;
   ex:family (
     ex:Alexander 
     ex:Alex

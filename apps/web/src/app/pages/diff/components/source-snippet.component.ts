@@ -12,6 +12,7 @@ import {
   type SnippetPayload,
   type SnippetRangeOutOfBoundsError,
 } from '../services/snippet.service';
+import type { SourceRecord } from '../services/diff.service';
 
 @Component({
   selector: 'app-source-snippet',
@@ -104,6 +105,13 @@ export class SourceSnippetComponent implements OnInit {
   readonly focalStart = input.required<number>();
   readonly focalEnd = input.required<number>();
   readonly context = input.required<number>();
+  /**
+   * Contributing **Source records** for this side of the snippet. The
+   * renderer highlights only lines covered by some record's
+   * `[line, endLine ?? line]` span — gap lines between disjoint records
+   * stay plain context even when they live inside `[focalStart, focalEnd]`.
+   */
+  readonly records = input.required<readonly SourceRecord[]>();
 
   readonly snippet = signal<SnippetPayload | null>(null);
   readonly fileRead = signal<SnippetFileReadError | null>(null);
@@ -137,7 +145,11 @@ export class SourceSnippetComponent implements OnInit {
 
   isFocal(s: SnippetPayload, index: number): boolean {
     const lineNo = s.startLine + index;
-    return lineNo >= s.focalStart && lineNo <= s.focalEnd;
+    for (const r of this.records()) {
+      if (r.line === undefined) continue;
+      if (lineNo >= r.line && lineNo <= (r.endLine ?? r.line)) return true;
+    }
+    return false;
   }
 
   focalLabel(s: SnippetPayload): string {
