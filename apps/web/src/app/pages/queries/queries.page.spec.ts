@@ -448,6 +448,14 @@ describe('QueriesPage', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
+    http.expectOne('/api/saved-queries/beta').flush(
+      { slug: 'beta', body: 'ASK {}' },
+      { headers: { ETag: '"e-beta"' } },
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
     const tree = router.parseUrl(router.url);
     expect(tree.queryParamMap.get('source')).toBe('@a');
     http.verify();

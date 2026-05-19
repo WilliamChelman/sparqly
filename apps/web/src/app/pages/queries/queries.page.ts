@@ -3,11 +3,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   inject,
   OnInit,
   signal,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
+import { combineLatest } from 'rxjs';
 import {
   ConfigService,
   SavedQueriesService,
@@ -267,6 +270,7 @@ export class QueriesPage implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly http = inject(HttpClient);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly entries = signal<readonly SavedQuerySummary[]>([]);
   readonly filter = signal<string>('');
@@ -328,20 +332,38 @@ export class QueriesPage implements OnInit {
   });
 
   ngOnInit(): void {
-    const mode = this.route.snapshot.data['mode'];
-    const slug = this.route.snapshot.paramMap.get('slug');
     const source = this.route.snapshot.queryParamMap.get('source');
     if (source) this.sourceId.set(source);
     this.configService.savedQueries().subscribe((c) => {
       this.writable.set(c.writable);
-      if (mode === 'create' && !c.writable) {
+      if (this.route.snapshot.data['mode'] === 'create' && !c.writable) {
         void this.router.navigate(['/queries'], { replaceUrl: true });
       }
     });
-    if (mode === 'create') this.enterCreate();
-    this.refreshLibrary(() => {
-      if (mode !== 'create' && slug !== null) this.loadSlug(slug);
-    });
+    let firstEmission = true;
+    combineLatest([this.route.paramMap, this.route.data])
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(([params, data]) => {
+        const isFirst = firstEmission;
+        firstEmission = false;
+        const mode = data['mode'];
+        const slug = params.get('slug');
+        if (mode === 'create') {
+          this.enterCreate();
+          if (isFirst) this.refreshLibrary();
+          return;
+        }
+        const applySlug = () => {
+          if (slug !== null) {
+            this.loadSlug(slug);
+          } else {
+            this.selectedSlug.set(null);
+            this.detail.set({ kind: 'empty' });
+          }
+        };
+        if (isFirst) this.refreshLibrary(applySlug);
+        else applySlug();
+      });
   }
 
   private enterCreate(): void {
@@ -518,13 +540,18 @@ export class QueriesPage implements OnInit {
   }
 
   private loadSlug(slug: string): void {
+    if (this.selectedSlug() !== slug) {
+      this.resultState.set({ kind: 'empty' });
+    }
     this.selectedSlug.set(slug);
     const known = this.entries().some((e) => e.slug === slug);
     if (!known) {
       this.detail.set({ kind: 'not-found', slug });
       return;
     }
-    this.detail.set({ kind: 'loading', slug });
+    if (this.detail().kind !== 'loaded') {
+      this.detail.set({ kind: 'loading', slug });
+    }
     this.service.get(slug).subscribe({
       next: (loaded) => {
         if (this.selectedSlug() !== slug) return;
