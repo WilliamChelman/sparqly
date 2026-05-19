@@ -69,16 +69,18 @@ import {
       <main class="p-4 text-sm text-foreground-faint">loading…</main>
     } @else {
       <main class="flex flex-col gap-3 p-4">
-        <app-sources-picker
-          label="source"
-          [value]="sourceId()"
-          (valueChange)="onSourceChange($event)"
-        />
-        <app-library-combobox
-          [entries]="savedQueries()"
-          [selectedSlug]="pinnedSlug()"
-          (load)="onLoad($event)"
-        />
+        <div class="flex flex-wrap items-center gap-2">
+          <app-sources-picker
+            label="source"
+            [value]="sourceId()"
+            (valueChange)="onSourceChange($event)"
+          />
+          <app-library-combobox
+            [entries]="savedQueries()"
+            [selectedSlug]="pinnedSlug()"
+            (load)="onLoad($event)"
+          />
+        </div>
         <app-editor-frame
           #frame
           data-testid="editor"
