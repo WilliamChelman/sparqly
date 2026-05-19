@@ -1,10 +1,33 @@
+import { execFile } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { parseSourceSpecs, type ParsedSource } from 'core';
+import {
+  defaultGlobWalker,
+  expandSplitGlobs,
+  parseSourceSpecs,
+  type ParsedSource,
+} from 'core';
 import { EngineMap } from '../bootstrap';
 import { DiffService } from './diff.service';
+
+const execFileAsync = promisify(execFile);
+
+async function git(repo: string, args: ReadonlyArray<string>): Promise<string> {
+  const { stdout } = await execFileAsync('git', ['-C', repo, ...args], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: 'test',
+      GIT_AUTHOR_EMAIL: 'test@example.com',
+      GIT_COMMITTER_NAME: 'test',
+      GIT_COMMITTER_EMAIL: 'test@example.com',
+    },
+  });
+  return stdout.trim();
+}
 
 async function buildSvc(
   registry: ReadonlyArray<ParsedSource>,
@@ -315,5 +338,120 @@ describe('DiffService — error packaging', () => {
     if (out.kind !== 'error') return;
     expect(out.errors.left?.kind).toBe('anonymous-view-execution');
     expect(out.errors.right?.kind).toBe('anonymous-view-execution');
+  });
+});
+
+describe('DiffService — pinned `@id:ref` address (ADR-0029)', () => {
+  let repo: string;
+
+  beforeEach(async () => {
+    repo = await mkdtemp(join(tmpdir(), 'sparqly-diff-pin-'));
+    const foaf = join(repo, 'foaf.ttl');
+    await writeFile(
+      foaf,
+      '@prefix ex: <http://example.org/> .\nex:keep ex:p ex:old .\n',
+    );
+    await git(repo, ['init', '-q', '-b', 'main']);
+    await git(repo, ['add', '.']);
+    await git(repo, ['commit', '-q', '-m', 'first']);
+    await git(repo, ['tag', '-a', 'v1.2.0', '-m', 'release v1.2.0']);
+    await writeFile(
+      foaf,
+      '@prefix ex: <http://example.org/> .\nex:keep ex:p ex:new .\n',
+    );
+    await git(repo, ['add', '.']);
+    await git(repo, ['commit', '-q', '-m', 'second']);
+    await git(repo, ['tag', '-a', 'v1.3.0', '-m', 'release v1.3.0']);
+  }, 30_000);
+
+  afterEach(async () => {
+    if (repo) await rm(repo, { recursive: true, force: true });
+  });
+
+  it('returns unknown-ref echoing the full `@id:ref` input when the bare id is not in the registry', async () => {
+    const registry = parseSourceSpecs([
+      { id: 'foaf', glob: join(repo, 'foaf.ttl') },
+    ]);
+    const engineMap = await EngineMap.create(registry);
+    const svc = new DiffService(engineMap, registry);
+
+    const out = await svc.runDiff({
+      left: '@nope:v1.2.0',
+      right: '@foaf',
+    });
+
+    expect(out.kind).toBe('error');
+    if (out.kind !== 'error') return;
+    expect(out.errors.left).toMatchObject({
+      kind: 'target',
+      side: 'left',
+      target: {
+        kind: 'unknown-ref',
+        ref: '@nope:v1.2.0',
+        availableIds: ['foaf'],
+      },
+    });
+    expect(out.errors.right).toBeUndefined();
+  });
+
+  it('honors a `:ref` pin on a split-glob file child (kind=file) by loading the pinned variant via re-synthesis as a one-file glob', async () => {
+    const parentGlob = join(repo, '*.ttl');
+    const expanded = await expandSplitGlobs(
+      parseSourceSpecs([
+        { id: 'docs', glob: parentGlob, splitByFile: true },
+      ]),
+      { walkGlob: defaultGlobWalker },
+    );
+    const engineMap = await EngineMap.create(expanded);
+    const svc = new DiffService(engineMap, expanded);
+
+    // Working tree currently holds v1.3.0 content. Left = working (no pin),
+    // right = pinned at the v1.2.0 tag — should surface the change between
+    // the two as a grouped diff against the same anchor.
+    const out = await svc.runDiff({
+      left: '@docs/foaf.ttl',
+      right: '@docs/foaf.ttl:v1.2.0',
+    });
+
+    expect(out.kind).toBe('grouped');
+    if (out.kind !== 'grouped') return;
+    expect(out.hunked.hunks).toHaveLength(1);
+    const hunk = out.hunked.hunks[0];
+    expect(hunk.anchor).toBe('http://example.org/keep');
+    const objects = hunk.lines.map((l) => ({ side: l.side, object: l.object }));
+    expect(objects).toEqual(
+      expect.arrayContaining([
+        { side: '-', object: '<http://example.org/new>' },
+        { side: '+', object: '<http://example.org/old>' },
+      ]),
+    );
+  });
+
+  it('loads each side at its `:ref` pin and surfaces the per-tag difference as a grouped diff', async () => {
+    const registry = parseSourceSpecs([
+      { id: 'foaf', glob: join(repo, 'foaf.ttl') },
+    ]);
+    const engineMap = await EngineMap.create(registry);
+    const svc = new DiffService(engineMap, registry);
+
+    const out = await svc.runDiff({
+      left: '@foaf:v1.2.0',
+      right: '@foaf:v1.3.0',
+    });
+
+    expect(out.kind).toBe('grouped');
+    if (out.kind !== 'grouped') return;
+    expect(out.hunked.totals).toEqual({ left: 1, right: 1 });
+    expect(out.hunked.hunks).toHaveLength(1);
+    const hunk = out.hunked.hunks[0];
+    expect(hunk.anchor).toBe('http://example.org/keep');
+    expect(hunk.state).toBe('changed');
+    const objects = hunk.lines.map((l) => ({ side: l.side, object: l.object }));
+    expect(objects).toEqual(
+      expect.arrayContaining([
+        { side: '-', object: '<http://example.org/old>' },
+        { side: '+', object: '<http://example.org/new>' },
+      ]),
+    );
   });
 });

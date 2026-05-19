@@ -4,12 +4,15 @@ import {
   diffStores,
   extractAnnotationPredicates,
   groupRdfDiffByEntity,
+  parseSourceAddress,
   resolveAnonymousSelectBindings,
   resolveAnonymousView,
+  resolveSourceResult,
   tabularDiff,
   type DiffError,
   type HunkedRdfDiff,
   type ParsedSource,
+  type QuerySources,
   type SelectShapeReport,
   type SourceError,
   type SourceRecordSidecar,
@@ -96,6 +99,7 @@ export class DiffService {
 
     return runGraph({
       engineMap: this.engineMap,
+      resolutionRegistry: this.resolutionRegistry,
       leftTarget: leftSel.value,
       rightTarget: rightSel.value,
       leftQuery: req.leftQuery,
@@ -104,10 +108,10 @@ export class DiffService {
   }
 
   private selectFromRegistry(
-    ref: string,
+    raw: string,
     side: 'left' | 'right',
   ): Result<ParsedSource, DiffError> {
-    const id = ref.startsWith('@') ? ref.slice(1) : ref;
+    const { id, pin } = parsePinnedInput(raw);
     const found = this.engineMap.getSource(id);
     if (!found || found.kind === 'reference') {
       return err({
@@ -115,13 +119,101 @@ export class DiffService {
         side,
         target: {
           kind: 'unknown-ref',
-          ref: ref.startsWith('@') ? ref : `@${ref}`,
+          ref: raw.startsWith('@') ? raw : `@${raw}`,
           availableIds: this.engineMap.allIds(),
         },
       });
     }
-    return ok(found);
+    return ok(pin === undefined ? found : applyAddressPin(found, pin));
   }
+}
+
+/**
+ * Split a wire-format source ref into a bare registry id plus an optional
+ * address-form `:ref` pin (ADR-0029). Tolerant of inputs without the leading
+ * `@` (the controller historically accepted both).
+ */
+function parsePinnedInput(raw: string): { id: string; pin?: string } {
+  if (!raw.startsWith('@')) return { id: raw };
+  const parsed = parseSourceAddress(raw);
+  if (parsed.isErr()) return { id: raw.slice(1) };
+  return { id: parsed.value.id, pin: parsed.value.ref };
+}
+
+/**
+ * Apply an address-form `:ref` pin to the resolved target. Globs receive
+ * `gitRef`; views receive `fromGitRef` so the resolver walks the `from:` chain
+ * down to the leaf glob (ADR-0029). Split-glob file children (`kind: 'file'`)
+ * are re-synthesized as a one-file pinned glob so `pinAndLoadGlob` resolves
+ * SHA + repoRoot at load time — the engine map only warmed the working-tree
+ * variant. Other target kinds pass through unchanged.
+ */
+function applyAddressPin(entry: ParsedSource, ref: string): ParsedSource {
+  if (entry.kind === 'glob') return { ...entry, gitRef: ref };
+  if (entry.kind === 'view') return { ...entry, fromGitRef: ref };
+  if (entry.kind === 'file') {
+    return {
+      kind: 'glob',
+      id: entry.id,
+      glob: entry.path,
+      gitRef: ref,
+      transforms: entry.transforms,
+    };
+  }
+  return entry;
+}
+
+/**
+ * The diff endpoint's engine map is warmed against each declared source's
+ * `gitRef` (or working tree) at bootstrap. When a request supplies an
+ * address-form `:ref` pin that overrides what was warmed, the cached engine
+ * holds the wrong content — so the side resolves directly via
+ * `resolveSourceResult`, paying a fresh load but honoring the per-call pin
+ * (ADR-0029). Sides without an override stay on the warm cache.
+ */
+function loadSideSources(
+  engineMap: EngineMap,
+  resolutionRegistry: ReadonlyArray<ParsedSource>,
+  target: ParsedSource,
+): ResultAsyncT<LoadedLikeSources, SourceError> {
+  if (target.id !== undefined && !hasRuntimePinOverride(engineMap, target)) {
+    return engineMap.ensureSources(target.id);
+  }
+  return resolveSourceResult(target, { registry: resolutionRegistry }).map(
+    toLoadedLikeSources,
+  );
+}
+
+type LoadedLikeSources =
+  | { mode: 'pass-through'; endpoint: { endpoint: string } }
+  | { mode: 'materialized'; store: Store; sourceRecords?: SourceRecordSidecar };
+
+function toLoadedLikeSources(sources: QuerySources): LoadedLikeSources {
+  if (sources.mode === 'pass-through') return sources;
+  return {
+    mode: 'materialized',
+    store: sources.store,
+    sourceRecords: sources.sourceRecords,
+  };
+}
+
+function hasRuntimePinOverride(
+  engineMap: EngineMap,
+  target: ParsedSource,
+): boolean {
+  if (target.id === undefined) return false;
+  const declared = engineMap.getSource(target.id);
+  if (!declared) return false;
+  // applyAddressPin re-synthesizes a `kind: 'file'` declared child as a
+  // `kind: 'glob'` target — that kind shift is itself the override signal.
+  if (target.kind !== declared.kind) return true;
+  if (target.kind === 'glob' && declared.kind === 'glob') {
+    return target.gitRef !== declared.gitRef;
+  }
+  if (target.kind === 'view' && declared.kind === 'view') {
+    return target.fromGitRef !== declared.fromGitRef;
+  }
+  return false;
 }
 
 function packageSideErrors(
@@ -169,6 +261,12 @@ function detectTabularDispatch(
 
 interface RunGraphArgs {
   engineMap: EngineMap;
+  /**
+   * Walked when a target is (or descends to) a view, and when a runtime
+   * `@id:ref` pin causes a side to load via `resolveSourceResult` outside the
+   * warm engine map cache.
+   */
+  resolutionRegistry: ReadonlyArray<ParsedSource>;
   leftTarget: ParsedSource;
   rightTarget: ParsedSource;
   leftQuery: string | undefined;
@@ -183,8 +281,8 @@ interface GraphSideOk {
 
 async function runGraph(args: RunGraphArgs): Promise<DiffResponse> {
   const [left, right] = await Promise.all([
-    resolveGraphSide(args.engineMap, args.leftTarget, args.leftQuery, 'left'),
-    resolveGraphSide(args.engineMap, args.rightTarget, args.rightQuery, 'right'),
+    resolveGraphSide(args.engineMap, args.resolutionRegistry, args.leftTarget, args.leftQuery, 'left'),
+    resolveGraphSide(args.engineMap, args.resolutionRegistry, args.rightTarget, args.rightQuery, 'right'),
   ]);
   if (left.isErr() || right.isErr()) {
     const errors: DiffErrorResponse['errors'] = {};
@@ -217,6 +315,7 @@ async function runGraph(args: RunGraphArgs): Promise<DiffResponse> {
 
 function resolveGraphSide(
   engineMap: EngineMap,
+  resolutionRegistry: ReadonlyArray<ParsedSource>,
   target: ParsedSource,
   inlineQuery: string | undefined,
   side: 'left' | 'right',
@@ -250,8 +349,11 @@ function resolveGraphSide(
       });
     }
 
-    const sources = yield* engineMap
-      .ensureSources(target.id)
+    const sources = yield* loadSideSources(
+      engineMap,
+      resolutionRegistry,
+      target,
+    )
       .mapErr((source: SourceError): DiffError => ({ kind: 'source', side, source }))
       .safeUnwrap();
     if (sources.mode === 'pass-through') {
