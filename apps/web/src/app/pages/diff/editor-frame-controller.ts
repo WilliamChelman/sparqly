@@ -20,6 +20,30 @@ export class EditorFrameController {
 
   constructor(private readonly svc: Pick<SavedQueriesService, 'get'>) {}
 
+  /**
+   * Atomically swap this controller's per-side state with another's so callers
+   * can flip /diff's left and right panes without re-fetching saved bodies.
+   */
+  static swap(a: EditorFrameController, b: EditorFrameController): void {
+    const snapshot = {
+      query: a.query(),
+      loadedSlug: a.loadedSlug(),
+      loadedBody: a.loadedBody(),
+      loadedParameters: a.loadedParameters(),
+      loadError: a.loadError(),
+    };
+    a.query.set(b.query());
+    a.loadedSlug.set(b.loadedSlug());
+    a.loadedBody.set(b.loadedBody());
+    a.loadedParameters.set(b.loadedParameters());
+    a.loadError.set(b.loadError());
+    b.query.set(snapshot.query);
+    b.loadedSlug.set(snapshot.loadedSlug);
+    b.loadedBody.set(snapshot.loadedBody);
+    b.loadedParameters.set(snapshot.loadedParameters);
+    b.loadError.set(snapshot.loadError);
+  }
+
   load(slug: string): void {
     this.svc.get(slug).subscribe({
       next: (loaded) => {

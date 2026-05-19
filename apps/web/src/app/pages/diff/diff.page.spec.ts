@@ -700,6 +700,71 @@ describe('DiffPage', () => {
     ).toContain('right boom');
   });
 
+  it('swap button flips picked sources, editor bodies, and pinned saved-query slugs across the two sides', async () => {
+    const { fixture } = await setup(TWO, '/diff', {
+      list: [
+        { slug: 'l', hasParameters: false },
+        { slug: 'r', hasParameters: false },
+      ],
+      entries: {
+        l: { entry: { slug: 'l', body: 'LEFT BODY' }, etag: 'el' },
+        r: { entry: { slug: 'r', body: 'RIGHT BODY' }, etag: 'er' },
+      },
+    });
+    const root = fixture.nativeElement as HTMLElement;
+    const { left: leftPicker, right: rightPicker } = pickerStubs(fixture);
+    leftPicker.valueChange.emit('a');
+    rightPicker.valueChange.emit('b');
+    libraryStubs(fixture).left.load.emit('l');
+    libraryStubs(fixture).right.load.emit('r');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const swap = root.querySelector(
+      'button[data-testid=swap-sides]',
+    ) as HTMLButtonElement | null;
+    expect(swap).toBeTruthy();
+    swap!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(pickerStubs(fixture).left.value).toBe('b');
+    expect(pickerStubs(fixture).right.value).toBe('a');
+    const { left: leftFrame, right: rightFrame } = frameStubs(fixture);
+    expect(leftFrame.value).toBe('RIGHT BODY');
+    expect(rightFrame.value).toBe('LEFT BODY');
+    expect(libraryStubs(fixture).left.selectedSlug).toBe('r');
+    expect(libraryStubs(fixture).right.selectedSlug).toBe('l');
+  });
+
+  it('swap clears the prior diff result so the user re-runs against the new pairing', async () => {
+    const { fixture, diffStub } = await setup(TWO);
+    const root = fixture.nativeElement as HTMLElement;
+    const { left, right } = pickerStubs(fixture);
+    left.valueChange.emit('a');
+    right.valueChange.emit('b');
+    fixture.detectChanges();
+
+    (root.querySelector('button[data-testid=run-diff]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    diffStub.calls[0].responses.next({
+      kind: 'grouped',
+      hunked: { hunks: [], totals: { left: 0, right: 0 } },
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(root.querySelector('[data-testid=diff-totals]')).toBeTruthy();
+
+    (
+      root.querySelector('button[data-testid=swap-sides]') as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+
+    expect(root.querySelector('[data-testid=diff-totals]')).toBeFalsy();
+  });
+
   it('seeds the picked sources and queries from URL query params', async () => {
     const initialUrl =
       '/diff?left=a&right=b' +
