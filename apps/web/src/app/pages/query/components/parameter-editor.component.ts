@@ -6,6 +6,9 @@ import {
   input,
   Output,
 } from '@angular/core';
+import { ButtonComponent } from '@app/modules/button';
+import { EyebrowComponent } from '@app/modules/eyebrow';
+import { InputComponent, SelectComponent } from '@app/modules/input';
 import {
   lint,
   PARAMETER_CARDINALITIES,
@@ -20,113 +23,196 @@ import {
   selector: 'app-parameter-editor',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ButtonComponent, EyebrowComponent, InputComponent, SelectComponent],
   template: `
-    <div class="flex flex-col gap-2">
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <h3 app-eyebrow>Parameters</h3>
+        @if (parameters().length > 0) {
+          <span class="text-[11px] text-foreground-faint">
+            {{ parameters().length }}
+            {{ parameters().length === 1 ? 'parameter' : 'parameters' }}
+          </span>
+        }
+      </div>
       @if (bannerError(); as msg) {
-        <div data-testid="param-lint-banner" class="text-danger" role="alert">
+        <div
+          data-testid="param-lint-banner"
+          role="alert"
+          class="rounded-md border border-removed-line bg-removed-bg px-3 py-2 text-[12px] text-removed"
+        >
           {{ msg }}
         </div>
       }
+      @if (parameters().length === 0) {
+        <p
+          class="rounded-md border border-dashed border-border-muted bg-surface-sunken/40 px-3 py-4 text-center text-[12px] text-foreground-faint"
+        >
+          No parameters declared. Add one to bind values into the query body.
+        </p>
+      }
       @for (p of parameters(); track $index) {
         <div
-          class="flex flex-col gap-1"
+          class="rounded-md border border-border-muted bg-surface-sunken/40 p-3 shadow-sm"
           [attr.data-testid]="'param-row-' + p.name"
         >
-        <div class="flex items-center gap-2">
-          <input
-            type="text"
-            data-testid="param-name"
-            [value]="p.name"
-            (input)="onFieldInput($index, 'name', $event)"
-          />
-          <select
-            data-testid="param-type"
-            [value]="p.type"
-            (change)="onTypeChange($index, $event)"
-          >
-            @for (t of types; track t) {
-              <option [value]="t" [selected]="t === p.type">{{ t }}</option>
+          <div class="flex flex-wrap items-end gap-2">
+            <label class="flex min-w-[10rem] flex-1 flex-col gap-1">
+              <span app-eyebrow>Name</span>
+              <input
+                app-input
+                class="font-mono"
+                type="text"
+                data-testid="param-name"
+                [value]="p.name"
+                (input)="onFieldInput($index, 'name', $event)"
+              />
+            </label>
+            <label class="flex w-32 flex-col gap-1">
+              <span app-eyebrow>Type</span>
+              <select
+                app-input
+                data-testid="param-type"
+                [value]="p.type"
+                (change)="onTypeChange($index, $event)"
+              >
+                @for (t of types; track t) {
+                  <option [value]="t" [selected]="t === p.type">{{ t }}</option>
+                }
+              </select>
+            </label>
+            <label class="flex w-24 flex-col gap-1">
+              <span app-eyebrow>Card.</span>
+              <select
+                app-input
+                data-testid="param-cardinality"
+                [value]="p.cardinality"
+                (change)="onCardinalityChange($index, $event)"
+              >
+                @for (c of cardinalities; track c) {
+                  <option [value]="c" [selected]="c === p.cardinality">{{ c }}</option>
+                }
+              </select>
+            </label>
+            <div class="ml-auto flex items-center gap-0.5">
+              <button
+                app-btn
+                variant="icon"
+                size="md"
+                type="button"
+                aria-label="Move up"
+                title="Move up"
+                class="h-7 w-7"
+                data-testid="param-up"
+                [disabled]="$index === 0"
+                (click)="onMoveUp($index)"
+              >↑</button>
+              <button
+                app-btn
+                variant="icon"
+                size="md"
+                type="button"
+                aria-label="Move down"
+                title="Move down"
+                class="h-7 w-7"
+                data-testid="param-down"
+                [disabled]="$index === parameters().length - 1"
+                (click)="onMoveDown($index)"
+              >↓</button>
+              <button
+                app-btn
+                variant="icon"
+                size="md"
+                type="button"
+                aria-label="Remove parameter"
+                title="Remove"
+                class="h-7 w-7 text-removed hover:text-removed"
+                data-testid="param-remove"
+                (click)="onRemove($index)"
+              >×</button>
+            </div>
+          </div>
+          <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label class="flex flex-col gap-1">
+              <span app-eyebrow>Label</span>
+              <input
+                app-input
+                type="text"
+                data-testid="param-label"
+                placeholder="Human-readable label"
+                [value]="p.label ?? ''"
+                (input)="onTextInput($index, 'label', $event)"
+              />
+            </label>
+            <label class="flex flex-col gap-1">
+              <span app-eyebrow>Description</span>
+              <input
+                app-input
+                type="text"
+                data-testid="param-description"
+                placeholder="Short hint"
+                [value]="p.description ?? ''"
+                (input)="onTextInput($index, 'description', $event)"
+              />
+            </label>
+            <label class="flex flex-col gap-1">
+              <span app-eyebrow>Default</span>
+              @if (p.type === 'boolean') {
+                <span
+                  class="inline-flex h-[30px] items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-[13px] text-foreground-muted shadow-sm"
+                >
+                  <input
+                    type="checkbox"
+                    data-testid="param-default"
+                    [checked]="p.default === true"
+                    (change)="onDefaultCheckbox($index, $event)"
+                  />
+                  <span>{{ p.default === true ? 'true' : 'false' }}</span>
+                </span>
+              } @else {
+                <input
+                  app-input
+                  data-testid="param-default"
+                  placeholder="(none)"
+                  [type]="defaultInputType(p)"
+                  [value]="defaultDisplay(p)"
+                  (input)="onDefaultInput($index, $event)"
+                />
+              }
+            </label>
+            @if (supportsEnum(p)) {
+              <label class="flex flex-col gap-1">
+                <span app-eyebrow>Enum</span>
+                <input
+                  app-input
+                  type="text"
+                  data-testid="param-enum"
+                  placeholder="comma-separated values"
+                  [value]="enumDisplay(p)"
+                  (input)="onEnumInput($index, $event)"
+                />
+              </label>
             }
-          </select>
-          <select
-            data-testid="param-cardinality"
-            [value]="p.cardinality"
-            (change)="onCardinalityChange($index, $event)"
-          >
-            @for (c of cardinalities; track c) {
-              <option [value]="c" [selected]="c === p.cardinality">{{ c }}</option>
-            }
-          </select>
-          <input
-            type="text"
-            data-testid="param-label"
-            placeholder="label"
-            [value]="p.label ?? ''"
-            (input)="onTextInput($index, 'label', $event)"
-          />
-          <input
-            type="text"
-            data-testid="param-description"
-            placeholder="description"
-            [value]="p.description ?? ''"
-            (input)="onTextInput($index, 'description', $event)"
-          />
-          @if (p.type === 'boolean') {
-            <input
-              type="checkbox"
-              data-testid="param-default"
-              [checked]="p.default === true"
-              (change)="onDefaultCheckbox($index, $event)"
-            />
-          } @else {
-            <input
-              data-testid="param-default"
-              placeholder="default"
-              [type]="defaultInputType(p)"
-              [value]="defaultDisplay(p)"
-              (input)="onDefaultInput($index, $event)"
-            />
+          </div>
+          @if (rowError(p.name); as msg) {
+            <p
+              data-testid="param-lint-error"
+              class="mt-2 text-[12px] text-removed"
+            >
+              {{ msg }}
+            </p>
           }
-          @if (supportsEnum(p)) {
-            <input
-              type="text"
-              data-testid="param-enum"
-              placeholder="enum (comma-separated)"
-              [value]="enumDisplay(p)"
-              (input)="onEnumInput($index, $event)"
-            />
-          }
-          <button
-            type="button"
-            data-testid="param-up"
-            [disabled]="$index === 0"
-            (click)="onMoveUp($index)"
-          >↑</button>
-          <button
-            type="button"
-            data-testid="param-down"
-            [disabled]="$index === parameters().length - 1"
-            (click)="onMoveDown($index)"
-          >↓</button>
-          <button
-            type="button"
-            data-testid="param-remove"
-            (click)="onRemove($index)"
-          >×</button>
-        </div>
-        @if (rowError(p.name); as msg) {
-          <span class="text-danger" data-testid="param-lint-error">
-            {{ msg }}
-          </span>
-        }
         </div>
       }
       <div>
         <button
+          app-btn
+          variant="secondary"
+          size="sm"
           type="button"
           data-testid="param-add"
           (click)="onAdd()"
-        >Add parameter</button>
+        >+ Add parameter</button>
       </div>
     </div>
   `,
