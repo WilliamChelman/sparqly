@@ -10,6 +10,8 @@ import {
   SimpleChanges,
 } from '@angular/core';
 import { ButtonComponent } from '@app/modules/button';
+import { EyebrowComponent } from '@app/modules/eyebrow';
+import { InputComponent } from '@app/modules/input';
 import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
 import { SAVED_QUERY_SLUG_REGEX } from 'core/saved-queries/saved-query-entry';
 import type { ParameterDeclaration } from 'common';
@@ -25,29 +27,37 @@ export interface CreatePayload {
   selector: 'app-queries-create-detail',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonComponent, YasqeEditorComponent, ParameterEditorComponent],
+  imports: [
+    ButtonComponent,
+    EyebrowComponent,
+    InputComponent,
+    YasqeEditorComponent,
+    ParameterEditorComponent,
+  ],
   template: `
-    <div class="flex flex-col gap-2">
+    <label class="flex flex-col gap-1">
+      <span app-eyebrow>Slug</span>
       <input
+        app-input
+        class="font-mono"
         type="text"
         data-testid="queries-create-slug"
-        placeholder="slug"
+        placeholder="my-saved-query"
         [value]="draftSlug()"
         (input)="onSlugInput($event)"
-        class="rounded border border-border bg-surface px-2 py-1 font-mono text-sm text-foreground"
       />
       @if (errorSlug && errorSlug === draftSlug()) {
-        <p
+        <span
           data-testid="queries-create-slug-error"
-          class="text-xs text-warning"
+          class="text-[12px] text-removed"
         >
           A saved query named <code>{{ draftSlug() }}</code> already exists.
           Pick another slug.
-        </p>
+        </span>
       }
-    </div>
+    </label>
     <app-yasqe-editor
-      class="mt-2 block"
+      class="mt-3 block"
       [value]="draftBody()"
       (valueChange)="draftBody.set($event)"
     />
@@ -58,25 +68,27 @@ export interface CreatePayload {
         (parametersChange)="draftParameters.set($event)"
       />
     </div>
-    <div class="mt-3 flex gap-2">
-      <button
-        type="button"
-        data-testid="queries-save"
-        [disabled]="!isSlugValid()"
-        (click)="emitSave()"
-        class="inline-flex items-center rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        Save
-      </button>
+    <div
+      class="mt-3 flex flex-wrap items-center justify-end gap-2 rounded-lg border border-border-muted bg-surface p-3 shadow-sm"
+    >
       <button
         app-btn
         type="button"
         variant="secondary"
-        size="sm"
         data-testid="queries-cancel"
         (click)="cancel.emit()"
       >
         Cancel
+      </button>
+      <button
+        app-btn
+        type="button"
+        variant="accent"
+        data-testid="queries-save"
+        [disabled]="!isSlugValid()"
+        (click)="emitSave()"
+      >
+        Save
       </button>
     </div>
   `,

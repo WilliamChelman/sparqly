@@ -7,6 +7,9 @@ import {
   Output,
   signal,
 } from '@angular/core';
+import { ButtonComponent } from '@app/modules/button';
+import { EyebrowComponent } from '@app/modules/eyebrow';
+import { InputComponent, SelectComponent } from '@app/modules/input';
 import {
   validate,
   type BindingError,
@@ -18,81 +21,125 @@ import {
   selector: 'app-parameter-form',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ButtonComponent, EyebrowComponent, InputComponent, SelectComponent],
   template: `
-    <form (submit)="onSubmit($event)">
-      @for (p of parameters(); track p.name) {
-        <div
-          class="flex flex-col gap-1"
-          [attr.data-testid]="'param-field-' + p.name"
-        >
-          <span class="text-foreground-muted">{{ p.label ?? p.name }}</span>
-          @if (isMulti(p)) {
-            <span class="flex flex-wrap gap-1">
-              @for (chip of chips(p.name); track $index) {
-                <span class="flex items-center gap-1">
-                  <span data-testid="param-chip">{{ chip }}</span>
-                  <button
-                    type="button"
-                    data-testid="param-chip-remove"
-                    (click)="onChipRemove(p, $index)"
-                  >×</button>
-                </span>
-              }
-              <input
-                type="text"
-                data-testid="param-chip-input"
-                [value]="adderText(p.name)"
-                (input)="onAdderInput(p, $event)"
-                (keydown.enter)="onAdderEnter(p, $event)"
-              />
+    <form
+      (submit)="onSubmit($event)"
+      class="rounded-lg border border-border-muted bg-surface p-4 shadow-sm"
+    >
+      <h3 app-eyebrow class="mb-3 block">Bindings</h3>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        @for (p of parameters(); track p.name) {
+          <label
+            class="flex flex-col gap-1"
+            [attr.data-testid]="'param-field-' + p.name"
+          >
+            <span class="flex items-baseline gap-1.5">
+              <span class="text-[13px] font-medium text-foreground">
+                {{ p.label ?? p.name }}
+              </span>
+              <span class="font-mono text-[10px] text-foreground-faint">
+                ?{{ p.name }}
+              </span>
             </span>
-          } @else if (p.enum) {
-            <select
-              [value]="rawValue(p.name)"
-              (change)="onSelectChange(p, $event)"
-            >
-              @for (opt of p.enum; track opt) {
-                <option [value]="opt">{{ opt }}</option>
-              }
-            </select>
-          } @else if (p.type === 'boolean') {
-            <input
-              type="checkbox"
-              [checked]="booleanValue(p.name)"
-              (change)="onCheckboxChange(p, $event)"
-            />
-          } @else if (p.type === 'langString') {
-            <span class="flex gap-1">
+            @if (p.description) {
+              <span class="text-[11px] text-foreground-faint">{{ p.description }}</span>
+            }
+            @if (isMulti(p)) {
+              <span
+                class="flex flex-wrap items-center gap-1 rounded-md border border-border bg-surface px-2 py-1.5 shadow-sm focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/30"
+              >
+                @for (chip of chips(p.name); track $index) {
+                  <span
+                    class="inline-flex items-center gap-1 rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-[11px] text-foreground"
+                  >
+                    <span data-testid="param-chip">{{ chip }}</span>
+                    <button
+                      type="button"
+                      class="cursor-pointer text-foreground-faint hover:text-removed"
+                      data-testid="param-chip-remove"
+                      (click)="onChipRemove(p, $index)"
+                    >×</button>
+                  </span>
+                }
+                <input
+                  type="text"
+                  class="min-w-[6rem] flex-1 border-0 bg-transparent text-[13px] text-foreground outline-none placeholder:text-foreground-faint"
+                  placeholder="add… (Enter)"
+                  data-testid="param-chip-input"
+                  [value]="adderText(p.name)"
+                  (input)="onAdderInput(p, $event)"
+                  (keydown.enter)="onAdderEnter(p, $event)"
+                />
+              </span>
+            } @else if (p.enum) {
+              <select
+                app-input
+                [value]="rawValue(p.name)"
+                (change)="onSelectChange(p, $event)"
+              >
+                @for (opt of p.enum; track opt) {
+                  <option [value]="opt">{{ opt }}</option>
+                }
+              </select>
+            } @else if (p.type === 'boolean') {
+              <span
+                class="inline-flex h-[30px] items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-[13px] text-foreground-muted shadow-sm"
+              >
+                <input
+                  type="checkbox"
+                  [checked]="booleanValue(p.name)"
+                  (change)="onCheckboxChange(p, $event)"
+                />
+                <span>{{ booleanValue(p.name) ? 'true' : 'false' }}</span>
+              </span>
+            } @else if (p.type === 'langString') {
+              <span class="flex gap-1">
+                <input
+                  app-input
+                  class="flex-1"
+                  type="text"
+                  placeholder="value"
+                  data-param-part="value"
+                  [value]="langPart(p.name, 'value')"
+                  (input)="onLangInput(p, 'value', $event)"
+                />
+                <input
+                  app-input
+                  class="w-20 font-mono"
+                  type="text"
+                  placeholder="lang"
+                  data-param-part="lang"
+                  [value]="langPart(p.name, 'lang')"
+                  (input)="onLangInput(p, 'lang', $event)"
+                />
+              </span>
+            } @else {
               <input
-                type="text"
-                data-param-part="value"
-                [value]="langPart(p.name, 'value')"
-                (input)="onLangInput(p, 'value', $event)"
+                app-input
+                [type]="inputTypeFor(p)"
+                [attr.data-param-type]="p.type"
+                [value]="rawValue(p.name)"
+                (input)="onInput(p, $event)"
               />
-              <input
-                type="text"
-                data-param-part="lang"
-                [value]="langPart(p.name, 'lang')"
-                (input)="onLangInput(p, 'lang', $event)"
-              />
-            </span>
-          } @else {
-            <input
-              [type]="inputTypeFor(p)"
-              [attr.data-param-type]="p.type"
-              [value]="rawValue(p.name)"
-              (input)="onInput(p, $event)"
-            />
-          }
-          @if (errors()[p.name]; as e) {
-            <span
-              class="text-danger"
-              [attr.data-testid]="'param-error-' + p.name"
-            >{{ e }}</span>
-          }
-        </div>
-      }
-      <button type="submit" data-testid="param-form-submit">Run</button>
+            }
+            @if (errors()[p.name]; as e) {
+              <span
+                class="text-[12px] text-removed"
+                [attr.data-testid]="'param-error-' + p.name"
+              >{{ e }}</span>
+            }
+          </label>
+        }
+      </div>
+      <div class="mt-4 flex justify-end">
+        <button
+          app-btn
+          variant="primary"
+          type="submit"
+          data-testid="param-form-submit"
+        >Run with bindings</button>
+      </div>
     </form>
   `,
 })

@@ -19,6 +19,7 @@ import {
   type SavedQueryWriteBody,
 } from '@app/core';
 import { ButtonComponent } from '@app/modules/button';
+import { InputComponent } from '@app/modules/input';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
 import {
@@ -53,6 +54,7 @@ import { runSparql } from './utils/run-sparql';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ButtonComponent,
+    InputComponent,
     SourcesPickerComponent,
     ResultPaneComponent,
     ParameterFormComponent,
@@ -75,12 +77,12 @@ import { runSparql } from './utils/run-sparql';
         data-testid="queries-rail"
       >
         <input
+          app-input
           type="text"
           data-testid="queries-filter"
           placeholder="filter by slug…"
           [value]="filter()"
           (input)="onFilter($event)"
-          class="rounded border border-border bg-surface px-2 py-1 text-sm text-foreground"
         />
         @if (writable()) {
           <button
@@ -190,51 +192,59 @@ import { runSparql } from './utils/run-sparql';
               </div>
             }
             <div class="mt-3 flex flex-col gap-3">
-              <app-sources-picker
-                label="source"
-                [value]="sourceId()"
-                (valueChange)="onSourceChange($event)"
-              />
-              <div class="flex gap-2">
-                @if (writable()) {
-                  <button
-                    type="button"
-                    data-testid="queries-save"
-                    (click)="onSave()"
-                    class="inline-flex items-center rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground shadow-sm"
-                  >
-                    Save
-                  </button>
+              <div
+                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-muted bg-surface p-3 shadow-sm"
+              >
+                <app-sources-picker
+                  label="source"
+                  [value]="sourceId()"
+                  (valueChange)="onSourceChange($event)"
+                />
+                <div class="flex flex-wrap items-center gap-2">
+                  @if (writable()) {
+                    <button
+                      app-btn
+                      type="button"
+                      variant="accent"
+                      data-testid="queries-save"
+                      (click)="onSave()"
+                    >
+                      Save
+                    </button>
+                    <button
+                      app-btn
+                      type="button"
+                      variant="secondary"
+                      data-testid="queries-save-as"
+                      (click)="onSaveAs()"
+                    >
+                      Save as…
+                    </button>
+                    <button
+                      app-btn
+                      type="button"
+                      variant="danger"
+                      data-testid="queries-delete"
+                      (click)="onDelete()"
+                    >
+                      Delete
+                    </button>
+                    <span
+                      class="mx-1 h-5 w-px bg-border-muted"
+                      aria-hidden="true"
+                    ></span>
+                  }
                   <button
                     app-btn
                     type="button"
-                    variant="secondary"
-                    size="sm"
-                    data-testid="queries-save-as"
-                    (click)="onSaveAs()"
+                    variant="primary"
+                    data-testid="queries-run"
+                    [disabled]="!sourceId()"
+                    (click)="onRun()"
                   >
-                    Save as…
+                    Run
                   </button>
-                  <button
-                    app-btn
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    data-testid="queries-delete"
-                    (click)="onDelete()"
-                  >
-                    Delete
-                  </button>
-                }
-                <button
-                  type="button"
-                  data-testid="queries-run"
-                  [disabled]="!sourceId()"
-                  (click)="onRun()"
-                  class="inline-flex items-center rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Run
-                </button>
+                </div>
               </div>
               @if (staleConflict(); as slug) {
                 <app-queries-stale-dialog

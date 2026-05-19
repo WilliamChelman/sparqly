@@ -8,8 +8,10 @@ import {
   Component,
   Directive,
   ElementRef,
+  Renderer2,
   computed,
   contentChild,
+  effect,
   inject,
   input,
 } from '@angular/core';
@@ -22,7 +24,8 @@ export type ButtonVariant =
   | 'accent'
   | 'pill'
   | 'ghost'
-  | 'icon';
+  | 'icon'
+  | 'danger';
 export type ButtonSize = 'sm' | 'md';
 
 const BASE = 'inline-flex items-center justify-center gap-1.5 cursor-pointer';
@@ -40,6 +43,8 @@ const GHOST_SHAPE =
   'bg-transparent {{PAD}} {{TEXT}} text-foreground-muted transition-colors hover:text-foreground';
 const ICON_SHAPE =
   'border-0 bg-transparent {{PAD}} leading-none text-foreground-muted transition-colors hover:text-foreground';
+const DANGER_SHAPE =
+  'rounded-md border border-removed-line bg-surface {{PAD}} {{TEXT}} text-removed transition-colors hover:border-removed hover:bg-removed-bg';
 
 interface SizeSpec {
   readonly pad: string;
@@ -71,6 +76,10 @@ const SIZES: Record<ButtonVariant, Record<ButtonSize, SizeSpec>> = {
     sm: { pad: 'p-0', text: '' },
     md: { pad: 'p-0', text: '' },
   },
+  danger: {
+    sm: { pad: 'px-2.5 py-1', text: 'text-[12px]' },
+    md: { pad: 'px-3 py-1.5', text: 'text-[13px]' },
+  },
 };
 
 const SHAPES: Record<ButtonVariant, string> = {
@@ -80,6 +89,7 @@ const SHAPES: Record<ButtonVariant, string> = {
   pill: PILL_SHAPE,
   ghost: GHOST_SHAPE,
   icon: ICON_SHAPE,
+  danger: DANGER_SHAPE,
 };
 
 export function getButtonClasses(
@@ -109,7 +119,6 @@ export class ButtonIconEndDirective {}
   host: {
     '[class]': 'classes()',
     '[attr.aria-busy]': 'loading() ? "true" : null',
-    '[attr.disabled]': 'loading() ? "" : null',
   },
   template: `
     @if (loading()) {
@@ -140,8 +149,22 @@ export class ButtonComponent {
   private readonly hostClass: string;
 
   constructor() {
-    const el = inject(ElementRef<HTMLElement>).nativeElement;
-    this.hostClass = el.getAttribute('class') ?? '';
+    const host = inject(ElementRef<HTMLElement>).nativeElement;
+    this.hostClass = host.getAttribute('class') ?? '';
+    // Loading forces `disabled` while it is true. When loading flips to false
+    // we clear `disabled` once so external `[disabled]` bindings can govern
+    // the property going forward (without us continuously clobbering them).
+    const renderer = inject(Renderer2);
+    let wasLoading = false;
+    effect(() => {
+      if (this.loading()) {
+        renderer.setAttribute(host, 'disabled', '');
+        wasLoading = true;
+      } else if (wasLoading) {
+        renderer.removeAttribute(host, 'disabled');
+        wasLoading = false;
+      }
+    });
   }
 
   readonly classes = computed(() =>
