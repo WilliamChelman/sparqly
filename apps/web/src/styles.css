@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import '@triply/yasqe/build/yasqe.min.css';
+@import '@angular/cdk/overlay-prebuilt.css';
 @import './cm-s-sparqly.css';
 
 @import '@fontsource-variable/fraunces/index.css';

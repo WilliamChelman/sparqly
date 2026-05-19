@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { LibraryComboboxComponent } from './library-combobox.component';
 import type { SavedQuerySummary } from '@app/core';
 
@@ -12,9 +13,12 @@ function setup(
   if (options.selectedSlug !== undefined)
     fixture.componentRef.setInput('selectedSlug', options.selectedSlug);
   fixture.detectChanges();
+  const overlayContainer =
+    TestBed.inject(OverlayContainer).getContainerElement();
   return {
     fixture,
     root: fixture.nativeElement as HTMLElement,
+    overlayContainer,
     component: fixture.componentInstance,
   };
 }
@@ -25,26 +29,31 @@ function trigger(root: HTMLElement): HTMLButtonElement {
   ) as HTMLButtonElement;
 }
 
-function entryRows(root: HTMLElement): HTMLElement[] {
+function entryRows(overlayContainer: HTMLElement): HTMLElement[] {
   return Array.from(
-    root.querySelectorAll<HTMLElement>(
+    overlayContainer.querySelectorAll<HTMLElement>(
       '[data-testid="library-combobox-entry"]',
     ),
   );
 }
 
 describe('LibraryComboboxComponent', () => {
+  afterEach(() => {
+    const container = TestBed.inject(OverlayContainer);
+    container.ngOnDestroy();
+  });
+
   it('opens on trigger click and emits load with the slug when an entry is clicked', () => {
-    const { fixture, root, component } = setup([
+    const { fixture, root, overlayContainer, component } = setup([
       { slug: 'alpha', hasParameters: false },
       { slug: 'beta', hasParameters: false },
     ]);
     const emitted: string[] = [];
     component.load.subscribe((slug: string) => emitted.push(slug));
-    expect(entryRows(root).length).toBe(0);
+    expect(entryRows(overlayContainer).length).toBe(0);
     trigger(root).click();
     fixture.detectChanges();
-    const rows = entryRows(root);
+    const rows = entryRows(overlayContainer);
     expect(rows.map((n) => n.textContent?.trim() ?? '')).toEqual([
       'alpha',
       'beta',
@@ -69,21 +78,21 @@ describe('LibraryComboboxComponent', () => {
   });
 
   it('narrows the visible entries client-side as the user types in the filter input', () => {
-    const { fixture, root } = setup([
+    const { fixture, root, overlayContainer } = setup([
       { slug: 'alpha', hasParameters: false },
       { slug: 'algebra', hasParameters: false },
       { slug: 'zeta', hasParameters: false },
     ]);
     trigger(root).click();
     fixture.detectChanges();
-    const filter = root.querySelector(
+    const filter = overlayContainer.querySelector(
       '[data-testid="library-combobox-filter"]',
     ) as HTMLInputElement;
     filter.value = 'al';
     filter.dispatchEvent(new Event('input'));
     fixture.detectChanges();
     expect(
-      entryRows(root).map((n) => n.textContent?.trim() ?? ''),
+      entryRows(overlayContainer).map((n) => n.textContent?.trim() ?? ''),
     ).toEqual(['algebra', 'alpha']);
   });
 });

@@ -68,17 +68,19 @@ import { EditorFrameController } from './editor-frame-controller';
       <main class="flex flex-col gap-4 p-4">
         <section class="flex items-start gap-2">
           <div class="flex flex-1 flex-col gap-2">
-            <app-sources-picker
-              label="left"
-              [value]="leftId()"
-              (valueChange)="onLeftIdChange($event)"
-            />
-            <app-library-combobox
-              data-testid="library-left"
-              [entries]="savedQueries()"
-              [selectedSlug]="leftPinnedSlug()"
-              (load)="leftSide.load($event)"
-            />
+            <div class="flex flex-wrap items-center gap-2">
+              <app-sources-picker
+                label="left"
+                [value]="leftId()"
+                (valueChange)="onLeftIdChange($event)"
+              />
+              <app-library-combobox
+                data-testid="library-left"
+                [entries]="savedQueries()"
+                [selectedSlug]="leftPinnedSlug()"
+                (load)="leftSide.load($event)"
+              />
+            </div>
             <app-editor-frame
               data-testid="editor-left"
               name="left"
@@ -108,17 +110,19 @@ import { EditorFrameController } from './editor-frame-controller';
             </button>
           </div>
           <div class="flex flex-1 flex-col gap-2">
-            <app-sources-picker
-              label="right"
-              [value]="rightId()"
-              (valueChange)="onRightIdChange($event)"
-            />
-            <app-library-combobox
-              data-testid="library-right"
-              [entries]="savedQueries()"
-              [selectedSlug]="rightPinnedSlug()"
-              (load)="rightSide.load($event)"
-            />
+            <div class="flex flex-wrap items-center gap-2">
+              <app-sources-picker
+                label="right"
+                [value]="rightId()"
+                (valueChange)="onRightIdChange($event)"
+              />
+              <app-library-combobox
+                data-testid="library-right"
+                [entries]="savedQueries()"
+                [selectedSlug]="rightPinnedSlug()"
+                (load)="rightSide.load($event)"
+              />
+            </div>
             <app-editor-frame
               data-testid="editor-right"
               name="right"
