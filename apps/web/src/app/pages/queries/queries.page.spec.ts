@@ -26,6 +26,7 @@ import {
   type ResultPaneState,
 } from '../query/components/result/result-pane.component';
 import { QueriesCreateDetailComponent } from './queries-create-detail.component';
+import { QueriesLoadedDetailComponent } from './queries-loaded-detail.component';
 import { QueriesPage } from './queries.page';
 
 @Component({
@@ -143,7 +144,7 @@ async function setup(
       { provide: ConfigService, useValue: configStub },
     ],
   })
-    .overrideComponent(QueriesPage, {
+    .overrideComponent(QueriesLoadedDetailComponent, {
       remove: {
         imports: [
           SourcesPickerComponent,

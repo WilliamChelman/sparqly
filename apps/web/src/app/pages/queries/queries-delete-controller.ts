@@ -1,14 +1,12 @@
 import { signal } from '@angular/core';
 import { Router } from '@angular/router';
 import type { LoadedSavedQuery, SavedQueriesService } from '@app/core';
-import type { DetailState } from './queries-detail-state';
 
 export interface DeleteControllerDeps {
   readonly service: SavedQueriesService;
   readonly router: Router;
-  readonly detail: { set(value: DetailState): void };
-  readonly selectedSlug: { set(value: string | null): void };
   readonly applyLoaded: (loaded: LoadedSavedQuery) => void;
+  readonly onDeleted: () => void;
 }
 
 export class DeleteController {
@@ -45,8 +43,7 @@ export class DeleteController {
 
   private afterDeleted(): void {
     this.staleConflict.set(null);
-    this.deps.detail.set({ kind: 'empty' });
-    this.deps.selectedSlug.set(null);
+    this.deps.onDeleted();
     void this.deps.router.navigate(['/queries']);
   }
 }
