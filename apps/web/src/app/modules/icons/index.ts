@@ -3,5 +3,6 @@ export { IconCopyComponent } from './icon-copy.component';
 export { IconMoonComponent } from './icon-moon.component';
 export { IconSpinnerComponent } from './icon-spinner.component';
 export { IconSunComponent } from './icon-sun.component';
+export { IconSwapHorizontalComponent } from './icon-swap-horizontal.component';
 export { IconSystemComponent } from './icon-system.component';
 export { IconTargetComponent } from './icon-target.component';

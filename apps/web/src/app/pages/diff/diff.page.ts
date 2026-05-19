@@ -11,6 +11,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { ButtonComponent } from '@app/modules/button';
 import { CodeChipComponent } from '@app/modules/code-chip';
 import { ErrorBannerComponent } from '@app/modules/error-banner';
+import { IconSwapHorizontalComponent } from '@app/modules/icons';
 import { LibraryComboboxComponent } from '@app/modules/library-combobox';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import {
@@ -40,6 +41,7 @@ import { EditorFrameController } from './editor-frame-controller';
     ButtonComponent,
     CodeChipComponent,
     ErrorBannerComponent,
+    IconSwapHorizontalComponent,
     SourcesPickerComponent,
     DiffResultRendererComponent,
     EditorFrameComponent,
@@ -64,8 +66,8 @@ import { EditorFrameController } from './editor-frame-controller';
       </main>
     } @else {
       <main class="flex flex-col gap-4 p-4">
-        <section class="grid grid-cols-2 gap-4">
-          <div class="flex flex-col gap-2">
+        <section class="flex items-start gap-2">
+          <div class="flex flex-1 flex-col gap-2">
             <app-sources-picker
               label="left"
               [value]="leftId()"
@@ -92,7 +94,20 @@ import { EditorFrameController } from './editor-frame-controller';
               </p>
             }
           </div>
-          <div class="flex flex-col gap-2">
+          <div class="flex shrink-0 items-center self-stretch pt-9">
+            <button
+              app-btn
+              variant="icon"
+              type="button"
+              data-testid="swap-sides"
+              title="Swap left and right"
+              aria-label="Swap left and right"
+              (click)="swapSides()"
+            >
+              <app-icon-swap-horizontal />
+            </button>
+          </div>
+          <div class="flex flex-1 flex-col gap-2">
             <app-sources-picker
               label="right"
               [value]="rightId()"
@@ -229,6 +244,15 @@ export class DiffPage implements OnInit {
   onRightIdChange(id: string): void {
     if (id === this.rightId()) return;
     this.rightId.set(id);
+    this.result.set(null);
+    this.errors.set(null);
+  }
+
+  swapSides(): void {
+    const prevLeftId = this.leftId();
+    this.leftId.set(this.rightId());
+    this.rightId.set(prevLeftId);
+    EditorFrameController.swap(this.leftSide, this.rightSide);
     this.result.set(null);
     this.errors.set(null);
   }
