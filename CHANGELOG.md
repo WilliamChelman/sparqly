@@ -1,3 +1,34 @@
+## [0.27.0](https://github.com/WilliamChelman/sparqly/compare/v0.26.0...v0.27.0) (2026-05-20)
+
+### Features
+
+* serve --read-only flag and webapp writability capability ([7a31799](https://github.com/WilliamChelman/sparqly/commit/7a31799da7702df7b83592000408916e72263d5a)), closes [#315](https://github.com/WilliamChelman/sparqly/issues/315)
+* **server:** saved-query CRUD with ETag concurrency and atomic sidecar writes ([#313](https://github.com/WilliamChelman/sparqly/issues/313)) ([a24d979](https://github.com/WilliamChelman/sparqly/commit/a24d9793e7c28880af3dd56d933c00867b03a2bc))
+* templated saved-query substitution, validation, and lint ([#317](https://github.com/WilliamChelman/sparqly/issues/317)) ([c528b06](https://github.com/WilliamChelman/sparqly/commit/c528b069c189bdf259399b03e27ff483f6a226d9))
+* **web:** /diff swap button flips sources and queries between sides ([00b19e0](https://github.com/WilliamChelman/sparqly/commit/00b19e048c4b1e9a9b32f00982316387c9bb3cff))
+* **web:** /queries browse-only scaffolding ([#322](https://github.com/WilliamChelman/sparqly/issues/322)) ([17f6a40](https://github.com/WilliamChelman/sparqly/commit/17f6a4049c3b945f046d5d7c97d1b874eb690436))
+* **web:** /queries delete from detail pane ([#326](https://github.com/WilliamChelman/sparqly/issues/326)) ([d729b9d](https://github.com/WilliamChelman/sparqly/commit/d729b9d3337811aeddffd86fc7e15a5a879a8632))
+* **web:** /queries detail pane runs with source picker + parameter form ([#323](https://github.com/WilliamChelman/sparqly/issues/323)) ([e7f6e45](https://github.com/WilliamChelman/sparqly/commit/e7f6e45c37f189f446dfec4b24daa7f019a66a76))
+* **web:** /queries edit-and-save with parameter authoring ([#324](https://github.com/WilliamChelman/sparqly/issues/324)) ([623da18](https://github.com/WilliamChelman/sparqly/commit/623da18670bab5ced1af2fef514c415c632ae103))
+* **web:** /queries respects savedQueries.writable: false ([#327](https://github.com/WilliamChelman/sparqly/issues/327)) ([e1aa450](https://github.com/WilliamChelman/sparqly/commit/e1aa450cd29d211c4f6013ae770d01a1c1f1e5d1))
+* **web:** /queries/new create flow with inline slug + Save-as ([#325](https://github.com/WilliamChelman/sparqly/issues/325)) ([9cb2e28](https://github.com/WilliamChelman/sparqly/commit/9cb2e28fb5fbe80b797f567a0885f5d057777e88))
+* **web:** give /queries controls real form structure and a coherent button bar ([d966b4d](https://github.com/WilliamChelman/sparqly/commit/d966b4d52d171b3826222301c0e20d72b0c9ea68))
+* **web:** parameter authoring pane for templated saved queries ([#319](https://github.com/WilliamChelman/sparqly/issues/319)) ([7ab40e5](https://github.com/WilliamChelman/sparqly/commit/7ab40e5277d42d1687c8599f708fa42835858215)), closes [#314](https://github.com/WilliamChelman/sparqly/issues/314)
+* **web:** parameter form runtime for templated saved queries ([#318](https://github.com/WilliamChelman/sparqly/issues/318)) ([c1b566c](https://github.com/WilliamChelman/sparqly/commit/c1b566cadad92bdfa9ee6fff3bc3131fc47bf247))
+* **web:** redesign library combobox as floating CDK overlay ([b7996a1](https://github.com/WilliamChelman/sparqly/commit/b7996a1fb944a5494c21034d6d4b989b8a6cb9bf))
+* **web:** reuse EditorFrame on diff page with per-side save/load ([#321](https://github.com/WilliamChelman/sparqly/issues/321)) ([ac60ec3](https://github.com/WilliamChelman/sparqly/commit/ac60ec3b9a9eed0dbb66eda1c53667cf78217b50))
+* **web:** saved-query UI on query page ([#314](https://github.com/WilliamChelman/sparqly/issues/314)) ([61e8216](https://github.com/WilliamChelman/sparqly/commit/61e8216d3a3e8098b72fc07c35e7d53d9a77d909))
+* **web:** split EditorFrame run vs authoring on / and /diff ([#328](https://github.com/WilliamChelman/sparqly/issues/328)) ([ff61805](https://github.com/WilliamChelman/sparqly/commit/ff61805a478d15f03b0c338f41ab8c362420bc87))
+* **web:** URL bindings round-trip for templated saved queries ([#320](https://github.com/WilliamChelman/sparqly/issues/320)) ([f00956b](https://github.com/WilliamChelman/sparqly/commit/f00956b168a5307db0ccbfb849e3c60e936fab43))
+* **web:** URL contract for literal saved queries ([#316](https://github.com/WilliamChelman/sparqly/issues/316)) ([e7d7fbd](https://github.com/WilliamChelman/sparqly/commit/e7d7fbd16670d5bbd30aa24fe68d0cf19effe6c2))
+
+### Bug Fixes
+
+* **diff:** honor `@id:ref` address-form pin on diff sides ([f427a57](https://github.com/WilliamChelman/sparqly/commit/f427a57a823219b6ca7ebd07403109b14d8c9be2))
+* **diff:** pair isomorphic bnode subtrees; stop snippet gap lines from absorbing focus ([a6e6c77](https://github.com/WilliamChelman/sparqly/commit/a6e6c773aae8e0e91a0300ae2168b855ab54b928))
+* resolve eslint errors across web and core ([5d5d2c2](https://github.com/WilliamChelman/sparqly/commit/5d5d2c2f4b3a51efa279e1f267598e4081e1dd61))
+* **web:** react to slug changes on /queries and avoid editor blink ([66e85e3](https://github.com/WilliamChelman/sparqly/commit/66e85e38778f3cd6f5637ae94dbee76172ccb44e))
+
 ## [0.26.0](https://github.com/WilliamChelman/sparqly/compare/v0.25.0...v0.26.0) (2026-05-16)
 
 ### Features
