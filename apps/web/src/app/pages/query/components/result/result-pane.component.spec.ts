@@ -105,6 +105,22 @@ const RAW_RESULT: DecodedResult = {
   contentType: 'application/rdf+xml',
 };
 
+// A default-graph triple whose object literal alone pushes the formatted body
+// past HIGHLIGHT_MAX_CHARS (400k), forcing the plain-text fallback.
+const HUGE_LITERAL = 'x'.repeat(400_001);
+const OVERSIZED_TRIPLE_RESULT: DecodedResult = {
+  kind: 'triples',
+  triples: [
+    {
+      subject: { termType: 'NamedNode', value: 'http://example.org/a' },
+      predicate: { termType: 'NamedNode', value: 'http://example.org/p' },
+      object: { termType: 'NamedNode', value: 'http://example.org/o' },
+    },
+  ],
+  raw: `<http://example.org/a> <http://example.org/p> "${HUGE_LITERAL}" .\n`,
+  contentType: 'text/turtle',
+};
+
 function setup(state: ResultPaneState) {
   const fixture = TestBed.createComponent(Host);
   fixture.componentInstance.state = state;
@@ -214,7 +230,7 @@ describe('ResultPane turtle/trig tab', () => {
     const fixture = setup({ kind: 'result', result: TRIPLE_RESULT });
     ($(fixture, '[data-testid="tab-turtle"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    const body = $(fixture, '[data-testid="result-formatted-body"]');
+    const body = $(fixture, '[data-testid="code-block"]');
     expect(body).toBeTruthy();
     expect(body?.textContent).toContain('<http://example.org/a>');
     expect(body?.textContent).toContain('<http://example.org/p>');
@@ -225,7 +241,7 @@ describe('ResultPane turtle/trig tab', () => {
     const fixture = setup({ kind: 'result', result: TRIG_RESULT });
     ($(fixture, '[data-testid="tab-trig"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    const body = $(fixture, '[data-testid="result-formatted-body"]');
+    const body = $(fixture, '[data-testid="code-block"]');
     expect(body).toBeTruthy();
     expect(body?.textContent).toContain('<http://example.org/g>');
     expect(body?.textContent).toContain('<http://example.org/a>');
@@ -302,7 +318,7 @@ describe('ResultPane SELECT-spo turtle/trig tab', () => {
     const fixture = setup({ kind: 'result', result: SELECT_SPO_RESULT });
     ($(fixture, '[data-testid="tab-turtle"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    const body = $(fixture, '[data-testid="result-formatted-body"]');
+    const body = $(fixture, '[data-testid="code-block"]');
     expect(body).toBeTruthy();
     expect(body?.textContent).toContain('<http://example.org/a>');
     expect(body?.textContent).toContain('<http://example.org/p>');
@@ -427,5 +443,48 @@ describe('ResultPane raw-tab highlighting', () => {
     const pre = $(fixture, '[data-testid="code-block"]');
     expect(pre?.querySelector('span[class^="cm-"]')).toBeTruthy();
     expect(pre?.textContent).toBe(TRIPLE_RESULT.raw);
+  });
+});
+
+describe('ResultPane turtle-tab highlighting', () => {
+  it('syntax-highlights the formatted Turtle body on the turtle tab', () => {
+    const fixture = setup({ kind: 'result', result: TRIPLE_RESULT });
+    ($(fixture, '[data-testid="tab-turtle"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const pre = $(fixture, '[data-testid="code-block"]');
+    expect(pre?.querySelector('span[class^="cm-"]')).toBeTruthy();
+    expect(pre?.textContent).toContain('<http://example.org/a>');
+  });
+
+  it('syntax-highlights the formatted TriG body on the trig tab', () => {
+    const fixture = setup({ kind: 'result', result: TRIG_RESULT });
+    ($(fixture, '[data-testid="tab-trig"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const pre = $(fixture, '[data-testid="code-block"]');
+    expect(pre?.querySelector('span[class^="cm-"]')).toBeTruthy();
+    expect(pre?.textContent).toContain('<http://example.org/g>');
+  });
+
+  it('keeps the turtle tab highlighted after switching away to table and back', () => {
+    const fixture = setup({ kind: 'result', result: TRIPLE_RESULT });
+    ($(fixture, '[data-testid="tab-turtle"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    ($(fixture, '[data-testid="tab-table"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    ($(fixture, '[data-testid="tab-turtle"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const pre = $(fixture, '[data-testid="code-block"]');
+    expect(pre?.querySelector('span[class^="cm-"]')).toBeTruthy();
+    expect(pre?.textContent).toContain('<http://example.org/a>');
+  });
+
+  it('falls back to a plain pre for a formatted body above the size threshold', () => {
+    const fixture = setup({ kind: 'result', result: OVERSIZED_TRIPLE_RESULT });
+    ($(fixture, '[data-testid="tab-turtle"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const pre = $(fixture, '[data-testid="code-block"]');
+    expect(pre?.querySelector('span')).toBeNull();
+    expect(pre?.textContent).toContain('<http://example.org/p>');
+    expect(pre?.textContent).toContain(HUGE_LITERAL);
   });
 });

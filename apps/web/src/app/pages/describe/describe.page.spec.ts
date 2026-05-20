@@ -949,7 +949,7 @@ describe('DescribePage', () => {
       });
       expect(tabIds(root)).toEqual(['tab-table', 'tab-turtle']);
       expect(root.querySelector('[data-testid=describe-section]')).toBeTruthy();
-      expect(root.querySelector('[data-testid="result-formatted-body"]')).toBeFalsy();
+      expect(root.querySelector('[data-testid="code-block"]')).toBeFalsy();
     });
 
     it('labels the tab `trig` when any quad carries a named graph', async () => {
@@ -972,7 +972,7 @@ describe('DescribePage', () => {
       });
       (root.querySelector('[data-testid=tab-turtle]') as HTMLButtonElement).click();
       fixture.detectChanges();
-      const body = root.querySelector('[data-testid="result-formatted-body"]');
+      const body = root.querySelector('[data-testid="code-block"]');
       expect(body).toBeTruthy();
       expect(body?.textContent).toContain('http://example.org/alice');
       expect(body?.textContent).toContain('http://example.org/knows');
@@ -992,7 +992,7 @@ describe('DescribePage', () => {
       (root.querySelector('[data-testid=tab-turtle]') as HTMLButtonElement).click();
       fixture.detectChanges();
       const body =
-        root.querySelector('[data-testid="result-formatted-body"]')?.textContent ?? '';
+        root.querySelector('[data-testid="code-block"]')?.textContent ?? '';
       expect(body).toContain('http://example.org/knows');
       expect(body).not.toContain('fromSource');
     });
