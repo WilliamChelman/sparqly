@@ -1,5 +1,4 @@
 import { Parser, type Quad, type Store, type Term } from 'n3';
-import { shortenNQuadLine } from 'common';
 import {
   canonicalizeStore,
   computeBnodeShapeMap,
@@ -11,8 +10,8 @@ import {
   type FormatGroupedRdfDiffOptions,
 } from './grouped-diff-formatter';
 import type { HunkedRdfDiff } from './group-rdf-diff-by-entity';
+import { renderTurtleDiffBlocks } from './turtle-diff-formatter';
 import {
-  displaySourcePath,
   triplePatternKey,
   type AnnotationPredicateIris,
   type SourceRecord,
@@ -467,71 +466,6 @@ export function formatDiffSummaryLine(
 
 function formatDiffSummaryComment(diff: RdfDiffResult): string {
   return `# ${formatDiffSummaryLine(diff.totals, diff.added.length, diff.removed.length)}\n`;
-}
-
-function renderTurtleDiffBlocks(
-  diff: RdfDiffResult,
-  options: FormatRdfDiffOptions,
-): string {
-  const prefixes = options.prefixes ?? {};
-  const cwd = options.cwd;
-  const leftRecords = options.sourceRecords?.left;
-  const rightRecords = options.sourceRecords?.right;
-  return (
-    renderTurtleDiffBlock('removed', diff.removed, prefixes, leftRecords, cwd) +
-    renderTurtleDiffBlock('added', diff.added, prefixes, rightRecords, cwd)
-  );
-}
-
-function renderTurtleDiffBlock(
-  label: 'removed' | 'added',
-  statements: readonly string[],
-  prefixes: Record<string, string>,
-  records: Map<string, SourceRecord[]> | undefined,
-  cwd: string | undefined,
-): string {
-  const header = `# --- ${label} ---\n`;
-  if (statements.length === 0) return header;
-
-  const usedPrefixes = pickPrefixesUsedInStatements(statements, prefixes);
-  let body = '';
-  const prefixEntries = Object.entries(usedPrefixes).sort(([a], [b]) =>
-    a < b ? -1 : a > b ? 1 : 0,
-  );
-  for (const [name, iri] of prefixEntries) {
-    body += `@prefix ${name}: <${iri}> .\n`;
-  }
-  if (prefixEntries.length > 0) body += '\n';
-
-  for (const s of statements) {
-    if (records !== undefined && cwd !== undefined) {
-      const recs = records.get(s) ?? [];
-      for (const rec of recs) {
-        const { displayPath } = displaySourcePath(rec.file, cwd);
-        const tail = rec.line !== undefined ? `:${rec.line}` : '';
-        body += `# from ${displayPath}${tail}\n`;
-      }
-    }
-    body += `${shortenNQuadLine(s, { prefixes })}\n`;
-  }
-  return header + body;
-}
-
-function pickPrefixesUsedInStatements(
-  statements: readonly string[],
-  prefixes: Record<string, string>,
-): Record<string, string> {
-  const entries = Object.entries(prefixes);
-  if (entries.length === 0) return {};
-  const out: Record<string, string> = {};
-  for (const s of statements) {
-    for (const [name, iri] of entries) {
-      if (out[name] !== undefined) continue;
-      if (s.includes(`<${iri}`)) out[name] = iri;
-    }
-    if (Object.keys(out).length === entries.length) break;
-  }
-  return out;
 }
 
 function attachRecords(
