@@ -32,6 +32,7 @@ import {
         @for (p of parameters(); track p.name) {
           <label
             class="flex flex-col gap-1"
+            [attr.for]="'param-field-input-' + p.name"
             [attr.data-testid]="'param-field-' + p.name"
           >
             <span class="flex items-baseline gap-1.5">
@@ -67,6 +68,7 @@ import {
                   class="min-w-[6rem] flex-1 border-0 bg-transparent text-[13px] text-foreground outline-none placeholder:text-foreground-faint"
                   placeholder="add… (Enter)"
                   data-testid="param-chip-input"
+                  [attr.id]="'param-field-input-' + p.name"
                   [value]="adderText(p.name)"
                   (input)="onAdderInput(p, $event)"
                   (keydown.enter)="onAdderEnter(p, $event)"
@@ -75,6 +77,7 @@ import {
             } @else if (p.enum) {
               <select
                 app-input
+                [attr.id]="'param-field-input-' + p.name"
                 [value]="rawValue(p.name)"
                 (change)="onSelectChange(p, $event)"
               >
@@ -88,6 +91,7 @@ import {
               >
                 <input
                   type="checkbox"
+                  [attr.id]="'param-field-input-' + p.name"
                   [checked]="booleanValue(p.name)"
                   (change)="onCheckboxChange(p, $event)"
                 />
@@ -101,6 +105,7 @@ import {
                   type="text"
                   placeholder="value"
                   data-param-part="value"
+                  [attr.id]="'param-field-input-' + p.name"
                   [value]="langPart(p.name, 'value')"
                   (input)="onLangInput(p, 'value', $event)"
                 />
@@ -117,6 +122,7 @@ import {
             } @else {
               <input
                 app-input
+                [attr.id]="'param-field-input-' + p.name"
                 [type]="inputTypeFor(p)"
                 [attr.data-param-type]="p.type"
                 [value]="rawValue(p.name)"

@@ -155,7 +155,7 @@ import {
                 (input)="onTextInput($index, 'description', $event)"
               />
             </label>
-            <label class="flex flex-col gap-1">
+            <label class="flex flex-col gap-1" [attr.for]="'param-default-' + $index">
               <span app-eyebrow>Default</span>
               @if (p.type === 'boolean') {
                 <span
@@ -163,6 +163,7 @@ import {
                 >
                   <input
                     type="checkbox"
+                    [attr.id]="'param-default-' + $index"
                     data-testid="param-default"
                     [checked]="p.default === true"
                     (change)="onDefaultCheckbox($index, $event)"
@@ -172,6 +173,7 @@ import {
               } @else {
                 <input
                   app-input
+                  [attr.id]="'param-default-' + $index"
                   data-testid="param-default"
                   placeholder="(none)"
                   [type]="defaultInputType(p)"

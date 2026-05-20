@@ -87,7 +87,7 @@ import { QueriesRailComponent } from './queries-rail.component';
               [prefillParameters]="createPrefillParameters()"
               [errorSlug]="createErrorSlug()"
               (save)="onCreate($event)"
-              (cancel)="onCancelCreate()"
+              (canceled)="onCancelCreate()"
             />
           }
           @case ('loaded') {

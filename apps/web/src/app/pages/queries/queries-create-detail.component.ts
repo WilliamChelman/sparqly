@@ -76,7 +76,7 @@ export interface CreatePayload {
         type="button"
         variant="secondary"
         data-testid="queries-cancel"
-        (click)="cancel.emit()"
+        (click)="canceled.emit()"
       >
         Cancel
       </button>
@@ -98,7 +98,7 @@ export class QueriesCreateDetailComponent implements OnChanges {
   @Input() prefillParameters: ReadonlyArray<ParameterDeclaration> = [];
   @Input() errorSlug: string | null = null;
   @Output() readonly save = new EventEmitter<CreatePayload>();
-  @Output() readonly cancel = new EventEmitter<void>();
+  @Output() readonly canceled = new EventEmitter<void>();
 
   readonly draftSlug = signal<string>('');
   readonly draftBody = signal<string>('');
