@@ -188,6 +188,82 @@ describe('SourceSnippetComponent', () => {
     }
   });
 
+  it('syntax-highlights .ttl snippet lines while preserving the gutter and focal-line cue', () => {
+    setup({
+      kind: 'snippet',
+      startLine: 1,
+      focalStart: 2,
+      focalEnd: 2,
+      lines: [
+        '@prefix ex: <http://example.org/> .',
+        'ex:alice ex:name "Alice" .',
+        'ex:bob ex:age 42 .',
+      ],
+    });
+    const fixture = render({
+      file: 'file:///data/people.ttl',
+      focalStart: 2,
+      context: 1,
+    });
+
+    const root = fixture.nativeElement as HTMLElement;
+    const pre = root.querySelector('pre');
+    expect(pre?.classList.contains('cm-s-sparqly')).toBe(true);
+    expect(pre?.querySelector('span.cm-string')?.textContent).toBe('"Alice"');
+
+    const gutter = root.querySelector('[data-testid=snippet-gutter]');
+    expect(gutter?.textContent?.replace(/\s+/g, '')).toBe('123');
+
+    const rows = Array.from(
+      root.querySelectorAll('[data-testid=snippet-line]'),
+    ) as HTMLElement[];
+    const focal = rows.filter((r) => r.getAttribute('data-focal') === 'true');
+    expect(focal.map((r) => r.getAttribute('data-line-number'))).toEqual(['2']);
+  });
+
+  it('renders a non-Turtle RDF file (.rdf) as plain text rather than highlighting it', () => {
+    const lines = [
+      '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">',
+      '  <rdf:Description rdf:about="http://example.org/alice"/>',
+      '</rdf:RDF>',
+    ];
+    setup({ kind: 'snippet', startLine: 1, focalStart: 1, focalEnd: 1, lines });
+    const fixture = render({
+      file: 'file:///data/graph.rdf',
+      focalStart: 1,
+      context: 0,
+    });
+
+    const root = fixture.nativeElement as HTMLElement;
+    const pre = root.querySelector('pre');
+    expect(pre?.querySelector('[class^=cm-]')).toBeNull();
+
+    const rows = Array.from(
+      root.querySelectorAll('[data-testid=snippet-line]'),
+    ) as HTMLElement[];
+    expect(rows.map((r) => r.textContent)).toEqual(lines);
+  });
+
+  it('keeps the displayed snippet text byte-identical while highlighting it', () => {
+    const lines = [
+      'ex:alice  ex:name "Alice"@en ;',
+      '          ex:age  42 .',
+      '# trailing comment',
+    ];
+    setup({ kind: 'snippet', startLine: 7, focalStart: 8, focalEnd: 8, lines });
+    const fixture = render({
+      file: 'file:///data/people.ttl',
+      focalStart: 8,
+      context: 1,
+    });
+
+    const root = fixture.nativeElement as HTMLElement;
+    const rows = Array.from(
+      root.querySelectorAll('[data-testid=snippet-line]'),
+    ) as HTMLElement[];
+    expect(rows.map((r) => r.textContent)).toEqual(lines);
+  });
+
   it('shows neither the <pre> nor the unavailable note until the result arrives', () => {
     const pending = new Subject<SnippetReadResult>();
     setup(pending);

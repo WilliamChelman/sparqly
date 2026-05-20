@@ -1,11 +1,17 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   inject,
   input,
   OnInit,
   signal,
 } from '@angular/core';
+import {
+  resolveHighlightMode,
+  tokenizeCode,
+  type CodeLine,
+} from '@app/modules/code-highlight';
 import {
   SnippetService,
   type SnippetFileReadError,
@@ -59,7 +65,7 @@ import type { SourceRecord } from '../services/diff.service';
             >}</div
           >
           <pre
-            class="m-0 flex-1 overflow-x-auto whitespace-pre px-3 py-1.5 font-mono text-foreground"
+            class="cm-s-sparqly m-0 flex-1 overflow-x-auto whitespace-pre px-3 py-1.5 font-mono text-foreground"
             >@for (l of s.lines; track $index) {<span
               data-testid="snippet-line"
               [attr.data-line-number]="s.startLine + $index"
@@ -69,7 +75,10 @@ import type { SourceRecord } from '../services/diff.service';
                   ? 'block w-max min-w-full my-line-focus'
                   : 'block w-max min-w-full'
               "
-              >{{ l }}</span
+              >@if (highlightedLines(); as hl) {@for (t of hl[$index]; track $index) {<span
+                [class]="t.className"
+                >{{ t.text }}</span
+              >}}@else {{{ l }}}</span
             >}</pre
           >
         </div>
@@ -118,6 +127,18 @@ export class SourceSnippetComponent implements OnInit {
   readonly rangeOutOfBounds = signal<SnippetRangeOutOfBoundsError | null>(null);
   readonly unavailable = signal<boolean>(false);
 
+  /**
+   * Per-line syntax-highlight token model for the snippet body, or `null` when
+   * the file has no recognized highlight mode — then lines render plain.
+   */
+  readonly highlightedLines = computed<CodeLine[] | null>(() => {
+    const s = this.snippet();
+    if (!s) return null;
+    const mode = resolveHighlightMode(fileExtension(this.file()));
+    if (!mode) return null;
+    return tokenizeCode(s.lines.join('\n'), mode);
+  });
+
   ngOnInit(): void {
     this.snippets
       .fetch(
@@ -157,4 +178,11 @@ export class SourceSnippetComponent implements OnInit {
       ? String(s.focalStart)
       : `${s.focalStart}-${s.focalEnd}`;
   }
+}
+
+/** The extension of `path` without its leading dot, or `''` when it has none. */
+function fileExtension(path: string): string {
+  const name = path.split(/[/\\]/).pop() ?? '';
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(dot + 1) : '';
 }
