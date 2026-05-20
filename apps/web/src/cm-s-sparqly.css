@@ -3,6 +3,11 @@
  * sparqly redesign palette and styles the gutter, scrollbars, and selection.
  * Activated by setting CodeMirror's `theme` option to `sparqly`, which puts
  * the `cm-s-sparqly` class on the editor wrapper.
+ *
+ * The token mappings below also theme static `runMode` output: any element
+ * carrying the `cm-s-sparqly` class colours its descendant `cm-*` token spans
+ * identically, which the `code-highlight` module relies on to highlight
+ * displayed (non-editor) code such as the result pane's `raw` tab.
  */
 
 .CodeMirror.cm-s-sparqly {

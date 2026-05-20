@@ -1,19 +1,20 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { CodeBlockComponent, type CodeLine } from '@app/modules/code-highlight';
 
 @Component({
   selector: 'app-result-raw',
   standalone: true,
+  imports: [CodeBlockComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div data-testid="result-raw" [attr.data-content-type]="contentType()">
-      <pre
-        data-testid="result-raw-body"
-        class="overflow-auto whitespace-pre-wrap rounded border border-border-muted bg-surface-sunken p-3 font-mono text-xs text-foreground"
-      >{{ text() }}</pre>
+      <app-code-block [text]="text()" [lines]="lines()" />
     </div>
   `,
 })
 export class ResultRawComponent {
   readonly text = input<string>('');
   readonly contentType = input<string>('');
+  /** The highlight token model, or `null` to render the body as plain text. */
+  readonly lines = input<CodeLine[] | null>(null);
 }

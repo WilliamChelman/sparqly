@@ -99,6 +99,12 @@ const SELECT_SPO_EMPTY_RESULT: DecodedResult = {
   contentType: 'application/sparql-results+json',
 };
 
+const RAW_RESULT: DecodedResult = {
+  kind: 'raw',
+  raw: '<rdf:RDF><rdf:Description/></rdf:RDF>',
+  contentType: 'application/rdf+xml',
+};
+
 function setup(state: ResultPaneState) {
   const fixture = TestBed.createComponent(Host);
   fixture.componentInstance.state = state;
@@ -381,5 +387,45 @@ describe('ResultPane download tab', () => {
     const href = csv.getAttribute('href') ?? '';
     const decoded = decodeURIComponent(href.replace(/^data:[^,]+,/, ''));
     expect(decoded).toBe('s\r\n<http://example.org/a>\r\n');
+  });
+});
+
+describe('ResultPane raw-tab highlighting', () => {
+  it('syntax-highlights a Turtle triples result on the raw tab', () => {
+    const fixture = setup({ kind: 'result', result: TRIPLE_RESULT });
+    ($(fixture, '[data-testid="tab-raw"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const pre = $(fixture, '[data-testid="code-block"]');
+    expect(pre?.querySelector('span[class^="cm-"]')).toBeTruthy();
+    expect(pre?.textContent).toBe(TRIPLE_RESULT.raw);
+  });
+
+  it('syntax-highlights a SELECT result JSON body on the raw tab', () => {
+    const fixture = setup({ kind: 'result', result: SELECT_RESULT });
+    ($(fixture, '[data-testid="tab-raw"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const pre = $(fixture, '[data-testid="code-block"]');
+    expect(pre?.querySelector('span[class^="cm-"]')).toBeTruthy();
+    expect(pre?.textContent).toBe(SELECT_RESULT.raw);
+  });
+
+  it('renders an unrecognized raw body as plain text without highlighting', () => {
+    const fixture = setup({ kind: 'result', result: RAW_RESULT });
+    const pre = $(fixture, '[data-testid="code-block"]');
+    expect(pre?.textContent).toBe(RAW_RESULT.raw);
+    expect(pre?.querySelector('span')).toBeNull();
+  });
+
+  it('keeps the raw tab highlighted after switching away to table and back', () => {
+    const fixture = setup({ kind: 'result', result: TRIPLE_RESULT });
+    ($(fixture, '[data-testid="tab-raw"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    ($(fixture, '[data-testid="tab-table"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    ($(fixture, '[data-testid="tab-raw"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const pre = $(fixture, '[data-testid="code-block"]');
+    expect(pre?.querySelector('span[class^="cm-"]')).toBeTruthy();
+    expect(pre?.textContent).toBe(TRIPLE_RESULT.raw);
   });
 });

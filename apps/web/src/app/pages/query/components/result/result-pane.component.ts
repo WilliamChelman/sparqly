@@ -15,6 +15,12 @@ import type {
   TripleResult,
 } from '@app/core';
 import { CardComponent } from '@app/modules/card';
+import {
+  exceedsHighlightThreshold,
+  resolveHighlightMode,
+  tokenizeCode,
+  type CodeLine,
+} from '@app/modules/code-highlight';
 import { EyebrowComponent } from '@app/modules/eyebrow';
 import { parseRdfString, type FormatSerialization } from 'common';
 import { DataFactory, type Quad } from 'n3';
@@ -139,7 +145,11 @@ interface DownloadOption {
                   <app-result-ask [result]="asAsk(r)" />
                 }
                 @if (r?.kind === 'raw') {
-                  <app-result-raw [text]="r!.raw" [contentType]="r!.contentType" />
+                  <app-result-raw
+                    [text]="r!.raw"
+                    [contentType]="r!.contentType"
+                    [lines]="rawHighlightLines()"
+                  />
                 }
               }
               @case ('turtle') {
@@ -154,7 +164,11 @@ interface DownloadOption {
               @case ('raw') {
                 @let r = currentResult();
                 @if (r) {
-                  <app-result-raw [text]="r.raw" [contentType]="r.contentType" />
+                  <app-result-raw
+                    [text]="r.raw"
+                    [contentType]="r.contentType"
+                    [lines]="rawHighlightLines()"
+                  />
                 }
               }
               @case ('download') {
@@ -196,6 +210,11 @@ export class ResultPaneComponent {
   private readonly _reifiedCache = new WeakMap<
     SelectResult,
     ReadonlyArray<Triple>
+  >();
+  // Memo of `raw`-tab highlight token models — `null` means "render plain".
+  private readonly _highlightCache = new WeakMap<
+    DecodedResult,
+    CodeLine[] | null
   >();
 
   readonly currentResult = computed<DecodedResult | null>(() => {
@@ -239,6 +258,23 @@ export class ResultPaneComponent {
       this._formatCache.set(r, cached);
     }
     return cached;
+  });
+
+  // Token model for the `raw` tab. Computed lazily — only while `raw` is the
+  // active tab (or for a raw-kind result, which the `table` tab also shows) —
+  // and memoized per DecodedResult so switching to `table` is never slowed and
+  // re-opening `raw` is instant. Mirrors the `formatted()` memoization above.
+  readonly rawHighlightLines = computed<CodeLine[] | null>(() => {
+    const r = this.currentResult();
+    const tab = this._activeTab();
+    if (!r) return null;
+    if (tab !== 'raw' && !(tab === 'table' && r.kind === 'raw')) return null;
+    if (this._highlightCache.has(r)) {
+      return this._highlightCache.get(r) ?? null;
+    }
+    const lines = highlightRaw(r.raw, r.contentType);
+    this._highlightCache.set(r, lines);
+    return lines;
   });
 
   private reifiedSelect(r: SelectResult): ReadonlyArray<Triple> | null {
@@ -319,6 +355,17 @@ export class ResultPaneComponent {
   dataUrlFor(opt: DownloadOption): string {
     return `data:${opt.mediaType};charset=utf-8,${encodeURIComponent(opt.body)}`;
   }
+}
+
+/**
+ * Build the `raw`-tab highlight model for a wire body: resolve the mode from
+ * its content type, then tokenize — unless the mode is unrecognized or the
+ * body is over the size threshold, in which case `null` signals plain text.
+ */
+function highlightRaw(raw: string, contentType: string): CodeLine[] | null {
+  const mode = resolveHighlightMode(contentType);
+  if (!mode || exceedsHighlightThreshold(raw)) return null;
+  return tokenizeCode(raw, mode);
 }
 
 function selectDownloads(r: SelectResult): DownloadOption[] {
