@@ -10,7 +10,6 @@ import type {
   DecodedResult,
   DisplayContext,
   SelectResult,
-  Term,
   Triple,
   TripleResult,
 } from '@app/core';
@@ -29,7 +28,13 @@ import {
   type FormattedResult,
 } from '../../utils/result-to-formatted';
 import { reifySelectSpo } from '../../utils/select-spo-reifier';
-import { exportBindingsCsv } from '../../utils/csv-exporter';
+import {
+  askDownloads,
+  formattedDownload,
+  selectDownloads,
+  tripleDownloads,
+  type DownloadOption,
+} from '../../utils/result-downloads';
 import { ErrorConstellationComponent } from './error-constellation.component';
 import { FormattedResultComponent } from './formatted-result.component';
 import { HeroIllustrationComponent } from './hero-illustration.component';
@@ -47,14 +52,6 @@ export type ResultPaneState =
   | { kind: 'result'; result: DecodedResult };
 
 type Tab = 'table' | 'turtle' | 'raw' | 'download';
-
-interface DownloadOption {
-  id: string;
-  label: string;
-  filename: string;
-  mediaType: string;
-  body: string;
-}
 
 @Component({
   selector: 'app-result-pane',
@@ -158,6 +155,7 @@ interface DownloadOption {
                   <app-formatted-result
                     [body]="f.body"
                     [serialization]="f.serialization"
+                    [lines]="formattedHighlightLines()"
                   />
                 }
               }
@@ -213,6 +211,11 @@ export class ResultPaneComponent {
   >();
   // Memo of `raw`-tab highlight token models — `null` means "render plain".
   private readonly _highlightCache = new WeakMap<
+    DecodedResult,
+    CodeLine[] | null
+  >();
+  // Memo of `turtle`/`trig`-tab highlight token models — `null` means "render plain".
+  private readonly _formatHighlightCache = new WeakMap<
     DecodedResult,
     CodeLine[] | null
   >();
@@ -274,6 +277,23 @@ export class ResultPaneComponent {
     }
     const lines = highlightRaw(r.raw, r.contentType);
     this._highlightCache.set(r, lines);
+    return lines;
+  });
+
+  // Token model for the `turtle`/`trig` tab — the browser-side `sparqly format`
+  // body (ADR-0014). Computed lazily, only while `turtle` is the active tab, and
+  // memoized per DecodedResult so re-opening the tab is instant. Mirrors the
+  // `formatted()` and `rawHighlightLines()` memoization above.
+  readonly formattedHighlightLines = computed<CodeLine[] | null>(() => {
+    const r = this.currentResult();
+    if (!r || this._activeTab() !== 'turtle') return null;
+    if (this._formatHighlightCache.has(r)) {
+      return this._formatHighlightCache.get(r) ?? null;
+    }
+    const f = this.formatted();
+    if (!f) return null;
+    const lines = highlightFormatted(f.body);
+    this._formatHighlightCache.set(r, lines);
     return lines;
   });
 
@@ -368,83 +388,15 @@ function highlightRaw(raw: string, contentType: string): CodeLine[] | null {
   return tokenizeCode(raw, mode);
 }
 
-function selectDownloads(r: SelectResult): DownloadOption[] {
-  const csv = exportBindingsCsv(r.variables, r.bindings);
-  const tsv = exportBindingsCsv(r.variables, r.bindings, { delimiter: '\t' });
-  const json =
-    r.contentType === 'application/sparql-results+json'
-      ? r.raw
-      : reserializeSelectAsJson(r);
-  return [
-    {
-      id: 'csv',
-      label: 'CSV',
-      filename: 'result.csv',
-      mediaType: 'text/csv',
-      body: csv,
-    },
-    {
-      id: 'tsv',
-      label: 'TSV',
-      filename: 'result.tsv',
-      mediaType: 'text/tab-separated-values',
-      body: tsv,
-    },
-    {
-      id: 'json',
-      label: 'JSON',
-      filename: 'result.json',
-      mediaType: 'application/sparql-results+json',
-      body: json,
-    },
-  ];
-}
-
-function askDownloads(r: AskResult): DownloadOption[] {
-  const json =
-    r.contentType === 'application/sparql-results+json'
-      ? r.raw
-      : JSON.stringify({ head: {}, boolean: r.value });
-  return [
-    {
-      id: 'json',
-      label: 'JSON',
-      filename: 'result.json',
-      mediaType: 'application/sparql-results+json',
-      body: json,
-    },
-  ];
-}
-
-function tripleDownloads(
-  r: TripleResult,
-  formatted: FormattedResult | null,
-): DownloadOption[] {
-  const nquads =
-    r.contentType === 'application/n-quads'
-      ? r.raw
-      : serializeNquads(r.triples);
-  return [
-    formattedDownload(formatted),
-    {
-      id: 'nquads',
-      label: 'N-Quads',
-      filename: 'result.nq',
-      mediaType: 'application/n-quads',
-      body: nquads,
-    },
-  ];
-}
-
-function formattedDownload(formatted: FormattedResult | null): DownloadOption {
-  const isTrig = formatted?.serialization === 'trig';
-  return {
-    id: 'turtle',
-    label: isTrig ? 'TriG' : 'Turtle',
-    filename: isTrig ? 'result.trig' : 'result.ttl',
-    mediaType: isTrig ? 'application/trig' : 'text/turtle',
-    body: formatted?.body ?? '',
-  };
+/**
+ * Build the `turtle`/`trig`-tab highlight model for a formatted body. The mode
+ * is fixed to `turtle` — CodeMirror's turtle mode tokenizes TriG too — so only
+ * the size threshold can veto highlighting: an over-threshold body yields
+ * `null`, signalling the plain `<pre>` fallback.
+ */
+function highlightFormatted(body: string): CodeLine[] | null {
+  if (exceedsHighlightThreshold(body)) return null;
+  return tokenizeCode(body, 'turtle');
 }
 
 function tripleToQuad(t: Triple): Quad {
@@ -470,61 +422,4 @@ function tripleToQuad(t: Triple): Quad {
       : blankNode(t.graph.value)
     : defaultGraph();
   return quad(subject, predicate, object, graph);
-}
-
-function reserializeSelectAsJson(r: SelectResult): string {
-  const bindings = r.bindings.map((row) => {
-    const out: Record<string, { type: string; value: string; datatype?: string; 'xml:lang'?: string }> = {};
-    for (const [name, term] of Object.entries(row)) {
-      out[name] = sparqlJsonTerm(term);
-    }
-    return out;
-  });
-  return JSON.stringify({
-    head: { vars: r.variables },
-    results: { bindings },
-  });
-}
-
-function sparqlJsonTerm(t: Term): { type: string; value: string; datatype?: string; 'xml:lang'?: string } {
-  if (t.termType === 'NamedNode') return { type: 'uri', value: t.value };
-  if (t.termType === 'BlankNode') return { type: 'bnode', value: t.value };
-  const out: { type: string; value: string; datatype?: string; 'xml:lang'?: string } = {
-    type: 'literal',
-    value: t.value,
-  };
-  if (t.language) out['xml:lang'] = t.language;
-  if (t.datatype?.value) out.datatype = t.datatype.value;
-  return out;
-}
-
-function serializeNquads(triples: ReadonlyArray<Triple>): string {
-  return triples
-    .map((t) => {
-      const parts = [
-        nquadTerm(t.subject),
-        nquadTerm(t.predicate),
-        nquadTerm(t.object),
-      ];
-      if (t.graph) parts.push(nquadTerm(t.graph));
-      return `${parts.join(' ')} .`;
-    })
-    .join('\n')
-    .concat(triples.length > 0 ? '\n' : '');
-}
-
-function nquadTerm(t: Term): string {
-  if (t.termType === 'NamedNode') return `<${t.value}>`;
-  if (t.termType === 'BlankNode') return `_:${t.value}`;
-  const lex = `"${t.value
-    .replace(/\\/g, '\\\\')
-    .replace(/"/g, '\\"')
-    .replace(/\n/g, '\\n')
-    .replace(/\r/g, '\\r')
-    .replace(/\t/g, '\\t')}"`;
-  if (t.language) return `${lex}@${t.language}`;
-  if (t.datatype?.value && t.datatype.value !== 'http://www.w3.org/2001/XMLSchema#string') {
-    return `${lex}^^<${t.datatype.value}>`;
-  }
-  return lex;
 }
