@@ -57,6 +57,9 @@ importers:
       '@triply/yasqe':
         specifier: ^4.2.28
         version: 4.2.28(@triply/yasgui@4.2.28)
+      codemirror:
+        specifier: ^5.65.21
+        version: 5.65.21
       commander:
         specifier: ^11.1.0
         version: 11.1.0
@@ -181,6 +184,9 @@ importers:
       '@tailwindcss/postcss':
         specifier: ^4.2.4
         version: 4.2.4
+      '@types/codemirror':
+        specifier: ^5.60.17
+        version: 5.60.17
       '@types/js-yaml':
         specifier: ^4.0.9
         version: 4.0.9
@@ -4842,6 +4848,9 @@ packages:
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
 
+  '@types/codemirror@5.60.17':
+    resolution: {integrity: sha512-AZq2FIsUHVMlp7VSe2hTfl5w4pcUkoFkM3zVsRKsn1ca8CXRDYvnin04+HP2REkwsxemuHqvDofdlhUWNpbwfw==}
+
   '@types/connect-history-api-fallback@1.5.4':
     resolution: {integrity: sha512-n6Cr2xS1h4uAulPRdlw6Jl6s1oG8KrVilPN2yUITEs+K48EzMJJ3W1xy8K5eWuFvjp3R74AOIGSmp2UfBJ8HFw==}
 
@@ -4982,6 +4991,9 @@ packages:
 
   '@types/stack-utils@2.0.3':
     resolution: {integrity: sha512-9aEbYZ3TbYMznPdcdr3SmIrLXwC/AKZXQeCf9Pgao5CKb8CyHuEX5jzWPTkvregvhRJHcpRO6BFoGW9ycaOkYw==}
+
+  '@types/tern@0.23.9':
+    resolution: {integrity: sha512-ypzHFE/wBzh+BlH6rrBgS5I/Z7RD21pGhZ2rltb/+ZrVM1awdZwjx7hE5XfuYgHWk9uvV5HLZN3SloevCAp3Bw==}
 
   '@types/triple-beam@1.3.5':
     resolution: {integrity: sha512-6WaYesThRMCl19iryMYP7/x2OVgCtbIVflDGFpWnb9irXI3UjYE4AzmYuiUKY1AJstGijoY+MgUszMgRxIYTYw==}
@@ -18285,6 +18297,10 @@ snapshots:
       '@types/deep-eql': 4.0.2
       assertion-error: 2.0.1
 
+  '@types/codemirror@5.60.17':
+    dependencies:
+      '@types/tern': 0.23.9
+
   '@types/connect-history-api-fallback@1.5.4':
     dependencies:
       '@types/express-serve-static-core': 4.19.8
@@ -18440,6 +18456,10 @@ snapshots:
       '@rdfjs/types': 2.0.1
 
   '@types/stack-utils@2.0.3': {}
+
+  '@types/tern@0.23.9':
+    dependencies:
+      '@types/estree': 1.0.8
 
   '@types/triple-beam@1.3.5': {}
 
