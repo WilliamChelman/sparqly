@@ -7,6 +7,7 @@ import {
 } from '@angular/core';
 import { DEFAULT_PREFIXES, shortenNQuadLine } from 'common';
 import type { DisplayContext } from '@app/core';
+import { tokenizeCode, type CodeLine } from '@app/modules/code-highlight';
 import type { Hunk, HunkLine } from '../services/diff.service';
 import type { HunkClass } from '../utils/hunk-classifier';
 import {
@@ -43,19 +44,25 @@ import { SourceSnippetComponent } from './source-snippet.component';
       </header>
       <div
         data-testid="hunk-body"
-        class="overflow-x-auto font-mono text-xs leading-[1.45]"
+        class="cm-s-sparqly overflow-x-auto font-mono text-xs leading-[1.45]"
       >
-        @for (line of hunk().lines; track $index) {
+        @for (line of hunk().lines; track $index; let lineIndex = $index) {
           @if (line.side === '-') {
             <span
               data-testid="removed-line"
               class="block w-max min-w-full rounded-[3px] bg-removed-bg px-1.5 py-px whitespace-pre text-foreground"
-            >- {{ formatLineBody(line) }}</span>
+            >- @for (token of highlightedLines()[lineIndex]; track $index) {<span
+                [class]="token.className"
+                >{{ token.text }}</span
+              >}</span>
           } @else {
             <span
               data-testid="added-line"
               class="block w-max min-w-full rounded-[3px] bg-added-bg px-1.5 py-px whitespace-pre text-foreground"
-            >+ {{ formatLineBody(line) }}</span>
+            >+ @for (token of highlightedLines()[lineIndex]; track $index) {<span
+                [class]="token.className"
+                >{{ token.text }}</span
+              >}</span>
           }
         }
       </div>
@@ -184,6 +191,17 @@ export class DiffHunkComponent {
     const h = this.hunk();
     return `[-${h.removed} +${h.added}]`;
   });
+
+  /**
+   * Per-line turtle token model for the change-line bodies, parallel to
+   * `hunk().lines`. The `+`/`-` marker is not part of these tokens — it stays
+   * a plain template prefix outside the highlighting.
+   */
+  readonly highlightedLines = computed<CodeLine[]>(() =>
+    this.hunk().lines.map(
+      (line) => tokenizeCode(this.formatLineBody(line), 'turtle')[0] ?? [],
+    ),
+  );
 
   private readonly ranges = computed<ReadonlyArray<SnippetRange>>(() =>
     collectSnippetRanges(this.hunk(), this.context()),
