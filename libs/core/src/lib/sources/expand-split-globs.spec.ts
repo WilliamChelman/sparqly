@@ -123,6 +123,47 @@ describe('expandSplitGlobs — transforms', () => {
   });
 });
 
+describe('expandSplitGlobs — unionDefaultGraph (ADR-0040)', () => {
+  it("inherits the meta's `unionDefaultGraph` onto each synthesized file child", async () => {
+    const meta: ParsedGlobSource = {
+      kind: 'glob',
+      id: 'docs',
+      glob: 'data/*.trig',
+      splitByFile: true,
+      unionDefaultGraph: false,
+    };
+    const walker = async () => [
+      '/abs/proj/data/a.trig',
+      '/abs/proj/data/b.trig',
+    ];
+
+    const expanded = await expandSplitGlobs([meta], { walkGlob: walker });
+    const children = expanded.filter((s) => s.kind === 'file');
+    expect(children).toHaveLength(2);
+    for (const child of children) {
+      expect(
+        (child as { unionDefaultGraph?: boolean }).unionDefaultGraph,
+      ).toBe(false);
+    }
+  });
+
+  it('omits `unionDefaultGraph` on each child when the meta declares none', async () => {
+    const meta: ParsedGlobSource = {
+      kind: 'glob',
+      id: 'docs',
+      glob: 'data/*.trig',
+      splitByFile: true,
+    };
+    const walker = async () => ['/abs/proj/data/a.trig'];
+    const expanded = await expandSplitGlobs([meta], { walkGlob: walker });
+    const child = expanded.find((s) => s.kind === 'file');
+    expect(child).toBeDefined();
+    expect(
+      (child as { unionDefaultGraph?: boolean }).unionDefaultGraph,
+    ).toBeUndefined();
+  });
+});
+
 describe('expandSplitGlobs — pass-through', () => {
   it('passes non-split entries through unchanged and does not call the walker for them', async () => {
     const plainGlob: ParsedGlobSource = {

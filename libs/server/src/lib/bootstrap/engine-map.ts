@@ -3,6 +3,7 @@ import type { SparqlyLogger } from 'common';
 import {
   QueryEngine,
   resolveSourceResult,
+  unionDefaultGraphEnabled,
   type ParsedEndpointSource,
   type ParsedSource,
   type SourceError,
@@ -194,11 +195,15 @@ export class EngineMap {
       const storeRef: StoreRef = { current: sources.store };
       const ref = storeRef;
       loaded = {
-        engine: new QueryEngine(() => ref.current, {
-          id: sourceId,
-          mode: src.kind === 'view' ? 'view' : 'materialized',
-          logger: this.logger,
-        }),
+        engine: new QueryEngine(
+          () => ref.current,
+          {
+            id: sourceId,
+            mode: src.kind === 'view' ? 'view' : 'materialized',
+            logger: this.logger,
+          },
+          { unionDefaultGraph: unionDefaultGraphEnabled(src) },
+        ),
         storeRef,
         sources: {
           mode: 'materialized',

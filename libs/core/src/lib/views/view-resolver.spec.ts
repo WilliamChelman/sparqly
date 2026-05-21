@@ -1283,3 +1283,56 @@ describe('resolveView — view-cache integration', () => {
     expect(third.getQuads(null, null, null, null)).toHaveLength(2);
   });
 });
+
+describe('resolveView — unionDefaultGraph on a glob upstream (ADR-0040)', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-view-union-default-graph-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const PLAIN_SELECT =
+    'SELECT ?s ?p ?o WHERE { ?s ?p ?o }';
+
+  async function writeTrig(): Promise<string> {
+    const file = join(dir, 'data.trig');
+    await writeFile(
+      file,
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:g { ex:s ex:p ex:o . }',
+      ].join('\n'),
+    );
+    return file;
+  }
+
+  it("a view's plain triple pattern sees a glob upstream's named-graph quads by default", async () => {
+    const file = await writeTrig();
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: file },
+      { id: 'flat', from: '@raw', query: PLAIN_SELECT },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+
+    const store = await resolveView({ view, registry });
+    const quads = store.getQuads(null, null, null, null);
+    expect(quads).toHaveLength(1);
+    expect(quads[0].subject.value).toBe('http://example.org/s');
+  });
+
+  it("a view's plain triple pattern sees nothing when the glob upstream sets `unionDefaultGraph: false`", async () => {
+    const file = await writeTrig();
+    const registry = parseSourceSpecs([
+      { id: 'raw', glob: file, unionDefaultGraph: false },
+      { id: 'flat', from: '@raw', query: PLAIN_SELECT },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+
+    const store = await resolveView({ view, registry });
+    expect(store.getQuads(null, null, null, null)).toHaveLength(0);
+  });
+});

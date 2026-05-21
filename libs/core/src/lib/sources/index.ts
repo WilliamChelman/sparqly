@@ -1,4 +1,6 @@
 export * from './source-spec';
+export * from './source-spec-git';
+export * from './union-default-graph';
 export * from './address';
 export * from './view-cache-spec';
 export * from './transform-registry';

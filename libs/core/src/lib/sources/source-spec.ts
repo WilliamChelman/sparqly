@@ -15,6 +15,11 @@ import {
   rejectEndpointOnlyFields,
   rejectLegacyEndpointGraphFields,
 } from './source-spec-endpoint';
+import {
+  pickUnionDefaultGraph,
+  rejectUnionDefaultGraphOn,
+} from './union-default-graph';
+import { pickGitFields, rejectGitRefOn } from './source-spec-git';
 
 export interface SourceSpecCommonFields {
   id?: string;
@@ -48,6 +53,8 @@ export interface ParsedGlobSource
    * never performs the expansion; this field is only carried through.
    */
   splitByFile?: true;
+  /** Union-default-graph toggle (ADR-0040); resolve via `unionDefaultGraphEnabled`. */
+  unionDefaultGraph?: boolean;
   /**
    * Pin this glob to a specific git revision (ADR-0029). Non-empty ref string
    * (full SHA, short SHA, annotated tag — pinned refs only in slice 1).
@@ -81,6 +88,8 @@ export interface ParsedFileSource extends SourceSpecCommonFields {
   path: string;
   parentId: string;
   transforms?: ParsedTransform[];
+  /** Union-default-graph toggle inherited from the parent split-glob meta (ADR-0040). */
+  unionDefaultGraph?: boolean;
   /**
    * User-facing ref string inherited from the parent split-glob meta when the
    * meta carries `gitRef:` (ADR-0029). The child's loader uses this to pin its
@@ -158,6 +167,8 @@ export interface SourceSpecObjectInput
   transforms?: ReadonlyArray<unknown>;
   /** Opt-in split-glob expansion flag — only valid on glob inputs (ADR-0027). */
   splitByFile?: true;
+  /** Union-default-graph toggle — only valid on glob inputs (ADR-0040). */
+  unionDefaultGraph?: boolean;
   /** Pin glob to a git revision (ADR-0029) — only valid on glob inputs. */
   gitRef?: string;
   /** Repo discovery override (ADR-0029) — only meaningful with `gitRef`. */
@@ -208,46 +219,6 @@ function rejectSplitByFileOn(
   if (input.splitByFile !== undefined) {
     throw new Error(
       `\`splitByFile\` is only valid on glob sources (got a ${kind} source)`,
-    );
-  }
-}
-
-function pickGitFields(
-  input: SourceSpecObjectInput,
-): { gitRef?: string; gitRoot?: string } {
-  const out: { gitRef?: string; gitRoot?: string } = {};
-  if (input.gitRef !== undefined) {
-    if (typeof input.gitRef !== 'string' || input.gitRef.length === 0) {
-      throw new Error('`gitRef` must be a non-empty string');
-    }
-    out.gitRef = input.gitRef;
-  }
-  if (input.gitRoot !== undefined) {
-    if (typeof input.gitRoot !== 'string' || input.gitRoot.length === 0) {
-      throw new Error('`gitRoot` must be a non-empty string');
-    }
-    if (out.gitRef === undefined) {
-      throw new Error(
-        '`gitRoot` is only meaningful alongside `gitRef` (omit it otherwise)',
-      );
-    }
-    out.gitRoot = input.gitRoot;
-  }
-  return out;
-}
-
-function rejectGitRefOn(
-  input: SourceSpecObjectInput,
-  kind: 'endpoint' | 'view' | 'empty',
-): void {
-  if (input.gitRef !== undefined) {
-    throw new Error(
-      `\`gitRef\` is only valid on glob sources (got a ${kind} source)`,
-    );
-  }
-  if (input.gitRoot !== undefined) {
-    throw new Error(
-      `\`gitRoot\` is only valid on glob sources (got a ${kind} source)`,
     );
   }
 }
@@ -319,11 +290,13 @@ export function parseSourceSpec(
   if (hasFrom) {
     rejectTransformsOn(input, 'view');
     rejectSplitByFileOn(input, 'view');
+    rejectUnionDefaultGraphOn(input, 'view');
     rejectGitRefOn(input, 'view');
     return parseView(input);
   }
   if (hasEmpty) {
     rejectSplitByFileOn(input, 'empty');
+    rejectUnionDefaultGraphOn(input, 'empty');
     return parseEmpty(input);
   }
   if (input.cache !== undefined) {
@@ -342,6 +315,7 @@ export function parseSourceSpec(
         ? {}
         : { transforms: parseTransformList(input.transforms, registry) };
     const splitByFileField = pickSplitByFile(input);
+    const unionDefaultGraphField = pickUnionDefaultGraph(input);
     const gitFields = pickGitFields(input);
     return {
       kind: 'glob',
@@ -349,6 +323,7 @@ export function parseSourceSpec(
       ...common,
       ...transformsField,
       ...splitByFileField,
+      ...unionDefaultGraphField,
       ...gitFields,
       ...defaultMarker,
     };
@@ -356,6 +331,7 @@ export function parseSourceSpec(
   rejectLegacyEndpointGraphFields(input);
   rejectTransformsOn(input, 'endpoint');
   rejectSplitByFileOn(input, 'endpoint');
+  rejectUnionDefaultGraphOn(input, 'endpoint');
   rejectGitRefOn(input, 'endpoint');
   const http = pickEndpointHttp(input);
   return {
