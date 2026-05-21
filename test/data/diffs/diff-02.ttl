@@ -12,6 +12,13 @@ ex:Alice a ex:Person ;
     ex:Arboricia
   ) ;
     ex:spouces (ex:Ernest ex:Fay) ;
+      ex:address [
+    ex:number 3 ;
+    ex:street "avenue des moissons" ;
+    ex:city [
+      ex:name "Paris"@fr ;
+    ] ;
+  ] ;
 .
 
 ex:Carl a ex:Person ; 
