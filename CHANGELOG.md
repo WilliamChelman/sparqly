@@ -1,3 +1,12 @@
+## [0.28.0](https://github.com/WilliamChelman/sparqly/compare/v0.27.0...v0.28.0) (2026-05-21)
+
+### Features
+
+* **web:** syntax-highlight diff entity-hunk lines ([653aaf9](https://github.com/WilliamChelman/sparqly/commit/653aaf96d6b8e6a881c20079d439d7ed2761f8e5)), closes [#333](https://github.com/WilliamChelman/sparqly/issues/333)
+* **web:** syntax-highlight diff source-file snippets ([ed1b6ec](https://github.com/WilliamChelman/sparqly/commit/ed1b6eccc67c33fb251f99e10b61254a7d39ed6f)), closes [#332](https://github.com/WilliamChelman/sparqly/issues/332)
+* **web:** syntax-highlight the result pane's raw tab ([db24c0e](https://github.com/WilliamChelman/sparqly/commit/db24c0e7ce749f6b93cd5ec6cf4ade3628efc296)), closes [#330](https://github.com/WilliamChelman/sparqly/issues/330)
+* **web:** syntax-highlight the turtle/trig result tab ([10daf62](https://github.com/WilliamChelman/sparqly/commit/10daf62be9e5c83fc79fe031631c6925434d7a45)), closes [#330](https://github.com/WilliamChelman/sparqly/issues/330) [#331](https://github.com/WilliamChelman/sparqly/issues/331)
+
 ## [0.27.0](https://github.com/WilliamChelman/sparqly/compare/v0.26.0...v0.27.0) (2026-05-20)
 
 ### Features
