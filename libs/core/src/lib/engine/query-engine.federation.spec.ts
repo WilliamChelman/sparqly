@@ -89,6 +89,32 @@ describe('QueryEngine — pass-through federation', () => {
     expect(observedQuery).toContain('SELECT ?s WHERE');
   });
 
+  it('submits short queries as a direct `application/sparql-query` POST (not GET)', async () => {
+    // Comunica issues short queries as a `GET ?query=` request. Some endpoints
+    // (e.g. ERA's RINF endpoint) answer `GET ?query=` with an HTTP 500; a
+    // direct POST sidesteps that.
+    let observedMethod: string | undefined;
+    let observedContentType: string | undefined;
+    let observedQuery: string | undefined;
+    endpoint = await startFakeSparqlEndpoint(({ headers, query, method }) => {
+      observedMethod = method;
+      const ct = headers['content-type'];
+      observedContentType = Array.isArray(ct) ? ct[0] : ct;
+      observedQuery = query;
+      return {
+        contentType: 'application/sparql-results+json',
+        body: SPARQL_JSON_TWO_BINDINGS,
+      };
+    });
+
+    const engine = new QueryEngine({ kind: 'endpoint', endpoint: endpoint.url });
+    await engine.execute('SELECT ?s WHERE { ?s ?p ?o }');
+
+    expect(observedMethod).toBe('POST');
+    expect(observedContentType).toContain('application/sparql-query');
+    expect(observedQuery).toContain('SELECT ?s WHERE');
+  });
+
   it('forwards bearer auth as `Authorization: Bearer <token>` on the upstream request', async () => {
     let observedAuth: string | undefined;
     endpoint = await startFakeSparqlEndpoint(({ headers }) => {

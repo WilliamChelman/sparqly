@@ -27,30 +27,66 @@ export function buildEndpointContext(
 }
 
 /**
- * Comunica (via fetch-sparql-endpoint) submits queries as
- * `application/x-www-form-urlencoded` POST bodies (`query=…`) unless the
- * endpoint's service description opts into direct POST. Some endpoints —
- * notably Fedlex's Virtuoso behind its reverse proxy — cap the `query`
- * form parameter at ~600 bytes and answer longer queries with an HTML 400
- * page. Rewriting the request to a SPARQL 1.1 Protocol direct POST
+ * Comunica (via fetch-sparql-endpoint) submits a query either as a
+ * `GET ?query=…` request (short queries) or as an
+ * `application/x-www-form-urlencoded` POST body (`query=…`, longer queries),
+ * unless the endpoint's service description opts into direct POST. Both
+ * shapes break on real-world endpoints: Fedlex's Virtuoso caps the `query`
+ * form parameter at ~600 bytes and answers longer queries with an HTML 400
+ * page, while ERA's RINF endpoint answers `GET ?query=` with an HTTP 500.
+ * Rewriting either shape to a SPARQL 1.1 Protocol direct POST
  * (`Content-Type: application/sparql-query`, raw query as the body) sidesteps
- * that limit and is universally supported.
+ * both and is universally supported.
  */
 function preferDirectPost(
   input: Parameters<typeof fetch>[0],
   init: Parameters<typeof fetch>[1],
 ): { input: Parameters<typeof fetch>[0]; init: Parameters<typeof fetch>[1] } {
-  if (!init || init.method?.toUpperCase() !== 'POST' || !init.body) {
+  const forwarded = extractForwardedQuery(input, init);
+  if (!forwarded) {
     return { input, init };
+  }
+  const headers = new Headers(init?.headers ?? undefined);
+  headers.set('Content-Type', 'application/sparql-query');
+  headers.delete('Content-Length');
+  return {
+    input: forwarded.url.toString(),
+    init: { ...init, method: 'POST', body: forwarded.query, headers },
+  };
+}
+
+/**
+ * Recognizes a SPARQL `query` request in either wire shape Comunica emits —
+ * `GET ?query=…` or a form-urlencoded POST body — and returns the bare query
+ * string plus the endpoint URL stripped of the `query` parameter (other
+ * parameters are preserved). Returns `undefined` for any other request
+ * (an already-direct POST, a hypermedia GET without `query`, an update).
+ */
+function extractForwardedQuery(
+  input: Parameters<typeof fetch>[0],
+  init: Parameters<typeof fetch>[1],
+): { url: URL; query: string } | undefined {
+  if (typeof input !== 'string' && !(input instanceof URL)) {
+    return undefined;
+  }
+  const url = new URL(typeof input === 'string' ? input : input.href);
+  const method = init?.method?.toUpperCase() ?? 'GET';
+
+  if (method === 'GET') {
+    const query = url.searchParams.get('query');
+    if (query === null) return undefined;
+    url.searchParams.delete('query');
+    return { url, query };
+  }
+
+  if (method !== 'POST' || !init?.body) {
+    return undefined;
   }
   const contentType = new Headers(init.headers ?? undefined).get(
     'content-type',
   );
   if (!contentType?.toLowerCase().includes('application/x-www-form-urlencoded')) {
-    return { input, init };
-  }
-  if (typeof input !== 'string' && !(input instanceof URL)) {
-    return { input, init };
+    return undefined;
   }
   const params =
     init.body instanceof URLSearchParams
@@ -60,20 +96,12 @@ function preferDirectPost(
         : undefined;
   const query = params?.get('query');
   if (!params || query === null || query === undefined) {
-    return { input, init };
+    return undefined;
   }
-
-  const url = new URL(typeof input === 'string' ? input : input.href);
   for (const [k, v] of params) {
     if (k !== 'query') url.searchParams.append(k, v);
   }
-  const headers = new Headers(init.headers ?? undefined);
-  headers.set('Content-Type', 'application/sparql-query');
-  headers.delete('Content-Length');
-  return {
-    input: url.toString(),
-    init: { ...init, body: query, headers },
-  };
+  return { url, query };
 }
 
 export function collectInjectedHeaders(
