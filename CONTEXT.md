@@ -8,7 +8,7 @@ A CLI for querying, hashing, diffing, formatting, and serving RDF, built around 
 A declared input that produces RDF. One of: `glob`, `file`, `endpoint`, `empty`, `view`, `reference`. `file` sources are never user-declared — they exist only as the children of a **split glob**.
 
 **Glob source**:
-A `kind: 'glob'` source that matches RDF files on disk via a glob pattern. Empty matches warn (one `warn`-level log line through the boundary logger) and yield an empty store; they do not error (ADR-0028).
+A `kind: 'glob'` source that matches RDF files on disk via a glob pattern. Empty matches warn (one `warn`-level log line through the boundary logger) and yield an empty store; they do not error (ADR-0028). Carries an optional `storage:` field (`memory` default, or `disk`) selecting the storage tier of its **Materialized resolution**; `disk` makes it a **Disk-backed glob**.
 
 **File source**:
 A `kind: 'file'` source resolving exactly one RDF file at a path. Synthesized by **registry expansion** as the child of a **split glob**; carries a `parentId` linking back to that meta. Addressable as `@<parentId>/<glob-relative-path>` (e.g. `@docs/foo.ttl`, `@docs/people/alice.ttl`) on the CLI, in `view.from:`, and in the webapp picker. Never user-declared. Resolves like a one-file glob (materialized) and may carry an inherited **Source transformation pipeline**.
@@ -17,6 +17,14 @@ _Avoid_: "single-file glob", "leaf source"
 **Split glob**:
 A **Glob source** declared with `splitByFile: true`. Opt-in. The meta retains its union-of-files semantics; **registry expansion** additionally synthesizes one **File source** per matched file as a peer registry entry. Child id is `<parentId>/<glob-relative-path>` — the file path relative to the wildcard portion of the glob, not the cwd. For parent `@docs` with glob `data/**/*.ttl` matching `data/foo.ttl` and `data/people/alice.ttl`, the children are `@docs/foo.ttl` and `@docs/people/alice.ttl`. Ids are stable across enumeration order and across files entering or leaving the match set: a child's id depends only on its own path. Empty matches warn; they do not error (see also the same behaviour on plain globs).
 _Avoid_: "exploded glob", "fan-out glob"
+
+**Disk-backed glob**:
+A **Glob source** declared `storage: disk`. Opt-in. Its **Materialized resolution** loads the matched files into a persistent on-disk **Glob index** instead of an in-memory `Store`, so a glob whose triples exceed RAM is queryable without an out-of-memory crash. The index is built once, in the background, on first touch (see **Lazy materialization**) and reused across process restarts while it stays fresh. Declared `transforms:` are baked into the index at build time. The `storage` field is valid only on glob/file sources — a parse error on endpoint, view, and empty sources — and is inherited by a **split glob**'s **File source** children, each indexed independently. A disk-backed glob carries no **Source record sidecar**, and `hash` / `diff` reject it (RDFC-1.0 canonicalization needs every quad in memory). When un-flagged, a glob whose matched bytes exceed a soft hint draws a `warn`-level boundary log pointing at `storage: disk`.
+_Avoid_: "indexed glob", "big glob", "external source", conflating with **Endpoint source**
+
+**Glob index**:
+The persistent on-disk index a **Disk-backed glob** materializes into — an embedded LevelDB-backed quad store under a sparqly cache directory (`<configDir>/.sparqly/index/<source-id>/` by default; the cache path is config-overridable). Carries a manifest — the matched files' paths, sizes and mtimes, the sparqly version, and the applied transform pipeline — compared on open: a mismatch is a staleness `warn`, never a silent rebuild. Queried by the standard query engine as an ordinary RDF/JS source, so a disk-backed glob answers SPARQL identically to an in-memory one; only the memory ceiling differs.
+_Avoid_: "cache", "database", "snapshot", "derived cache"
 
 **Registry expansion**:
 The second phase of the two-phase **parse → expand** pipeline. Phase one is the synchronous, pure `parseSourceSpecs` (shape validation only — no I/O, including for `splitByFile: true` flags). Phase two is the async `expandSplitGlobs` pass: walks the filesystem for every **split glob**, emits its **File source** children alongside the meta, and returns a flat registry. Run once at CLI command setup, once in `createServer` before scope/target resolution, and re-run per-meta by the watcher when files enter or leave a split-glob's match set.
@@ -38,7 +46,7 @@ A view synthesized at command time from `--query`/`--query-file` (or per-side `-
 The single source a view references via `from:`. May be a glob, file, endpoint, empty, or another view (in which case resolution recurses). A **File source** is a valid upstream just like the meta **Glob source** it was split from.
 
 **Materialized resolution**:
-Loading the upstream into a local in-memory `Store`, then executing the view query against that Store. The default for glob, empty, and view upstreams.
+Loading the upstream into a local `Store`, then executing the view query against that Store. The default for glob, empty, and view upstreams. The Store sits at one of two storage tiers: an in-memory `Store` (the default), or — for a **Disk-backed glob** — a persistent **Glob index**. The tier changes only *where* the quads live and the memory ceiling; query results are unaffected.
 _Avoid_: "in-memory mode", "fetch-then-query"
 
 **Pass-through resolution**:
@@ -46,7 +54,7 @@ Forwarding the user's query to the upstream endpoint so the endpoint executes it
 _Avoid_: "pushdown", "federation"
 
 **Lazy materialization** (`serve`):
-The contract that a **Served registry** source's **Materialized resolution** is deferred to the first request that touches its engine, then memoized for the life of the process. Independent of resolution *shape* (materialized vs pass-through): it speaks only to *when* the Store is built. The registry, its split-glob children, and the snippet allow-list's glob-path enumeration remain eager so `/api/config` and shared-link snippet requests work before any source is touched. Single-target CLI commands always build the target's Store immediately and do not use this contract.
+The contract that a **Served registry** source's **Materialized resolution** is deferred to the first request that touches its engine, then memoized for the life of the process. Independent of resolution *shape* (materialized vs pass-through): it speaks only to *when* the Store is built. For a **Disk-backed glob** whose **Glob index** is absent or stale, first touch kicks a background build: the source reports `indexing` (requests answered `503`) until it becomes `ready`; a build failure clears the slot so a later request retries. An already-fresh index opens straight to `ready` with no `503`. The registry, its split-glob children, and the snippet allow-list's glob-path enumeration remain eager so `/api/config` and shared-link snippet requests work before any source is touched. Single-target CLI commands always build the target's Store immediately and do not use this contract.
 _Avoid_: "lazy loading", "on-demand resolution", "deferred boot"
 
 **Source registry**:
@@ -111,7 +119,7 @@ The in-memory provenance record for one asserted triple loaded from a **Glob sou
 _Avoid_: "provenance triple", "lineage record"
 
 **Source record sidecar**:
-The per-source `Map<(s, p, o), SourceRecord[]>` produced by the loader for every **Glob source** and **File source**, keyed graph-agnostically so the sidecar is invariant under `graphName` transforms. Carried alongside the loaded Store through resolution (memoized by **Lazy materialization** for `serve`). Empty/absent for endpoint, view, empty, and inline-query (anonymous-view) targets — those resolution paths produce no per-quad file/line provenance. At diff time, re-keyed by canonical N-Quads using the canonicalizer's blank-node label map, then fanned out to every assertion-equal quad across graphs (so one sidecar entry covers all per-graph canonical keys of the same triple).
+The per-source `Map<(s, p, o), SourceRecord[]>` produced by the loader for every in-memory **Glob source** and **File source**, keyed graph-agnostically so the sidecar is invariant under `graphName` transforms. A **Disk-backed glob** produces no sidecar — an in-heap map of one record per quad is precisely the memory cost disk-backed materialization exists to escape (ADR-0032, as amended). Carried alongside the loaded Store through resolution (memoized by **Lazy materialization** for `serve`). Empty/absent for endpoint, view, empty, and inline-query (anonymous-view) targets — those resolution paths produce no per-quad file/line provenance. At diff time, re-keyed by canonical N-Quads using the canonicalizer's blank-node label map, then fanned out to every assertion-equal quad across graphs (so one sidecar entry covers all per-graph canonical keys of the same triple).
 _Avoid_: "annotation sidecar", "provenance map"
 
 **Diff totals**:
