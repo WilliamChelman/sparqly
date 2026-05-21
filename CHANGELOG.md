@@ -1,3 +1,9 @@
+## [0.28.2](https://github.com/WilliamChelman/sparqly/compare/v0.28.1...v0.28.2) (2026-05-21)
+
+### Bug Fixes
+
+* **core:** forward short endpoint queries as direct POST ([544843d](https://github.com/WilliamChelman/sparqly/commit/544843d481f5f000d75715b4da902f1a3c10a324))
+
 ## [0.28.1](https://github.com/WilliamChelman/sparqly/compare/v0.28.0...v0.28.1) (2026-05-21)
 
 ### Bug Fixes
