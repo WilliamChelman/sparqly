@@ -12,6 +12,7 @@ import {
   resolveSourceResult,
   selectTargetResult,
   SUPPORTED_FORMATS,
+  unionDefaultGraphEnabled,
   type EndpointFetchError,
   type ExecuteResult,
   type ParsedSource,
@@ -254,17 +255,21 @@ function executeAgainstSources(
           mode: 'pass-through',
           logger,
         })
-      : new QueryEngine(sources.store, {
-          id:
-            target.id ??
-            (target.kind === 'glob'
-              ? target.glob
-              : target.kind === 'file'
-                ? target.path
-                : '(target)'),
-          mode: 'materialized',
-          logger,
-        });
+      : new QueryEngine(
+          sources.store,
+          {
+            id:
+              target.id ??
+              (target.kind === 'glob'
+                ? target.glob
+                : target.kind === 'file'
+                  ? target.path
+                  : '(target)'),
+            mode: 'materialized',
+            logger,
+          },
+          { unionDefaultGraph: unionDefaultGraphEnabled(target) },
+        );
   return engine.executeResult(query, { format, mutable });
 }
 

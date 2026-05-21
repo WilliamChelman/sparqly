@@ -1,4 +1,4 @@
-import { Store } from 'n3';
+import { DataFactory, Store } from 'n3';
 import { describe, expect, it } from 'vitest';
 import { QueryEngine } from './query-engine';
 import { ttl } from '../test/turtle';
@@ -12,6 +12,21 @@ function exampleStore(): Store {
   `;
   const store = new Store();
   store.addQuads(quads);
+  return store;
+}
+
+/** A store whose only quad lives in the named graph `ex:g` — nothing in the default graph. */
+function namedGraphStore(): Store {
+  const { namedNode, quad } = DataFactory;
+  const store = new Store();
+  store.addQuad(
+    quad(
+      namedNode('http://example.org/s'),
+      namedNode('http://example.org/p'),
+      namedNode('http://example.org/o'),
+      namedNode('http://example.org/g'),
+    ),
+  );
   return store;
 }
 
@@ -333,6 +348,30 @@ describe('QueryEngine.executeResult', () => {
     expect(result.error.kind).toBe('query-execution');
     if (result.error.kind !== 'query-execution') throw new Error('unreachable');
     expect(result.error.message).toMatch(/turtle|incompatible/i);
+  });
+
+  it('makes named-graph quads visible to a plain triple pattern when unionDefaultGraph is on', async () => {
+    const engine = new QueryEngine(namedGraphStore(), undefined, {
+      unionDefaultGraph: true,
+    });
+
+    const result = await engine.execute('SELECT ?s ?p ?o WHERE { ?s ?p ?o }');
+
+    const parsed = JSON.parse(result.body);
+    expect(parsed.results.bindings).toHaveLength(1);
+    expect(parsed.results.bindings[0].s.value).toBe('http://example.org/s');
+  });
+
+  it('keeps named-graph quads invisible to a plain triple pattern by default, while GRAPH ?g still reaches them', async () => {
+    const engine = new QueryEngine(namedGraphStore());
+
+    const flat = await engine.execute('SELECT ?s WHERE { ?s ?p ?o }');
+    expect(JSON.parse(flat.body).results.bindings).toHaveLength(0);
+
+    const graphed = await engine.execute(
+      'SELECT ?s WHERE { GRAPH ?g { ?s ?p ?o } }',
+    );
+    expect(JSON.parse(graphed.body).results.bindings).toHaveLength(1);
   });
 
   it('returns Result.err with an endpoint-fetch variant naming the endpoint URL when the remote 500s', async () => {

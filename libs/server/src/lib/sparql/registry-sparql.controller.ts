@@ -19,6 +19,7 @@ import {
   QueryEngine,
   resolveSourceResult,
   selectTargetResult,
+  unionDefaultGraphEnabled,
   type ExecuteResult,
   type ParsedSource,
   type QuerySources,
@@ -213,10 +214,14 @@ export class RegistrySparqlController {
           mode: 'pass-through',
         }).executeResult(query, { format, mutable: this.config.mutable });
       }
-      return new QueryEngine(sources.store, {
-        id: target.id as string,
-        mode: 'materialized',
-      }).executeResult(query, { format, mutable: this.config.mutable });
+      return new QueryEngine(
+        sources.store,
+        {
+          id: target.id as string,
+          mode: 'materialized',
+        },
+        { unionDefaultGraph: unionDefaultGraphEnabled(target) },
+      ).executeResult(query, { format, mutable: this.config.mutable });
     });
   }
 }

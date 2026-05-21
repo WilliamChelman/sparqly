@@ -60,6 +60,23 @@ export interface QueryEngineMeta {
   logger?: SparqlyLogger;
 }
 
+/**
+ * Execution-semantics options for a materialized-store engine (ADR-0040).
+ * Ignored on the endpoint pass-through path — a remote endpoint owns its own
+ * dataset semantics and cannot honor a local query-context option.
+ */
+export interface QueryEngineOptions {
+  /**
+   * When `true`, SPARQL runs with Comunica's `unionDefaultGraph` query-context
+   * option: the default graph behaves as the union of the default graph and
+   * every named graph, so a plain `WHERE { ?s ?p ?o }` reaches named-graph
+   * quads while `GRAPH ?g` still addresses them individually. The resolution
+   * layer sets this for glob/file targets whose `unionDefaultGraph` field
+   * resolves to `true`.
+   */
+  unionDefaultGraph?: boolean;
+}
+
 export class QueryEngine {
   private readonly engine = new ComunicaQueryEngine();
   private readonly resolveContext: () => Record<string, unknown>;
@@ -67,7 +84,11 @@ export class QueryEngine {
   private readonly meta: QueryEngineMeta | undefined;
   private readonly logger: SparqlyLogger;
 
-  constructor(source: QueryEngineSource, meta?: QueryEngineMeta) {
+  constructor(
+    source: QueryEngineSource,
+    meta?: QueryEngineMeta,
+    options?: QueryEngineOptions,
+  ) {
     this.meta = meta;
     this.logger = meta?.logger ?? noopLogger;
     if (isParsedEndpointSource(source)) {
@@ -79,8 +100,10 @@ export class QueryEngine {
       this.endpointSource = undefined;
       const resolveStore: () => Store =
         typeof source === 'function' ? source : (): Store => source;
+      const unionDefaultGraph = options?.unionDefaultGraph === true;
       this.resolveContext = (): Record<string, unknown> => ({
         sources: [resolveStore()],
+        ...(unionDefaultGraph ? { unionDefaultGraph: true } : {}),
       });
     }
   }

@@ -163,6 +163,9 @@ function synthesizeChild(
   if (meta.transforms !== undefined) {
     child.transforms = meta.transforms.map((t) => ({ ...t }));
   }
+  if (meta.unionDefaultGraph !== undefined) {
+    child.unionDefaultGraph = meta.unionDefaultGraph;
+  }
   if (pin !== undefined) {
     child.gitRef = pin.gitRef;
     child.repoRoot = pin.repoRoot;

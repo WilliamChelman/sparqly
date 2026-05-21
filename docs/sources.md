@@ -39,14 +39,29 @@ Two of those forms (glob, `http(s)://`) can work without a config file — `spar
     - graphName: flatten
 ```
 
-| Field        | Required | Notes                                                                 |
-| ------------ | -------- | --------------------------------------------------------------------- |
-| `glob`       | yes      | Glob pattern. Resolved relative to the **config file's directory**.   |
-| `id`         | no       | Required if you want to reference it from a view's `from:`.           |
-| `default`    | no       | Must be literally `true` if present. At most one entry per registry.  |
-| `transforms` | no       | Ordered pipeline applied at load time. See [Transforms](#transforms). |
+| Field               | Required | Notes                                                                 |
+| ------------------- | -------- | --------------------------------------------------------------------- |
+| `glob`              | yes      | Glob pattern. Resolved relative to the **config file's directory**.   |
+| `id`                | no       | Required if you want to reference it from a view's `from:`.           |
+| `default`           | no       | Must be literally `true` if present. At most one entry per registry.  |
+| `transforms`        | no       | Ordered pipeline applied at load time. See [Transforms](#transforms). |
+| `unionDefaultGraph` | no       | Boolean, defaults to `true`. See [Union default graph](#union-default-graph). |
 
 Supported file formats: Turtle, N-Triples, N-Quads, TriG, JSON-LD, RDF/XML.
+
+### Union default graph
+
+When a glob matches quad-bearing files (TriG, N-Quads), the quads land in
+**named graphs**. By default (`unionDefaultGraph: true`) SPARQL run against the
+glob treats the default graph as the union of the default graph and every named
+graph, so a plain `WHERE { ?s ?p ?o }` returns those quads without an explicit
+`GRAPH ?g`. Set `unionDefaultGraph: false` for strict SPARQL default-dataset
+semantics — only quads in the default graph match a plain pattern. Either way
+named graphs stay individually addressable via `GRAPH ?g { ... }`, and the
+materialized store is byte-identical: the flag changes query semantics only, not
+what is loaded. Split-glob (`splitByFile`) children inherit the parent's value.
+The field is rejected on endpoint, view, and empty sources. See
+[ADR-0040](adr/0040-union-default-graph-on-glob-sources.md).
 
 ## endpoint
 

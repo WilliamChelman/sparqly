@@ -6,7 +6,7 @@ import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import type { SparqlyLogger } from 'common';
 import { emitQueryEvent, loadRdfResult } from '../engine';
 import { detectQueryType } from '../canonical/immutability';
-import { applyTransformPipeline } from '../sources';
+import { applyTransformPipeline, unionDefaultGraphEnabled } from '../sources';
 import {
   type ParsedEndpointSource,
   type ParsedSource,
@@ -238,7 +238,13 @@ function resolveViewInternal(
           logger,
           pinDeps,
         ).andThen((upstreamStore) =>
-          runViewQueryResult(upstreamStore, validQuery, engine, meta),
+          runViewQueryResult(
+            upstreamStore,
+            validQuery,
+            engine,
+            meta,
+            unionDefaultGraphForUpstream(view, registry),
+          ),
         );
       }),
   );
@@ -360,6 +366,21 @@ function loadUpstreamResult(
   return loadPinnedGlobUpstreamResult(view, upstream, logger, pinDeps);
 }
 
+/**
+ * Resolves the union-default-graph setting that applies to a view's own query
+ * (ADR-0040). The flag belongs to the immediate `from:` upstream: a glob/file
+ * upstream contributes its `unionDefaultGraph` (default `true`), while a view,
+ * empty, or endpoint upstream contributes `false` — querying a view's output
+ * Store, or an empty/endpoint dataset, runs with standard SPARQL semantics.
+ */
+function unionDefaultGraphForUpstream(
+  view: ParsedViewSource,
+  registry: ReadonlyArray<ParsedSource>,
+): boolean {
+  const upstream = buildRegistryById(registry).get(view.from);
+  return upstream ? unionDefaultGraphEnabled(upstream) : false;
+}
+
 function buildRegistryById(
   registry: ReadonlyArray<ParsedSource>,
 ): Map<string, ParsedSource> {
@@ -377,12 +398,16 @@ function runViewQueryResult(
   query: string,
   engine: ComunicaQueryEngine | undefined,
   meta: ViewQueryLogMeta,
+  unionDefaultGraph: boolean,
 ): ResultAsync<Store, QueryExecutionError> {
-  return ResultAsync.fromPromise(runViewQuery(source, query, engine, meta), (err) => ({
-    kind: 'query-execution',
-    query,
-    message: err instanceof Error ? err.message : String(err),
-  }));
+  return ResultAsync.fromPromise(
+    runViewQuery(source, query, engine, meta, unionDefaultGraph),
+    (err) => ({
+      kind: 'query-execution',
+      query,
+      message: err instanceof Error ? err.message : String(err),
+    }),
+  );
 }
 
 async function runViewQuery(
@@ -390,13 +415,17 @@ async function runViewQuery(
   query: string,
   engine: ComunicaQueryEngine | undefined,
   meta: ViewQueryLogMeta,
+  unionDefaultGraph: boolean,
 ): Promise<Store> {
   const e = engine ?? new ComunicaQueryEngine();
   const out = new Store();
   const started = Date.now();
   const type = detectQueryType(query);
   try {
-    const result = await e.query(query, { sources: [source] });
+    const result = await e.query(query, {
+      sources: [source],
+      ...(unionDefaultGraph ? { unionDefaultGraph: true } : {}),
+    });
     if (result.resultType === 'bindings') {
       const bindings = await result.execute();
       for await (const b of bindings as AsyncIterable<{
