@@ -1,3 +1,9 @@
+## [0.28.1](https://github.com/WilliamChelman/sparqly/compare/v0.28.0...v0.28.1) (2026-05-21)
+
+### Bug Fixes
+
+* **web:** derive SELECT columns when endpoint omits head.vars ([f731bff](https://github.com/WilliamChelman/sparqly/commit/f731bff22a878458b48fcf667b91b9609548da58))
+
 ## [0.28.0](https://github.com/WilliamChelman/sparqly/compare/v0.27.0...v0.28.0) (2026-05-21)
 
 ### Features
