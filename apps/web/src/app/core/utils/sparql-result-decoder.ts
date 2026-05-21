@@ -113,7 +113,7 @@ function decodeSparqlJson(
   }
   if (parsed.results && Array.isArray(parsed.results.bindings)) {
     const head = parsed.head;
-    const variables = head && Array.isArray(head.vars) ? head.vars : [];
+    let variables = head && Array.isArray(head.vars) ? head.vars : [];
     const bindings: Array<Record<string, Term>> = [];
     for (const row of parsed.results.bindings) {
       const out: Record<string, Term> = {};
@@ -122,6 +122,9 @@ function decodeSparqlJson(
         if (term !== undefined) out[name] = term;
       }
       bindings.push(out);
+    }
+    if (variables.length === 0) {
+      variables = deriveVariablesFromBindings(bindings);
     }
     return {
       kind: 'select',
@@ -132,6 +135,24 @@ function decodeSparqlJson(
     };
   }
   return undefined;
+}
+
+// Some endpoints (e.g. Oxigraph proxied dumps) return `head: {}` without a
+// `vars` array; recover the projection from the binding keys instead.
+function deriveVariablesFromBindings(
+  bindings: ReadonlyArray<Record<string, Term>>,
+): string[] {
+  const seen = new Set<string>();
+  const variables: string[] = [];
+  for (const row of bindings) {
+    for (const name of Object.keys(row)) {
+      if (!seen.has(name)) {
+        seen.add(name);
+        variables.push(name);
+      }
+    }
+  }
+  return variables;
 }
 
 function sparqlJsonTermToTerm(t: SparqlJsonTerm | undefined): Term | undefined {

@@ -83,6 +83,45 @@ describe('decodeSparqlResult — SELECT', () => {
     });
   });
 
+  it('derives variables from binding keys when head omits vars', () => {
+    const body = JSON.stringify({
+      head: {},
+      results: {
+        bindings: [
+          {
+            label: { type: 'literal', value: 'Acronym' },
+            bare: {
+              type: 'literal',
+              value: '132239',
+              datatype: 'http://www.w3.org/2001/XMLSchema#integer',
+            },
+          },
+        ],
+      },
+    });
+    const r = decodeSparqlResult(body, 'application/sparql-results+json');
+    if (r.kind !== 'select') throw new Error('expected select');
+    expect(r.variables).toEqual(['label', 'bare']);
+  });
+
+  it('unions binding keys across rows when head omits vars', () => {
+    const body = JSON.stringify({
+      head: {},
+      results: {
+        bindings: [
+          { a: { type: 'literal', value: '1' } },
+          {
+            a: { type: 'literal', value: '2' },
+            b: { type: 'literal', value: '3' },
+          },
+        ],
+      },
+    });
+    const r = decodeSparqlResult(body, 'application/sparql-results+json');
+    if (r.kind !== 'select') throw new Error('expected select');
+    expect(r.variables).toEqual(['a', 'b']);
+  });
+
   it('omits unbound projection cells', () => {
     const body = JSON.stringify({
       head: { vars: ['s', 'p'] },
