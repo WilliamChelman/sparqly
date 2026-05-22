@@ -107,9 +107,11 @@ export async function resolveSide(
     // memory — the very cost `storage: disk` exists to escape (ADR-0041
     // amends ADR-0032). Release the LevelDB lock and reject.
     await sources.close();
-    throw new Error(
-      'diff does not support disk-backed glob sources (`storage: disk`); RDFC-1.0 canonicalization cannot scale to a disk-backed glob (ADR-0041)',
-    );
+    throw new DiffErrorSignal({
+      kind: 'disk-backed-diff-target',
+      side,
+      label: diskBackedLabel(target),
+    });
   }
   const transforms =
     target.kind === 'glob' || target.kind === 'file'
@@ -123,6 +125,14 @@ export async function resolveSide(
     sourceRecords: sources.sourceRecords,
     annotated: sources.sourceRecords !== undefined,
   };
+}
+
+/** A human-readable label for a rejected target: its `@id`, else its spec. */
+function diskBackedLabel(target: ParsedSource): string {
+  if (target.id !== undefined) return `@${target.id}`;
+  if (target.kind === 'glob') return target.glob;
+  if (target.kind === 'file') return target.path;
+  return target.kind;
 }
 
 export async function loadSymmetricInlineScopeQuery(

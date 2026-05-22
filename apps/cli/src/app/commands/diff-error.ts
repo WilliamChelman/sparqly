@@ -16,6 +16,7 @@ import {
  *  13   set-mismatch                     (shape)
  *  14   endpoint-as-diff-target          (shape)
  *  15   inline-upstream-kind             (shape)
+ *  16   disk-backed-diff-target          (shape)
  *  20   anonymous-view-execution         (transport / upstream)
  *  21   anonymous-select-execution       (transport / upstream)
  *  30   source: reference-target         (config invariant — bug)
@@ -46,6 +47,8 @@ export function diffErrorExitCode(error: DiffError): number {
       return 14;
     case 'inline-upstream-kind':
       return 15;
+    case 'disk-backed-diff-target':
+      return 16;
     case 'anonymous-view-execution':
       return 20;
     case 'anonymous-select-execution':

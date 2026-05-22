@@ -85,6 +85,15 @@ describe('diffErrorExitCode — per-variant stable exit code map', () => {
       code: 15,
     },
     {
+      name: 'disk-backed-diff-target',
+      error: {
+        kind: 'disk-backed-diff-target',
+        side: 'left',
+        label: '@data',
+      },
+      code: 16,
+    },
+    {
       name: 'anonymous-view-execution',
       error: {
         kind: 'anonymous-view-execution',
@@ -200,6 +209,23 @@ describe('golden surface — shape error + transport error (wording + exit code)
       `${ANSI_RED}tabular diff cannot key a row with a blank-node-valued column ?name: blank nodes have no cross-side identity. Project a stable IRI or literal in your SELECT (e.g. via a deterministic IRI mint or by selecting an identifying property) instead.${ANSI_RESET}`,
     );
     expect(diffErrorExitCode(error)).toBe(10);
+  });
+
+  it('disk-backed-diff-target (shape): explains canonicalization + exit code 16', () => {
+    const error: DiffError = {
+      kind: 'disk-backed-diff-target',
+      side: 'right',
+      label: '@bigdata',
+    };
+    const body = decorateDiffError(error, { color: false });
+    // The message must explain *why* (canonicalization needs every quad in
+    // memory), not merely that the target was rejected.
+    expect(body).toContain('@bigdata');
+    expect(body).toContain('right side');
+    expect(body).toMatch(/canonicaliz/i);
+    expect(body).toMatch(/every quad in memory/i);
+    expect(body).toContain('storage: disk');
+    expect(diffErrorExitCode(error)).toBe(16);
   });
 
   it('anonymous-view-execution (transport): plain wording + decorated wording + exit code 20', () => {

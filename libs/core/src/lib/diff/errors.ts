@@ -24,6 +24,7 @@ export type DiffError =
   | SetMismatchError
   | EndpointAsDiffTargetError
   | InlineUpstreamKindError
+  | DiskBackedDiffTargetError
   | AnonymousViewExecutionError
   | AnonymousSelectExecutionError
   | SourceWrappedError
@@ -63,6 +64,18 @@ export interface InlineUpstreamKindError {
   kind: 'inline-upstream-kind';
   side: 'left' | 'right';
   targetKind: string;
+}
+
+/**
+ * A `storage: disk` glob picked as a diff target. `diff` canonicalizes both
+ * sides with RDFC-1.0, which needs every quad in memory at once — the exact
+ * cost the disk tier exists to escape (ADR-0041 amends ADR-0032).
+ */
+export interface DiskBackedDiffTargetError {
+  kind: 'disk-backed-diff-target';
+  side: 'left' | 'right';
+  /** The disk-backed glob target's `@id` ref (or glob pattern when unnamed). */
+  label: string;
 }
 
 export interface AnonymousViewExecutionError {
@@ -105,6 +118,8 @@ export function formatDiffError(error: DiffError): string {
       return `SPARQL endpoint ${error.endpoint} cannot be diffed directly on the ${error.side} side (wrap the endpoint in a \`view\` source kind to scope it, or pass \`${error.side}Query\` to scope it inline)`;
     case 'inline-upstream-kind':
       return `inline scoping query targets a glob or endpoint upstream; ${error.side} target is a ${error.targetKind} source`;
+    case 'disk-backed-diff-target':
+      return `disk-backed glob ${error.label} cannot be diffed on the ${error.side} side: RDFC-1.0 canonicalization needs every quad in memory, the very cost \`storage: disk\` avoids (ADR-0041)`;
     case 'anonymous-view-execution':
       return error.message;
     case 'anonymous-select-execution':

@@ -160,6 +160,15 @@ describe('diffSpec', () => {
         }),
       ),
     ).toBe(14);
+    expect(
+      diffSpec.exitCode(
+        new DiffErrorSignal({
+          kind: 'disk-backed-diff-target',
+          side: 'left',
+          label: '@data',
+        }),
+      ),
+    ).toBe(16);
   });
 });
 
