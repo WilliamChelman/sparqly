@@ -39,6 +39,15 @@ describe('disk-backed glob index', () => {
     return buildGlobIndex({ glob, transforms, indexDir, sparqlyVersion: SPARQLY_VERSION });
   }
 
+  /** A single-entry `graphName` transform pipeline parsed from `spec`. */
+  function graphNameTransforms(spec: unknown): ParsedTransform[] {
+    const parsed = parseGraphNameTransformResult(spec);
+    if (!parsed.isOk()) throw new Error('unreachable: invalid graphName spec');
+    return [
+      { key: 'graphName', apply: parsed.value.apply, config: parsed.value.config },
+    ];
+  }
+
   /**
    * Writes a quad into the built index that appears in no source file. A reuse
    * keeps it; a rebuild — which re-reads only the sources — would drop it.
@@ -166,6 +175,151 @@ describe('disk-backed glob index', () => {
     } finally {
       await handle.close();
     }
+  });
+
+  it('bakes a forceAll transform without an override into per-file graphs', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    await writeFile(
+      join(dir, 'b.ttl'),
+      '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .',
+    );
+    const indexDir = join(dir, 'index');
+
+    const built = await build(
+      join(dir, '*.ttl'),
+      indexDir,
+      graphNameTransforms('forceAll'),
+    );
+    expect(built.isOk()).toBe(true);
+
+    const handle = await openGlobIndex(indexDir);
+    try {
+      const engine = new QueryEngine(handle.source);
+      const result = await engine.execute(
+        'SELECT DISTINCT ?g WHERE { GRAPH ?g { ?s ?p ?o } }',
+      );
+      const graphs = JSON.parse(result.body)
+        .results.bindings.map((b: { g: { value: string } }) => b.g.value)
+        .sort();
+      // forceAll with no override rewrites each file's quads into its own
+      // `file://` graph — applied inline per file in the streamed ingest.
+      expect(graphs).toEqual([
+        `file://${join(dir, 'a.ttl')}`,
+        `file://${join(dir, 'b.ttl')}`,
+      ]);
+    } finally {
+      await handle.close();
+    }
+  });
+
+  it('bakes a fillDefault transform — default-graph quads get a graph, named graphs are kept', async () => {
+    await writeFile(
+      join(dir, 'a.nq'),
+      '<http://example.org/s1> <http://example.org/p> <http://example.org/o> .\n' +
+        '<http://example.org/s2> <http://example.org/p> <http://example.org/o> <http://example.org/keep> .\n',
+    );
+    const indexDir = join(dir, 'index');
+
+    const built = await build(
+      join(dir, '*.nq'),
+      indexDir,
+      graphNameTransforms('fillDefault'),
+    );
+    expect(built.isOk()).toBe(true);
+
+    const handle = await openGlobIndex(indexDir);
+    try {
+      const engine = new QueryEngine(handle.source);
+      const result = await engine.execute(
+        'SELECT ?s ?g WHERE { GRAPH ?g { ?s ?p ?o } }',
+      );
+      const rows = JSON.parse(result.body)
+        .results.bindings.map((b: { s: { value: string }; g: { value: string } }) => ({
+          s: b.s.value,
+          g: b.g.value,
+        }))
+        .sort((x: { s: string }, y: { s: string }) => x.s.localeCompare(y.s));
+      // fillDefault rewrites only the default-graph quad into its file graph;
+      // the explicitly-named graph is left untouched.
+      expect(rows).toEqual([
+        { s: 'http://example.org/s1', g: `file://${join(dir, 'a.nq')}` },
+        { s: 'http://example.org/s2', g: 'http://example.org/keep' },
+      ]);
+    } finally {
+      await handle.close();
+    }
+  });
+
+  it('bakes a flatten transform — named graphs collapse into the default graph', async () => {
+    await writeFile(
+      join(dir, 'a.nq'),
+      '<http://example.org/s> <http://example.org/p> <http://example.org/o> <http://example.org/g> .\n',
+    );
+    const indexDir = join(dir, 'index');
+
+    const built = await build(
+      join(dir, '*.nq'),
+      indexDir,
+      graphNameTransforms('flatten'),
+    );
+    expect(built.isOk()).toBe(true);
+
+    const handle = await openGlobIndex(indexDir);
+    try {
+      const engine = new QueryEngine(handle.source);
+      const named = await engine.execute(
+        'SELECT ?g WHERE { GRAPH ?g { ?s ?p ?o } }',
+      );
+      // The named graph was flattened away — nothing answers a GRAPH query.
+      expect(JSON.parse(named.body).results.bindings).toEqual([]);
+      const all = await engine.execute('SELECT ?s WHERE { ?s ?p ?o }');
+      const subjects = JSON.parse(all.body).results.bindings.map(
+        (b: { s: { value: string } }) => b.s.value,
+      );
+      expect(subjects).toEqual(['http://example.org/s']);
+    } finally {
+      await handle.close();
+    }
+  });
+
+  it('bakes a transform across a glob whose quad count exceeds the ingest batch size', async () => {
+    // More triples than one ingest batch holds, built *with* a transform: the
+    // streamed inline rewrite (#348) must cross every `multiPut` boundary and
+    // still rewrite each quad — never materializing the whole glob.
+    const count = INGEST_BATCH_SIZE + 25;
+    let ttl = '@prefix ex: <http://example.org/> .\n';
+    for (let i = 0; i < count; i++) ttl += `ex:s${i} ex:p ex:o${i} .\n`;
+    await writeFile(join(dir, 'big.ttl'), ttl);
+    const indexDir = join(dir, 'index');
+
+    const built = await build(
+      join(dir, '*.ttl'),
+      indexDir,
+      graphNameTransforms({ mode: 'forceAll', graph: 'http://example.org/baked' }),
+    );
+    expect(built.isOk()).toBe(true);
+
+    const handle = await openGlobIndex(indexDir);
+    try {
+      const engine = new QueryEngine(handle.source);
+      const result = await engine.execute(
+        'SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://example.org/baked> { ?s ?p ?o } }',
+      );
+      const n = JSON.parse(result.body).results.bindings[0].n.value;
+      expect(Number(n)).toBe(count);
+    } finally {
+      await handle.close();
+    }
+
+    // The baked pipeline is still fingerprinted in the manifest (ADR-0041) —
+    // staleness detection is unaffected by the inline rewrite.
+    const manifest = await readGlobIndexManifest(indexDir);
+    expect(manifest.transforms).toEqual([
+      { key: 'graphName', config: { mode: 'forceAll', graph: 'http://example.org/baked' } },
+    ]);
   });
 
   it('warns and reuses without rebuilding when an indexed source file changed', async () => {

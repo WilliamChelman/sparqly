@@ -1,14 +1,13 @@
-import { DataFactory, type Quad, Store } from 'n3';
+import { DataFactory, type Quad } from 'n3';
 import { ResultAsync } from 'neverthrow';
 import { Quadstore } from 'quadstore';
 import { glob as tinyGlob } from 'tinyglobby';
-import {
-  parseRdfFileResult,
-  streamRdfFileQuads,
-  type RdfRecord,
-} from '../engine/rdf-file-parser';
+import { streamRdfFileQuads } from '../engine/rdf-file-parser';
 import type { GlobLoadError } from '../sources/errors';
-import { applyTransformPipeline } from '../sources/transform-pipeline';
+import {
+  graphNameQuadRewriter,
+  type GraphNameConfig,
+} from '../sources/graph-name-transform';
 import type { ParsedTransform } from '../sources/transform-spec';
 import { ingestQuadStream } from './batched-ingest';
 import { createGlobIndexBackend } from './glob-index-backend';
@@ -69,20 +68,13 @@ async function buildGlobIndexAsync(
   });
   await store.open();
   try {
-    if (options.transforms.length === 0) {
-      // No transforms: stream every matched file's quads through a fixed-size
-      // batched ingest (#347). The build never materializes a whole file in
-      // heap — at most one batch is resident — so a multi-GB file stays
-      // buildable at flat memory, which is the disk tier's purpose.
-      await ingestQuadStream(store, streamGlobQuads(files));
-    } else {
-      // Transforms bake at build time (ADR-0041, amends ADR-0006). The
-      // pipeline operates on a whole `n3.Store` with per-file provenance, so
-      // the glob is materialized in memory for the transform pass, then the
-      // transformed quads are written to the index.
-      const transformed = await transformGlob(files, options.transforms);
-      await store.multiPut(transformed.getQuads(null, null, null, null));
-    }
+    // Stream every matched file's quads through a fixed-size batched ingest
+    // (#347), applying the `graphName` transform inline as a per-quad rewrite
+    // (#348). The build never materializes a whole file — let alone the whole
+    // glob — in heap: at most one batch is resident, whether or not a
+    // transform is declared. That flat memory ceiling is the disk tier's
+    // purpose (ADR-0041, amends ADR-0006).
+    await ingestQuadStream(store, streamGlobQuads(files, options.transforms));
   } finally {
     await store.close();
   }
@@ -96,37 +88,46 @@ async function buildGlobIndexAsync(
 }
 
 /**
- * Concatenates every matched file's quad stream into one lazy quad stream,
- * in glob-enumeration order. A parse failure on any file surfaces as the
- * {@link GlobLoadError} {@link streamRdfFileQuads} throws, naming that file.
+ * Concatenates every matched file's quad stream into one lazy quad stream in
+ * glob-enumeration order, applying the `graphName` transform inline as a
+ * per-quad graph-term rewrite (#348). A disk-backed glob's only legal
+ * transform is `graphName` (ADR-0041), a pure per-quad rewrite — so the build
+ * never materializes the whole glob in heap whether or not a transform is
+ * declared. A parse failure on any file surfaces as the {@link GlobLoadError}
+ * {@link streamRdfFileQuads} throws, naming that file.
  */
 async function* streamGlobQuads(
   files: ReadonlyArray<string>,
+  transforms: ReadonlyArray<ParsedTransform>,
 ): AsyncGenerator<Quad> {
   for (const file of files) {
-    yield* streamRdfFileQuads(file);
+    const rewrite = graphNameRewriteFor(transforms, file);
+    for await (const quad of streamRdfFileQuads(file)) {
+      yield rewrite(quad);
+    }
   }
 }
 
 /**
- * Parses every matched file into an in-memory `n3.Store`, then runs the
- * transform pipeline over it with per-file provenance — the same context the
- * in-memory glob loader threads, so a disk-backed glob's transforms behave
- * identically (ADR-0041).
+ * Composes the per-file `graphName` rewrite the streamed ingest applies as
+ * quads flow by. ADR-0041 restricts a disk-backed glob to `graphName`
+ * transforms; a non-`graphName` transform reaching the builder is an
+ * invariant violation, not user error. An empty pipeline yields the identity
+ * rewrite, so an un-transformed build streams unchanged.
  */
-async function transformGlob(
-  files: ReadonlyArray<string>,
+function graphNameRewriteFor(
   transforms: ReadonlyArray<ParsedTransform>,
-): Promise<Store> {
-  const store = new Store();
-  const perFileRecords = new Map<string, ReadonlyArray<RdfRecord>>();
-  for (const file of files) {
-    const parsed = await parseRdfFileResult(file);
-    if (parsed.isErr()) throw parsed.error;
-    for (const { quad } of parsed.value.records) store.addQuad(quad);
-    perFileRecords.set(file, parsed.value.records);
-  }
-  return applyTransformPipeline(store, transforms, { perFileRecords });
+  file: string,
+): (quad: Quad) => Quad {
+  const rewriters = transforms.map((transform) => {
+    if (transform.key !== 'graphName') {
+      throw new Error(
+        `disk-backed glob index supports only \`graphName\` transforms (ADR-0041), got "${transform.key}"`,
+      );
+    }
+    return graphNameQuadRewriter(transform.config as GraphNameConfig, file);
+  });
+  return (quad) => rewriters.reduce((q, rewrite) => rewrite(q), quad);
 }
 
 function normalizeGlobs(glob: string | string[]): string[] {

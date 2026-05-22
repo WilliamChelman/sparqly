@@ -45,6 +45,34 @@ export function parseGraphNameTransformResult(
   }));
 }
 
+/**
+ * Builds the per-quad `graphName` rewrite for one file. The streamed
+ * disk-backed Glob index ingest (#348) applies this quad-by-quad as the
+ * parser yields them — it never materializes the whole glob through the
+ * whole-store `apply` path. Driven by the manifest {@link GraphNameConfig},
+ * so the build needs neither an `n3.Store` nor the per-file record
+ * side-channel {@link rewriteWithFileGraphs} demands: the file a quad came
+ * from is known directly from the streaming loop.
+ */
+export function graphNameQuadRewriter(
+  config: GraphNameConfig,
+  file: string,
+): (quad: Quad) => Quad {
+  if (config.mode === 'preserve') return (q) => q;
+  if (config.mode === 'flatten') {
+    const dg = DataFactory.defaultGraph();
+    return (q) => rewriteGraph(q, dg);
+  }
+  const target = config.graph
+    ? DataFactory.namedNode(config.graph)
+    : DataFactory.namedNode(`file://${file}`);
+  if (config.mode === 'fillDefault') {
+    return (q) =>
+      q.graph.termType === 'DefaultGraph' ? rewriteGraph(q, target) : q;
+  }
+  return (q) => rewriteGraph(q, target);
+}
+
 /** Snapshots a parsed spec into the JSON-serializable manifest config. */
 function specToConfig(spec: GraphNameSpec): GraphNameConfig {
   return spec.graph === undefined
@@ -190,29 +218,13 @@ function rewriteWithFileGraphs(
       `\`${KEY}\` mode "${spec.mode}" requires per-file context from the loader; apply the transform via the source pipeline (resolveSource/loadSources)`,
     );
   }
+  const config = specToConfig(spec);
   const out = new Store();
   for (const [file, records] of perFileRecords) {
-    const fileGraph = DataFactory.namedNode(`file://${file}`);
-    for (const record of records) {
-      out.addQuad(rewriteForMode(record.quad, spec, fileGraph));
-    }
+    const rewrite = graphNameQuadRewriter(config, file);
+    for (const record of records) out.addQuad(rewrite(record.quad));
   }
   return out;
-}
-
-function rewriteForMode(
-  q: Quad,
-  spec: GraphNameSpec,
-  fileGraph: NamedNode,
-): Quad {
-  if (spec.mode === 'forceAll') {
-    return rewriteGraph(q, spec.graph ?? fileGraph);
-  }
-  // fillDefault
-  if (q.graph.termType === 'DefaultGraph') {
-    return rewriteGraph(q, spec.graph ?? fileGraph);
-  }
-  return q;
 }
 
 function rewriteGraph(q: Quad, target: NamedNode | DefaultGraph): Quad {
