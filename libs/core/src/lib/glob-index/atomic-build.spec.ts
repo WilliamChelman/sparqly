@@ -118,6 +118,36 @@ describe('buildGlobIndexAtomic', () => {
     }
   });
 
+  it('preserves nested child index dirs when the meta index is rebuilt', async () => {
+    // A `storage: disk` + `splitByFile: true` glob lays each child index
+    // nested inside the meta index dir (`<meta>/<file>/`). Rebuilding the
+    // meta must not delete those already-built child indexes.
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const indexDir = join(dir, 'index', 'data');
+    const options = {
+      glob: join(dir, '*.ttl'),
+      transforms: [],
+      indexDir,
+      sparqlyVersion: SPARQLY_VERSION,
+    };
+
+    const first = await buildGlobIndexAtomic(options);
+    expect(first.isOk()).toBe(true);
+
+    // A pre-built child index sits nested inside the meta index dir.
+    const childDir = join(indexDir, 'a.ttl');
+    await mkdir(childDir, { recursive: true });
+    await writeFile(join(childDir, 'manifest.json'), '{"child":true}');
+
+    // Rebuild the meta index — the nested child must survive.
+    const second = await buildGlobIndexAtomic(options);
+    expect(second.isOk()).toBe(true);
+    expect(await exists(join(childDir, 'manifest.json'))).toBe(true);
+  });
+
   it('sweeps a stale temp dir left by a prior interrupted build', async () => {
     await writeFile(
       join(dir, 'a.ttl'),
