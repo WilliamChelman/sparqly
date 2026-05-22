@@ -156,9 +156,10 @@ describe('buildGlobIndexAtomic', () => {
     const indexDir = join(dir, 'index', 'data');
 
     // A leftover temp dir from a build that was killed before its rename.
+    // Pid 0x7fffffff is above any plausible kernel pid_max — guaranteed dead.
     const staleTempDir = join(
       dirname(indexDir),
-      `${basename(indexDir)}.building-999-deadbeef`,
+      `${basename(indexDir)}.building-2147483647-deadbeef`,
     );
     await mkdir(staleTempDir, { recursive: true });
     await writeFile(join(staleTempDir, 'partial'), 'half-written index');
@@ -175,5 +176,36 @@ describe('buildGlobIndexAtomic', () => {
     expect(await exists(staleTempDir)).toBe(false);
     const siblings = await readdir(dirname(indexDir));
     expect(siblings).toEqual(['data']);
+  });
+
+  it('preserves a sibling temp dir whose pid is still alive (concurrent build)', async () => {
+    // A sibling `<base>.building-<pid>-*` belongs to another in-flight build of
+    // the same source (e.g. IndexBuildPool spawned one while a manual
+    // `sparqly index` runs). Sweeping it mid-ingest would crash that build
+    // with ENOENT. The test process's own pid stands in for the live owner.
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const indexDir = join(dir, 'index', 'data');
+    const liveTempDir = join(
+      dirname(indexDir),
+      `${basename(indexDir)}.building-${process.pid}-cafebabe`,
+    );
+    await mkdir(liveTempDir, { recursive: true });
+    await writeFile(join(liveTempDir, 'partial'), 'still-being-written');
+
+    const built = await buildGlobIndexAtomic({
+      glob: join(dir, '*.ttl'),
+      transforms: [],
+      indexDir,
+      sparqlyVersion: SPARQLY_VERSION,
+    });
+    expect(built.isOk()).toBe(true);
+
+    // The live-pid temp dir survived the sweep; the concurrent build's
+    // in-flight files are untouched.
+    expect(await exists(liveTempDir)).toBe(true);
+    expect(await exists(join(liveTempDir, 'partial'))).toBe(true);
   });
 });

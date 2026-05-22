@@ -57,8 +57,11 @@ async function prepare(indexDir: string, parent: string): Promise<void> {
 }
 
 /**
- * Removes every `<indexDir>.building-*` sibling — each the partial output of a
- * build for this same source that was interrupted before its atomic rename.
+ * Removes every `<indexDir>.building-*` sibling whose owning pid is no longer
+ * alive — each the partial output of a build for this same source that was
+ * interrupted before its atomic rename. Temp dirs owned by a live pid are
+ * preserved, so an overlapping build (e.g. `IndexBuildPool` spawning while a
+ * manual `sparqly index` runs) is never clobbered mid-ingest.
  */
 async function sweepStaleTempDirs(
   indexDir: string,
@@ -66,9 +69,33 @@ async function sweepStaleTempDirs(
 ): Promise<void> {
   const prefix = basename(indexDir) + TEMP_DIR_INFIX;
   for (const entry of await readdir(parent)) {
-    if (entry.startsWith(prefix)) {
-      await rm(join(parent, entry), { recursive: true, force: true });
-    }
+    if (!entry.startsWith(prefix)) continue;
+    const pid = parseTempDirPid(entry.slice(prefix.length));
+    if (pid !== undefined && isPidAlive(pid)) continue;
+    await rm(join(parent, entry), { recursive: true, force: true });
+  }
+}
+
+/** Extracts the pid from the `<pid>-<rand>` suffix of a temp dir name. */
+function parseTempDirPid(suffix: string): number | undefined {
+  const dash = suffix.indexOf('-');
+  const raw = dash === -1 ? suffix : suffix.slice(0, dash);
+  if (!/^\d+$/.test(raw)) return undefined;
+  const pid = Number(raw);
+  return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+}
+
+/**
+ * `process.kill(pid, 0)` doesn't signal — it probes the pid. ESRCH means the
+ * process is gone; EPERM means it exists but this process can't signal it
+ * (still alive, just owned by another user).
+ */
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
   }
 }
 
