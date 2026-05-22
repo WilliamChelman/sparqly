@@ -71,7 +71,7 @@ describe('sparqly query — disk-backed glob (ADR-0041)', () => {
     expect(manifest.isFile()).toBe(true);
   });
 
-  it('reuses the existing index directory on a second query run', async () => {
+  it('warns about staleness but reuses the index on a second query run', async () => {
     const source = join(projectRoot, 'data', 'a.ttl');
     await writeFile(
       source,
@@ -94,10 +94,12 @@ describe('sparqly query — disk-backed glob (ADR-0041)', () => {
     const bindings = JSON.parse(second.stdout).results.bindings as Array<{
       s: { value: string };
     }>;
-    // Naive reuse (#338): the second run answered from the original index,
-    // unaware of the edit. Staleness detection is a later slice.
+    // ADR-0041: the edit makes the index stale, but sparqly reuses it as-is —
+    // it never silently rebuilds — so the answer is the originally indexed data.
     expect(bindings.map((b) => b.s.value)).toEqual([
       'http://example.org/original',
     ]);
+    // The staleness is surfaced as a warn-level boundary log on stderr.
+    expect(second.stderr).toMatch(/stale/i);
   });
 });

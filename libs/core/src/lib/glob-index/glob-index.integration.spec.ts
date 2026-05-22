@@ -1,11 +1,16 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DataFactory } from 'n3';
+import { Quadstore } from 'quadstore';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { QueryEngine } from '../engine';
 import { parseGraphNameTransformResult, type ParsedTransform } from '../sources';
+import { recordingLogger } from '../test/recording-logger';
+import { createGlobIndexBackend } from './glob-index-backend';
 import { buildGlobIndex } from './glob-index-builder';
 import { openGlobIndex, openOrBuildGlobIndex } from './glob-index-handle';
+import { indexDbDir } from './glob-index-layout';
 import { readGlobIndexManifest } from './index-manifest';
 
 /**
@@ -31,6 +36,29 @@ describe('disk-backed glob index', () => {
     transforms: ReadonlyArray<ParsedTransform> = [],
   ) {
     return buildGlobIndex({ glob, transforms, indexDir, sparqlyVersion: SPARQLY_VERSION });
+  }
+
+  /**
+   * Writes a quad into the built index that appears in no source file. A reuse
+   * keeps it; a rebuild — which re-reads only the sources — would drop it.
+   */
+  async function stampSentinel(indexDir: string): Promise<void> {
+    const store = new Quadstore({
+      backend: createGlobIndexBackend(indexDbDir(indexDir)),
+      dataFactory: DataFactory,
+    });
+    await store.open();
+    try {
+      await store.multiPut([
+        DataFactory.quad(
+          DataFactory.namedNode('urn:sparqly:sentinel'),
+          DataFactory.namedNode('http://example.org/p'),
+          DataFactory.namedNode('http://example.org/b'),
+        ),
+      ]);
+    } finally {
+      await store.close();
+    }
   }
 
   it('builds an index from a Turtle file and queries the quads back', async () => {
@@ -135,18 +163,20 @@ describe('disk-backed glob index', () => {
     }
   });
 
-  it('reuses an existing index directory instead of rebuilding from changed sources', async () => {
+  it('warns and reuses without rebuilding when an indexed source file changed', async () => {
     const source = join(dir, 'a.ttl');
     await writeFile(
       source,
       '@prefix ex: <http://example.org/> . ex:original ex:p ex:b .',
     );
     const indexDir = join(dir, 'index');
+    const { logger, entries } = recordingLogger();
     const options = {
       glob: join(dir, '*.ttl'),
       transforms: [],
       indexDir,
       sparqlyVersion: SPARQLY_VERSION,
+      logger,
     };
 
     const first = await openOrBuildGlobIndex(options);
@@ -168,11 +198,57 @@ describe('disk-backed glob index', () => {
       const subjects = JSON.parse(result.body).results.bindings.map(
         (b: { s: { value: string } }) => b.s.value,
       );
-      // Naive reuse (#338): the second call reused the original index,
-      // unaware of the edit. Smart staleness detection is a later slice.
+      // ADR-0041: a stale index is reused as-is, never silently rebuilt — so
+      // the query still answers from the original build.
       expect(subjects).toEqual(['http://example.org/original']);
     } finally {
       await second.value.close();
     }
+    // The staleness surfaces as exactly one warn-level boundary log.
+    const warnings = entries.filter((entry) => entry.level === 'warn');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].msg).toMatch(/stale/i);
+  });
+
+  it('reuses a fresh index without warning or rebuilding when nothing changed', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const indexDir = join(dir, 'index');
+    const { logger, entries } = recordingLogger();
+    const options = {
+      glob: join(dir, '*.ttl'),
+      transforms: [],
+      indexDir,
+      sparqlyVersion: SPARQLY_VERSION,
+      logger,
+    };
+
+    const first = await openOrBuildGlobIndex(options);
+    expect(first.isOk()).toBe(true);
+    if (first.isOk()) await first.value.close();
+
+    await stampSentinel(indexDir);
+
+    const second = await openOrBuildGlobIndex(options);
+    expect(second.isOk()).toBe(true);
+    if (!second.isOk()) throw new Error('unreachable');
+    try {
+      const engine = new QueryEngine(second.value.source);
+      const result = await engine.execute('SELECT ?s WHERE { ?s ?p ?o }');
+      const subjects = JSON.parse(result.body)
+        .results.bindings.map((b: { s: { value: string } }) => b.s.value)
+        .sort();
+      // The sentinel survived — the fresh index was reused, not rebuilt.
+      expect(subjects).toEqual([
+        'http://example.org/a',
+        'urn:sparqly:sentinel',
+      ]);
+    } finally {
+      await second.value.close();
+    }
+    // Nothing changed since the build — no staleness warning.
+    expect(entries.filter((entry) => entry.level === 'warn')).toEqual([]);
   });
 });
