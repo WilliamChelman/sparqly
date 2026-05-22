@@ -164,6 +164,65 @@ describe('expandSplitGlobs — unionDefaultGraph (ADR-0040)', () => {
   });
 });
 
+describe('expandSplitGlobs — storage (ADR-0041)', () => {
+  it("inherits the meta's `storage: disk` onto each synthesized file child", async () => {
+    const meta: ParsedGlobSource = {
+      kind: 'glob',
+      id: 'docs',
+      glob: 'data/*.ttl',
+      splitByFile: true,
+      storage: 'disk',
+    };
+    const walker = async () => [
+      '/abs/proj/data/a.ttl',
+      '/abs/proj/data/b.ttl',
+    ];
+
+    const expanded = await expandSplitGlobs([meta], { walkGlob: walker });
+    const children = expanded.filter((s) => s.kind === 'file');
+    expect(children).toHaveLength(2);
+    for (const child of children) {
+      expect((child as { storage?: string }).storage).toBe('disk');
+    }
+  });
+
+  it("inherits the meta's explicit `storage: memory` onto each synthesized file child", async () => {
+    const meta: ParsedGlobSource = {
+      kind: 'glob',
+      id: 'docs',
+      glob: 'data/*.ttl',
+      splitByFile: true,
+      storage: 'memory',
+    };
+    const walker = async () => [
+      '/abs/proj/data/a.ttl',
+      '/abs/proj/data/b.ttl',
+    ];
+
+    const expanded = await expandSplitGlobs([meta], { walkGlob: walker });
+    const children = expanded.filter((s) => s.kind === 'file');
+    expect(children).toHaveLength(2);
+    for (const child of children) {
+      expect((child as { storage?: string }).storage).toBe('memory');
+    }
+  });
+
+  it('omits `storage` on each child when the meta declares none', async () => {
+    const meta: ParsedGlobSource = {
+      kind: 'glob',
+      id: 'docs',
+      glob: 'data/*.ttl',
+      splitByFile: true,
+    };
+    const walker = async () => ['/abs/proj/data/a.ttl'];
+
+    const expanded = await expandSplitGlobs([meta], { walkGlob: walker });
+    const child = expanded.find((s) => s.kind === 'file');
+    expect(child).toBeDefined();
+    expect((child as { storage?: string }).storage).toBeUndefined();
+  });
+});
+
 describe('expandSplitGlobs — pass-through', () => {
   it('passes non-split entries through unchanged and does not call the walker for them', async () => {
     const plainGlob: ParsedGlobSource = {

@@ -99,6 +99,12 @@ export interface ParsedFileSource extends SourceSpecCommonFields {
   /** Union-default-graph toggle inherited from the parent split-glob meta (ADR-0040). */
   unionDefaultGraph?: boolean;
   /**
+   * Storage tier inherited from the parent split-glob meta (ADR-0041); resolve
+   * via `storageTier`. A `disk` child materializes its own independent Glob
+   * index. Omitted means `memory`.
+   */
+  storage?: StorageTier;
+  /**
    * User-facing ref string inherited from the parent split-glob meta when the
    * meta carries `gitRef:` (ADR-0029). The child's loader uses this to pin its
    * content-read to the same revision the meta resolved against.

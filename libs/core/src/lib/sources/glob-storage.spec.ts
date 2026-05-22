@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseSourceSpec } from './source-spec';
+import { parseSourceSpec, type ParsedFileSource } from './source-spec';
 import { storageTier } from './glob-storage';
 
 const VIEW_QUERY = 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }';
@@ -115,6 +115,27 @@ describe('storageTier (ADR-0041)', () => {
     expect(
       storageTier(parseSourceSpec({ glob: 'data/*.trig', storage: 'memory' })),
     ).toBe('memory');
+  });
+
+  it('honours a `storage: disk` inherited onto a synthesized file child', () => {
+    const child: ParsedFileSource = {
+      kind: 'file',
+      id: 'docs/a.ttl',
+      path: '/abs/data/a.ttl',
+      parentId: 'docs',
+      storage: 'disk',
+    };
+    expect(storageTier(child)).toBe('disk');
+  });
+
+  it('defaults a file child with no declared `storage` to memory', () => {
+    const child: ParsedFileSource = {
+      kind: 'file',
+      id: 'docs/a.ttl',
+      path: '/abs/data/a.ttl',
+      parentId: 'docs',
+    };
+    expect(storageTier(child)).toBe('memory');
   });
 
   it('reports memory for non-glob sources — an endpoint, view, or empty materializes nothing', () => {
