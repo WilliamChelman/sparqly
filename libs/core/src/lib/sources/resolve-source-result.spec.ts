@@ -7,7 +7,11 @@ import {
   formatSourceError,
   resolveSourceResult,
 } from './resolve-source-result';
-import { parseSourceSpec, parseSourceSpecs } from './source-spec';
+import {
+  parseSourceSpec,
+  parseSourceSpecs,
+  type ParsedFileSource,
+} from './source-spec';
 import type { GitPort } from './git/git-port';
 
 describe('resolveSourceResult — endpoint target', () => {
@@ -409,5 +413,75 @@ describe('resolveSourceResult — disk-backed glob target (ADR-0041)', () => {
     } finally {
       await result.value.close();
     }
+  });
+});
+
+describe('resolveSourceResult — disk-backed file child (ADR-0041)', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-rsr-disk-file-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('resolves a `storage: disk` file child into its own disk-backed queryable source', async () => {
+    const filePath = join(dir, 'a.ttl');
+    await writeFile(
+      filePath,
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const target: ParsedFileSource = {
+      kind: 'file',
+      id: 'docs/a.ttl',
+      path: filePath,
+      parentId: 'docs',
+      storage: 'disk',
+    };
+
+    const result = await resolveSourceResult(target, {
+      configDir: dir,
+      sparqlyVersion: '9.9.9-test',
+    });
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.mode).toBe('disk-backed');
+    if (result.value.mode !== 'disk-backed') throw new Error('unreachable');
+    // The child indexes under its own id — independent of any sibling.
+    expect(result.value.indexDir).toContain(join('index', 'docs', 'a.ttl'));
+    try {
+      const engine = new QueryEngine(result.value.source);
+      const res = await engine.execute('SELECT ?s WHERE { ?s ?p ?o }');
+      const subjects = JSON.parse(res.body).results.bindings.map(
+        (b: { s: { value: string } }) => b.s.value,
+      );
+      expect(subjects).toEqual(['http://example.org/a']);
+    } finally {
+      await result.value.close();
+    }
+  });
+
+  it('resolves a `storage: memory` file child into an in-memory materialized store', async () => {
+    const filePath = join(dir, 'a.ttl');
+    await writeFile(
+      filePath,
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const target: ParsedFileSource = {
+      kind: 'file',
+      id: 'docs/a.ttl',
+      path: filePath,
+      parentId: 'docs',
+      storage: 'memory',
+    };
+
+    const result = await resolveSourceResult(target, { configDir: dir });
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.mode).toBe('materialized');
   });
 });

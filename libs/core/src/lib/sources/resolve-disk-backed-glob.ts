@@ -4,7 +4,7 @@ import { globIndexDir, openOrBuildGlobIndex } from '../glob-index';
 import type { SourceError } from './errors';
 import type { QuerySources } from './resolve-source';
 import type { ResolveSourceResultOptions } from './resolve-source-result';
-import type { ParsedGlobSource } from './source-spec';
+import type { ParsedFileSource, ParsedGlobSource } from './source-spec';
 import type { ParsedTransform } from './transform-spec';
 
 /** Manifest version token when a caller resolves a disk-backed glob without one. */
@@ -22,10 +22,43 @@ export function resolveDiskBackedGlob(
   transforms: ReadonlyArray<ParsedTransform>,
   options: ResolveSourceResultOptions,
 ): ResultAsync<QuerySources, SourceError> {
+  return resolveDiskBackedIndex(
+    diskBackedIndexId(target),
+    target.glob,
+    transforms,
+    options,
+  );
+}
+
+/**
+ * Resolves a `storage: disk` file child (ADR-0041): a synthesized split-glob
+ * child that inherited `storage: disk` from its parent meta. It indexes under
+ * its own id — `<parentId>/<glob-relative-path>` — so each sibling materializes
+ * an independent Glob index, addressable without loading the file into RAM.
+ */
+export function resolveDiskBackedFile(
+  target: ParsedFileSource,
+  transforms: ReadonlyArray<ParsedTransform>,
+  options: ResolveSourceResultOptions,
+): ResultAsync<QuerySources, SourceError> {
+  return resolveDiskBackedIndex(target.id, target.path, transforms, options);
+}
+
+/**
+ * Shared Glob-index open/build for the disk tier: keys the index directory on
+ * `indexId` and enumerates `pattern` (a glob for a meta, a single file path for
+ * a split-glob child).
+ */
+function resolveDiskBackedIndex(
+  indexId: string,
+  pattern: string,
+  transforms: ReadonlyArray<ParsedTransform>,
+  options: ResolveSourceResultOptions,
+): ResultAsync<QuerySources, SourceError> {
   const configDir = options.configDir ?? process.cwd();
-  const indexDir = globIndexDir(configDir, diskBackedIndexId(target));
+  const indexDir = globIndexDir(configDir, indexId);
   return openOrBuildGlobIndex({
-    glob: target.glob,
+    glob: pattern,
     transforms,
     indexDir,
     sparqlyVersion: options.sparqlyVersion ?? UNKNOWN_SPARQLY_VERSION,

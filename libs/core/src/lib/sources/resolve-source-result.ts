@@ -10,7 +10,10 @@ import {
 import { resolveViewResult, type ResolveViewOptions } from '../views';
 import type { SourceError } from './errors';
 import { effectiveTransforms } from './graph-name-transform';
-import { resolveDiskBackedGlob } from './resolve-disk-backed-glob';
+import {
+  resolveDiskBackedFile,
+  resolveDiskBackedGlob,
+} from './resolve-disk-backed-glob';
 import type { QuerySources } from './resolve-source';
 import type {
   ParsedFileSource,
@@ -110,9 +113,11 @@ export function resolveSourceResult(
     return loadGlobIntoStore(target, transforms, options).map(materializeLoad);
   }
   if (target.kind === 'file') {
-    return loadFileIntoStore(target, target.transforms ?? [], options).map(
-      materializeLoad,
-    );
+    const transforms = target.transforms ?? [];
+    if (storageTier(target) === 'disk') {
+      return resolveDiskBackedFile(target, transforms, options);
+    }
+    return loadFileIntoStore(target, transforms, options).map(materializeLoad);
   }
   return resolveViewTargetResult(target, options);
 }

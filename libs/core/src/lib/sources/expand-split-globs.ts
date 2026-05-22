@@ -166,6 +166,9 @@ function synthesizeChild(
   if (meta.unionDefaultGraph !== undefined) {
     child.unionDefaultGraph = meta.unionDefaultGraph;
   }
+  if (meta.storage !== undefined) {
+    child.storage = meta.storage;
+  }
   if (pin !== undefined) {
     child.gitRef = pin.gitRef;
     child.repoRoot = pin.repoRoot;

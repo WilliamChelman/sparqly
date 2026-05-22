@@ -11,7 +11,7 @@ A declared input that produces RDF. One of: `glob`, `file`, `endpoint`, `empty`,
 A `kind: 'glob'` source that matches RDF files on disk via a glob pattern. Empty matches warn (one `warn`-level log line through the boundary logger) and yield an empty store; they do not error (ADR-0028). Carries an optional `storage:` field (`memory` default, or `disk`) selecting the storage tier of its **Materialized resolution**; `disk` makes it a **Disk-backed glob**.
 
 **File source**:
-A `kind: 'file'` source resolving exactly one RDF file at a path. Synthesized by **registry expansion** as the child of a **split glob**; carries a `parentId` linking back to that meta. Addressable as `@<parentId>/<glob-relative-path>` (e.g. `@docs/foo.ttl`, `@docs/people/alice.ttl`) on the CLI, in `view.from:`, and in the webapp picker. Never user-declared. Resolves like a one-file glob (materialized) and may carry an inherited **Source transformation pipeline**.
+A `kind: 'file'` source resolving exactly one RDF file at a path. Synthesized by **registry expansion** as the child of a **split glob**; carries a `parentId` linking back to that meta. Addressable as `@<parentId>/<glob-relative-path>` (e.g. `@docs/foo.ttl`, `@docs/people/alice.ttl`) on the CLI, in `view.from:`, and in the webapp picker. Never user-declared. Resolves like a one-file glob — materialized in-memory by default, or into its own independent **Glob index** when it inherited `storage: disk` from the meta — and may carry an inherited **Source transformation pipeline**.
 _Avoid_: "single-file glob", "leaf source"
 
 **Split glob**:

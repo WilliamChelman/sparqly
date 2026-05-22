@@ -7,8 +7,10 @@ import {
   indexManifestPath,
   QueryEngine,
   resolveSourceResult,
+  storageTier,
   unionDefaultGraphEnabled,
   type ParsedEndpointSource,
+  type ParsedFileSource,
   type ParsedGlobSource,
   type ParsedSource,
   type SourceError,
@@ -260,7 +262,7 @@ export class EngineMap {
   ): ResultAsync<LoadedEntry, SourceError | IndexingError> {
     const entry = this.entries.get(id);
     if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
-    if (isDiskBackedGlob(entry.source)) {
+    if (isDiskBacked(entry.source)) {
       return this.ensureDiskBacked(entry);
     }
     if (entry.loaded === undefined) {
@@ -301,11 +303,13 @@ export class EngineMap {
   }
 
   private startBackgroundBuild(entry: Entry): void {
-    const sourceId = entry.source.id as string;
+    const src = entry.source;
+    const sourceId = src.id as string;
     const start = Date.now();
     this.logger?.info('index-build-start', {
       source: sourceId,
-      glob: (entry.source as ParsedGlobSource).glob,
+      // A meta glob indexes its pattern; a File child indexes its single path.
+      glob: src.kind === 'glob' ? src.glob : (src as ParsedFileSource).path,
     });
     const build = this.loadEntry(entry).then((result) => {
       result.match(
@@ -489,8 +493,19 @@ export class EngineMap {
 }
 
 /** A glob source declared `storage: disk` — hosted from a Glob index (ADR-0041). */
-function isDiskBackedGlob(source: ParsedSource): source is ParsedGlobSource {
-  return source.kind === 'glob' && source.storage === 'disk';
+/**
+ * Whether a source materializes onto the disk tier (ADR-0041) — a `storage:
+ * disk` glob, or a split-glob File child that inherited the tier (#344). Both
+ * run the same background-build state machine; only the Glob index pattern
+ * differs (the glob's pattern vs. the child's single file path).
+ */
+function isDiskBacked(
+  source: ParsedSource,
+): source is ParsedGlobSource | ParsedFileSource {
+  return (
+    (source.kind === 'glob' || source.kind === 'file') &&
+    storageTier(source) === 'disk'
+  );
 }
 
 /** Whether a built Glob index — its `manifest.json` — exists at `indexDir`. */

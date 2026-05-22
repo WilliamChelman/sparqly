@@ -72,14 +72,15 @@ export function rejectAnnotateSourceOnDiskGlob(
 }
 
 /**
- * Resolves the effective storage tier for any source (ADR-0041). A glob
- * defaults to `memory` when the field is omitted; every other source kind
- * reports `memory` — only a glob materializes quads into a store, so no other
- * source kind has a disk tier. This is the single defaulting point: read the
- * effective value here, never the raw `storage` field.
+ * Resolves the effective storage tier for any source (ADR-0041). A glob — and
+ * a synthesized file child that inherited the field from its parent split-glob
+ * meta — defaults to `memory` when the field is omitted; every other source
+ * kind reports `memory`, as only a glob/file source materializes quads into a
+ * store. This is the single defaulting point: read the effective value here,
+ * never the raw `storage` field.
  */
 export function storageTier(source: ParsedSource): StorageTier {
-  if (source.kind === 'glob') {
+  if (source.kind === 'glob' || source.kind === 'file') {
     return source.storage ?? 'memory';
   }
   return 'memory';

@@ -3,7 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { SparqlyLogFields, SparqlyLogger } from 'common';
-import { parseSourceSpecs, type ParsedSource } from 'core';
+import {
+  defaultGlobWalker,
+  expandSplitGlobs,
+  parseSourceSpecs,
+  type ParsedSource,
+} from 'core';
 import { EngineMap } from './engine-map';
 
 interface RecordedLog {
@@ -501,6 +506,41 @@ describe('EngineMap', () => {
         expect(start?.fields).toMatchObject({ source: 'big' });
         expect(complete?.fields).toMatchObject({ source: 'big' });
         expect(typeof complete?.fields?.['ms']).toBe('number');
+      } finally {
+        await map.whenIdle();
+        await map.close();
+      }
+    });
+
+    it('a disk-backed split-glob File child runs its own background index build — first touch reports `indexing`, then opens `ready`', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const parsed = parseSourceSpecs([
+        {
+          id: 'docs',
+          glob: join(dir, '*.ttl'),
+          splitByFile: true,
+          storage: 'disk',
+        },
+      ]);
+      const registry = await expandSplitGlobs(parsed, {
+        walkGlob: defaultGlobWalker,
+      });
+
+      const map = await EngineMap.create(registry, { configDir: dir });
+      try {
+        // The child inherited `storage: disk` — its first touch must kick a
+        // background build and report `indexing`, not block on the build.
+        const first = await map.ensure('docs/data.ttl');
+        expect(first.isErr()).toBe(true);
+        if (first.isErr()) expect(first.error.kind).toBe('indexing');
+
+        await map.whenIdle();
+        const ready = await map.ensure('docs/data.ttl');
+        expect(ready.isOk()).toBe(true);
+        const exec = await ready
+          ._unsafeUnwrap()
+          .execute(SELECT, { format: 'json' });
+        expect(subjects(exec.body)).toEqual(['http://example.org/a']);
       } finally {
         await map.whenIdle();
         await map.close();
