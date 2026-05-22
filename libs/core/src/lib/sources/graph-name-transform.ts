@@ -4,6 +4,7 @@ import { GRAPH_MODES, type GraphMode } from '../engine';
 import type { TransformParseError } from './errors';
 import type {
   ParsedTransform,
+  ParsedTransformResult,
   TransformApply,
   TransformContext,
   TransformDefinition,
@@ -19,14 +20,36 @@ interface GraphNameSpec {
 }
 
 /**
+ * Build-time config the `graphName` transform exposes for the Glob index
+ * manifest (ADR-0041). A JSON-serializable snapshot of the parsed spec — the
+ * mode, plus the graph-override IRI as a string when one was declared — so a
+ * change to either registers the disk-backed index as stale.
+ */
+export interface GraphNameConfig {
+  mode: GraphMode;
+  graph?: string;
+}
+
+/**
  * Primary `Result`-typed impl of the `graphName` transform parser. Invalid
  * specs surface as a `TransformParseError` carrying the `graphName` key and
- * the legacy thrown message (ADR-0024).
+ * the legacy thrown message (ADR-0024). The `config` mirrors the parsed spec
+ * so the Glob index manifest can detect a transform change (ADR-0041).
  */
 export function parseGraphNameTransformResult(
   raw: unknown,
-): Result<TransformApply, TransformParseError> {
-  return parseGraphNameSpecResult(raw).map(buildApply);
+): Result<ParsedTransformResult, TransformParseError> {
+  return parseGraphNameSpecResult(raw).map((spec) => ({
+    apply: buildApply(spec),
+    config: specToConfig(spec),
+  }));
+}
+
+/** Snapshots a parsed spec into the JSON-serializable manifest config. */
+function specToConfig(spec: GraphNameSpec): GraphNameConfig {
+  return spec.graph === undefined
+    ? { mode: spec.mode }
+    : { mode: spec.mode, graph: spec.graph.value };
 }
 
 /**
@@ -43,8 +66,8 @@ export function effectiveTransforms(
   if (defaultGraphMode === undefined || defaultGraphMode === 'preserve') {
     return ok([]);
   }
-  return parseGraphNameTransformResult(defaultGraphMode).map((apply) => [
-    { key: KEY, apply },
+  return parseGraphNameTransformResult(defaultGraphMode).map((result) => [
+    { key: KEY, apply: result.apply, config: result.config },
   ]);
 }
 
@@ -59,12 +82,18 @@ export function parseGraphNameTransform(raw: unknown): TransformApply {
   if (result.isErr()) {
     throw new Error(result.error.message);
   }
-  return result.value;
+  return result.value.apply;
 }
 
 export const GRAPH_NAME_TRANSFORM: TransformDefinition = {
   key: KEY,
-  parse: parseGraphNameTransform,
+  parse: (raw) => {
+    const result = parseGraphNameTransformResult(raw);
+    if (result.isErr()) {
+      throw new Error(result.error.message);
+    }
+    return result.value;
+  },
 };
 
 function transformParseErr(message: string): TransformParseError {

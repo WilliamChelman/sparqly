@@ -22,6 +22,7 @@ import {
 import { pickGitFields, rejectGitRefOn } from './source-spec-git';
 import {
   pickStorage,
+  rejectAnnotateSourceOnDiskGlob,
   rejectStorageOn,
   type StorageTier,
 } from './glob-storage';
@@ -321,19 +322,20 @@ export function parseSourceSpec(
     rejectEndpointOnlyFields(input);
     rejectLegacyGlobGraphFields(input);
     const registry = ctx?.transformRegistry ?? TRANSFORM_REGISTRY;
-    const transformsField =
+    const transforms =
       input.transforms === undefined
-        ? {}
-        : { transforms: parseTransformList(input.transforms, registry) };
+        ? undefined
+        : parseTransformList(input.transforms, registry);
     const splitByFileField = pickSplitByFile(input);
     const unionDefaultGraphField = pickUnionDefaultGraph(input);
     const storageField = pickStorage(input);
+    rejectAnnotateSourceOnDiskGlob(storageField.storage, transforms);
     const gitFields = pickGitFields(input);
     return {
       kind: 'glob',
       glob: input.glob as string,
       ...common,
-      ...transformsField,
+      ...(transforms === undefined ? {} : { transforms }),
       ...splitByFileField,
       ...unionDefaultGraphField,
       ...storageField,

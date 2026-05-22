@@ -73,9 +73,34 @@ describe('compareGlobIndexManifests', () => {
     expect(verdict.verdict).toBe('stale');
   });
 
-  it('reports stale when the transform pipeline changes', () => {
-    const prior = manifest({ transforms: ['graphName'] });
-    const current = manifest({ transforms: ['graphName', 'annotateSource'] });
+  it('reports stale when the transform pipeline gains a transform', () => {
+    const prior = manifest({ transforms: [{ key: 'graphName' }] });
+    const current = manifest({
+      transforms: [{ key: 'graphName' }, { key: 'annotateSource' }],
+    });
+    const verdict = compareGlobIndexManifests(prior, current);
+    expect(verdict.verdict).toBe('stale');
+  });
+
+  it('reports fresh when a transform keeps the same key and config', () => {
+    const fingerprint = { key: 'graphName', config: { mode: 'forceAll' } };
+    const verdict = compareGlobIndexManifests(
+      manifest({ transforms: [fingerprint] }),
+      manifest({ transforms: [{ key: 'graphName', config: { mode: 'forceAll' } }] }),
+    );
+    expect(verdict.verdict).toBe('fresh');
+  });
+
+  it('reports stale when a transform keeps its key but changes its config', () => {
+    // The disk-backed glob bakes `graphName` into the index; re-pointing the
+    // mode means the baked graph names are wrong, so the index is stale even
+    // though the pipeline key sequence is unchanged (ADR-0041).
+    const prior = manifest({
+      transforms: [{ key: 'graphName', config: { mode: 'forceAll' } }],
+    });
+    const current = manifest({
+      transforms: [{ key: 'graphName', config: { mode: 'flatten' } }],
+    });
     const verdict = compareGlobIndexManifests(prior, current);
     expect(verdict.verdict).toBe('stale');
   });

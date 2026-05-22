@@ -37,7 +37,7 @@ The data that provokes this is a static monthly snapshot. The goal: make `serve`
 
 - **No sidecar.** A disk-backed glob produces no **Source record sidecar** — an in-heap map of one record per quad is precisely the cost this change exists to escape. This **amends ADR-0032**: its unconditional sidecar is scoped to in-memory globs.
 
-- **Transforms baked at build time.** A disk-backed glob's `transforms:` (`graphName`, `annotateSource`) are applied during ingest and baked into the index; the manifest records them so a transform change registers as staleness. `annotateSource` is permitted, with a `warn` that its RDF-star projection materially grows the index.
+- **Transforms baked at build time.** A disk-backed glob's `graphName` transform is applied during ingest and baked into the index; the manifest records the pipeline — each transform's key *and* config — so a transform change, including a re-pointed `graphName` mode or graph override, registers as staleness. `annotateSource` is **rejected as a parse error** on a disk-backed glob — see the *Verification outcome* section below.
 
 - **Scope.** `query` and `serve` honor `storage: disk`. `hash` and `diff` **reject** a disk-backed glob with a clear error — both depend on RDFC-1.0 **Canonicalization**, which needs every quad in memory to compute the blank-node labeling and would OOM regardless of where the quads are stored.
 
@@ -83,4 +83,12 @@ The data that provokes this is a static monthly snapshot. The goal: make `serve`
 
 - **`CONTEXT.md` vocabulary shift.** **Materialized resolution** redefined around two storage tiers; **Disk-backed glob** and **Glob index** added; **Glob source**, **Lazy materialization**, and **Source record sidecar** amended.
 
-- **Open verification items for implementation** (do not change this decision): confirm quadstore stores RDF-star quoted triples as terms — required for `annotateSource` to bake in; if unsupported, `annotateSource` on a disk-backed glob becomes a parse error instead. Confirm quadstore's batch/stream import path (the published ~44k quads/s figure is one-by-one import). Pick the soft byte-hint threshold for the un-flagged-glob warning.
+- **Open verification items for implementation** (do not change this decision): confirm quadstore stores RDF-star quoted triples as terms — required for `annotateSource` to bake in; if unsupported, `annotateSource` on a disk-backed glob becomes a parse error instead **(resolved — see below)**. Confirm quadstore's batch/stream import path (the published ~44k quads/s figure is one-by-one import). Pick the soft byte-hint threshold for the un-flagged-glob warning.
+
+## Verification outcome — RDF-star in quadstore (#341)
+
+Verification item 1 is **resolved**: `quadstore` (15.4.1) does **not** store RDF-star quoted triples as terms. A probe built an index whose annotation subject was a quoted triple `<<s p o>>`; the term round-tripped out of the embedded quad store as a corrupted `NamedNode`, not a `Quad`. The Comunica query engine additionally does not enable SPARQL-star, so the pattern would not be queryable even if the term survived.
+
+Per this ADR's own contingency, `annotateSource` on a disk-backed glob is therefore a **parse error**, not an allowed-with-warning transform: a glob declaring both `storage: disk` and an `annotateSource` transform fails `parseSourceSpecs`, with a message naming `storage: disk` and pointing the user to `storage: memory`. A **split glob**'s File-source children inherit `storage` and `transforms`, but the meta fails parsing first, so the children are never synthesized — no separate check is needed.
+
+`graphName` only rewrites the graph term — a `NamedNode` or `DefaultGraph`, never a quoted triple — so it bakes cleanly and remains the one transform supported on the disk tier.
