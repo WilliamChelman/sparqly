@@ -1,11 +1,32 @@
 import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryEngine } from '../engine';
 import { buildGlobIndexAtomic } from './atomic-build';
 import { indexManifestPath } from './glob-index-layout';
 import { openGlobIndex } from './glob-index-handle';
+
+const fsHooks = vi.hoisted(() => ({
+  renameOverride: null as
+    | null
+    | ((src: string, dst: string) => Promise<void> | void),
+}));
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...actual,
+    rename: async (src: string, dst: string) => {
+      if (fsHooks.renameOverride) {
+        await fsHooks.renameOverride(src, dst);
+        return;
+      }
+      return actual.rename(src, dst);
+    },
+  };
+});
 
 /**
  * Coverage for the atomic-rename Glob index build (#346): a build writes into
@@ -176,6 +197,75 @@ describe('buildGlobIndexAtomic', () => {
     expect(await exists(staleTempDir)).toBe(false);
     const siblings = await readdir(dirname(indexDir));
     expect(siblings).toEqual(['data']);
+  });
+
+  it('keeps the prior index queryable when promote fails mid-swap', async () => {
+    // Promote replaces the existing index dir entries with the build outputs.
+    // The original implementation `rm`'d each target before renaming the new
+    // entry in — a crash between the rm and the rename left the real path
+    // absent. The fix must use rename-swap so a failed mid-promote leaves the
+    // prior index recoverable (here: restored in place at indexDir).
+    const source = join(dir, 'a.ttl');
+    await writeFile(
+      source,
+      '@prefix ex: <http://example.org/> . ex:original ex:p ex:b .',
+    );
+    const indexDir = join(dir, 'index', 'data');
+    const options = {
+      glob: join(dir, '*.ttl'),
+      transforms: [],
+      indexDir,
+      sparqlyVersion: SPARQLY_VERSION,
+    };
+
+    const first = await buildGlobIndexAtomic(options);
+    expect(first.isOk()).toBe(true);
+
+    // Edit the source so the rebuild produces different content. If the
+    // rebuild's failed promote leaves the new content in place, the query
+    // below would return the new subject — and the test would fail.
+    await writeFile(
+      source,
+      '@prefix ex: <http://example.org/> . ex:newer ex:p ex:b .',
+    );
+
+    // Inject a controlled promote failure: throw when the new `db/` is
+    // renamed into the real index dir. The fix's swap path must restore the
+    // pre-swap `db/` (renamed-aside, not unlinked) so the original data is
+    // still on disk and queryable after the failed rebuild.
+    const realRename = (await vi.importActual<typeof import('node:fs/promises')>(
+      'node:fs/promises',
+    )).rename;
+    fsHooks.renameOverride = async (src, dst) => {
+      if (
+        dst === join(indexDir, 'db') &&
+        src.includes('.building-')
+      ) {
+        const err = new Error('injected promote failure');
+        (err as NodeJS.ErrnoException).code = 'EIO';
+        throw err;
+      }
+      return realRename(src, dst);
+    };
+
+    try {
+      const second = await buildGlobIndexAtomic(options);
+      expect(second.isErr()).toBe(true);
+    } finally {
+      fsHooks.renameOverride = null;
+    }
+
+    const handle = await openGlobIndex(indexDir);
+    try {
+      const engine = new QueryEngine(handle.source);
+      const result = await engine.execute('SELECT ?s WHERE { ?s ?p ?o }');
+      const subjects = JSON.parse(result.body).results.bindings.map(
+        (b: { s: { value: string } }) => b.s.value,
+      );
+      expect(subjects).toEqual(['http://example.org/original']);
+    } finally {
+      await handle.close();
+    }
   });
 
   it('preserves a sibling temp dir whose pid is still alive (concurrent build)', async () => {
