@@ -1,11 +1,16 @@
-import { DataFactory, Store } from 'n3';
+import { DataFactory, type Quad, Store } from 'n3';
 import { ResultAsync } from 'neverthrow';
 import { Quadstore } from 'quadstore';
 import { glob as tinyGlob } from 'tinyglobby';
-import { parseRdfFileResult, type RdfRecord } from '../engine/rdf-file-parser';
+import {
+  parseRdfFileResult,
+  streamRdfFileQuads,
+  type RdfRecord,
+} from '../engine/rdf-file-parser';
 import type { GlobLoadError } from '../sources/errors';
 import { applyTransformPipeline } from '../sources/transform-pipeline';
 import type { ParsedTransform } from '../sources/transform-spec';
+import { ingestQuadStream } from './batched-ingest';
 import { createGlobIndexBackend } from './glob-index-backend';
 import { indexDbDir } from './glob-index-layout';
 import { computeGlobIndexManifest, writeGlobIndexManifest } from './index-manifest';
@@ -65,13 +70,11 @@ async function buildGlobIndexAsync(
   await store.open();
   try {
     if (options.transforms.length === 0) {
-      // No transforms: stream each file's quads straight to disk — the index
-      // never holds the whole glob in RAM, which is the disk tier's purpose.
-      for (const file of files) {
-        const parsed = await parseRdfFileResult(file);
-        if (parsed.isErr()) throw parsed.error;
-        await store.multiPut(parsed.value.records.map((record) => record.quad));
-      }
+      // No transforms: stream every matched file's quads through a fixed-size
+      // batched ingest (#347). The build never materializes a whole file in
+      // heap — at most one batch is resident — so a multi-GB file stays
+      // buildable at flat memory, which is the disk tier's purpose.
+      await ingestQuadStream(store, streamGlobQuads(files));
     } else {
       // Transforms bake at build time (ADR-0041, amends ADR-0006). The
       // pipeline operates on a whole `n3.Store` with per-file provenance, so
@@ -90,6 +93,19 @@ async function buildGlobIndexAsync(
   });
   await writeGlobIndexManifest(options.indexDir, manifest);
   return { indexDir: options.indexDir, files };
+}
+
+/**
+ * Concatenates every matched file's quad stream into one lazy quad stream,
+ * in glob-enumeration order. A parse failure on any file surfaces as the
+ * {@link GlobLoadError} {@link streamRdfFileQuads} throws, naming that file.
+ */
+async function* streamGlobQuads(
+  files: ReadonlyArray<string>,
+): AsyncGenerator<Quad> {
+  for (const file of files) {
+    yield* streamRdfFileQuads(file);
+  }
 }
 
 /**

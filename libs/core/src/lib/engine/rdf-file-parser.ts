@@ -1,7 +1,7 @@
 import { createReadStream } from 'node:fs';
 import { extname } from 'node:path';
 import { Readable } from 'node:stream';
-import { Parser, type Quad } from 'n3';
+import { Parser, StreamParser, type Quad } from 'n3';
 import { ResultAsync } from 'neverthrow';
 import { rdfParser } from 'rdf-parse';
 import type { GlobLoadError } from '../sources/errors';
@@ -241,6 +241,68 @@ function parseWithN3(
       else resolve({ records, prefixes });
     });
   });
+}
+
+/**
+ * Streams a file's quads without ever holding the whole file in heap (#347).
+ * An async generator: the underlying n3 / rdf-parse quad stream is consumed
+ * lazily, so Node stream backpressure keeps memory flat while a slow consumer
+ * (the batched disk-index ingest) catches up. Unlike {@link parseRdfFile}
+ * this carries no source-line tracking — disk-backed globs index quads only
+ * and reject the hash/diff surfaces that need lines. A parse or IO failure
+ * surfaces as a {@link GlobLoadError} naming the offending file (ADR-0024).
+ */
+export async function* streamRdfFileQuads(
+  path: string,
+): AsyncGenerator<Quad, void, void> {
+  const ext = extname(path).toLowerCase();
+  let quadStream: Readable;
+  if (ext in N3_FORMAT_BY_EXT) {
+    quadStream = createN3QuadStream(path, N3_FORMAT_BY_EXT[ext]);
+  } else if (ext in RDF_PARSE_FORMAT_BY_EXT) {
+    quadStream = createRdfParseQuadStream(path, RDF_PARSE_FORMAT_BY_EXT[ext]);
+  } else {
+    throw streamLoadError(path, `Unsupported file extension: ${path}`);
+  }
+  try {
+    for await (const quad of quadStream) {
+      yield quad as Quad;
+    }
+  } catch (err) {
+    throw streamLoadError(
+      path,
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+function streamLoadError(path: string, message: string): GlobLoadError {
+  return { kind: 'glob-load', glob: [path], file: path, message };
+}
+
+/**
+ * Pipes a file read stream through an n3 `StreamParser`. The read stream's
+ * errors are not pipe-forwarded, so they are routed onto the parser by hand
+ * — otherwise an IO failure would hang the consumer.
+ */
+function createN3QuadStream(path: string, format: string): Readable {
+  const fileStream = createReadStream(path, { encoding: 'utf8' });
+  const parser = new StreamParser({ format });
+  fileStream.on('error', (err) => parser.destroy(err));
+  fileStream.pipe(parser);
+  return parser;
+}
+
+function createRdfParseQuadStream(path: string, contentType: string): Readable {
+  const input = createReadStream(path);
+  const output = rdfParser.parse(input, {
+    contentType,
+    baseIRI: `file://${path}`,
+  });
+  input.on('error', (err) => {
+    if (!output.destroyed) output.destroy(err);
+  });
+  return output;
 }
 
 function parseWithRdfParse(
