@@ -49,3 +49,4 @@ coverage
 __screenshots__/
 
 vitest.config.*.timestamp*
+/.sparqly

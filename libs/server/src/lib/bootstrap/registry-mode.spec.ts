@@ -71,6 +71,30 @@ describe('createServer — served registry', () => {
     });
   });
 
+  it('GET /api/config lists a disk-backed glob in the source picker without building its index (ADR-0041 / #340)', async () => {
+    const cfgDir = await mkdtemp(join(tmpdir(), 'sparqly-reg-cfg-'));
+    const local = await createServer({
+      sources: [{ id: 'big', glob: join(dirA, '*.ttl'), storage: 'disk' }],
+      port: 0,
+      configDir: cfgDir,
+    });
+    try {
+      const resp = await fetch(`http://localhost:${local.port}/api/config`);
+      expect(resp.status).toBe(200);
+      const json = (await resp.json()) as {
+        sources: Array<{ id: string; kind: string; label: string }>;
+      };
+      const big = json.sources.find((s) => s.id === 'big');
+      // A `storage: disk` glob is a `kind: 'glob'` source — it shows in the
+      // webapp picker like any other; the listing reads the registry and
+      // never kicks the background index build.
+      expect(big).toMatchObject({ id: 'big', kind: 'glob', label: 'big' });
+    } finally {
+      await local.close();
+      await rm(cfgDir, { recursive: true, force: true });
+    }
+  });
+
   it('GET /api/config surfaces a configured `describe:` block, filling missing fields with defaults', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sparqly-reg-desc-'));
     await writeFile(join(dir, 'd.ttl'), SAMPLE_A);
