@@ -140,7 +140,11 @@ describe('disk-backed glob index', () => {
     });
     if (!graphName.isOk()) throw new Error('unreachable');
     const transforms: ParsedTransform[] = [
-      { key: 'graphName', apply: graphName.value },
+      {
+        key: 'graphName',
+        apply: graphName.value.apply,
+        config: graphName.value.config,
+      },
     ];
 
     const built = await build(join(dir, '*.ttl'), indexDir, transforms);
@@ -205,6 +209,46 @@ describe('disk-backed glob index', () => {
       await second.value.close();
     }
     // The staleness surfaces as exactly one warn-level boundary log.
+    const warnings = entries.filter((entry) => entry.level === 'warn');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].msg).toMatch(/stale/i);
+  });
+
+  it('warns staleness when a built index is reopened with a changed transform config', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const indexDir = join(dir, 'index');
+    const { logger, entries } = recordingLogger();
+
+    const forceAll = parseGraphNameTransformResult('forceAll');
+    const flatten = parseGraphNameTransformResult('flatten');
+    if (!forceAll.isOk() || !flatten.isOk()) throw new Error('unreachable');
+
+    const optionsWith = (parsed: typeof forceAll.value) => ({
+      glob: join(dir, '*.ttl'),
+      transforms: [
+        { key: 'graphName', apply: parsed.apply, config: parsed.config },
+      ] satisfies ParsedTransform[],
+      indexDir,
+      sparqlyVersion: SPARQLY_VERSION,
+      logger,
+    });
+
+    // The index bakes `graphName: forceAll` into its quads.
+    const first = await openOrBuildGlobIndex(optionsWith(forceAll.value));
+    expect(first.isOk()).toBe(true);
+    if (first.isOk()) await first.value.close();
+
+    // Reopened with the same pipeline key but a different mode — `flatten`
+    // would bake different graph terms, so the index no longer matches.
+    const second = await openOrBuildGlobIndex(optionsWith(flatten.value));
+    expect(second.isOk()).toBe(true);
+    if (second.isOk()) await second.value.close();
+
+    // ADR-0041: a changed transform registers the index as stale — exactly
+    // one warn, and (as for any staleness) the index is reused, not rebuilt.
     const warnings = entries.filter((entry) => entry.level === 'warn');
     expect(warnings).toHaveLength(1);
     expect(warnings[0].msg).toMatch(/stale/i);

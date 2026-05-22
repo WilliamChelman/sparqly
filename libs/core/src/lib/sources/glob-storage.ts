@@ -1,4 +1,5 @@
 import type { ParsedSource, SourceSpecObjectInput } from './source-spec';
+import type { ParsedTransform } from './transform-spec';
 
 /**
  * Glob storage-tier parsing helpers (ADR-0041). Kept in a dedicated module so
@@ -43,6 +44,29 @@ export function rejectStorageOn(
   if (input.storage !== undefined) {
     throw new Error(
       `\`storage\` is only valid on glob sources (got a ${kind} source)`,
+    );
+  }
+}
+
+/**
+ * Rejects an `annotateSource` transform on a disk-backed glob (ADR-0041,
+ * resolving its further-note 1). `annotateSource` projects an RDF-star
+ * **Source record** — a quoted triple `<<s p o>>` as the annotation's
+ * subject — and the embedded quad store backing a **Glob index** does not
+ * persist quoted triples as terms: a built index would silently corrupt them.
+ * `graphName` only rewrites the graph term and bakes cleanly, so it is
+ * unaffected. The user keeps `annotateSource` by dropping to `storage: memory`.
+ */
+export function rejectAnnotateSourceOnDiskGlob(
+  storage: StorageTier | undefined,
+  transforms: ReadonlyArray<ParsedTransform> | undefined,
+): void {
+  if (storage !== 'disk' || transforms === undefined) return;
+  if (transforms.some((transform) => transform.key === 'annotateSource')) {
+    throw new Error(
+      '`annotateSource` is not supported on a disk-backed glob (`storage: disk`): ' +
+        'the embedded quad store cannot persist RDF-star quoted triples. ' +
+        'Drop the transform or use `storage: memory`.',
     );
   }
 }

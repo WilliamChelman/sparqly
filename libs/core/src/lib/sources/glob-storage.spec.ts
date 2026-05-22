@@ -68,6 +68,36 @@ describe('parseSourceSpec — storage (ADR-0041)', () => {
       }),
     ).toThrow(/storage.*only.*glob.*empty/i);
   });
+
+  it('rejects `annotateSource` on a disk-backed glob — quadstore cannot persist RDF-star quoted triples (ADR-0041)', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        storage: 'disk',
+        transforms: [{ annotateSource: {} }],
+      }),
+    ).toThrow(/annotateSource.*disk/i);
+  });
+
+  it('accepts `annotateSource` on a memory-backed glob — the RDF-star projection lives in the in-heap Store', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        storage: 'memory',
+        transforms: [{ annotateSource: {} }],
+      }),
+    ).not.toThrow();
+  });
+
+  it('accepts `graphName` on a disk-backed glob — graph rewrites bake cleanly into the index', () => {
+    expect(() =>
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        storage: 'disk',
+        transforms: [{ graphName: 'forceAll' }],
+      }),
+    ).not.toThrow();
+  });
 });
 
 describe('storageTier (ADR-0041)', () => {

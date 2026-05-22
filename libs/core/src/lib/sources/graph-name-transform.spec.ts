@@ -274,7 +274,7 @@ describe('parseGraphNameTransformResult — Result-typed primary impl', () => {
     const result = parseGraphNameTransformResult('forceAll');
     expect(result.isOk()).toBe(true);
     if (!result.isOk()) throw new Error('unreachable');
-    expect(typeof result.value).toBe('function');
+    expect(typeof result.value.apply).toBe('function');
   });
 
   it('returns err with a transform-parse variant naming the transform key for an unknown mode', () => {
@@ -320,13 +320,50 @@ describe('parseGraphNameTransform — legacy throw-wrapping adapter', () => {
   });
 });
 
+describe('parseGraphNameTransformResult — config for index staleness (ADR-0041)', () => {
+  it('exposes the parsed mode as config for a shorthand mode', () => {
+    const result = parseGraphNameTransformResult('forceAll');
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    // The config feeds the Glob index manifest — a mode change must register
+    // as staleness, so the manifest needs the mode itself, not just the key.
+    expect(result.value.config).toEqual({ mode: 'forceAll' });
+  });
+
+  it('exposes the mode and graph override as config for the long form', () => {
+    const result = parseGraphNameTransformResult({
+      mode: 'forceAll',
+      graph: 'http://example.org/g',
+    });
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.config).toEqual({
+      mode: 'forceAll',
+      graph: 'http://example.org/g',
+    });
+  });
+
+  it('omits `graph` from config when no override is declared', () => {
+    const result = parseGraphNameTransformResult({ mode: 'fillDefault' });
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.config).toEqual({ mode: 'fillDefault' });
+  });
+});
+
 describe('GRAPH_NAME_TRANSFORM registry definition', () => {
   it('uses the key "graphName"', () => {
     expect(GRAPH_NAME_TRANSFORM.key).toBe('graphName');
   });
 
-  it('parse() returns a TransformApply ready to run', () => {
-    const apply = GRAPH_NAME_TRANSFORM.parse('preserve');
-    expect(typeof apply).toBe('function');
+  it('parse() returns a ParsedTransformResult carrying the apply fn and config', () => {
+    const parsed = GRAPH_NAME_TRANSFORM.parse('preserve');
+    if (typeof parsed === 'function') {
+      throw new Error('expected a ParsedTransformResult, not a bare apply fn');
+    }
+    expect(typeof parsed.apply).toBe('function');
+    // The registry path threads config through `parseTransformList`, so a
+    // declared `graphName` lands in the Glob index manifest (ADR-0041).
+    expect(parsed.config).toEqual({ mode: 'preserve' });
   });
 });

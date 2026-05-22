@@ -20,13 +20,27 @@ export interface IndexedFileEntry {
   mtimeMs: number;
 }
 
+/**
+ * One transform's fingerprint in the manifest (ADR-0041). The `key` identifies
+ * the transform; the `config` is its JSON-serializable build-time
+ * configuration (e.g. `graphName`'s mode and graph override). Both are
+ * compared on open — re-pointing a transform's config bakes different quads,
+ * so a config change registers the index as stale just like a key change.
+ */
+export interface TransformFingerprint {
+  /** Transform key (e.g. `graphName`). */
+  key: string;
+  /** JSON-serializable build-time config, omitted when the transform has none. */
+  config?: unknown;
+}
+
 export interface GlobIndexManifest {
   /** Fingerprint of every indexed file, in index-build order. */
   files: IndexedFileEntry[];
   /** The sparqly version that built the index. */
   sparqlyVersion: string;
-  /** Keys of the transform pipeline applied at build time, in order. */
-  transforms: string[];
+  /** The transform pipeline applied at build time — key + config, in order. */
+  transforms: TransformFingerprint[];
 }
 
 export interface ComputeManifestInput {
@@ -53,7 +67,11 @@ export async function computeGlobIndexManifest(
   return {
     files,
     sparqlyVersion: input.sparqlyVersion,
-    transforms: input.transforms.map((transform) => transform.key),
+    transforms: input.transforms.map((transform) =>
+      transform.config === undefined
+        ? { key: transform.key }
+        : { key: transform.key, config: transform.config },
+    ),
   };
 }
 
@@ -103,11 +121,10 @@ export function compareGlobIndexManifests(
       reason: `sparqly version changed: ${prior.sparqlyVersion} → ${current.sparqlyVersion}`,
     };
   }
-  // Transform order is part of the pipeline (ADR-0006) — compare in sequence.
-  if (
-    prior.transforms.length !== current.transforms.length ||
-    prior.transforms.some((key, i) => key !== current.transforms[i])
-  ) {
+  // Transform order is part of the pipeline (ADR-0006), and a transform's
+  // config is baked into the index (ADR-0041) — compare key and config in
+  // sequence so re-pointing either registers as staleness.
+  if (!transformsMatch(prior.transforms, current.transforms)) {
     return { verdict: 'stale', reason: 'transform pipeline changed' };
   }
   const priorByPath = new Map(prior.files.map((file) => [file.path, file]));
@@ -127,4 +144,24 @@ export function compareGlobIndexManifests(
     }
   }
   return { verdict: 'fresh' };
+}
+
+/**
+ * Whether two transform pipelines are identical — same keys, same order, same
+ * per-transform config. Config is compared by JSON shape: both sides are
+ * built by the same parser, so key order is stable, and a manifest read from
+ * disk round-trips through `JSON.parse` of that same serialization.
+ */
+function transformsMatch(
+  prior: ReadonlyArray<TransformFingerprint>,
+  current: ReadonlyArray<TransformFingerprint>,
+): boolean {
+  if (prior.length !== current.length) return false;
+  return prior.every((transform, i) => {
+    const other = current[i];
+    return (
+      transform.key === other.key &&
+      JSON.stringify(transform.config) === JSON.stringify(other.config)
+    );
+  });
 }
