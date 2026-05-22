@@ -1,5 +1,7 @@
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { glob as tinyGlob } from 'tinyglobby';
 import type { ParsedTransform } from '../sources/transform-spec';
+import type { BuildGlobIndexOptions } from './glob-index-builder';
 import { indexManifestPath } from './glob-index-layout';
 
 /**
@@ -96,6 +98,16 @@ export async function readGlobIndexManifest(
   return JSON.parse(raw) as GlobIndexManifest;
 }
 
+/** Whether a built Glob index — its `manifest.json` — exists at `indexDir`. */
+export async function manifestExists(indexDir: string): Promise<boolean> {
+  try {
+    await stat(indexManifestPath(indexDir));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Staleness verdict for a Glob index (ADR-0041). `fresh` means the index still
  * matches its inputs and can be reused; `stale` names the change that broke
@@ -144,6 +156,35 @@ export function compareGlobIndexManifests(
     }
   }
   return { verdict: 'fresh' };
+}
+
+/**
+ * Freshness of the Glob index at an index directory (#346). `absent` means no
+ * index is built there yet; otherwise it is the `fresh | stale` verdict of
+ * comparing the stored manifest against one freshly computed from the current
+ * matched file set — the same comparison the open path runs, surfaced for the
+ * `sparqly index` command's skip-fresh / rebuild-stale decision.
+ */
+export type GlobIndexFreshness = { verdict: 'absent' } | GlobIndexStaleness;
+
+/**
+ * Inspects the Glob index at `options.indexDir` against the files `options.glob`
+ * currently matches. Re-globs and re-stats, so the verdict reflects the file
+ * set at call time.
+ */
+export async function inspectGlobIndexFreshness(
+  options: BuildGlobIndexOptions,
+): Promise<GlobIndexFreshness> {
+  if (!(await manifestExists(options.indexDir))) {
+    return { verdict: 'absent' };
+  }
+  const prior = await readGlobIndexManifest(options.indexDir);
+  const current = await computeGlobIndexManifest({
+    files: await tinyGlob(options.glob, { absolute: true }),
+    transforms: options.transforms,
+    sparqlyVersion: options.sparqlyVersion,
+  });
+  return compareGlobIndexManifests(prior, current);
 }
 
 /**

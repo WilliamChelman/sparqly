@@ -15,6 +15,7 @@ export * from './source-path-display';
 export * from './load-sources';
 export * from './resolve-source';
 export * from './resolve-source-result';
+export * from './resolve-disk-backed-glob';
 export * from './resolve-source-references';
 export * from './expand-split-globs';
 export * from './walk-glob-paths';
