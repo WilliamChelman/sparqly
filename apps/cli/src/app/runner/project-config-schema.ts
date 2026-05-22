@@ -50,6 +50,10 @@ const indexBlockSchema = z
     // the default `<configDir>/.sparqly/index/<source-id>/`. Relative paths
     // resolve against the project config dir; absolute paths are honored as-is.
     dir: z.string().min(1),
+    // Maximum number of `sparqly index` child processes `serve` runs at once
+    // for not-yet-built disk-backed globs (ADR-0042, #350). Further sources
+    // queue for a free slot. Defaults to 2 when omitted.
+    concurrency: z.number().int().positive(),
   })
   .partial()
   .strict();

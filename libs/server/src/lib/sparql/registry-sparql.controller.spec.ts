@@ -3,11 +3,33 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createServer, type CreatedServer } from '../bootstrap';
+import {
+  createServer,
+  type CreatedServer,
+  type SpawnIndexBuild,
+} from '../bootstrap';
 
 const SAMPLE_A = '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n';
 const SAMPLE_B = '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .\n';
 const SELECT_S = 'SELECT ?s WHERE { ?s ?p ?o }';
+
+/**
+ * A {@link SpawnIndexBuild} whose build child never finishes on its own — it
+ * exits only when SIGTERM'd at server shutdown. Pins a disk-backed glob in
+ * `indexing` for the whole test, exercising the `503` path without a real
+ * `sparqly index` subprocess.
+ */
+const stuckIndexBuild: SpawnIndexBuild = () => {
+  const exitListeners: Array<(code: number | null) => void> = [];
+  return {
+    on(event, listener) {
+      if (event === 'exit') exitListeners.push(listener);
+    },
+    kill() {
+      for (const listener of exitListeners) listener(null);
+    },
+  };
+};
 
 describe('RegistrySparqlController — /api/sparql alias', () => {
   let dirA: string;
@@ -176,6 +198,7 @@ describe('RegistrySparqlController — /api/sparql alias', () => {
       sources: [{ id: 'big', glob: join(dirA, '*.ttl'), storage: 'disk' }],
       port: 0,
       configDir: cfgDir,
+      spawnIndexBuild: stuckIndexBuild,
     });
     const resp = await fetch(
       `http://localhost:${server.port}/api/sparql/big?query=${encodeURIComponent(
@@ -201,6 +224,7 @@ describe('RegistrySparqlController — /api/sparql alias', () => {
       ],
       port: 0,
       configDir: cfgDir,
+      spawnIndexBuild: stuckIndexBuild,
     });
     // First touch of the disk-backed glob kicks its background build.
     const indexing = await fetch(

@@ -4,6 +4,7 @@ import type { SourceSpecInput } from 'core';
 import { createServer } from 'server';
 import { configureLogger } from '../logging';
 import { printServeSplash } from './serve-splash';
+import { makeSpawnIndexBuild } from './serve-index-spawn';
 import type { FieldDescriptor } from '../runner/fields/field';
 import {
   coercedBooleanSchema,
@@ -34,6 +35,7 @@ interface ServeConfig {
   fromSourcePredicate?: string;
   savedQueriesPath?: string;
   indexCacheDir?: string;
+  indexConcurrency?: number;
   verbose?: boolean;
   quiet?: boolean;
   logFormat?: 'text' | 'json';
@@ -143,6 +145,14 @@ const indexCacheDirField: FieldDescriptor = {
   schema: z.string().min(1),
 };
 
+// Capped child-process index-build concurrency, read from the top-level
+// `index.concurrency` config block (ADR-0042, #350). No CLI flag — a
+// deployment-shaped knob. `EngineMap` defaults it to 2 when omitted.
+const indexConcurrencyField: FieldDescriptor = {
+  key: 'indexConcurrency',
+  schema: z.number().int().positive(),
+};
+
 export const serveSpec: CommandSpec<ServeConfig> = {
   name: 'serve',
   description:
@@ -163,6 +173,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     describeFromSourcePredicateField,
     savedQueriesPathField,
     indexCacheDirField,
+    indexConcurrencyField,
     ...verbosityFieldsFor('serve'),
   ],
   positionals: [{ field: 'source', name: 'glob' }],
@@ -196,7 +207,11 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       );
     }
 
-    await createServer({
+    // `main.ts` overwrites `process.argv[1]` with the bare program name, so the
+    // CLI entry a build child must re-invoke is read from `require.main`.
+    const cliEntry = require.main?.filename ?? __filename;
+
+    const created = await createServer({
       sources,
       scope,
       port,
@@ -217,7 +232,18 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       },
       savedQueriesPath: config.savedQueriesPath,
       indexCacheDir: config.indexCacheDir,
+      indexConcurrency: config.indexConcurrency,
+      spawnIndexBuild: makeSpawnIndexBuild({ cliEntry }),
       logger: boundaryLog,
     });
+
+    // Graceful shutdown (ADR-0042): SIGTERM any in-flight `sparqly index` build
+    // children and release the embedded index locks before exiting. A second
+    // Ctrl-C falls through to Node's default and hard-kills instantly.
+    const shutdown = (): void => {
+      void created.close().then(() => process.exit(0));
+    };
+    process.once('SIGINT', shutdown);
+    process.once('SIGTERM', shutdown);
   },
 };

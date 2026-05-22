@@ -73,4 +73,25 @@ describe('validateProjectConfig — index block', () => {
     });
     expect(result.ok).toBe(false);
   });
+
+  it('accepts an index block with a build concurrency cap', () => {
+    const result = validateProjectConfig({
+      sources: ['data/*.ttl'],
+      index: { concurrency: 4 },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.index?.concurrency).toBe(4);
+    }
+  });
+
+  it('rejects a non-positive-integer concurrency', () => {
+    for (const concurrency of [0, -1, 2.5]) {
+      const result = validateProjectConfig({
+        sources: ['data/*.ttl'],
+        index: { concurrency },
+      });
+      expect(result.ok).toBe(false);
+    }
+  });
 });

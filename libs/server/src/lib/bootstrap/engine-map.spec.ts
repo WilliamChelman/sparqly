@@ -5,11 +5,17 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { SparqlyLogFields, SparqlyLogger } from 'common';
 import {
   defaultGlobWalker,
+  diskBackedIndexIdentity,
+  ensureGlobIndex,
   expandSplitGlobs,
+  globIndexDir,
   parseSourceSpecs,
+  type ParsedFileSource,
+  type ParsedGlobSource,
   type ParsedSource,
 } from 'core';
 import { EngineMap } from './engine-map';
+import type { BuildChild, SpawnIndexBuild } from './index-build-pool';
 
 interface RecordedLog {
   level: 'debug' | 'info' | 'warn' | 'error';
@@ -334,9 +340,8 @@ describe('EngineMap', () => {
     }
   });
 
-  describe('disk-backed glob (storage: disk) — background index build, ADR-0041 / #340', () => {
-    const SAMPLE =
-      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .';
+  describe('disk-backed glob (storage: disk) — child-process index build, ADR-0041 / -0042', () => {
+    const SAMPLE = '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .';
     const SELECT = 'SELECT ?s WHERE { ?s ?p ?o }';
 
     function subjects(body: string): string[] {
@@ -346,32 +351,106 @@ describe('EngineMap', () => {
       return json.results.bindings.map((b) => b.s.value);
     }
 
-    it('first touch of a disk-backed glob with no built index returns an `indexing` error rather than blocking on the build', async () => {
+    /**
+     * A {@link BuildChild} whose `exit` fires once an in-process Glob index
+     * build settles — the unit-test stand-in for a real `sparqly index @id`
+     * subprocess.
+     */
+    class StubBuildChild implements BuildChild {
+      private readonly exitListeners: Array<(code: number | null) => void> =
+        [];
+
+      on(event: 'exit', listener: (code: number | null) => void): void {
+        if (event === 'exit') this.exitListeners.push(listener);
+      }
+
+      kill(): void {
+        // The in-process build cannot be signalled; tests drain via whenIdle().
+      }
+
+      settle(code: number): void {
+        for (const listener of this.exitListeners) listener(code);
+      }
+    }
+
+    /**
+     * An injectable {@link SpawnIndexBuild} standing in for the real `sparqly
+     * index @id` child: it runs the actual Glob index build for the requested
+     * registry source in-process, then fires the child's `exit` — exercising
+     * EngineMap's spawn → build → `ready` path without a real subprocess. The
+     * returned `spawned` array records every requested `@id`.
+     */
+    function inProcessIndexBuilds(
+      registry: ReadonlyArray<ParsedSource>,
+      configDir: string,
+      indexCacheDir?: string,
+    ): { spawn: SpawnIndexBuild; spawned: string[] } {
+      const spawned: string[] = [];
+      const byId = new Map<string, ParsedGlobSource | ParsedFileSource>();
+      for (const src of registry) {
+        if (
+          (src.kind === 'glob' || src.kind === 'file') &&
+          src.id !== undefined
+        ) {
+          byId.set(src.id, src);
+        }
+      }
+      const spawn: SpawnIndexBuild = (id) => {
+        spawned.push(id);
+        const child = new StubBuildChild();
+        const source = byId.get(id);
+        if (source === undefined) {
+          queueMicrotask(() => child.settle(1));
+          return child;
+        }
+        const { indexId, pattern } = diskBackedIndexIdentity(source);
+        const indexDir = globIndexDir(configDir, indexId, indexCacheDir);
+        void ensureGlobIndex({
+          glob: pattern,
+          transforms: source.transforms ?? [],
+          indexDir,
+          sparqlyVersion: 'test',
+        }).then((outcome) => child.settle(outcome.isOk() ? 0 : 1));
+        return child;
+      };
+      return { spawn, spawned };
+    }
+
+    it('first touch of a disk-backed glob with no built index reports `indexing` and spawns a build child instead of blocking', async () => {
       await writeFile(join(dir, 'data.ttl'), SAMPLE);
       const registry = parseSourceSpecs([
         { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
       ]);
+      const builds = inProcessIndexBuilds(registry, dir);
 
-      const map = await EngineMap.create(registry, { configDir: dir });
+      const map = await EngineMap.create(registry, {
+        configDir: dir,
+        spawnIndexBuild: builds.spawn,
+      });
       try {
-        // The build runs in the background — first touch reports `indexing`
-        // immediately instead of awaiting the (potentially ~15-min) build.
+        // First touch reports `indexing` at once — the build runs in an
+        // isolated child, not inline on `serve`'s event loop.
         const result = await map.ensure('big');
         expect(result.isErr()).toBe(true);
         if (result.isErr()) expect(result.error.kind).toBe('indexing');
+        expect(builds.spawned).toEqual(['big']);
       } finally {
         await map.whenIdle();
         await map.close();
       }
     });
 
-    it('once the background build completes, ensure() returns a ready engine that answers SPARQL against the disk-backed index', async () => {
+    it('once the spawned build child completes, ensure() returns a ready engine that answers SPARQL against the disk-backed index', async () => {
       await writeFile(join(dir, 'data.ttl'), SAMPLE);
       const registry = parseSourceSpecs([
         { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
       ]);
+      const builds = inProcessIndexBuilds(registry, dir);
 
-      const map = await EngineMap.create(registry, { configDir: dir });
+      const map = await EngineMap.create(registry, {
+        configDir: dir,
+        spawnIndexBuild: builds.spawn,
+      });
       try {
         const first = await map.ensure('big');
         expect(first.isErr()).toBe(true);
@@ -389,24 +468,28 @@ describe('EngineMap', () => {
       }
     });
 
-    it('an already-built index opens straight to `ready` on first touch — no `indexing` error', async () => {
+    it('an already-built index opens straight to `ready` on first touch — no build child spawned', async () => {
       await writeFile(join(dir, 'data.ttl'), SAMPLE);
       const registry = parseSourceSpecs([
         { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
       ]);
 
       // First server lifetime: builds the index, then releases its lock.
-      const builder = await EngineMap.create(registry, { configDir: dir });
+      const firstBuilds = inProcessIndexBuilds(registry, dir);
+      const builder = await EngineMap.create(registry, {
+        configDir: dir,
+        spawnIndexBuild: firstBuilds.spawn,
+      });
       await builder.ensure('big');
       await builder.whenIdle();
       await builder.close();
 
       // Second server lifetime over the same configDir: the index is present,
-      // so the very first touch resolves `ready` with no background build.
-      const rec = recordingLogger();
+      // so the very first touch resolves `ready` with no child spawned.
+      const builds = inProcessIndexBuilds(registry, dir);
       const map = await EngineMap.create(registry, {
         configDir: dir,
-        logger: rec.logger,
+        spawnIndexBuild: builds.spawn,
       });
       try {
         const result = await map.ensure('big');
@@ -415,27 +498,29 @@ describe('EngineMap', () => {
           ._unsafeUnwrap()
           .execute(SELECT, { format: 'json' });
         expect(subjects(exec.body)).toEqual(['http://example.org/a']);
-        expect(
-          rec.entries.filter((e) => e.msg === 'index-build-start'),
-        ).toHaveLength(0);
+        expect(builds.spawned).toEqual([]);
       } finally {
         await map.whenIdle();
         await map.close();
       }
     });
 
-    it('a failed index build clears the slot so a later ensure() retries the build — fix-the-file → success', async () => {
+    it('a build child that exits non-zero clears the slot so a later ensure() retries the build — fix-the-file → success', async () => {
       const ttl = join(dir, 'data.ttl');
       await writeFile(ttl, 'this is not valid turtle .');
       const registry = parseSourceSpecs([
         { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
       ]);
+      const builds = inProcessIndexBuilds(registry, dir);
 
-      const map = await EngineMap.create(registry, { configDir: dir });
+      const map = await EngineMap.create(registry, {
+        configDir: dir,
+        spawnIndexBuild: builds.spawn,
+      });
       try {
         const first = await map.ensure('big');
         expect(first.isErr()).toBe(true);
-        await map.whenIdle(); // background build fails on the broken file
+        await map.whenIdle(); // the build child exits non-zero on the bad file
 
         // Self-heal: fix the file, no restart. The cleared slot retries.
         await writeFile(ttl, SAMPLE);
@@ -450,22 +535,25 @@ describe('EngineMap', () => {
           ._unsafeUnwrap()
           .execute(SELECT, { format: 'json' });
         expect(subjects(exec.body)).toEqual(['http://example.org/a']);
+        // The failing first attempt and the succeeding retry each spawned a
+        // child — the non-zero exit did not stick the source in `indexing`.
+        expect(builds.spawned).toEqual(['big', 'big']);
       } finally {
         await map.whenIdle();
         await map.close();
       }
     });
 
-    it('two concurrent first-touch ensure() calls share one in-flight build (index-build-start logged exactly once)', async () => {
+    it('two concurrent first-touch ensure() calls share one build child — request is idempotent', async () => {
       await writeFile(join(dir, 'data.ttl'), SAMPLE);
       const registry = parseSourceSpecs([
         { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
       ]);
-      const rec = recordingLogger();
+      const builds = inProcessIndexBuilds(registry, dir);
 
       const map = await EngineMap.create(registry, {
         configDir: dir,
-        logger: rec.logger,
+        spawnIndexBuild: builds.spawn,
       });
       try {
         const [a, b] = await Promise.all([
@@ -475,76 +563,14 @@ describe('EngineMap', () => {
         expect(a.isErr()).toBe(true);
         expect(b.isErr()).toBe(true);
         await map.whenIdle();
-        expect(
-          rec.entries.filter((e) => e.msg === 'index-build-start'),
-        ).toHaveLength(1);
+        expect(builds.spawned).toEqual(['big']);
       } finally {
         await map.whenIdle();
         await map.close();
       }
     });
 
-    it('emits index-build-start and index-build-complete boundary logs around the background build', async () => {
-      await writeFile(join(dir, 'data.ttl'), SAMPLE);
-      const registry = parseSourceSpecs([
-        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
-      ]);
-      const rec = recordingLogger();
-
-      const map = await EngineMap.create(registry, {
-        configDir: dir,
-        logger: rec.logger,
-      });
-      try {
-        await map.ensure('big');
-        await map.whenIdle();
-
-        const start = rec.entries.find((e) => e.msg === 'index-build-start');
-        const complete = rec.entries.find(
-          (e) => e.msg === 'index-build-complete',
-        );
-        expect(start?.fields).toMatchObject({ source: 'big' });
-        expect(complete?.fields).toMatchObject({ source: 'big' });
-        expect(typeof complete?.fields?.['ms']).toBe('number');
-      } finally {
-        await map.whenIdle();
-        await map.close();
-      }
-    });
-
-    it('emits per-file index progress logs during a serve-triggered background build', async () => {
-      await writeFile(join(dir, 'a.ttl'), SAMPLE);
-      await writeFile(join(dir, 'b.ttl'), SAMPLE);
-      const registry = parseSourceSpecs([
-        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
-      ]);
-      const rec = recordingLogger();
-
-      const map = await EngineMap.create(registry, {
-        configDir: dir,
-        logger: rec.logger,
-      });
-      try {
-        await map.ensure('big');
-        await map.whenIdle();
-
-        const starts = rec.entries.filter((e) => e.msg === 'index-file-start');
-        const dones = rec.entries.filter((e) => e.msg === 'index-file-done');
-        // The background build's per-file progress reaches the boundary logger
-        // — visible under a bare `sparqly serve`, no flag (#349, ADR-0042).
-        expect(starts).toHaveLength(2);
-        expect(dones).toHaveLength(2);
-        for (const entry of [...starts, ...dones]) {
-          expect(entry.level).toBe('info');
-          expect(entry.fields?.['total']).toBe(2);
-        }
-      } finally {
-        await map.whenIdle();
-        await map.close();
-      }
-    });
-
-    it('a disk-backed split-glob File child runs its own background index build — first touch reports `indexing`, then opens `ready`', async () => {
+    it('a disk-backed split-glob File child runs its own child-process index build — first touch reports `indexing`, then opens `ready`', async () => {
       await writeFile(join(dir, 'data.ttl'), SAMPLE);
       const parsed = parseSourceSpecs([
         {
@@ -557,14 +583,19 @@ describe('EngineMap', () => {
       const registry = await expandSplitGlobs(parsed, {
         walkGlob: defaultGlobWalker,
       });
+      const builds = inProcessIndexBuilds(registry, dir);
 
-      const map = await EngineMap.create(registry, { configDir: dir });
+      const map = await EngineMap.create(registry, {
+        configDir: dir,
+        spawnIndexBuild: builds.spawn,
+      });
       try {
-        // The child inherited `storage: disk` — its first touch must kick a
-        // background build and report `indexing`, not block on the build.
+        // The child inherited `storage: disk` — its first touch must spawn a
+        // build child and report `indexing`, not block on the build.
         const first = await map.ensure('docs/data.ttl');
         expect(first.isErr()).toBe(true);
         if (first.isErr()) expect(first.error.kind).toBe('indexing');
+        expect(builds.spawned).toEqual(['docs/data.ttl']);
 
         await map.whenIdle();
         const ready = await map.ensure('docs/data.ttl');
@@ -587,9 +618,11 @@ describe('EngineMap', () => {
       const override = join(dir, 'index-volume');
 
       // First server lifetime: builds the index under the override root.
+      const firstBuilds = inProcessIndexBuilds(registry, dir, override);
       const builder = await EngineMap.create(registry, {
         configDir: dir,
         indexCacheDir: override,
+        spawnIndexBuild: firstBuilds.spawn,
       });
       await builder.ensure('big');
       await builder.whenIdle();
@@ -602,11 +635,11 @@ describe('EngineMap', () => {
 
       // Second lifetime over the same override: the first touch must find the
       // already-built index under <override>/big/ and open straight to `ready`.
-      const rec = recordingLogger();
+      const builds = inProcessIndexBuilds(registry, dir, override);
       const map = await EngineMap.create(registry, {
         configDir: dir,
         indexCacheDir: override,
-        logger: rec.logger,
+        spawnIndexBuild: builds.spawn,
       });
       try {
         const result = await map.ensure('big');
@@ -615,11 +648,9 @@ describe('EngineMap', () => {
           ._unsafeUnwrap()
           .execute(SELECT, { format: 'json' });
         expect(subjects(exec.body)).toEqual(['http://example.org/a']);
-        // No background build — the override-located index was found and
-        // reused; a manifest check at the wrong root would force a rebuild.
-        expect(
-          rec.entries.filter((e) => e.msg === 'index-build-start'),
-        ).toHaveLength(0);
+        // No build child — the override-located index was found and reused; a
+        // manifest check at the wrong root would force a rebuild.
+        expect(builds.spawned).toEqual([]);
       } finally {
         await map.whenIdle();
         await map.close();
