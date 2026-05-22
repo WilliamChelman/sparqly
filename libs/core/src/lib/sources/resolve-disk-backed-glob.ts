@@ -29,6 +29,9 @@ export function resolveDiskBackedGlob(
     transforms,
     indexDir,
     sparqlyVersion: options.sparqlyVersion ?? UNKNOWN_SPARQLY_VERSION,
+    // Carries the staleness `warn` to the boundary logger (ADR-0041): a stale
+    // index is reused, but never silently.
+    logger: options.logger,
   })
     .mapErr<SourceError>((e) => e)
     .map((handle) => ({

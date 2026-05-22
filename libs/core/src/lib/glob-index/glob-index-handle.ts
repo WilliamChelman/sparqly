@@ -1,13 +1,19 @@
 import { stat } from 'node:fs/promises';
 import type * as RDF from '@rdfjs/types';
+import type { SparqlyLogger } from 'common';
 import { DataFactory } from 'n3';
 import { ResultAsync } from 'neverthrow';
 import { Quadstore } from 'quadstore';
+import { glob as tinyGlob } from 'tinyglobby';
 import type { GlobLoadError } from '../sources/errors';
 import { createGlobIndexBackend } from './glob-index-backend';
 import { buildGlobIndex, type BuildGlobIndexOptions } from './glob-index-builder';
 import { indexDbDir, indexManifestPath } from './glob-index-layout';
-import { readGlobIndexManifest } from './index-manifest';
+import {
+  compareGlobIndexManifests,
+  computeGlobIndexManifest,
+  readGlobIndexManifest,
+} from './index-manifest';
 
 /**
  * Glob index handle (ADR-0041). Wraps an opened quadstore index and exposes it
@@ -51,23 +57,57 @@ export async function openGlobIndex(indexDir: string): Promise<GlobIndexHandle> 
   };
 }
 
+/** Options for {@link openOrBuildGlobIndex}. */
+export interface OpenOrBuildGlobIndexOptions extends BuildGlobIndexOptions {
+  /**
+   * Boundary logger for the staleness `warn` (ADR-0041, ADR-0020). When an
+   * already-built index no longer matches its inputs, one `warn` line names
+   * the staleness — sparqly never rebuilds an index behind the user's back.
+   */
+  logger?: SparqlyLogger;
+}
+
 /**
  * Opens the Glob index at `options.indexDir`, building it first if none exists.
  *
- * Reuse is naive (#338): a manifest file present at `indexDir` is taken as
- * proof of a fully built index — it is written last by `buildGlobIndex` — and
- * the index is opened as-is, with no check that the matched source files still
- * match their recorded fingerprints. Staleness detection is a later slice.
+ * When an index is already present its manifest is compared against the
+ * current matched file set (ADR-0041): a fresh index is reused as-is; a stale
+ * index is *also* reused — but emits one `warn`-level boundary log naming the
+ * staleness. sparqly never rebuilds an index implicitly; rebuilds are too
+ * heavy to trigger behind the user's back.
  */
 export function openOrBuildGlobIndex(
-  options: BuildGlobIndexOptions,
+  options: OpenOrBuildGlobIndexOptions,
 ): ResultAsync<GlobIndexHandle, GlobLoadError> {
   return ResultAsync.fromSafePromise(manifestExists(options.indexDir)).andThen(
     (exists) =>
       exists
-        ? ResultAsync.fromSafePromise(openGlobIndex(options.indexDir))
+        ? ResultAsync.fromSafePromise(reuseGlobIndex(options))
         : buildGlobIndex(options).map((built) => openGlobIndex(built.indexDir)),
   );
+}
+
+/**
+ * Reuses the already-built index at `options.indexDir`, comparing its manifest
+ * against the current matched files first: a stale verdict emits one `warn`
+ * naming the change, but the index is opened as-is either way (ADR-0041).
+ */
+async function reuseGlobIndex(
+  options: OpenOrBuildGlobIndexOptions,
+): Promise<GlobIndexHandle> {
+  const prior = await readGlobIndexManifest(options.indexDir);
+  const current = await computeGlobIndexManifest({
+    files: await tinyGlob(options.glob, { absolute: true }),
+    transforms: options.transforms,
+    sparqlyVersion: options.sparqlyVersion,
+  });
+  const staleness = compareGlobIndexManifests(prior, current);
+  if (staleness.verdict === 'stale') {
+    options.logger?.warn(
+      `Disk-backed glob index at ${options.indexDir} is stale (${staleness.reason}) — reusing it as-is; sparqly does not rebuild an index automatically.`,
+    );
+  }
+  return openGlobIndex(options.indexDir);
 }
 
 /** Whether a manifest — `buildGlobIndex`'s last write — exists at `indexDir`. */

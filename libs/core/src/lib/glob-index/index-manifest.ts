@@ -77,3 +77,54 @@ export async function readGlobIndexManifest(
   const raw = await readFile(indexManifestPath(indexDir), 'utf8');
   return JSON.parse(raw) as GlobIndexManifest;
 }
+
+/**
+ * Staleness verdict for a Glob index (ADR-0041). `fresh` means the index still
+ * matches its inputs and can be reused; `stale` names the change that broke
+ * the match so the open path can warn.
+ */
+export type GlobIndexStaleness =
+  | { verdict: 'fresh' }
+  | { verdict: 'stale'; reason: string };
+
+/**
+ * Compares the manifest a Glob index was built with (`prior`) against a
+ * manifest freshly computed from the current matched file set (`current`),
+ * yielding a `fresh | stale` verdict. A pure function — callers do the
+ * stat I/O up front via {@link computeGlobIndexManifest}.
+ */
+export function compareGlobIndexManifests(
+  prior: GlobIndexManifest,
+  current: GlobIndexManifest,
+): GlobIndexStaleness {
+  if (prior.sparqlyVersion !== current.sparqlyVersion) {
+    return {
+      verdict: 'stale',
+      reason: `sparqly version changed: ${prior.sparqlyVersion} → ${current.sparqlyVersion}`,
+    };
+  }
+  // Transform order is part of the pipeline (ADR-0006) — compare in sequence.
+  if (
+    prior.transforms.length !== current.transforms.length ||
+    prior.transforms.some((key, i) => key !== current.transforms[i])
+  ) {
+    return { verdict: 'stale', reason: 'transform pipeline changed' };
+  }
+  const priorByPath = new Map(prior.files.map((file) => [file.path, file]));
+  const currentByPath = new Map(current.files.map((file) => [file.path, file]));
+  for (const file of current.files) {
+    const priorFile = priorByPath.get(file.path);
+    if (priorFile === undefined) {
+      return { verdict: 'stale', reason: `matched file added: ${file.path}` };
+    }
+    if (priorFile.size !== file.size || priorFile.mtimeMs !== file.mtimeMs) {
+      return { verdict: 'stale', reason: `matched file changed: ${file.path}` };
+    }
+  }
+  for (const file of prior.files) {
+    if (!currentByPath.has(file.path)) {
+      return { verdict: 'stale', reason: `matched file removed: ${file.path}` };
+    }
+  }
+  return { verdict: 'fresh' };
+}
