@@ -474,6 +474,60 @@ describe('registerSpec', () => {
     });
   });
 
+  describe('SPARQLY_CONFIG normalization for spawned children', () => {
+    function makeSpec(): CommandSpec<Record<string, unknown>> {
+      return {
+        name: 'demo',
+        description: 'demo',
+        fields: [sourcesField],
+        positionals: [{ field: 'sources', name: 'glob' }],
+        handler: () => undefined,
+        exitCode: () => 1,
+      };
+    }
+
+    it('writes the discovered config path into ctx.env so children inherit it', async () => {
+      const env: NodeJS.ProcessEnv = {};
+      const program = makeProgram();
+      registerSpec(program, makeSpec(), {
+        env,
+        cwd: '/proj/sub',
+        discoverConfig: () => '/proj/sparqly.config.yaml',
+        loadFile: async (configPath) => ({ data: {}, filepath: configPath }),
+      });
+      await program.parseAsync(['demo'], { from: 'user' });
+      expect(env.SPARQLY_CONFIG).toBe('/proj/sparqly.config.yaml');
+    });
+
+    it('resolves a relative --config path to an absolute SPARQLY_CONFIG', async () => {
+      const env: NodeJS.ProcessEnv = {};
+      const program = makeProgram();
+      registerSpec(program, makeSpec(), {
+        env,
+        cwd: '/proj',
+        loadFile: async () => ({ data: {}, filepath: null }),
+      });
+      await program.parseAsync(
+        ['demo', '--config', 'nested/sparqly.config.yaml'],
+        { from: 'user' },
+      );
+      expect(env.SPARQLY_CONFIG).toBe('/proj/nested/sparqly.config.yaml');
+    });
+
+    it('sets SPARQLY_CONFIG empty under --no-config so children also skip discovery', async () => {
+      const env: NodeJS.ProcessEnv = {};
+      const program = makeProgram();
+      registerSpec(program, makeSpec(), {
+        env,
+        cwd: '/proj',
+        discoverConfig: () => '/proj/sparqly.config.yaml',
+        loadFile: async () => ({ data: {}, filepath: null }),
+      });
+      await program.parseAsync(['demo', '--no-config'], { from: 'user' });
+      expect(env.SPARQLY_CONFIG).toBe('');
+    });
+  });
+
   describe('@id reference resolution', () => {
     const richSourcesField: FieldDescriptor = {
       key: 'sources',
@@ -705,6 +759,47 @@ describe('registerSpec', () => {
       expect(received).toMatchObject({
         sources: ['data/*.ttl'],
         port: 4000,
+      });
+    });
+
+    it('serve flattens the `index` block — concurrency → indexConcurrency, dir → indexCacheDir', async () => {
+      let received: Record<string, unknown> | undefined;
+      const indexConcurrencyField: FieldDescriptor = {
+        key: 'indexConcurrency',
+        schema: z.number().int().positive().optional(),
+      };
+      const indexCacheDirField: FieldDescriptor = {
+        key: 'indexCacheDir',
+        schema: z.string().optional(),
+      };
+      const spec: CommandSpec<Record<string, unknown>> = {
+        name: 'serve',
+        description: 's',
+        fields: [sourcesField, indexConcurrencyField, indexCacheDirField],
+        configScope: { sources: true, block: 'serve' },
+        handler: (c) => {
+          received = c as Record<string, unknown>;
+        },
+        exitCode: () => 1,
+      };
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        loadFile: async () => ({
+          data: {
+            sources: ['data/*.ttl'],
+            index: { dir: '/mnt/idx', concurrency: 3 },
+          },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(['serve', '--config', '/cfg.yaml'], {
+        from: 'user',
+      });
+      expect(received).toMatchObject({
+        indexConcurrency: 3,
+        indexCacheDir: '/mnt/idx',
       });
     });
 

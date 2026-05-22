@@ -1,3 +1,4 @@
+import { isAbsolute, resolve } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { Option, type Command } from 'commander';
 import { resolveSourceReferences, type SourceSpecInput } from 'core';
@@ -108,6 +109,18 @@ export function registerSpec<T extends Record<string, unknown>>(
           ? await ctx.loadFile(configPath, ctx.cwd)
           : { data: {}, filepath: null };
 
+      // Normalize the resolved config location into the env so any child
+      // process a handler spawns (e.g. `serve`'s `sparqly index` build
+      // children, ADR-0042) resolves the exact same config regardless of its
+      // own working directory.
+      if (noConfig) {
+        ctx.env['SPARQLY_CONFIG'] = '';
+      } else if (configPath !== undefined) {
+        ctx.env['SPARQLY_CONFIG'] = isAbsolute(configPath)
+          ? configPath
+          : resolve(ctx.cwd, configPath);
+      }
+
       const env = readEnv(spec.fields, ctx.env);
       const fileSlice = projectFileLayer(fileLayers.data, spec);
 
@@ -177,7 +190,9 @@ function projectFileLayer(
           ? 'savedQueriesPath'
           : blockName === 'index' && k === 'dir'
             ? 'indexCacheDir'
-            : k;
+            : blockName === 'index' && k === 'concurrency'
+              ? 'indexConcurrency'
+              : k;
       if (fieldKeys.has(fieldKey)) out[fieldKey] = v;
     }
   }

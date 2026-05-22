@@ -21,6 +21,7 @@ import {
 } from 'core';
 import { DEFAULT_DESCRIBE_CONFIG, type DescribeConfig } from '../describe';
 import { EngineMap } from './engine-map';
+import type { SpawnIndexBuild } from './index-build-pool';
 import { MetaChildrenCache } from './meta-children-cache';
 import { maybeStartWatcher } from './multi-source-watcher';
 import { RequestLoggingInterceptor } from './request-logging.interceptor';
@@ -89,6 +90,19 @@ export interface CreateServerOptions {
    * Defaults to `false` (writes allowed).
    */
   readOnly?: boolean;
+  /**
+   * Spawns the isolated `sparqly index @id` child that builds a disk-backed
+   * glob's Glob index (ADR-0042). The CLI `serve` command injects a real
+   * implementation; omitting it leaves disk-backed builds unavailable, so
+   * touching a not-yet-built disk-backed source then throws.
+   */
+  spawnIndexBuild?: SpawnIndexBuild;
+  /**
+   * Maximum number of child-process index builds running at once
+   * (`index.concurrency`, ADR-0042). Disk-backed sources first-touched past
+   * the cap queue for a free slot. Defaults to 2.
+   */
+  indexConcurrency?: number;
 }
 
 export interface CreatedServer {
@@ -130,6 +144,8 @@ export async function createServer(
     // directories (ADR-0041); `indexCacheDir` redirects that root (#345).
     configDir: options.configDir ?? process.cwd(),
     indexCacheDir: options.indexCacheDir,
+    spawnIndexBuild: options.spawnIndexBuild,
+    indexConcurrency: options.indexConcurrency,
   });
 
   const metaChildrenCache = new MetaChildrenCache(scope.servedRegistry, {

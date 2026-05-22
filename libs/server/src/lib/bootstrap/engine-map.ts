@@ -1,13 +1,11 @@
 import { err, ok, ResultAsync, type Result } from 'neverthrow';
 import type { SparqlyLogger } from 'common';
 import {
-  formatSourceError,
   globIndexDir,
   QueryEngine,
   resolveSourceResult,
   unionDefaultGraphEnabled,
   type ParsedEndpointSource,
-  type ParsedFileSource,
   type ParsedSource,
   type SourceError,
   type SourceRecordSidecar,
@@ -16,6 +14,7 @@ import type * as RDF from '@rdfjs/types';
 import type { Store } from 'n3';
 import type { StoreRef } from './tokens';
 import { isDiskBacked, manifestExists } from './disk-backed-index';
+import { IndexBuildPool, type SpawnIndexBuild } from './index-build-pool';
 
 /**
  * Loaded view of a served source, surfaced to consumers that need the
@@ -103,11 +102,12 @@ interface Entry {
    */
   loaded: Promise<Result<LoadedEntry, SourceError>> | undefined;
   /**
-   * Disk-backed glob state machine (ADR-0041, #340). `undefined` until first
-   * touch, then a memoized promise of the disk slot: `err(IndexingError)`
-   * while the background index build runs, `ok(LoadedEntry)` once the index is
-   * `ready`. A failed build clears the slot so the next `ensure(id)` retries
-   * the build. Concurrent first-touches share the one in-flight promise.
+   * Disk-backed glob state machine (ADR-0041/-0042). `undefined` until first
+   * touch and again after every touch that finds the index still building —
+   * so the next `ensure(id)` re-checks the on-disk manifest (the child may
+   * have finished) and re-requests the capped build. Memoized only once the
+   * index opens `ready`, holding `ok(LoadedEntry)`. Concurrent touches share
+   * the one in-flight promise, so the build is requested once per attempt.
    */
   disk: Promise<Result<LoadedEntry, SourceError | IndexingError>> | undefined;
   /**
@@ -135,8 +135,9 @@ export interface EngineMapOptions {
    * `resolveSourceResult` for view chains) so `serve`'s SPARQL executions emit
    * the shared `query` debug event under `--verbose` (ADR-0020). Also emits a
    * `source-loaded` debug line per source with its load timing — fired on
-   * first `ensure(id)`, not at boot — and the `index-build-start` /
-   * `index-build-complete` / `index-build-failed` lines for disk-backed globs.
+   * first `ensure(id)`, not at boot. A disk-backed glob's index build now runs
+   * in an isolated child process (ADR-0042); its progress logs come from that
+   * child's inherited stderr, not from this logger.
    */
   logger?: SparqlyLogger;
   /**
@@ -157,6 +158,20 @@ export interface EngineMapOptions {
    * config's `index.dir` field.
    */
   indexCacheDir?: string;
+  /**
+   * Spawns the isolated `sparqly index @id` child process that builds a
+   * disk-backed glob's Glob index (ADR-0042). Injected from the CLI `serve`
+   * entry point — `libs/server` cannot reach the CLI that knows how to
+   * re-invoke itself. Omitting it leaves disk-backed builds unavailable: a
+   * first touch of a not-yet-built disk-backed source then throws.
+   */
+  spawnIndexBuild?: SpawnIndexBuild;
+  /**
+   * Maximum number of child-process index builds running at once
+   * (`index.concurrency`, ADR-0042). Disk-backed sources first-touched past
+   * the cap queue for a free slot. Defaults to 2.
+   */
+  indexConcurrency?: number;
 }
 
 export class EngineMap {
@@ -166,8 +181,8 @@ export class EngineMap {
   private readonly configDir: string;
   private readonly sparqlyVersion: string | undefined;
   private readonly indexCacheDir: string | undefined;
-  /** In-flight background index builds — awaited by {@link whenIdle}. */
-  private readonly inFlightBuilds = new Set<Promise<unknown>>();
+  /** Caps and queues the isolated child-process index builds (ADR-0042). */
+  private readonly buildPool: IndexBuildPool;
 
   private constructor(
     entries: Map<string, Entry>,
@@ -176,6 +191,7 @@ export class EngineMap {
     configDir: string,
     sparqlyVersion: string | undefined,
     indexCacheDir: string | undefined,
+    buildPool: IndexBuildPool,
   ) {
     this.entries = entries;
     this.resolutionRegistry = resolutionRegistry;
@@ -183,6 +199,7 @@ export class EngineMap {
     this.configDir = configDir;
     this.sparqlyVersion = sparqlyVersion;
     this.indexCacheDir = indexCacheDir;
+    this.buildPool = buildPool;
   }
 
   static async create(
@@ -223,6 +240,10 @@ export class EngineMap {
         current: undefined,
       });
     }
+    const buildPool = new IndexBuildPool({
+      concurrency: options.indexConcurrency ?? 2,
+      spawn: options.spawnIndexBuild ?? spawnIndexBuildUnavailable,
+    });
     return new EngineMap(
       entries,
       resolutionRegistry,
@@ -230,6 +251,7 @@ export class EngineMap {
       options.configDir ?? process.cwd(),
       options.sparqlyVersion,
       options.indexCacheDir,
+      buildPool,
     );
   }
 
@@ -280,10 +302,12 @@ export class EngineMap {
   }
 
   /**
-   * Disk-backed glob state machine (ADR-0041, #340). First touch memoizes a
-   * resolution that either opens an already-built index (`ready`) or kicks a
-   * background build and reports `indexing`; concurrent first-touches share
-   * that one promise, so the build runs at most once.
+   * Disk-backed glob state machine (ADR-0041/-0042). A touch either opens an
+   * already-built index (`ready`, then memoized) or requests a capped
+   * child-process build and reports `indexing`. The `indexing` outcome is not
+   * memoized — each touch re-checks the on-disk manifest — yet concurrent
+   * touches still share the one in-flight resolution, so the build is
+   * requested once per attempt.
    */
   private ensureDiskBacked(
     entry: Entry,
@@ -300,59 +324,30 @@ export class EngineMap {
     const sourceId = entry.source.id as string;
     const indexDir = globIndexDir(this.configDir, sourceId, this.indexCacheDir);
     if (await manifestExists(indexDir)) {
-      // A built index is already present — open it straight to `ready` (a
-      // fast LevelDB open, not a ~15-min build), so no request sees `503`.
-      return this.loadEntry(entry);
+      // A built index is present — open it straight to `ready` (a fast
+      // LevelDB open, not a multi-GB build), so no request sees `503`. A
+      // corrupt index errs; clear the slot so a later touch retries.
+      const loaded = await this.loadEntry(entry);
+      if (loaded.isErr()) entry.disk = undefined;
+      return loaded;
     }
-    // No index yet — kick the heavy build in the background and report
-    // `indexing` so `serve` answers `503` without blocking the HTTP listener.
-    this.startBackgroundBuild(entry);
+    // No index yet — request a capped child-process build (ADR-0042) and
+    // report `indexing` so `serve` answers `503` without blocking its HTTP
+    // loop. The slot is cleared so the next touch re-checks the manifest (the
+    // child may have finished); `pool.request` is idempotent, so the repeated
+    // touches that precede a clear coalesce onto the one build child.
+    entry.disk = undefined;
+    this.buildPool.request(sourceId);
     return err(indexingError(sourceId));
   }
 
-  private startBackgroundBuild(entry: Entry): void {
-    const src = entry.source;
-    const sourceId = src.id as string;
-    const start = Date.now();
-    this.logger?.info('index-build-start', {
-      source: sourceId,
-      // A meta glob indexes its pattern; a File child indexes its single path.
-      glob: src.kind === 'glob' ? src.glob : (src as ParsedFileSource).path,
-    });
-    const build = this.loadEntry(entry).then((result) => {
-      result.match(
-        (loaded) => {
-          // Build done — flip the slot to `ready`; the next request reuses it.
-          entry.disk = Promise.resolve(ok(loaded));
-          this.logger?.info('index-build-complete', {
-            source: sourceId,
-            files: entry.files.length,
-            ms: Date.now() - start,
-          });
-        },
-        (error) => {
-          // A failed build clears the slot — the next request retries fresh.
-          entry.disk = undefined;
-          this.logger?.error('index-build-failed', {
-            source: sourceId,
-            message: formatSourceError(error),
-          });
-        },
-      );
-    });
-    this.inFlightBuilds.add(build);
-    void build.finally(() => this.inFlightBuilds.delete(build));
-  }
-
   /**
-   * Resolves once no background index build is in flight (ADR-0041). Used by
-   * graceful shutdown — and by tests — to await a disk-backed glob's build
-   * before reading its `ready` state or releasing its LevelDB lock.
+   * Resolves once no child-process index build is running or queued
+   * (ADR-0042). Used by tests to await a disk-backed glob's build before
+   * reading its `ready` state.
    */
   async whenIdle(): Promise<void> {
-    while (this.inFlightBuilds.size > 0) {
-      await Promise.all([...this.inFlightBuilds]);
-    }
+    await this.buildPool.whenIdle();
   }
 
   private async loadEntry(
@@ -484,9 +479,9 @@ export class EngineMap {
   }
 
   async close(): Promise<void> {
-    // Let in-flight index builds settle so their LevelDB locks are released
-    // cleanly before the directories are dropped.
-    await this.whenIdle();
+    // SIGTERM any running child-process index builds — `serve` shutdown
+    // (Ctrl-C) is instant, never blocked on a multi-GB build (ADR-0042).
+    await this.buildPool.shutdown();
     for (const entry of this.entries.values()) {
       if (entry.closeIndex) {
         try {
@@ -499,4 +494,16 @@ export class EngineMap {
     }
     this.entries.clear();
   }
+}
+
+/**
+ * Default {@link SpawnIndexBuild} used when {@link EngineMapOptions.spawnIndexBuild}
+ * is omitted — touching a not-yet-built disk-backed source then fails loudly
+ * rather than silently never indexing. `serve` always injects a real spawn.
+ */
+function spawnIndexBuildUnavailable(): never {
+  throw new Error(
+    'EngineMap: a disk-backed source needs an index build, but no ' +
+      'spawnIndexBuild was provided to EngineMap.create (ADR-0042)',
+  );
 }
