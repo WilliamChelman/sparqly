@@ -57,4 +57,19 @@ describe('ingestQuadStream', () => {
       [0, 1, 2, 3, 4, 5, 6].map((n) => `urn:s${n}`),
     );
   });
+
+  it('reports each written batch size through the onBatch callback', async () => {
+    const store = {
+      multiPut: async () => undefined,
+    };
+    const written: number[] = [];
+
+    await ingestQuadStream(store, quadStream(7), 3, (count) =>
+      written.push(count),
+    );
+
+    // One callback per `multiPut` — including the trailing partial batch — so a
+    // caller can advance a progress counter as quads land on disk (#349).
+    expect(written).toEqual([3, 3, 1]);
+  });
 });

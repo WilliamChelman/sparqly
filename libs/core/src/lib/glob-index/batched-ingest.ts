@@ -17,19 +17,27 @@ interface BatchPutStore {
  * `batchSize` quads is written with one `multiPut`, and the trailing partial
  * batch is flushed at the end. The caller never materializes the whole quad
  * stream — at most `batchSize` quads sit in heap at once (#347).
+ *
+ * `onBatch` is invoked with each batch's size once that batch has been written,
+ * letting a caller advance a progress counter as quads land on disk (#349).
  */
 export async function ingestQuadStream(
   store: BatchPutStore,
   quads: AsyncIterable<Quad>,
   batchSize: number = INGEST_BATCH_SIZE,
+  onBatch?: (count: number) => void,
 ): Promise<void> {
   let batch: Quad[] = [];
   for await (const quad of quads) {
     batch.push(quad);
     if (batch.length >= batchSize) {
       await store.multiPut(batch);
+      onBatch?.(batch.length);
       batch = [];
     }
   }
-  if (batch.length > 0) await store.multiPut(batch);
+  if (batch.length > 0) {
+    await store.multiPut(batch);
+    onBatch?.(batch.length);
+  }
 }

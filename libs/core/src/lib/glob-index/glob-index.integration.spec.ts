@@ -451,6 +451,43 @@ describe('disk-backed glob index', () => {
     expect(entries.filter((entry) => entry.level === 'warn')).toEqual([]);
   });
 
+  it('emits an index-file-start and index-file-done log per matched file at info', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    await writeFile(
+      join(dir, 'b.ttl'),
+      '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .',
+    );
+    const indexDir = join(dir, 'index');
+    const { logger, entries } = recordingLogger();
+
+    const built = await buildGlobIndex({
+      glob: join(dir, '*.ttl'),
+      transforms: [],
+      indexDir,
+      sparqlyVersion: SPARQLY_VERSION,
+      logger,
+    });
+    expect(built.isOk()).toBe(true);
+
+    const starts = entries.filter((e) => e.msg === 'index-file-start');
+    const dones = entries.filter((e) => e.msg === 'index-file-done');
+    // One start/done pair per matched file (#349).
+    expect(starts).toHaveLength(2);
+    expect(dones).toHaveLength(2);
+    // Every progress event is default-on `info` (ADR-0042, extends ADR-0020).
+    for (const entry of [...starts, ...dones]) {
+      expect(entry.level).toBe('info');
+      // Each carries an N-of-total position and the file's byte size.
+      expect(entry.fields?.['total']).toBe(2);
+      expect(typeof entry.fields?.['file']).toBe('string');
+      expect(entry.fields?.['bytes']).toBeGreaterThan(0);
+    }
+    expect(starts.map((e) => e.fields?.['index']).sort()).toEqual([1, 2]);
+  });
+
   it('builds a complete index from a glob whose quad count exceeds the ingest batch size', async () => {
     // More triples than one ingest batch holds — the streamed build (#347)
     // must flush multiple `multiPut` batches and still index every quad.
