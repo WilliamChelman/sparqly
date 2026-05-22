@@ -71,7 +71,8 @@ export interface CreateServerOptions {
   savedQueriesPath?: string;
   /**
    * Override the `configDir` used to resolve a relative `savedQueriesPath` to
-   * an absolute path. Defaults to `process.cwd()`.
+   * an absolute path, and as the root for `<configDir>/.sparqly/index/<id>/`
+   * disk-backed Glob index directories (ADR-0041). Defaults to `process.cwd()`.
    */
   configDir?: string;
   /**
@@ -117,6 +118,9 @@ export async function createServer(
   const engineMap = await EngineMap.create(scope.servedRegistry, {
     resolutionRegistry: scope.resolutionRegistry,
     logger: boundaryLogger,
+    // Root for `<configDir>/.sparqly/index/<id>/` disk-backed Glob index
+    // directories (ADR-0041).
+    configDir: options.configDir ?? process.cwd(),
   });
 
   const metaChildrenCache = new MetaChildrenCache(scope.servedRegistry, {

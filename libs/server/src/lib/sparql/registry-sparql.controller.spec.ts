@@ -12,12 +12,14 @@ const SELECT_S = 'SELECT ?s WHERE { ?s ?p ?o }';
 describe('RegistrySparqlController — /api/sparql alias', () => {
   let dirA: string;
   let dirB: string;
+  let cfgDir: string;
   let server: CreatedServer | undefined;
 
   beforeEach(async () => {
     Logger.overrideLogger(false);
     dirA = await mkdtemp(join(tmpdir(), 'sparqly-alias-a-'));
     dirB = await mkdtemp(join(tmpdir(), 'sparqly-alias-b-'));
+    cfgDir = await mkdtemp(join(tmpdir(), 'sparqly-alias-cfg-'));
     await writeFile(join(dirA, 'a.ttl'), SAMPLE_A);
     await writeFile(join(dirB, 'b.ttl'), SAMPLE_B);
   });
@@ -27,6 +29,7 @@ describe('RegistrySparqlController — /api/sparql alias', () => {
     server = undefined;
     await rm(dirA, { recursive: true, force: true });
     await rm(dirB, { recursive: true, force: true });
+    await rm(cfgDir, { recursive: true, force: true });
   });
 
   it('forwards GET /api/sparql to the `default: true` source', async () => {
@@ -166,6 +169,60 @@ describe('RegistrySparqlController — /api/sparql alias', () => {
     };
     expect(json.kind).toBe('view-validation');
     expect(typeof json.message).toBe('string');
+  });
+
+  it('returns 503 with a structured indexing body for the first request to a not-yet-indexed disk-backed glob (ADR-0041 / #340)', async () => {
+    server = await createServer({
+      sources: [{ id: 'big', glob: join(dirA, '*.ttl'), storage: 'disk' }],
+      port: 0,
+      configDir: cfgDir,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sparql/big?query=${encodeURIComponent(
+        SELECT_S,
+      )}`,
+    );
+    expect(resp.status).toBe(503);
+    const json = (await resp.json()) as {
+      kind?: string;
+      source?: string;
+      message?: string;
+    };
+    expect(json.kind).toBe('indexing');
+    expect(json.source).toBe('big');
+    expect(typeof json.message).toBe('string');
+  });
+
+  it('answers other registered sources normally while a disk-backed glob is still indexing', async () => {
+    server = await createServer({
+      sources: [
+        { id: 'big', glob: join(dirA, '*.ttl'), storage: 'disk' },
+        { id: 'small', glob: join(dirB, '*.ttl') },
+      ],
+      port: 0,
+      configDir: cfgDir,
+    });
+    // First touch of the disk-backed glob kicks its background build.
+    const indexing = await fetch(
+      `http://localhost:${server.port}/api/sparql/big?query=${encodeURIComponent(
+        SELECT_S,
+      )}`,
+    );
+    expect(indexing.status).toBe(503);
+
+    // The in-memory source stays fully available throughout the build.
+    const ok = await fetch(
+      `http://localhost:${server.port}/api/sparql/small?query=${encodeURIComponent(
+        SELECT_S,
+      )}`,
+    );
+    expect(ok.status).toBe(200);
+    const json = (await ok.json()) as {
+      results: { bindings: Array<{ s: { value: string } }> };
+    };
+    expect(json.results.bindings.map((b) => b.s.value)).toEqual([
+      'http://example.org/c',
+    ]);
   });
 
   it('accepts a path id that already carries the `@` address prefix without doubling it', async () => {

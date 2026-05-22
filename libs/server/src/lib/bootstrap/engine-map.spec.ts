@@ -328,4 +328,183 @@ describe('EngineMap', () => {
       await map.close();
     }
   });
+
+  describe('disk-backed glob (storage: disk) — background index build, ADR-0041 / #340', () => {
+    const SAMPLE =
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .';
+    const SELECT = 'SELECT ?s WHERE { ?s ?p ?o }';
+
+    function subjects(body: string): string[] {
+      const json = JSON.parse(body) as {
+        results: { bindings: Array<{ s: { value: string } }> };
+      };
+      return json.results.bindings.map((b) => b.s.value);
+    }
+
+    it('first touch of a disk-backed glob with no built index returns an `indexing` error rather than blocking on the build', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+
+      const map = await EngineMap.create(registry, { configDir: dir });
+      try {
+        // The build runs in the background — first touch reports `indexing`
+        // immediately instead of awaiting the (potentially ~15-min) build.
+        const result = await map.ensure('big');
+        expect(result.isErr()).toBe(true);
+        if (result.isErr()) expect(result.error.kind).toBe('indexing');
+      } finally {
+        await map.whenIdle();
+        await map.close();
+      }
+    });
+
+    it('once the background build completes, ensure() returns a ready engine that answers SPARQL against the disk-backed index', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+
+      const map = await EngineMap.create(registry, { configDir: dir });
+      try {
+        const first = await map.ensure('big');
+        expect(first.isErr()).toBe(true);
+
+        await map.whenIdle();
+
+        const second = await map.ensure('big');
+        expect(second.isOk()).toBe(true);
+        const engine = second._unsafeUnwrap();
+        const exec = await engine.execute(SELECT, { format: 'json' });
+        expect(subjects(exec.body)).toEqual(['http://example.org/a']);
+      } finally {
+        await map.whenIdle();
+        await map.close();
+      }
+    });
+
+    it('an already-built index opens straight to `ready` on first touch — no `indexing` error', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+
+      // First server lifetime: builds the index, then releases its lock.
+      const builder = await EngineMap.create(registry, { configDir: dir });
+      await builder.ensure('big');
+      await builder.whenIdle();
+      await builder.close();
+
+      // Second server lifetime over the same configDir: the index is present,
+      // so the very first touch resolves `ready` with no background build.
+      const rec = recordingLogger();
+      const map = await EngineMap.create(registry, {
+        configDir: dir,
+        logger: rec.logger,
+      });
+      try {
+        const result = await map.ensure('big');
+        expect(result.isOk()).toBe(true);
+        const exec = await result
+          ._unsafeUnwrap()
+          .execute(SELECT, { format: 'json' });
+        expect(subjects(exec.body)).toEqual(['http://example.org/a']);
+        expect(
+          rec.entries.filter((e) => e.msg === 'index-build-start'),
+        ).toHaveLength(0);
+      } finally {
+        await map.whenIdle();
+        await map.close();
+      }
+    });
+
+    it('a failed index build clears the slot so a later ensure() retries the build — fix-the-file → success', async () => {
+      const ttl = join(dir, 'data.ttl');
+      await writeFile(ttl, 'this is not valid turtle .');
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+
+      const map = await EngineMap.create(registry, { configDir: dir });
+      try {
+        const first = await map.ensure('big');
+        expect(first.isErr()).toBe(true);
+        await map.whenIdle(); // background build fails on the broken file
+
+        // Self-heal: fix the file, no restart. The cleared slot retries.
+        await writeFile(ttl, SAMPLE);
+        const retry = await map.ensure('big');
+        expect(retry.isErr()).toBe(true);
+        if (retry.isErr()) expect(retry.error.kind).toBe('indexing');
+
+        await map.whenIdle();
+        const ready = await map.ensure('big');
+        expect(ready.isOk()).toBe(true);
+        const exec = await ready
+          ._unsafeUnwrap()
+          .execute(SELECT, { format: 'json' });
+        expect(subjects(exec.body)).toEqual(['http://example.org/a']);
+      } finally {
+        await map.whenIdle();
+        await map.close();
+      }
+    });
+
+    it('two concurrent first-touch ensure() calls share one in-flight build (index-build-start logged exactly once)', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+      const rec = recordingLogger();
+
+      const map = await EngineMap.create(registry, {
+        configDir: dir,
+        logger: rec.logger,
+      });
+      try {
+        const [a, b] = await Promise.all([
+          map.ensure('big'),
+          map.ensure('big'),
+        ]);
+        expect(a.isErr()).toBe(true);
+        expect(b.isErr()).toBe(true);
+        await map.whenIdle();
+        expect(
+          rec.entries.filter((e) => e.msg === 'index-build-start'),
+        ).toHaveLength(1);
+      } finally {
+        await map.whenIdle();
+        await map.close();
+      }
+    });
+
+    it('emits index-build-start and index-build-complete boundary logs around the background build', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+      const rec = recordingLogger();
+
+      const map = await EngineMap.create(registry, {
+        configDir: dir,
+        logger: rec.logger,
+      });
+      try {
+        await map.ensure('big');
+        await map.whenIdle();
+
+        const start = rec.entries.find((e) => e.msg === 'index-build-start');
+        const complete = rec.entries.find(
+          (e) => e.msg === 'index-build-complete',
+        );
+        expect(start?.fields).toMatchObject({ source: 'big' });
+        expect(complete?.fields).toMatchObject({ source: 'big' });
+        expect(typeof complete?.fields?.['ms']).toBe('number');
+      } finally {
+        await map.whenIdle();
+        await map.close();
+      }
+    });
+  });
 });

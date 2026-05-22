@@ -13,6 +13,7 @@ import {
   Post,
   Query,
   Res,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { errAsync, type Result, ResultAsync } from 'neverthrow';
 import {
@@ -29,10 +30,12 @@ import {
 } from 'core';
 import {
   EngineMap,
+  isIndexingError,
   SPARQL_CONFIG,
   SPARQL_ENGINE_MAP,
   SPARQL_RESOLUTION_REGISTRY,
   SPARQL_SERVED_REGISTRY,
+  type IndexingError,
   type SparqlServerConfig,
 } from '../bootstrap';
 import { sourceErrorToStatus, targetErrorToStatus } from '../shared';
@@ -154,7 +157,7 @@ export class RegistrySparqlController {
           .setHeader('Content-Type', ok.contentType)
           .send(ok.body);
       },
-      (error: SourceError | TargetError) => {
+      (error: SourceError | TargetError | IndexingError) => {
         throw mapError(error);
       },
     );
@@ -164,7 +167,7 @@ export class RegistrySparqlController {
     target: ParsedSource,
     query: string,
     format: SparqlFormat | undefined,
-  ): Promise<Result<ExecuteResult, SourceError | TargetError>> {
+  ): Promise<Result<ExecuteResult, SourceError | TargetError | IndexingError>> {
     if (this.isAdHocPin(target)) {
       return await this.executeAdHocPinned(target, query, format);
     }
@@ -176,11 +179,12 @@ export class RegistrySparqlController {
     // instead of every load failure becoming an opaque 500 (#290).
     return this.engineMap
       .ensure(target.id as string)
-      .andThen<ExecuteResult, SourceError | TargetError>((engine) =>
-        engine.executeResult(query, {
-          format,
-          mutable: this.config.mutable,
-        }),
+      .andThen<ExecuteResult, SourceError | TargetError | IndexingError>(
+        (engine) =>
+          engine.executeResult(query, {
+            format,
+            mutable: this.config.mutable,
+          }),
       );
   }
 
@@ -239,7 +243,14 @@ export class RegistrySparqlController {
   }
 }
 
-function mapError(error: SourceError | TargetError): HttpException {
+function mapError(
+  error: SourceError | TargetError | IndexingError,
+): HttpException {
+  if (isIndexingError(error)) {
+    // A disk-backed glob is still building its Glob index (ADR-0041, #340):
+    // a transient `503` telling the client to retry, not a load failure.
+    return new ServiceUnavailableException(cloneError(error));
+  }
   if (isTargetError(error)) {
     return statusToHttpException(targetErrorToStatus(error), cloneError(error));
   }
@@ -260,7 +271,9 @@ function isTargetError(
   }
 }
 
-function cloneError(error: SourceError | TargetError): object {
+function cloneError(
+  error: SourceError | TargetError | IndexingError,
+): object {
   return JSON.parse(JSON.stringify(error)) as object;
 }
 
