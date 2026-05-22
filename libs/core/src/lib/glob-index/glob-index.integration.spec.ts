@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DataFactory } from 'n3';
@@ -449,6 +449,32 @@ describe('disk-backed glob index', () => {
     }
     // Nothing changed since the build — no staleness warning.
     expect(entries.filter((entry) => entry.level === 'warn')).toEqual([]);
+  });
+
+  it('leaves no half-index at the index dir when a first-touch build fails', async () => {
+    // openOrBuildGlobIndex's first-touch build must inherit the atomic-rename
+    // contract: a build interrupted before its commit point (#346, ADR-0042)
+    // must not leave a partial LevelDB store at the real `indexDir` — the next
+    // open would otherwise see a torn store with no manifest and re-ingest on
+    // top of it. A malformed RDF file makes the streamed build throw mid-stream,
+    // standing in for any crash before the index is fully written.
+    await writeFile(join(dir, 'broken.ttl'), 'this is not turtle <<<');
+    const indexDir = join(dir, 'index');
+
+    const built = await openOrBuildGlobIndex({
+      glob: join(dir, '*.ttl'),
+      transforms: [],
+      indexDir,
+      sparqlyVersion: SPARQLY_VERSION,
+    });
+    expect(built.isErr()).toBe(true);
+
+    // The real index path was never created — no half-index landed there.
+    const indexDirExists = await stat(indexDir).then(
+      () => true,
+      () => false,
+    );
+    expect(indexDirExists).toBe(false);
   });
 
   it('emits an index-file-start and index-file-done log per matched file at info', async () => {
