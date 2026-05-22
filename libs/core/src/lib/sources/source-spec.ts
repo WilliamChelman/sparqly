@@ -20,6 +20,11 @@ import {
   rejectUnionDefaultGraphOn,
 } from './union-default-graph';
 import { pickGitFields, rejectGitRefOn } from './source-spec-git';
+import {
+  pickStorage,
+  rejectStorageOn,
+  type StorageTier,
+} from './glob-storage';
 
 export interface SourceSpecCommonFields {
   id?: string;
@@ -55,6 +60,8 @@ export interface ParsedGlobSource
   splitByFile?: true;
   /** Union-default-graph toggle (ADR-0040); resolve via `unionDefaultGraphEnabled`. */
   unionDefaultGraph?: boolean;
+  /** Storage tier (ADR-0041); resolve via `storageTier`. Omitted means `memory`. */
+  storage?: StorageTier;
   /**
    * Pin this glob to a specific git revision (ADR-0029). Non-empty ref string
    * (full SHA, short SHA, annotated tag — pinned refs only in slice 1).
@@ -169,6 +176,8 @@ export interface SourceSpecObjectInput
   splitByFile?: true;
   /** Union-default-graph toggle — only valid on glob inputs (ADR-0040). */
   unionDefaultGraph?: boolean;
+  /** Storage tier — only valid on glob inputs (ADR-0041). */
+  storage?: StorageTier;
   /** Pin glob to a git revision (ADR-0029) — only valid on glob inputs. */
   gitRef?: string;
   /** Repo discovery override (ADR-0029) — only meaningful with `gitRef`. */
@@ -291,12 +300,14 @@ export function parseSourceSpec(
     rejectTransformsOn(input, 'view');
     rejectSplitByFileOn(input, 'view');
     rejectUnionDefaultGraphOn(input, 'view');
+    rejectStorageOn(input, 'view');
     rejectGitRefOn(input, 'view');
     return parseView(input);
   }
   if (hasEmpty) {
     rejectSplitByFileOn(input, 'empty');
     rejectUnionDefaultGraphOn(input, 'empty');
+    rejectStorageOn(input, 'empty');
     return parseEmpty(input);
   }
   if (input.cache !== undefined) {
@@ -316,6 +327,7 @@ export function parseSourceSpec(
         : { transforms: parseTransformList(input.transforms, registry) };
     const splitByFileField = pickSplitByFile(input);
     const unionDefaultGraphField = pickUnionDefaultGraph(input);
+    const storageField = pickStorage(input);
     const gitFields = pickGitFields(input);
     return {
       kind: 'glob',
@@ -324,6 +336,7 @@ export function parseSourceSpec(
       ...transformsField,
       ...splitByFileField,
       ...unionDefaultGraphField,
+      ...storageField,
       ...gitFields,
       ...defaultMarker,
     };
@@ -332,6 +345,7 @@ export function parseSourceSpec(
   rejectTransformsOn(input, 'endpoint');
   rejectSplitByFileOn(input, 'endpoint');
   rejectUnionDefaultGraphOn(input, 'endpoint');
+  rejectStorageOn(input, 'endpoint');
   rejectGitRefOn(input, 'endpoint');
   const http = pickEndpointHttp(input);
   return {
