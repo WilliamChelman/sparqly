@@ -5,8 +5,9 @@ import { ResultAsync } from 'neverthrow';
 import { Quadstore } from 'quadstore';
 import { glob as tinyGlob } from 'tinyglobby';
 import type { GlobLoadError } from '../sources/errors';
+import { buildGlobIndexAtomic } from './atomic-build';
 import { createGlobIndexBackend } from './glob-index-backend';
-import { buildGlobIndex, type BuildGlobIndexOptions } from './glob-index-builder';
+import type { BuildGlobIndexOptions } from './glob-index-builder';
 import { indexDbDir, indexManifestPath } from './glob-index-layout';
 import {
   compareGlobIndexManifests,
@@ -73,6 +74,11 @@ export type OpenOrBuildGlobIndexOptions = BuildGlobIndexOptions;
  * index is *also* reused — but emits one `warn`-level boundary log naming the
  * staleness. sparqly never rebuilds an index implicitly; rebuilds are too
  * heavy to trigger behind the user's back.
+ *
+ * A first-touch build goes through {@link buildGlobIndexAtomic} (#346,
+ * ADR-0042) so an interrupted build never leaves a partial LevelDB store at
+ * the real `indexDir` — the next open would otherwise see a torn store with
+ * no manifest and re-ingest on top of it.
  */
 export function openOrBuildGlobIndex(
   options: OpenOrBuildGlobIndexOptions,
@@ -81,7 +87,9 @@ export function openOrBuildGlobIndex(
     (exists) =>
       exists
         ? ResultAsync.fromSafePromise(reuseGlobIndex(options))
-        : buildGlobIndex(options).map((built) => openGlobIndex(built.indexDir)),
+        : buildGlobIndexAtomic(options).map((built) =>
+            openGlobIndex(built.indexDir),
+          ),
   );
 }
 
