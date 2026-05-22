@@ -77,6 +77,13 @@ export interface CreateServerOptions {
    */
   configDir?: string;
   /**
+   * Overrides the Glob index cache root (ADR-0041, #345). When set, disk-backed
+   * globs build and reuse their index under `<indexCacheDir>/<id>/` instead of
+   * the default `<configDir>/.sparqly/index/<id>/`. Threaded from the project
+   * config's `index.dir` field.
+   */
+  indexCacheDir?: string;
+  /**
    * When `true`, `serve` refuses writes to the saved-query sidecar: PUT/DELETE
    * return 405 and `/api/config` advertises `savedQueries.writable: false`.
    * Defaults to `false` (writes allowed).
@@ -120,8 +127,9 @@ export async function createServer(
     resolutionRegistry: scope.resolutionRegistry,
     logger: boundaryLogger,
     // Root for `<configDir>/.sparqly/index/<id>/` disk-backed Glob index
-    // directories (ADR-0041).
+    // directories (ADR-0041); `indexCacheDir` redirects that root (#345).
     configDir: options.configDir ?? process.cwd(),
+    indexCacheDir: options.indexCacheDir,
   });
 
   const metaChildrenCache = new MetaChildrenCache(scope.servedRegistry, {

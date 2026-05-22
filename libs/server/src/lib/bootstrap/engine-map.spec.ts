@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -541,6 +541,53 @@ describe('EngineMap', () => {
           ._unsafeUnwrap()
           .execute(SELECT, { format: 'json' });
         expect(subjects(exec.body)).toEqual(['http://example.org/a']);
+      } finally {
+        await map.whenIdle();
+        await map.close();
+      }
+    });
+
+    it('builds and reuses a disk-backed index under an `indexCacheDir` override — no rebuild on the second lifetime', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+      const override = join(dir, 'index-volume');
+
+      // First server lifetime: builds the index under the override root.
+      const builder = await EngineMap.create(registry, {
+        configDir: dir,
+        indexCacheDir: override,
+      });
+      await builder.ensure('big');
+      await builder.whenIdle();
+      await builder.close();
+
+      // The index materialized under <override>/big/, not <configDir>/.sparqly.
+      expect((await stat(join(override, 'big', 'manifest.json'))).isFile()).toBe(
+        true,
+      );
+
+      // Second lifetime over the same override: the first touch must find the
+      // already-built index under <override>/big/ and open straight to `ready`.
+      const rec = recordingLogger();
+      const map = await EngineMap.create(registry, {
+        configDir: dir,
+        indexCacheDir: override,
+        logger: rec.logger,
+      });
+      try {
+        const result = await map.ensure('big');
+        expect(result.isOk()).toBe(true);
+        const exec = await result
+          ._unsafeUnwrap()
+          .execute(SELECT, { format: 'json' });
+        expect(subjects(exec.body)).toEqual(['http://example.org/a']);
+        // No background build — the override-located index was found and
+        // reused; a manifest check at the wrong root would force a rebuild.
+        expect(
+          rec.entries.filter((e) => e.msg === 'index-build-start'),
+        ).toHaveLength(0);
       } finally {
         await map.whenIdle();
         await map.close();

@@ -22,7 +22,17 @@ export function indexManifestPath(indexDir: string): string {
  * Resolves the Glob index directory for a disk-backed source (ADR-0041):
  * `<configDir>/.sparqly/index/<source-id>/`. One directory per source id, so
  * sibling disk-backed globs never share an index.
+ *
+ * When `indexCacheDir` is supplied (the config-overridable cache root, #345),
+ * it replaces `<configDir>/.sparqly/index` as the parent — so the index lands
+ * at `<indexCacheDir>/<source-id>/`, letting a user redirect large indexes to
+ * a chosen volume.
  */
-export function globIndexDir(configDir: string, sourceId: string): string {
-  return join(configDir, '.sparqly', 'index', sourceId);
+export function globIndexDir(
+  configDir: string,
+  sourceId: string,
+  indexCacheDir?: string,
+): string {
+  const root = indexCacheDir ?? join(configDir, '.sparqly', 'index');
+  return join(root, sourceId);
 }

@@ -37,3 +37,40 @@ describe('validateProjectConfig — savedQueries block', () => {
     expect(result.ok).toBe(false);
   });
 });
+
+describe('validateProjectConfig — index block', () => {
+  it('accepts an index block with a dir overriding the Glob index cache root', () => {
+    const result = validateProjectConfig({
+      sources: ['data/*.ttl'],
+      index: { dir: '/mnt/big-volume/sparqly-index' },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.index?.dir).toBe('/mnt/big-volume/sparqly-index');
+    }
+  });
+
+  it('accepts an empty index block', () => {
+    const result = validateProjectConfig({
+      sources: ['data/*.ttl'],
+      index: {},
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects an unknown field under index', () => {
+    const result = validateProjectConfig({
+      sources: ['data/*.ttl'],
+      index: { unknown: 1 },
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects a non-string dir', () => {
+    const result = validateProjectConfig({
+      sources: ['data/*.ttl'],
+      index: { dir: 42 },
+    });
+    expect(result.ok).toBe(false);
+  });
+});

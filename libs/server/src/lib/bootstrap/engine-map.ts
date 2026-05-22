@@ -1,17 +1,13 @@
-import { stat } from 'node:fs/promises';
 import { err, ok, ResultAsync, type Result } from 'neverthrow';
 import type { SparqlyLogger } from 'common';
 import {
   formatSourceError,
   globIndexDir,
-  indexManifestPath,
   QueryEngine,
   resolveSourceResult,
-  storageTier,
   unionDefaultGraphEnabled,
   type ParsedEndpointSource,
   type ParsedFileSource,
-  type ParsedGlobSource,
   type ParsedSource,
   type SourceError,
   type SourceRecordSidecar,
@@ -19,6 +15,7 @@ import {
 import type * as RDF from '@rdfjs/types';
 import type { Store } from 'n3';
 import type { StoreRef } from './tokens';
+import { isDiskBacked, manifestExists } from './disk-backed-index';
 
 /**
  * Loaded view of a served source, surfaced to consumers that need the
@@ -153,6 +150,13 @@ export interface EngineMapOptions {
    * to a placeholder token when omitted.
    */
   sparqlyVersion?: string;
+  /**
+   * Overrides the Glob index cache root (ADR-0041, #345). When set, disk-backed
+   * globs build and reuse their index under `<indexCacheDir>/<id>/` instead of
+   * the default `<configDir>/.sparqly/index/<id>/`. Threaded from the project
+   * config's `index.dir` field.
+   */
+  indexCacheDir?: string;
 }
 
 export class EngineMap {
@@ -161,6 +165,7 @@ export class EngineMap {
   private readonly logger: SparqlyLogger | undefined;
   private readonly configDir: string;
   private readonly sparqlyVersion: string | undefined;
+  private readonly indexCacheDir: string | undefined;
   /** In-flight background index builds — awaited by {@link whenIdle}. */
   private readonly inFlightBuilds = new Set<Promise<unknown>>();
 
@@ -170,12 +175,14 @@ export class EngineMap {
     logger: SparqlyLogger | undefined,
     configDir: string,
     sparqlyVersion: string | undefined,
+    indexCacheDir: string | undefined,
   ) {
     this.entries = entries;
     this.resolutionRegistry = resolutionRegistry;
     this.logger = logger;
     this.configDir = configDir;
     this.sparqlyVersion = sparqlyVersion;
+    this.indexCacheDir = indexCacheDir;
   }
 
   static async create(
@@ -222,6 +229,7 @@ export class EngineMap {
       options.logger,
       options.configDir ?? process.cwd(),
       options.sparqlyVersion,
+      options.indexCacheDir,
     );
   }
 
@@ -290,7 +298,7 @@ export class EngineMap {
     entry: Entry,
   ): Promise<Result<LoadedEntry, SourceError | IndexingError>> {
     const sourceId = entry.source.id as string;
-    const indexDir = globIndexDir(this.configDir, sourceId);
+    const indexDir = globIndexDir(this.configDir, sourceId, this.indexCacheDir);
     if (await manifestExists(indexDir)) {
       // A built index is already present — open it straight to `ready` (a
       // fast LevelDB open, not a ~15-min build), so no request sees `503`.
@@ -358,6 +366,7 @@ export class EngineMap {
       logger: this.logger,
       configDir: this.configDir,
       sparqlyVersion: this.sparqlyVersion,
+      indexCacheDir: this.indexCacheDir,
     });
     if (resolved.isErr()) {
       // Clear memoization so the next request retries — gives the user a
@@ -489,31 +498,5 @@ export class EngineMap {
       }
     }
     this.entries.clear();
-  }
-}
-
-/** A glob source declared `storage: disk` — hosted from a Glob index (ADR-0041). */
-/**
- * Whether a source materializes onto the disk tier (ADR-0041) — a `storage:
- * disk` glob, or a split-glob File child that inherited the tier (#344). Both
- * run the same background-build state machine; only the Glob index pattern
- * differs (the glob's pattern vs. the child's single file path).
- */
-function isDiskBacked(
-  source: ParsedSource,
-): source is ParsedGlobSource | ParsedFileSource {
-  return (
-    (source.kind === 'glob' || source.kind === 'file') &&
-    storageTier(source) === 'disk'
-  );
-}
-
-/** Whether a built Glob index — its `manifest.json` — exists at `indexDir`. */
-async function manifestExists(indexDir: string): Promise<boolean> {
-  try {
-    await stat(indexManifestPath(indexDir));
-    return true;
-  } catch {
-    return false;
   }
 }
