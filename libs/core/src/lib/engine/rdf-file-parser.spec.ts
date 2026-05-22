@@ -2,8 +2,13 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import dedent from 'dedent';
+import type { Quad } from 'n3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { parseRdfFile, parseRdfFileResult } from './rdf-file-parser';
+import {
+  parseRdfFile,
+  parseRdfFileResult,
+  streamRdfFileQuads,
+} from './rdf-file-parser';
 
 describe('parseRdfFile', () => {
   let dir: string;
@@ -420,5 +425,97 @@ describe('parseRdfFileResult', () => {
     if (result.error.kind !== 'glob-load') throw new Error('unreachable');
     expect(result.error.file).toBe(file);
     expect(result.error.message.length).toBeGreaterThan(0);
+  });
+});
+
+describe('streamRdfFileQuads', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-parser-stream-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('yields each quad of a Turtle file', async () => {
+    const file = join(dir, 'a.ttl');
+    await writeFile(
+      file,
+      dedent`
+        @prefix ex: <http://example.org/> .
+        ex:a ex:p ex:b .
+        ex:c ex:p ex:d .
+      ` + '\n',
+    );
+
+    const subjects: string[] = [];
+    for await (const quad of streamRdfFileQuads(file)) {
+      subjects.push(quad.subject.value);
+    }
+
+    expect(subjects.sort()).toEqual([
+      'http://example.org/a',
+      'http://example.org/c',
+    ]);
+  });
+
+  it('preserves the graph term streaming an N-Quads file', async () => {
+    const file = join(dir, 'a.nq');
+    await writeFile(
+      file,
+      '<http://example.org/a> <http://example.org/p> <http://example.org/b> <http://example.org/g> .\n',
+    );
+
+    const quads: Quad[] = [];
+    for await (const quad of streamRdfFileQuads(file)) quads.push(quad);
+
+    expect(quads).toHaveLength(1);
+    expect(quads[0].graph.value).toBe('http://example.org/g');
+  });
+
+  it('yields quads streaming a JSON-LD file', async () => {
+    const file = join(dir, 'a.jsonld');
+    await writeFile(
+      file,
+      JSON.stringify({
+        '@context': { ex: 'http://example.org/' },
+        '@id': 'ex:a',
+        'ex:p': { '@id': 'ex:b' },
+      }),
+    );
+
+    const quads: Quad[] = [];
+    for await (const quad of streamRdfFileQuads(file)) quads.push(quad);
+
+    expect(quads).toHaveLength(1);
+    expect(quads[0].predicate.value).toBe('http://example.org/p');
+  });
+
+  it('throws a glob-load error naming the file on a parse failure', async () => {
+    const file = join(dir, 'broken.ttl');
+    await writeFile(file, 'this is not valid turtle <<<');
+
+    await expect(
+      (async () => {
+        for await (const _quad of streamRdfFileQuads(file)) {
+          // drain the stream until it throws
+        }
+      })(),
+    ).rejects.toMatchObject({ kind: 'glob-load', file });
+  });
+
+  it('throws a glob-load error for an unsupported file extension', async () => {
+    const file = join(dir, 'a.unknown');
+    await writeFile(file, 'irrelevant');
+
+    await expect(
+      (async () => {
+        for await (const _quad of streamRdfFileQuads(file)) {
+          // drain
+        }
+      })(),
+    ).rejects.toMatchObject({ kind: 'glob-load', file });
   });
 });

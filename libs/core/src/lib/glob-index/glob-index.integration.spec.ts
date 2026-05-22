@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { QueryEngine } from '../engine';
 import { parseGraphNameTransformResult, type ParsedTransform } from '../sources';
 import { recordingLogger } from '../test/recording-logger';
+import { INGEST_BATCH_SIZE } from './batched-ingest';
 import { createGlobIndexBackend } from './glob-index-backend';
 import { buildGlobIndex } from './glob-index-builder';
 import { openGlobIndex, openOrBuildGlobIndex } from './glob-index-handle';
@@ -294,5 +295,30 @@ describe('disk-backed glob index', () => {
     }
     // Nothing changed since the build — no staleness warning.
     expect(entries.filter((entry) => entry.level === 'warn')).toEqual([]);
+  });
+
+  it('builds a complete index from a glob whose quad count exceeds the ingest batch size', async () => {
+    // More triples than one ingest batch holds — the streamed build (#347)
+    // must flush multiple `multiPut` batches and still index every quad.
+    const count = INGEST_BATCH_SIZE + 25;
+    let ttl = '@prefix ex: <http://example.org/> .\n';
+    for (let i = 0; i < count; i++) ttl += `ex:s${i} ex:p ex:o${i} .\n`;
+    await writeFile(join(dir, 'big.ttl'), ttl);
+    const indexDir = join(dir, 'index');
+
+    const built = await build(join(dir, '*.ttl'), indexDir);
+    expect(built.isOk()).toBe(true);
+
+    const handle = await openGlobIndex(indexDir);
+    try {
+      const engine = new QueryEngine(handle.source);
+      const result = await engine.execute(
+        'SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }',
+      );
+      const n = JSON.parse(result.body).results.bindings[0].n.value;
+      expect(Number(n)).toBe(count);
+    } finally {
+      await handle.close();
+    }
   });
 });
