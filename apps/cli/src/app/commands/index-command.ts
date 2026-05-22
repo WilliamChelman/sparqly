@@ -127,6 +127,8 @@ export const indexSpec: CommandSpec<IndexConfig> = {
         indexDir,
         sparqlyVersion,
         force: config.force === true,
+        // Surfaces the build's `index-file-*` / `index-progress` events (#349).
+        logger,
       });
       if (outcome.isErr()) {
         throw new Error(`failed to index ${label}: ${outcome.error.message}`);

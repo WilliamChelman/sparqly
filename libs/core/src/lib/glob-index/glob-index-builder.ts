@@ -1,3 +1,5 @@
+import { stat } from 'node:fs/promises';
+import type { SparqlyLogger } from 'common';
 import { DataFactory, type Quad } from 'n3';
 import { ResultAsync } from 'neverthrow';
 import { Quadstore } from 'quadstore';
@@ -9,7 +11,8 @@ import {
   type GraphNameConfig,
 } from '../sources/graph-name-transform';
 import type { ParsedTransform } from '../sources/transform-spec';
-import { ingestQuadStream } from './batched-ingest';
+import { INGEST_BATCH_SIZE, ingestQuadStream } from './batched-ingest';
+import { BuildProgress, type BuildProgressFile } from './build-progress';
 import { createGlobIndexBackend } from './glob-index-backend';
 import { indexDbDir } from './glob-index-layout';
 import { computeGlobIndexManifest, writeGlobIndexManifest } from './index-manifest';
@@ -30,6 +33,14 @@ export interface BuildGlobIndexOptions {
   indexDir: string;
   /** The sparqly version recorded in the index manifest. */
   sparqlyVersion: string;
+  /**
+   * Boundary logger for the build's progress events (#349, ADR-0020/-0042):
+   * `index-file-start` / `index-file-done` per matched file and a throttled
+   * `index-progress` heartbeat, all at `info`. Also carries the staleness
+   * `warn` on the open path (see `openOrBuildGlobIndex`). Omit to build
+   * silently.
+   */
+  logger?: SparqlyLogger;
 }
 
 export interface GlobIndexBuildResult {
@@ -62,6 +73,12 @@ async function buildGlobIndexAsync(
   options: BuildGlobIndexOptions,
 ): Promise<GlobIndexBuildResult> {
   const files = await tinyGlob(options.glob, { absolute: true });
+  // Sizing the matched files upfront gives the heartbeat a real byte-% — its
+  // denominator is known before a single quad is read (#349).
+  const progress = new BuildProgress({
+    files: await statFiles(files),
+    logger: options.logger,
+  });
   const store = new Quadstore({
     backend: createGlobIndexBackend(indexDbDir(options.indexDir)),
     dataFactory: DataFactory,
@@ -73,8 +90,14 @@ async function buildGlobIndexAsync(
     // (#348). The build never materializes a whole file — let alone the whole
     // glob — in heap: at most one batch is resident, whether or not a
     // transform is declared. That flat memory ceiling is the disk tier's
-    // purpose (ADR-0041, amends ADR-0006).
-    await ingestQuadStream(store, streamGlobQuads(files, options.transforms));
+    // purpose (ADR-0041, amends ADR-0006). Each written batch advances the
+    // `index-progress` heartbeat (#349).
+    await ingestQuadStream(
+      store,
+      streamGlobQuads(files, options.transforms, progress),
+      INGEST_BATCH_SIZE,
+      (count) => progress.quadsWritten(count),
+    );
   } finally {
     await store.close();
   }
@@ -94,18 +117,33 @@ async function buildGlobIndexAsync(
  * transform is `graphName` (ADR-0041), a pure per-quad rewrite — so the build
  * never materializes the whole glob in heap whether or not a transform is
  * declared. A parse failure on any file surfaces as the {@link GlobLoadError}
- * {@link streamRdfFileQuads} throws, naming that file.
+ * {@link streamRdfFileQuads} throws, naming that file. Brackets each file's
+ * quads with `progress.fileStarted` / `fileDone` so the build reports per-file
+ * progress (#349).
  */
 async function* streamGlobQuads(
   files: ReadonlyArray<string>,
   transforms: ReadonlyArray<ParsedTransform>,
+  progress: BuildProgress,
 ): AsyncGenerator<Quad> {
-  for (const file of files) {
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    progress.fileStarted(i);
     const rewrite = graphNameRewriteFor(transforms, file);
     for await (const quad of streamRdfFileQuads(file)) {
       yield rewrite(quad);
     }
+    progress.fileDone(i);
   }
+}
+
+/** Sizes each matched file for the build's byte-% heartbeat (#349). */
+async function statFiles(
+  files: ReadonlyArray<string>,
+): Promise<BuildProgressFile[]> {
+  return Promise.all(
+    files.map(async (path) => ({ path, bytes: (await stat(path)).size })),
+  );
 }
 
 /**

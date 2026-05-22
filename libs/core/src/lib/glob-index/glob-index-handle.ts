@@ -1,6 +1,5 @@
 import { stat } from 'node:fs/promises';
 import type * as RDF from '@rdfjs/types';
-import type { SparqlyLogger } from 'common';
 import { DataFactory } from 'n3';
 import { ResultAsync } from 'neverthrow';
 import { Quadstore } from 'quadstore';
@@ -57,15 +56,14 @@ export async function openGlobIndex(indexDir: string): Promise<GlobIndexHandle> 
   };
 }
 
-/** Options for {@link openOrBuildGlobIndex}. */
-export interface OpenOrBuildGlobIndexOptions extends BuildGlobIndexOptions {
-  /**
-   * Boundary logger for the staleness `warn` (ADR-0041, ADR-0020). When an
-   * already-built index no longer matches its inputs, one `warn` line names
-   * the staleness — sparqly never rebuilds an index behind the user's back.
-   */
-  logger?: SparqlyLogger;
-}
+/**
+ * Options for {@link openOrBuildGlobIndex}. Identical to
+ * {@link BuildGlobIndexOptions} — its `logger` carries both the build's
+ * progress events (#349) and the staleness `warn` raised when an already-built
+ * index no longer matches its inputs (ADR-0041): sparqly never rebuilds an
+ * index behind the user's back.
+ */
+export type OpenOrBuildGlobIndexOptions = BuildGlobIndexOptions;
 
 /**
  * Opens the Glob index at `options.indexDir`, building it first if none exists.

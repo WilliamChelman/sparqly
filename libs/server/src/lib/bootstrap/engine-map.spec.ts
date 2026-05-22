@@ -512,6 +512,38 @@ describe('EngineMap', () => {
       }
     });
 
+    it('emits per-file index progress logs during a serve-triggered background build', async () => {
+      await writeFile(join(dir, 'a.ttl'), SAMPLE);
+      await writeFile(join(dir, 'b.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+      const rec = recordingLogger();
+
+      const map = await EngineMap.create(registry, {
+        configDir: dir,
+        logger: rec.logger,
+      });
+      try {
+        await map.ensure('big');
+        await map.whenIdle();
+
+        const starts = rec.entries.filter((e) => e.msg === 'index-file-start');
+        const dones = rec.entries.filter((e) => e.msg === 'index-file-done');
+        // The background build's per-file progress reaches the boundary logger
+        // — visible under a bare `sparqly serve`, no flag (#349, ADR-0042).
+        expect(starts).toHaveLength(2);
+        expect(dones).toHaveLength(2);
+        for (const entry of [...starts, ...dones]) {
+          expect(entry.level).toBe('info');
+          expect(entry.fields?.['total']).toBe(2);
+        }
+      } finally {
+        await map.whenIdle();
+        await map.close();
+      }
+    });
+
     it('a disk-backed split-glob File child runs its own background index build — first touch reports `indexing`, then opens `ready`', async () => {
       await writeFile(join(dir, 'data.ttl'), SAMPLE);
       const parsed = parseSourceSpecs([
