@@ -2,6 +2,7 @@ import { DataFactory, Store } from 'n3';
 import { describe, expect, it } from 'vitest';
 import {
   GRAPH_NAME_TRANSFORM,
+  graphNameQuadRewriter,
   parseGraphNameTransform,
   parseGraphNameTransformResult,
 } from './graph-name-transform';
@@ -348,6 +349,82 @@ describe('parseGraphNameTransformResult — config for index staleness (ADR-0041
     expect(result.isOk()).toBe(true);
     if (!result.isOk()) throw new Error('unreachable');
     expect(result.value.config).toEqual({ mode: 'fillDefault' });
+  });
+});
+
+describe('graphNameQuadRewriter — per-quad rewrite for the streamed ingest (#348)', () => {
+  it('forceAll with an override IRI rewrites a quad into that graph', () => {
+    const rewrite = graphNameQuadRewriter(
+      { mode: 'forceAll', graph: 'urn:my:graph' },
+      '/abs/a.ttl',
+    );
+    const out = rewrite(
+      quad(namedNode('urn:s'), namedNode('urn:p'), namedNode('urn:o')),
+    );
+    expect(out.graph.termType).toBe('NamedNode');
+    expect(out.graph.value).toBe('urn:my:graph');
+  });
+
+  it('forceAll without an override rewrites every quad into the file:// graph', () => {
+    const rewrite = graphNameQuadRewriter({ mode: 'forceAll' }, '/abs/a.nq');
+    const fromDefault = rewrite(
+      quad(namedNode('urn:s'), namedNode('urn:p'), namedNode('urn:o')),
+    );
+    const fromNamed = rewrite(
+      quad(
+        namedNode('urn:t'),
+        namedNode('urn:p'),
+        namedNode('urn:u'),
+        namedNode('http://example.org/declared'),
+      ),
+    );
+    expect(fromDefault.graph.value).toBe('file:///abs/a.nq');
+    expect(fromNamed.graph.value).toBe('file:///abs/a.nq');
+  });
+
+  it('fillDefault rewrites only default-graph quads, leaving named graphs intact', () => {
+    const rewrite = graphNameQuadRewriter({ mode: 'fillDefault' }, '/abs/a.nq');
+    const fromDefault = rewrite(
+      quad(namedNode('urn:s'), namedNode('urn:p'), namedNode('urn:o')),
+    );
+    const fromNamed = rewrite(
+      quad(
+        namedNode('urn:t'),
+        namedNode('urn:p'),
+        namedNode('urn:u'),
+        namedNode('http://example.org/declared'),
+      ),
+    );
+    expect(fromDefault.graph.value).toBe('file:///abs/a.nq');
+    expect(fromNamed.graph.value).toBe('http://example.org/declared');
+  });
+
+  it('flatten rewrites every quad into the default graph', () => {
+    const rewrite = graphNameQuadRewriter({ mode: 'flatten' }, '/abs/a.trig');
+    const fromNamed = rewrite(
+      quad(
+        namedNode('urn:s'),
+        namedNode('urn:p'),
+        namedNode('urn:o'),
+        namedNode('http://example.org/g'),
+      ),
+    );
+    const fromDefault = rewrite(
+      quad(namedNode('urn:t'), namedNode('urn:p'), namedNode('urn:u')),
+    );
+    expect(fromNamed.graph.termType).toBe('DefaultGraph');
+    expect(fromDefault.graph.termType).toBe('DefaultGraph');
+  });
+
+  it('preserve returns each quad unchanged', () => {
+    const rewrite = graphNameQuadRewriter({ mode: 'preserve' }, '/abs/a.nq');
+    const original = quad(
+      namedNode('urn:s'),
+      namedNode('urn:p'),
+      namedNode('urn:o'),
+      namedNode('http://example.org/g'),
+    );
+    expect(rewrite(original)).toBe(original);
   });
 });
 
