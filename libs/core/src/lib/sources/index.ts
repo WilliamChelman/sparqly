@@ -17,6 +17,7 @@ export * from './resolve-source-result';
 export * from './resolve-source-references';
 export * from './expand-split-globs';
 export * from './walk-glob-paths';
+export * from './oversized-glob-hint';
 export * from './derive-file-source-id';
 export * from './git/git-tree-walker-factory';
 export * from './git/discover-repo';

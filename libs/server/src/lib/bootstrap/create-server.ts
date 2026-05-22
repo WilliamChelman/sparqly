@@ -17,6 +17,7 @@ import {
   resolveServeScope,
   type SourceSpecInput,
   walkGlobPaths,
+  warnIfOversizedGlob,
 } from 'core';
 import { DEFAULT_DESCRIBE_CONFIG, type DescribeConfig } from '../describe';
 import { EngineMap } from './engine-map';
@@ -143,6 +144,7 @@ export async function createServer(
   await seedSnippetPaths(scope.servedRegistry, engineMap, {
     walkGlob: defaultGlobWalker,
     walkGitGlob: walkGitGlobForSnippets,
+    logger: boundaryLogger,
   });
   const snippetAllowList = new SnippetAllowList();
   snippetAllowList.update(engineMap.allFiles());
@@ -235,6 +237,7 @@ async function seedSnippetPaths(
   deps: {
     walkGlob: Parameters<typeof walkGlobPaths>[1]['walkGlob'];
     walkGitGlob: Parameters<typeof walkGlobPaths>[1]['walkGitGlob'];
+    logger: SparqlyLogger;
   },
 ): Promise<void> {
   for (const src of servedRegistry) {
@@ -242,6 +245,10 @@ async function seedSnippetPaths(
     if (src.kind === 'glob') {
       const paths = await walkGlobPaths(src, deps);
       engineMap.setFiles(src.id, paths);
+      // Discoverability hint (ADR-0041): an un-flagged glob whose matched
+      // bytes are heap-risky earns a `storage: disk` nudge. Rides the eager
+      // path walk above — file sizes only, no parsing.
+      await warnIfOversizedGlob(src, paths, { logger: deps.logger });
     } else if (src.kind === 'file') {
       engineMap.setFiles(src.id, [src.path]);
     }

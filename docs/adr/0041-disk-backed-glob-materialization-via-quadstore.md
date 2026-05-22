@@ -83,7 +83,7 @@ The data that provokes this is a static monthly snapshot. The goal: make `serve`
 
 - **`CONTEXT.md` vocabulary shift.** **Materialized resolution** redefined around two storage tiers; **Disk-backed glob** and **Glob index** added; **Glob source**, **Lazy materialization**, and **Source record sidecar** amended.
 
-- **Open verification items for implementation** (do not change this decision): confirm quadstore stores RDF-star quoted triples as terms — required for `annotateSource` to bake in; if unsupported, `annotateSource` on a disk-backed glob becomes a parse error instead **(resolved — see below)**. Confirm quadstore's batch/stream import path (the published ~44k quads/s figure is one-by-one import). Pick the soft byte-hint threshold for the un-flagged-glob warning.
+- **Open verification items for implementation** (do not change this decision): confirm quadstore stores RDF-star quoted triples as terms — required for `annotateSource` to bake in; if unsupported, `annotateSource` on a disk-backed glob becomes a parse error instead **(resolved — see below)**. Confirm quadstore's batch/stream import path (the published ~44k quads/s figure is one-by-one import). Pick the soft byte-hint threshold for the un-flagged-glob warning **(resolved — see below)**.
 
 ## Verification outcome — RDF-star in quadstore (#341)
 
@@ -92,3 +92,9 @@ Verification item 1 is **resolved**: `quadstore` (15.4.1) does **not** store RDF
 Per this ADR's own contingency, `annotateSource` on a disk-backed glob is therefore a **parse error**, not an allowed-with-warning transform: a glob declaring both `storage: disk` and an `annotateSource` transform fails `parseSourceSpecs`, with a message naming `storage: disk` and pointing the user to `storage: memory`. A **split glob**'s File-source children inherit `storage` and `transforms`, but the meta fails parsing first, so the children are never synthesized — no separate check is needed.
 
 `graphName` only rewrites the graph term — a `NamedNode` or `DefaultGraph`, never a quoted triple — so it bakes cleanly and remains the one transform supported on the disk tier.
+
+## Verification outcome — soft byte-hint threshold (#342)
+
+Verification item 3 is **resolved**: the soft byte hint is **256 MiB of matched files**. Below it, `serve` stays silent; above it, an un-flagged glob (`storage: memory`) draws one `warn`-level boundary log naming `storage: disk`.
+
+256 MiB of matched RDF text inflates to roughly 1–1.5 GB of V8 heap once parsed into an `n3.Store` (its three nested indexes) plus the in-memory **Source record sidecar** — well into out-of-memory-risk territory on a default heap, yet far above any normal small-glob use (a few MB) so the warning does not cry wolf, and far below the multi-GB OOM trigger so it arrives with runway to act. The check sums file sizes only — no RDF parsing — and rides `serve`'s existing eager glob-path enumeration. The threshold lives as `OVERSIZED_GLOB_HINT_BYTES` in `core`; it is deliberately a hint, never an automatic tier switch (see *Considered alternatives*).
