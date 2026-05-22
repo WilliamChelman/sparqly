@@ -22,12 +22,8 @@ export function resolveDiskBackedGlob(
   transforms: ReadonlyArray<ParsedTransform>,
   options: ResolveSourceResultOptions,
 ): ResultAsync<QuerySources, SourceError> {
-  return resolveDiskBackedIndex(
-    diskBackedIndexId(target),
-    target.glob,
-    transforms,
-    options,
-  );
+  const { indexId, pattern } = diskBackedIndexIdentity(target);
+  return resolveDiskBackedIndex(indexId, pattern, transforms, options);
 }
 
 /**
@@ -41,7 +37,8 @@ export function resolveDiskBackedFile(
   transforms: ReadonlyArray<ParsedTransform>,
   options: ResolveSourceResultOptions,
 ): ResultAsync<QuerySources, SourceError> {
-  return resolveDiskBackedIndex(target.id, target.path, transforms, options);
+  const { indexId, pattern } = diskBackedIndexIdentity(target);
+  return resolveDiskBackedIndex(indexId, pattern, transforms, options);
 }
 
 /**
@@ -74,6 +71,22 @@ function resolveDiskBackedIndex(
       indexDir,
       close: handle.close,
     }));
+}
+
+/**
+ * The Glob index identity of a disk-backed source: `indexId` keys its index
+ * directory (`<configDir>/.sparqly/index/<indexId>/`), `pattern` is the glob —
+ * or, for a split-glob File child, the single file path — the build enumerates.
+ * Shared with the `sparqly index` command so an ahead-of-time build lands the
+ * index exactly where the query/serve open path reads it.
+ */
+export function diskBackedIndexIdentity(
+  source: ParsedGlobSource | ParsedFileSource,
+): { indexId: string; pattern: string } {
+  if (source.kind === 'file') {
+    return { indexId: source.id, pattern: source.path };
+  }
+  return { indexId: diskBackedIndexId(source), pattern: source.glob };
 }
 
 /** Stable index id for a disk-backed glob — its source id, or a glob hash. */
