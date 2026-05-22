@@ -23,6 +23,7 @@ import {
   type SparqlFormat,
   type TargetError,
 } from 'core';
+import { cliVersion } from '../cli-version';
 import { configureLogger } from '../logging';
 import { writeOutputToFile } from '../output';
 import {
@@ -186,6 +187,11 @@ export const querySpec: CommandSpec<QueryConfig> = {
       },
     );
 
+    // A disk-backed glob (ADR-0041) hands back an open LevelDB handle; capture
+    // its closer so the embedded lock is released once the query is done,
+    // whether it succeeded or failed.
+    let closeIndex: (() => Promise<void>) | undefined;
+
     const pipeline: ResultAsync<ExecuteResult, SourceError | TargetError> =
       resolveQueryTargetResult(config, registry)
         .map((target) => applyAtOverride(target, config.at))
@@ -195,8 +201,10 @@ export const querySpec: CommandSpec<QueryConfig> = {
           registry,
           logger: boundaryLog,
           configDir: process.cwd(),
+          sparqlyVersion: cliVersion(),
         })
           .map((sources) => {
+            if (sources.mode === 'disk-backed') closeIndex = sources.close;
             logSourceLoaded(boundaryLog, sources, Date.now() - loadStart);
             return sources;
           })
@@ -213,6 +221,7 @@ export const querySpec: CommandSpec<QueryConfig> = {
       });
 
     const outcome = await pipeline;
+    if (closeIndex !== undefined) await closeIndex();
 
     await outcome.match(
       async (result) => {
@@ -248,29 +257,41 @@ function executeAgainstSources(
   mutable: boolean,
   logger: ReturnType<typeof configureLogger>,
 ): ResultAsync<ExecuteResult, QueryExecutionError | EndpointFetchError> {
-  const engine =
-    sources.mode === 'pass-through'
-      ? new QueryEngine(sources.endpoint, {
-          id: sources.endpoint.endpoint,
-          mode: 'pass-through',
-          logger,
-        })
-      : new QueryEngine(
-          sources.store,
-          {
-            id:
-              target.id ??
-              (target.kind === 'glob'
-                ? target.glob
-                : target.kind === 'file'
-                  ? target.path
-                  : '(target)'),
-            mode: 'materialized',
-            logger,
-          },
-          { unionDefaultGraph: unionDefaultGraphEnabled(target) },
-        );
+  const engine = buildQueryEngine(sources, target, logger);
   return engine.executeResult(query, { format, mutable });
+}
+
+/**
+ * Builds the engine for the resolved sources. A disk-backed glob (ADR-0041)
+ * flows in as a plain RDF/JS source through the same materialized path as an
+ * in-memory glob — only the storage tier differs, the SPARQL semantics do not.
+ */
+function buildQueryEngine(
+  sources: QuerySources,
+  target: ParsedSource,
+  logger: ReturnType<typeof configureLogger>,
+): QueryEngine {
+  if (sources.mode === 'pass-through') {
+    return new QueryEngine(sources.endpoint, {
+      id: sources.endpoint.endpoint,
+      mode: 'pass-through',
+      logger,
+    });
+  }
+  const id =
+    target.id ??
+    (target.kind === 'glob'
+      ? target.glob
+      : target.kind === 'file'
+        ? target.path
+        : '(target)');
+  const store =
+    sources.mode === 'disk-backed' ? sources.source : sources.store;
+  return new QueryEngine(
+    store,
+    { id, mode: 'materialized', logger },
+    { unionDefaultGraph: unionDefaultGraphEnabled(target) },
+  );
 }
 
 function logSourceLoaded(
@@ -282,6 +303,16 @@ function logSourceLoaded(
     logger.debug('source-loaded', {
       mode: sources.mode,
       endpoint: sources.endpoint.endpoint,
+      ms: loadMs,
+    });
+    return;
+  }
+  if (sources.mode === 'disk-backed') {
+    // The quads live on disk, not the heap — no cheap `.size` to report.
+    logger.debug('source-loaded', {
+      mode: sources.mode,
+      files: sources.files.length,
+      indexDir: sources.indexDir,
       ms: loadMs,
     });
     return;

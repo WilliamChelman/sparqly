@@ -14,7 +14,7 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
-import { type Result, ResultAsync } from 'neverthrow';
+import { errAsync, type Result, ResultAsync } from 'neverthrow';
 import {
   QueryEngine,
   resolveSourceResult,
@@ -213,6 +213,19 @@ export class RegistrySparqlController {
           id: target.id as string,
           mode: 'pass-through',
         }).executeResult(query, { format, mutable: this.config.mutable });
+      }
+      if (sources.mode === 'disk-backed') {
+        // `serve` does not yet host disk-backed globs (ADR-0041). Release the
+        // LevelDB lock, then surface a typed glob-load error so `mapError`
+        // routes it like any other source failure.
+        return ResultAsync.fromSafePromise(sources.close()).andThen(() =>
+          errAsync<ExecuteResult, SourceError | TargetError>({
+            kind: 'glob-load',
+            glob: target.kind === 'glob' ? [target.glob] : [],
+            message:
+              'serve does not yet support disk-backed glob sources (`storage: disk`); query them with `sparqly query` (ADR-0041)',
+          }),
+        );
       }
       return new QueryEngine(
         sources.store,

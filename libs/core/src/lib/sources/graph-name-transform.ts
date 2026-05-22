@@ -3,6 +3,7 @@ import { err, ok, type Result } from 'neverthrow';
 import { GRAPH_MODES, type GraphMode } from '../engine';
 import type { TransformParseError } from './errors';
 import type {
+  ParsedTransform,
   TransformApply,
   TransformContext,
   TransformDefinition,
@@ -26,6 +27,25 @@ export function parseGraphNameTransformResult(
   raw: unknown,
 ): Result<TransformApply, TransformParseError> {
   return parseGraphNameSpecResult(raw).map(buildApply);
+}
+
+/**
+ * The transform pipeline to apply to a glob source: its declared `transforms`
+ * verbatim when present, otherwise a `graphName` transform synthesized from
+ * the resolver's default {@link GraphMode} — an empty pipeline for `preserve`
+ * or no default at all.
+ */
+export function effectiveTransforms(
+  declaredTransforms: ReadonlyArray<ParsedTransform> | undefined,
+  defaultGraphMode: GraphMode | undefined,
+): Result<ReadonlyArray<ParsedTransform>, TransformParseError> {
+  if (declaredTransforms !== undefined) return ok(declaredTransforms);
+  if (defaultGraphMode === undefined || defaultGraphMode === 'preserve') {
+    return ok([]);
+  }
+  return parseGraphNameTransformResult(defaultGraphMode).map((apply) => [
+    { key: KEY, apply },
+  ]);
 }
 
 /**

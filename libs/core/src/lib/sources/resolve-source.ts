@@ -1,3 +1,4 @@
+import type * as RDF from '@rdfjs/types';
 import type { Store } from 'n3';
 import type { GraphMode } from '../engine';
 import type { ParsedEndpointSource, ParsedSource } from './source-spec';
@@ -24,6 +25,31 @@ export type QuerySources =
        * at diff time via the canonicalizer's blank-node label map.
        */
       sourceRecords?: SourceRecordSidecar;
+    }
+  | {
+      /**
+       * A `storage: disk` glob materialized into a Glob index (ADR-0041). The
+       * quads live in an embedded on-disk quad store, not the V8 heap, so a
+       * glob whose triples exceed RAM stays queryable.
+       */
+      mode: 'disk-backed';
+      /**
+       * The opened Glob index as an RDF/JS source. Flows into the query
+       * engine through the same `sources: [...]` context an in-memory glob
+       * uses — a disk-backed glob answers SPARQL identically.
+       */
+      source: RDF.Source;
+      /** Absolute paths of the files baked into the index. */
+      files: string[];
+      /** Directory the Glob index lives under. */
+      indexDir: string;
+      /**
+       * Releases the embedded LevelDB lock; must be called once querying is
+       * done. A disk-backed glob carries no Source record sidecar — an in-heap
+       * record per quad is precisely the cost the disk tier exists to escape
+       * (ADR-0041 amends ADR-0032).
+       */
+      close(): Promise<void>;
     };
 
 export interface ResolveSourceOptions {

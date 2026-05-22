@@ -46,6 +46,7 @@ const sourceObjectSchema = z
     timeoutMs: z.number().int().positive().optional(),
     splitByFile: z.literal(true).optional(),
     unionDefaultGraph: z.boolean().optional(),
+    storage: z.enum(['memory', 'disk']).optional(),
     gitRef: z.string().optional(),
     gitRoot: z.string().optional(),
   })
