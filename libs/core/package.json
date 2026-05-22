@@ -17,10 +17,13 @@
   },
   "dependencies": {
     "@comunica/query-sparql": "^5.2.1",
+    "@rdfjs/types": "^2.0.1",
+    "classic-level": "^3.0.0",
     "common": "workspace:*",
     "n3": "^2.0.3",
     "neverthrow": "^8.2.0",
     "picomatch": "^4.0.4",
+    "quadstore": "^15.4.1",
     "rdf-canonize": "^5.0.0",
     "rdf-parse": "^5.0.0",
     "sparqljs": "^3.7.4",

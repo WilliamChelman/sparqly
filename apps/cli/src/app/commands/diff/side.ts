@@ -102,6 +102,15 @@ export async function resolveSide(
       endpoint: sources.endpoint.endpoint,
     });
   }
+  if (sources.mode === 'disk-backed') {
+    // diff canonicalizes both sides with RDFC-1.0, which needs every quad in
+    // memory — the very cost `storage: disk` exists to escape (ADR-0041
+    // amends ADR-0032). Release the LevelDB lock and reject.
+    await sources.close();
+    throw new Error(
+      'diff does not support disk-backed glob sources (`storage: disk`); RDFC-1.0 canonicalization cannot scale to a disk-backed glob (ADR-0041)',
+    );
+  }
   const transforms =
     target.kind === 'glob' || target.kind === 'file'
       ? target.transforms

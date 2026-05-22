@@ -1,6 +1,7 @@
 export * from './lib/shared';
 export * from './lib/canonical';
 export * from './lib/engine';
+export * from './lib/glob-index';
 export * from './lib/sources';
 export * from './lib/views';
 export * from './lib/describe';

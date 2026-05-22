@@ -1,5 +1,5 @@
 import * as nodePath from 'node:path';
-import { ResultAsync, errAsync, ok, okAsync, type Result } from 'neverthrow';
+import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import { Store } from 'n3';
 import {
   loadRdfResult,
@@ -8,8 +8,9 @@ import {
   type LoadResult,
 } from '../engine';
 import { resolveViewResult, type ResolveViewOptions } from '../views';
-import type { SourceError, TransformParseError } from './errors';
-import { parseGraphNameTransformResult } from './graph-name-transform';
+import type { SourceError } from './errors';
+import { effectiveTransforms } from './graph-name-transform';
+import { resolveDiskBackedGlob } from './resolve-disk-backed-glob';
 import type { QuerySources } from './resolve-source';
 import type {
   ParsedFileSource,
@@ -17,6 +18,7 @@ import type {
   ParsedSource,
   ParsedViewSource,
 } from './source-spec';
+import { storageTier } from './glob-storage';
 import { applyTransformPipeline } from './transform-pipeline';
 import type { ParsedTransform } from './transform-spec';
 import { GitCliPort } from './git/git-cli-port';
@@ -68,6 +70,12 @@ export interface ResolveSourceResultOptions {
    * Defaults to a filesystem-backed implementation.
    */
   repoDiscovery?: RepoDiscoveryDeps;
+  /**
+   * The sparqly version recorded in a disk-backed glob's index manifest
+   * (ADR-0041). Defaults to a placeholder token for callers that resolve no
+   * disk-backed source; the CLI threads its real version.
+   */
+  sparqlyVersion?: string;
 }
 
 /**
@@ -90,9 +98,15 @@ export function resolveSourceResult(
     return okAsync(materialized(new Store(), [], {}));
   }
   if (target.kind === 'glob') {
-    const transformsResult = effectiveTransforms(target, options.graphMode);
+    const transformsResult = effectiveTransforms(
+      target.transforms,
+      options.graphMode,
+    );
     if (transformsResult.isErr()) return errAsync(transformsResult.error);
     const transforms = transformsResult.value;
+    if (storageTier(target) === 'disk') {
+      return resolveDiskBackedGlob(target, transforms, options);
+    }
     return loadGlobIntoStore(target, transforms, options).map(materializeLoad);
   }
   if (target.kind === 'file') {
@@ -484,19 +498,6 @@ function materializeFileLoad(
       pin,
     ),
   };
-}
-
-function effectiveTransforms(
-  source: ParsedGlobSource,
-  defaultGraphMode: GraphMode | undefined,
-): Result<ReadonlyArray<ParsedTransform>, TransformParseError> {
-  if (source.transforms !== undefined) return ok(source.transforms);
-  if (defaultGraphMode === undefined || defaultGraphMode === 'preserve') {
-    return ok([]);
-  }
-  return parseGraphNameTransformResult(defaultGraphMode).map((apply) => [
-    { key: 'graphName', apply },
-  ]);
 }
 
 function materialized(

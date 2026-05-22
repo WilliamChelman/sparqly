@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryEngine } from '../engine';
 import {
   formatSourceError,
   resolveSourceResult,
@@ -363,6 +364,50 @@ describe('resolveSourceResult — view target', () => {
       expect(formatSourceError(result.error)).toContain('cache');
     } finally {
       await rm(cacheDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('resolveSourceResult — disk-backed glob target (ADR-0041)', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-rsr-disk-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('resolves a `storage: disk` glob into a disk-backed queryable source', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const target = parseSourceSpec({
+      id: 'data',
+      glob: join(dir, '*.ttl'),
+      storage: 'disk',
+    });
+
+    const result = await resolveSourceResult(target, {
+      configDir: dir,
+      sparqlyVersion: '9.9.9-test',
+    });
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.mode).toBe('disk-backed');
+    if (result.value.mode !== 'disk-backed') throw new Error('unreachable');
+    try {
+      const engine = new QueryEngine(result.value.source);
+      const res = await engine.execute('SELECT ?s WHERE { ?s ?p ?o }');
+      const subjects = JSON.parse(res.body).results.bindings.map(
+        (b: { s: { value: string } }) => b.s.value,
+      );
+      expect(subjects).toEqual(['http://example.org/a']);
+    } finally {
+      await result.value.close();
     }
   });
 });

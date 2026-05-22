@@ -179,6 +179,19 @@ export class EngineMap {
       return err(resolved.error);
     }
     const sources = resolved.value;
+    if (sources.mode === 'disk-backed') {
+      // `serve` does not yet host disk-backed globs (ADR-0041 defers it to a
+      // background-build/503 state machine). Release the LevelDB lock and
+      // clear memoization so a config fix retries without a restart (#290).
+      await sources.close();
+      entry.loaded = undefined;
+      return err({
+        kind: 'glob-load',
+        glob: src.kind === 'glob' ? [src.glob] : [],
+        message:
+          'serve does not yet support disk-backed glob sources (`storage: disk`); query them with `sparqly query` (ADR-0041)',
+      });
+    }
     let loaded: LoadedEntry;
     if (sources.mode === 'pass-through') {
       loaded = {

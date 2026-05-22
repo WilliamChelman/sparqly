@@ -83,7 +83,10 @@
     "overrides": {
       "@angular-devkit/core": "~21.2.0",
       "@angular-devkit/schematics": "~21.2.0"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "classic-level"
+    ]
   },
   "dependencies": {
     "@angular/cdk": "~21.2.10",
@@ -101,11 +104,13 @@
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
     "@triply/yasqe": "^4.2.28",
+    "classic-level": "^3.0.0",
     "codemirror": "^5.65.21",
     "commander": "^11.1.0",
     "js-yaml": "^4.1.0",
     "n3": "^2.0.3",
     "neverthrow": "^8.2.0",
+    "quadstore": "^15.4.1",
     "rdf-canonize": "^5.0.0",
     "rdf-parse": "^5.0.0",
     "reflect-metadata": "^0.1.13",

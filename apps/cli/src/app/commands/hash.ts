@@ -403,6 +403,15 @@ function hashTargetResult(
         `SPARQL endpoint ${sources.endpoint.endpoint} cannot be hashed directly (hash materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
       );
     }
+    if (sources.mode === 'disk-backed') {
+      // RDFC-1.0 canonicalization needs every quad in memory at once — the
+      // exact cost `storage: disk` exists to avoid (ADR-0041). hash rejects
+      // disk-backed globs rather than silently defeating the disk tier.
+      void sources.close();
+      throw new Error(
+        `disk-backed glob ${label} cannot be hashed: RDFC-1.0 canonicalization needs every quad in memory, the very cost \`storage: disk\` avoids (ADR-0041)`,
+      );
+    }
     return ResultAsync.fromSafePromise(
       canonicalizeStore(sources.store, {
         annotationPredicates: extractAnnotationPredicates(

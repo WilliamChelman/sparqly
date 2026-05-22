@@ -1,5 +1,6 @@
+import type * as RDF from '@rdfjs/types';
 import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
-import { Parser, type Store } from 'n3';
+import { Parser } from 'n3';
 import { ResultAsync } from 'neverthrow';
 import { noopLogger, type SparqlyLogger } from 'common';
 import {
@@ -43,7 +44,13 @@ export interface ExecuteResult {
   contentType: string;
 }
 
-export type StoreSource = Store | (() => Store);
+/**
+ * A materialized RDF source the engine queries through Comunica's
+ * `sources: [...]` context — either an RDF/JS source directly (an in-memory
+ * `n3.Store`, or a disk-backed quadstore index via ADR-0041) or a thunk that
+ * resolves one lazily.
+ */
+export type StoreSource = RDF.Source | (() => RDF.Source);
 
 export type QueryEngineSource = StoreSource | ParsedEndpointSource;
 
@@ -98,8 +105,8 @@ export class QueryEngine {
         ctx as unknown as Record<string, unknown>;
     } else {
       this.endpointSource = undefined;
-      const resolveStore: () => Store =
-        typeof source === 'function' ? source : (): Store => source;
+      const resolveStore: () => RDF.Source =
+        typeof source === 'function' ? source : (): RDF.Source => source;
       const unionDefaultGraph = options?.unionDefaultGraph === true;
       this.resolveContext = (): Record<string, unknown> => ({
         sources: [resolveStore()],

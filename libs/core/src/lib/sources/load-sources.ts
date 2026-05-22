@@ -51,6 +51,15 @@ export async function loadSources(
     const store = await loadEndpointToStore(sources.endpoint);
     return { store, files: [], prefixes: {} };
   }
+  if (sources.mode === 'disk-backed') {
+    // `loadSources` is the always-materialize loader feeding canonicalization
+    // (hash) and diff — neither can scale to a disk-backed glob, the very cost
+    // `storage: disk` exists to escape (ADR-0041).
+    await sources.close();
+    throw new Error(
+      'disk-backed glob sources (`storage: disk`) cannot be materialized into memory; `hash` and `diff` do not support them (ADR-0041)',
+    );
+  }
   return {
     store: sources.store,
     files: sources.files,

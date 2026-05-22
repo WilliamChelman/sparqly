@@ -190,6 +190,15 @@ type LoadedLikeSources =
 
 function toLoadedLikeSources(sources: QuerySources): LoadedLikeSources {
   if (sources.mode === 'pass-through') return sources;
+  if (sources.mode === 'disk-backed') {
+    // diff canonicalizes both sides with RDFC-1.0, which cannot scale to a
+    // disk-backed glob — the very cost `storage: disk` exists to escape
+    // (ADR-0041 amends ADR-0032). Release the LevelDB lock and reject.
+    void sources.close();
+    throw new Error(
+      'diff does not support disk-backed glob sources (`storage: disk`); RDFC-1.0 canonicalization cannot scale to a disk-backed glob (ADR-0041)',
+    );
+  }
   return {
     mode: 'materialized',
     store: sources.store,
