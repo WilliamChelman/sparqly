@@ -73,15 +73,22 @@ async function sweepStaleTempDirs(
 }
 
 /**
- * Atomic-renames the built temp dir onto the real index path, clearing any
- * index already there first. Reported back under the real `indexDir`.
+ * Atomic-renames each artifact written by the build onto its real path,
+ * replacing any prior version in place. Only the entries this build produced
+ * are touched — anything else already in `indexDir` (e.g. a nested split-glob
+ * child index at `<indexDir>/<file>/`) is preserved.
  */
 async function promote(
   tempDir: string,
   indexDir: string,
   built: GlobIndexBuildResult,
 ): Promise<GlobIndexBuildResult> {
-  await rm(indexDir, { recursive: true, force: true });
-  await rename(tempDir, indexDir);
+  await mkdir(indexDir, { recursive: true });
+  for (const entry of await readdir(tempDir)) {
+    const target = join(indexDir, entry);
+    await rm(target, { recursive: true, force: true });
+    await rename(join(tempDir, entry), target);
+  }
+  await rm(tempDir, { recursive: true, force: true });
   return { indexDir, files: built.files };
 }
