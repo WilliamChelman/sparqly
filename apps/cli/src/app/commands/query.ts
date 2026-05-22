@@ -55,6 +55,7 @@ interface QueryConfig {
   base?: string;
   out?: string;
   at?: string;
+  indexCacheDir?: string;
   verbose?: boolean;
   quiet?: boolean;
   logFormat?: 'text' | 'json';
@@ -100,6 +101,14 @@ const formatField: FieldDescriptor = {
   ],
 };
 
+// Glob index cache root, read from the top-level `index.dir` config block
+// (ADR-0041, #345). No CLI flag — where disk-backed indexes live is a
+// project-shaped deployment knob, not a per-invocation choice.
+const indexCacheDirField: FieldDescriptor = {
+  key: 'indexCacheDir',
+  schema: z.string().min(1),
+};
+
 export function resolveQueryTargetResult(
   config: QueryConfig,
   registry?: ReadonlyArray<ParsedSource>,
@@ -124,6 +133,7 @@ export const querySpec: CommandSpec<QueryConfig> = {
     queryField,
     queryFileField,
     formatField,
+    indexCacheDirField,
     atRefField,
     ...mutableFieldsFor('query'),
     contextPrefixesField,
@@ -202,6 +212,7 @@ export const querySpec: CommandSpec<QueryConfig> = {
           logger: boundaryLog,
           configDir: process.cwd(),
           sparqlyVersion: cliVersion(),
+          indexCacheDir: config.indexCacheDir,
         })
           .map((sources) => {
             if (sources.mode === 'disk-backed') closeIndex = sources.close;

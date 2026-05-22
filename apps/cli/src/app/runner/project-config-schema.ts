@@ -43,6 +43,17 @@ const savedQueriesBlockSchema = z
   .partial()
   .strict();
 
+const indexBlockSchema = z
+  .object({
+    // Overrides the Glob index cache root (ADR-0041, #345). A `storage: disk`
+    // glob's index is built and reused under `<dir>/<source-id>/` instead of
+    // the default `<configDir>/.sparqly/index/<source-id>/`. Relative paths
+    // resolve against the project config dir; absolute paths are honored as-is.
+    dir: z.string().min(1),
+  })
+  .partial()
+  .strict();
+
 const describeBlockSchema = z
   .object({
     // Per-source quad cap applied when a request omits `perSourceLimit`.
@@ -93,6 +104,7 @@ const KNOWN_TOP_LEVEL = new Set([
   'context',
   'describe',
   'savedQueries',
+  'index',
 ]);
 
 const baseProjectSchema = z
@@ -104,6 +116,7 @@ const baseProjectSchema = z
     context: contextBlockSchema.optional(),
     describe: describeBlockSchema.optional(),
     savedQueries: savedQueriesBlockSchema.optional(),
+    index: indexBlockSchema.optional(),
   })
   .strict();
 

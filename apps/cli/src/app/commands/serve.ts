@@ -33,6 +33,7 @@ interface ServeConfig {
   perSourceHardLimit?: number;
   fromSourcePredicate?: string;
   savedQueriesPath?: string;
+  indexCacheDir?: string;
   verbose?: boolean;
   quiet?: boolean;
   logFormat?: 'text' | 'json';
@@ -134,6 +135,14 @@ const savedQueriesPathField: FieldDescriptor = {
   schema: z.string().min(1),
 };
 
+// Glob index cache root, read from the top-level `index.dir` config block
+// (ADR-0041, #345). No CLI flag — where disk-backed indexes live is a
+// project-shaped deployment knob, not a per-invocation choice.
+const indexCacheDirField: FieldDescriptor = {
+  key: 'indexCacheDir',
+  schema: z.string().min(1),
+};
+
 export const serveSpec: CommandSpec<ServeConfig> = {
   name: 'serve',
   description:
@@ -153,6 +162,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     describeHardLimitField,
     describeFromSourcePredicateField,
     savedQueriesPathField,
+    indexCacheDirField,
     ...verbosityFieldsFor('serve'),
   ],
   positionals: [{ field: 'source', name: 'glob' }],
@@ -206,6 +216,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
         fromSourcePredicate: config.fromSourcePredicate,
       },
       savedQueriesPath: config.savedQueriesPath,
+      indexCacheDir: config.indexCacheDir,
       logger: boundaryLog,
     });
   },

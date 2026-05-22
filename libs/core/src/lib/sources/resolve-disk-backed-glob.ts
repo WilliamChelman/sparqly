@@ -56,7 +56,7 @@ function resolveDiskBackedIndex(
   options: ResolveSourceResultOptions,
 ): ResultAsync<QuerySources, SourceError> {
   const configDir = options.configDir ?? process.cwd();
-  const indexDir = globIndexDir(configDir, indexId);
+  const indexDir = globIndexDir(configDir, indexId, options.indexCacheDir);
   return openOrBuildGlobIndex({
     glob: pattern,
     transforms,

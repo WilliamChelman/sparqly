@@ -128,3 +128,29 @@ describe('normalizeConfigPaths — sources[] path keys', () => {
     });
   });
 });
+
+describe('normalizeConfigPaths — index block', () => {
+  it('absolutizes a relative index.dir against configDir', () => {
+    const out = normalizeConfigPaths(
+      { index: { dir: '.sparqly-index' } },
+      '/home/me/proj',
+    );
+    expect(out).toEqual({ index: { dir: '/home/me/proj/.sparqly-index' } });
+  });
+
+  it('preserves an already-absolute index.dir verbatim', () => {
+    const out = normalizeConfigPaths(
+      { index: { dir: '/mnt/big-volume/sparqly-index' } },
+      '/home/me/proj',
+    );
+    expect(out).toEqual({ index: { dir: '/mnt/big-volume/sparqly-index' } });
+  });
+
+  it('leaves a non-string index.dir as-is for the validator', () => {
+    const out = normalizeConfigPaths(
+      { index: { dir: 42 as unknown as string } },
+      '/home/me/proj',
+    );
+    expect(out).toEqual({ index: { dir: 42 } });
+  });
+});
