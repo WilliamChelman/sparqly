@@ -18,11 +18,8 @@ export interface SavedQueriesConfig {
   path: string;
 }
 
-/**
- * Process-wide write mutex (ADR-0036). All mutations queue behind the previous
- * one so concurrent PUTs serialize and the on-disk file is never half-written.
- * Reads are not gated: they parse the file in isolation per request.
- */
+// Process-wide write mutex — concurrent mutations serialize so the on-disk
+// file is never half-written. Reads are not gated.
 export class SavedQueriesService {
   private writeChain: Promise<unknown> = Promise.resolve();
 

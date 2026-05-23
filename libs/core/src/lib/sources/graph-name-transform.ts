@@ -19,23 +19,13 @@ interface GraphNameSpec {
   graph?: NamedNode;
 }
 
-/**
- * Build-time config the `graphName` transform exposes for the Glob index
- * manifest (ADR-0041). A JSON-serializable snapshot of the parsed spec — the
- * mode, plus the graph-override IRI as a string when one was declared — so a
- * change to either registers the disk-backed index as stale.
- */
+// JSON-serializable snapshot of the parsed spec — the mode plus the graph
+// override IRI — so a change to either marks the disk-backed index stale.
 export interface GraphNameConfig {
   mode: GraphMode;
   graph?: string;
 }
 
-/**
- * Primary `Result`-typed impl of the `graphName` transform parser. Invalid
- * specs surface as a `TransformParseError` carrying the `graphName` key and
- * the legacy thrown message (ADR-0024). The `config` mirrors the parsed spec
- * so the Glob index manifest can detect a transform change (ADR-0041).
- */
 export function parseGraphNameTransformResult(
   raw: unknown,
 ): Result<ParsedTransformResult, TransformParseError> {
@@ -45,15 +35,9 @@ export function parseGraphNameTransformResult(
   }));
 }
 
-/**
- * Builds the per-quad `graphName` rewrite for one file. The streamed
- * disk-backed Glob index ingest (#348) applies this quad-by-quad as the
- * parser yields them — it never materializes the whole glob through the
- * whole-store `apply` path. Driven by the manifest {@link GraphNameConfig},
- * so the build needs neither an `n3.Store` nor the per-file record
- * side-channel {@link rewriteWithFileGraphs} demands: the file a quad came
- * from is known directly from the streaming loop.
- */
+// Per-quad rewrite for one file. Driven by {@link GraphNameConfig} so the
+// streamed disk-backed ingest can apply it quad-by-quad without an n3.Store
+// or the per-file record side-channel {@link rewriteWithFileGraphs} needs.
 export function graphNameQuadRewriter(
   config: GraphNameConfig,
   file: string,
@@ -80,12 +64,8 @@ function specToConfig(spec: GraphNameSpec): GraphNameConfig {
     : { mode: spec.mode, graph: spec.graph.value };
 }
 
-/**
- * The transform pipeline to apply to a glob source: its declared `transforms`
- * verbatim when present, otherwise a `graphName` transform synthesized from
- * the resolver's default {@link GraphMode} — an empty pipeline for `preserve`
- * or no default at all.
- */
+// Declared `transforms` verbatim when present; otherwise synthesizes a
+// `graphName` transform from the resolver's default {@link GraphMode}.
 export function effectiveTransforms(
   declaredTransforms: ReadonlyArray<ParsedTransform> | undefined,
   defaultGraphMode: GraphMode | undefined,
@@ -99,12 +79,8 @@ export function effectiveTransforms(
   ]);
 }
 
-/**
- * @deprecated Use {@link parseGraphNameTransformResult} (ADR-0024). Retained
- * as a thin throw-wrapping adapter for the `transform-spec.ts` registry path,
- * which still surfaces parse failures as throws (Surface B, out of scope for
- * the #243 conversion).
- */
+// @deprecated Use {@link parseGraphNameTransformResult}. Thin throw-wrapping
+// adapter for the registry path that still surfaces parse failures as throws.
 export function parseGraphNameTransform(raw: unknown): TransformApply {
   const result = parseGraphNameTransformResult(raw);
   if (result.isErr()) {

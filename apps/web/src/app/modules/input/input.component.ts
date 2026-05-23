@@ -1,8 +1,6 @@
 /* eslint-disable @angular-eslint/component-selector */
-// ADR-0034 precedent: attribute component on native form controls. The host
-// keeps its tag (`<input>` / `<select>` / `<textarea>`) so `type`, `value`,
-// `placeholder`, `disabled`, form bindings, and Angular events forward
-// transparently without re-exposure.
+// Attribute component on native form controls so the host keeps its tag —
+// `type`, `value`, `disabled`, form bindings, and events forward unchanged.
 import {
   ChangeDetectionStrategy,
   Component,

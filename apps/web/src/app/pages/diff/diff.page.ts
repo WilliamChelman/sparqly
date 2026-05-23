@@ -322,9 +322,8 @@ export class DiffPage implements OnInit {
             'kind' in body &&
             body.kind === 'target'
           ) {
-            // Transport-level TargetWrappedError (e.g. unknown @id): unwrap into
-            // the matching side slot so the inline-error renderer dispatches on
-            // `target.kind` (ADR-0024 wrap-don't-duplicate).
+            // Unwrap TargetWrappedError into the matching side slot so the
+            // inline-error renderer can dispatch on `target.kind`.
             const errors: DiffErrorResponse['errors'] =
               body.side === 'left' ? { left: body } : { right: body };
             this.errors.set(errors);

@@ -1,16 +1,5 @@
 import type { SourceSpecObjectInput } from './source-spec';
 
-/**
- * Git-pinning field parsing for glob source-specs (ADR-0029). Kept beside
- * `source-spec-endpoint.ts` so `source-spec.ts` stays focused on parse
- * dispatch — the `pick`/`reject` helpers mirror that module's shape.
- */
-
-/**
- * Picks the `gitRef`/`gitRoot` pinning fields off a glob source-spec input,
- * validating each is a non-empty string. `gitRoot` is only meaningful
- * alongside `gitRef` and is rejected when declared on its own (ADR-0029).
- */
 export function pickGitFields(
   input: SourceSpecObjectInput,
 ): { gitRef?: string; gitRoot?: string } {
@@ -35,11 +24,6 @@ export function pickGitFields(
   return out;
 }
 
-/**
- * Rejects `gitRef`/`gitRoot` on a non-glob source-spec input (ADR-0029).
- * Pinning is a glob-only concept — an endpoint, view, or empty source has no
- * filesystem content to read at a revision.
- */
 export function rejectGitRefOn(
   input: SourceSpecObjectInput,
   kind: 'endpoint' | 'view' | 'empty',

@@ -102,10 +102,8 @@ export interface DecorateOptions {
 const ANSI_RED = '\x1b[31m';
 const ANSI_RESET = '\x1b[0m';
 
-/**
- * CLI-side decoration around the shared `formatDiffError`. Keeps wording
- * single-sourced in core and lets the CLI add terminal-only colour. ADR-0024.
- */
+// Wraps the shared `formatDiffError` so wording stays single-sourced in core
+// while the CLI layers on terminal-only colour.
 export function decorateDiffError(
   error: DiffError,
   { color }: DecorateOptions,

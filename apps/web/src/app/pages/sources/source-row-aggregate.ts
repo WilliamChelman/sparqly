@@ -1,6 +1,5 @@
 import type { SourceRow } from './source-row';
 
-/** True iff any child currently sits in a loaded/ready state. */
 export function hasLoadedChild(row: SourceRow): boolean {
   if (row.mode === 'endpoint') return false;
   const children = row.children;
@@ -12,7 +11,6 @@ export function hasLoadedChild(row: SourceRow): boolean {
   return false;
 }
 
-/** Ids of children currently loaded/ready — the cascade target list (#361). */
 export function loadedChildIds(row: SourceRow): string[] {
   if (row.mode === 'endpoint') return [];
   const children = row.children;
@@ -25,13 +23,11 @@ export function loadedChildIds(row: SourceRow): string[] {
   return ids;
 }
 
-/** First line of an error message, used by the inline error chip. */
 export function errorMessageFirstLine(message: string): string {
   const newline = message.indexOf('\n');
   return newline === -1 ? message : message.slice(0, newline);
 }
 
-/** Human-readable byte size for the disk-backed `indexBytes` column. */
 export function formatBytes(bytes: number | undefined): string {
   if (bytes === undefined) return '';
   if (bytes < 1024) return `${bytes} B`;
@@ -45,15 +41,6 @@ export function formatBytes(bytes: number | undefined): string {
   return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${unit}`;
 }
 
-/**
- * Client-side mirror of the server's `projectSplitGlobMeta` (#361) — used
- * when an SSE child-row event lands and the meta's displayed state and Layer
- * 2 summary must re-aggregate without a server round-trip. Same rule:
- * common-state when children agree, `'mixed'` when they disagree, sum quads,
- * count loaded children in `files`, max `loadedAt`.
- *
- * Pure: no Angular imports, no signals, fully unit-testable in isolation.
- */
 export function reaggregateMeta(meta: SourceRow, child: SourceRow): SourceRow {
   if (meta.mode === 'endpoint') return meta;
   if (meta.children === undefined) return meta;

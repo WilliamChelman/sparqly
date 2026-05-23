@@ -9,12 +9,8 @@ import {
 import type { GitPort } from './git/git-port';
 import type { SourceError } from './errors';
 
-/**
- * Parses a pinned split-glob's RDF files straight from the git tree at the
- * resolved SHA (ADR-0029), bypassing the working tree. A per-file parse
- * failure — or a pinned file unexpectedly absent at the SHA — surfaces as a
- * tagged `SourceError` on the `Result` channel.
- */
+// Reads files from the git tree at the resolved SHA, bypassing the working
+// tree. Per-file failures surface as a tagged `SourceError`.
 export function parsePinnedFiles(
   files: ReadonlyArray<string>,
   glob: string,

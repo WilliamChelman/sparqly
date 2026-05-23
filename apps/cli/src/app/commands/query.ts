@@ -101,9 +101,8 @@ const formatField: FieldDescriptor = {
   ],
 };
 
-// Glob index cache root, read from the top-level `index.dir` config block
-// (ADR-0041, #345). No CLI flag — where disk-backed indexes live is a
-// project-shaped deployment knob, not a per-invocation choice.
+// Read from the top-level `index.dir` config block, not a CLI flag — the
+// index location is a project-shaped deployment knob.
 const indexCacheDirField: FieldDescriptor = {
   key: 'indexCacheDir',
   schema: z.string().min(1),
@@ -197,9 +196,8 @@ export const querySpec: CommandSpec<QueryConfig> = {
       },
     );
 
-    // A disk-backed glob (ADR-0041) hands back an open LevelDB handle; capture
-    // its closer so the embedded lock is released once the query is done,
-    // whether it succeeded or failed.
+    // Disk-backed globs hand back an open LevelDB handle; capture the closer
+    // so the embedded lock is released whether the query succeeds or fails.
     let closeIndex: (() => Promise<void>) | undefined;
 
     const pipeline: ResultAsync<ExecuteResult, SourceError | TargetError> =
@@ -272,11 +270,6 @@ function executeAgainstSources(
   return engine.executeResult(query, { format, mutable });
 }
 
-/**
- * Builds the engine for the resolved sources. A disk-backed glob (ADR-0041)
- * flows in as a plain RDF/JS source through the same materialized path as an
- * in-memory glob — only the storage tier differs, the SPARQL semantics do not.
- */
 function buildQueryEngine(
   sources: QuerySources,
   target: ParsedSource,

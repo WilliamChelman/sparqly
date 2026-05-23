@@ -9,25 +9,11 @@ import {
 } from './source-spec';
 
 export interface ExpandSplitGlobsDeps {
-  /**
-   * Walks the filesystem for one `splitByFile: true` glob and returns its
-   * absolute matched file paths. Injectable so tests stay filesystem-free;
-   * production wires the same `tinyglobby` shape used by `loadRdfResult` —
-   * see {@link defaultGlobWalker}.
-   */
+  /** Injectable so tests stay filesystem-free; production uses {@link defaultGlobWalker}. */
   walkGlob: (pattern: string) => Promise<ReadonlyArray<string>>;
-  /**
-   * Walker invoked when a split-glob meta carries `gitRef:` (ADR-0029).
-   * Returns the matched absolute paths from the git tree at the resolved SHA
-   * plus the resolution metadata children inherit. Mandatory whenever any
-   * pinned split-glob is in the expansion set; the boundary that constructs
-   * the registry wires it (production: `defaultGitTreeWalker`).
-   */
+  /** Required when any split-glob meta carries `gitRef:`. */
   walkGitGlob?: (meta: ParsedGlobSource) => Promise<PinnedSplitGlobWalkResult>;
-  /**
-   * Boundary logger for the zero-match `warn` line (ADR-0028). Defaults to
-   * no-op so non-CLI callers stay silent.
-   */
+  /** Boundary logger for the zero-match warn line; defaults to no-op. */
   logger?: SparqlyLogger;
 }
 
@@ -42,11 +28,6 @@ export interface PinnedSplitGlobWalkResult {
   resolvedSha: string;
 }
 
-/**
- * Production walker — the same `tinyglobby` shape used by `loadRdfResult`,
- * returning absolute file paths. Tests inject their own walker through
- * {@link ExpandSplitGlobsDeps.walkGlob}.
- */
 export async function defaultGlobWalker(
   pattern: string,
 ): Promise<ReadonlyArray<string>> {
@@ -54,13 +35,10 @@ export async function defaultGlobWalker(
 }
 
 /**
- * Walks every `splitByFile: true` glob meta in `parsed` and synthesizes one
- * `kind: 'file'` child per matched file alongside the meta (ADR-0027). Non-split
- * entries pass through unchanged. Returned registry is flat. Zero-match split
- * globs emit a single `warn` and yield meta + no children. When a meta carries
- * `gitRef:` (ADR-0029), enumeration walks the git tree at the resolved SHA
- * (via {@link ExpandSplitGlobsDeps.walkGitGlob}) and children inherit the pin
- * alongside the transform pipeline.
+ * Synthesizes one `kind: 'file'` child per matched file alongside each
+ * `splitByFile: true` meta. Non-split entries pass through. Zero-match metas
+ * `warn` and yield no children. Pinned metas walk the git tree at the
+ * resolved SHA via {@link ExpandSplitGlobsDeps.walkGitGlob}.
  */
 export async function expandSplitGlobs(
   parsed: ReadonlyArray<ParsedSource>,
@@ -105,7 +83,7 @@ async function expandPinned(
   const parentId = requireParentId(meta);
   if (walkGitGlob === undefined) {
     throw new Error(
-      `expandSplitGlobs: split-glob ${JSON.stringify(meta.glob)} declares \`gitRef:\` but no walkGitGlob dep was wired; pass one at the boundary that constructs the registry (ADR-0029)`,
+      `expandSplitGlobs: split-glob ${JSON.stringify(meta.glob)} declares \`gitRef:\` but no walkGitGlob dep was wired; pass one at the boundary that constructs the registry`,
     );
   }
   const walked = await walkGitGlob(meta);

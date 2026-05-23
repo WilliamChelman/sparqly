@@ -52,12 +52,10 @@ export async function loadSources(
     return { store, files: [], prefixes: {} };
   }
   if (sources.mode === 'disk-backed') {
-    // `loadSources` is the always-materialize loader feeding canonicalization
-    // (hash) and diff — neither can scale to a disk-backed glob, the very cost
-    // `storage: disk` exists to escape (ADR-0041).
+    // hash/diff materialize everything — defeats `storage: disk`.
     await sources.close();
     throw new Error(
-      'disk-backed glob sources (`storage: disk`) cannot be materialized into memory; `hash` and `diff` do not support them (ADR-0041)',
+      'disk-backed glob sources (`storage: disk`) cannot be materialized into memory; `hash` and `diff` do not support them',
     );
   }
   return {

@@ -55,9 +55,6 @@ export class SourcesController {
 
   @Get()
   async snapshot(): Promise<SourceRow[]> {
-    // Split-glob children (kind: 'file' + parentId) collapse under their meta
-    // (#361). Index them first so a one-pass projection still emits a single
-    // meta row carrying its `children` array.
     const childrenByParent = new Map<string, ParsedSource[]>();
     for (const source of this.servedRegistry) {
       if (source.kind !== 'file') continue;

@@ -1,22 +1,10 @@
 import { formatSourceError, type SourceError } from '../sources/resolve-source-result';
 import { formatTargetError, type TargetError } from '../target/errors';
 
-/**
- * The diff feature folder's error union. Every variant is a tagged object so
- * surfaces (web envelope, CLI, log lines) can switch on `kind` and keep the
- * structured payload (e.g. `column` for UI highlighting). Adding a variant is
- * one edit here plus one new case in `formatDiffError`.
- *
- * `legacy-message` is a transitional bucket for any remaining un-converted
- * thrown messages. As of slice 2 (#240) the diff service itself produces only
- * structured variants; this variant is retained for downstream callers and
- * older fixtures and is the no-op-on-arrival mapping for unexpected throws.
- *
- * `target` wraps the cross-feature `TargetError` per ADR-0024's wrap-don't-
- * duplicate rule. Registry-selection failures (unknown `@id`, empty registry,
- * etc.) live in `target/errors.ts` and are rendered here by delegation to
- * `formatTargetError`.
- */
+// `legacy-message` is a transitional bucket for un-converted throws and is
+// the catch-all for unexpected throws at the boundary.
+// `target` wraps the cross-feature `TargetError` rather than duplicating its
+// variants here.
 export type DiffError =
   | TabularBlankNodeError
   | TargetWrappedError
@@ -66,11 +54,7 @@ export interface InlineUpstreamKindError {
   targetKind: string;
 }
 
-/**
- * A `storage: disk` glob picked as a diff target. `diff` canonicalizes both
- * sides with RDFC-1.0, which needs every quad in memory at once — the exact
- * cost the disk tier exists to escape (ADR-0041 amends ADR-0032).
- */
+// RDFC-1.0 canonicalization needs every quad in memory — defeats `storage: disk`.
 export interface DiskBackedDiffTargetError {
   kind: 'disk-backed-diff-target';
   side: 'left' | 'right';
@@ -119,7 +103,7 @@ export function formatDiffError(error: DiffError): string {
     case 'inline-upstream-kind':
       return `inline scoping query targets a glob or endpoint upstream; ${error.side} target is a ${error.targetKind} source`;
     case 'disk-backed-diff-target':
-      return `disk-backed glob ${error.label} cannot be diffed on the ${error.side} side: RDFC-1.0 canonicalization needs every quad in memory, the very cost \`storage: disk\` avoids (ADR-0041)`;
+      return `disk-backed glob ${error.label} cannot be diffed on the ${error.side} side: RDFC-1.0 canonicalization needs every quad in memory, the very cost \`storage: disk\` avoids`;
     case 'anonymous-view-execution':
       return error.message;
     case 'anonymous-select-execution':

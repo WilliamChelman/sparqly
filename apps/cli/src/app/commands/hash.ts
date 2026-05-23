@@ -404,12 +404,10 @@ function hashTargetResult(
       );
     }
     if (sources.mode === 'disk-backed') {
-      // RDFC-1.0 canonicalization needs every quad in memory at once — the
-      // exact cost `storage: disk` exists to avoid (ADR-0041). hash rejects
-      // disk-backed globs rather than silently defeating the disk tier.
+      // RDFC-1.0 needs every quad in memory — defeats `storage: disk`.
       void sources.close();
       throw new Error(
-        `disk-backed glob ${label} cannot be hashed: RDFC-1.0 canonicalization needs every quad in memory, the very cost \`storage: disk\` avoids (ADR-0041)`,
+        `disk-backed glob ${label} cannot be hashed: RDFC-1.0 canonicalization needs every quad in memory, the very cost \`storage: disk\` avoids`,
       );
     }
     return ResultAsync.fromSafePromise(

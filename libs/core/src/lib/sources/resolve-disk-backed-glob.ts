@@ -10,13 +10,9 @@ import type { ParsedTransform } from './transform-spec';
 /** Manifest version token when a caller resolves a disk-backed glob without one. */
 const UNKNOWN_SPARQLY_VERSION = '0.0.0+unknown';
 
-/**
- * Resolves a `storage: disk` glob (ADR-0041): opens its Glob index under
- * `<configDir>/.sparqly/index/<source-id>/`, building it first if absent, and
- * returns a disk-backed {@link QuerySources} carrying the index as an RDF/JS
- * source. No Source record sidecar — the disk tier exists to escape exactly
- * that in-heap cost.
- */
+// Opens (or builds) the Glob index for a `storage: disk` glob and returns
+// a disk-backed QuerySources carrying it as an RDF/JS source. No Source
+// record sidecar — the disk tier exists to escape that in-heap cost.
 export function resolveDiskBackedGlob(
   target: ParsedGlobSource,
   transforms: ReadonlyArray<ParsedTransform>,
@@ -26,12 +22,9 @@ export function resolveDiskBackedGlob(
   return resolveDiskBackedIndex(indexId, pattern, transforms, options);
 }
 
-/**
- * Resolves a `storage: disk` file child (ADR-0041): a synthesized split-glob
- * child that inherited `storage: disk` from its parent meta. It indexes under
- * its own id — `<parentId>/<glob-relative-path>` — so each sibling materializes
- * an independent Glob index, addressable without loading the file into RAM.
- */
+// Each disk-backed split-glob child indexes under its own id so siblings
+// materialize independent Glob indexes — addressable without loading the
+// file into RAM.
 export function resolveDiskBackedFile(
   target: ParsedFileSource,
   transforms: ReadonlyArray<ParsedTransform>,
@@ -41,11 +34,6 @@ export function resolveDiskBackedFile(
   return resolveDiskBackedIndex(indexId, pattern, transforms, options);
 }
 
-/**
- * Shared Glob-index open/build for the disk tier: keys the index directory on
- * `indexId` and enumerates `pattern` (a glob for a meta, a single file path for
- * a split-glob child).
- */
 function resolveDiskBackedIndex(
   indexId: string,
   pattern: string,
@@ -59,8 +47,7 @@ function resolveDiskBackedIndex(
     transforms,
     indexDir,
     sparqlyVersion: options.sparqlyVersion ?? UNKNOWN_SPARQLY_VERSION,
-    // Carries the staleness `warn` to the boundary logger (ADR-0041): a stale
-    // index is reused, but never silently.
+    // Stale indexes are reused but warned through this logger — never silently.
     logger: options.logger,
   })
     .mapErr<SourceError>((e) => e)
@@ -73,13 +60,9 @@ function resolveDiskBackedIndex(
     }));
 }
 
-/**
- * The Glob index identity of a disk-backed source: `indexId` keys its index
- * directory (`<configDir>/.sparqly/index/<indexId>/`), `pattern` is the glob —
- * or, for a split-glob File child, the single file path — the build enumerates.
- * Shared with the `sparqly index` command so an ahead-of-time build lands the
- * index exactly where the query/serve open path reads it.
- */
+// `indexId` keys the index directory; `pattern` is a glob (meta) or single
+// file path (child). Shared with `sparqly index` so ahead-of-time builds
+// land where query/serve reads.
 export function diskBackedIndexIdentity(
   source: ParsedGlobSource | ParsedFileSource,
 ): { indexId: string; pattern: string } {

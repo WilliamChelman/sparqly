@@ -61,13 +61,8 @@ export type DiffResponse =
 @Injectable()
 export class DiffService {
   constructor(
-    /**
-     * Engine map for the served sources (ADR-0031). Lookups go through
-     * {@link EngineMap.ensureSources} so a diff against an `@id` `serve` has
-     * already warmed pays no fresh materialization (ADR-0032).
-     */
     private readonly engineMap: EngineMap,
-    /** Superset used to walk `from:` chains while resolving anonymous SELECTs. */
+    // Walked for `from:` chains while resolving anonymous SELECTs.
     private readonly resolutionRegistry: ReadonlyArray<ParsedSource> = [],
   ) {}
 
@@ -171,11 +166,6 @@ function detectTabularDispatch(
 
 interface RunGraphArgs {
   engineMap: EngineMap;
-  /**
-   * Walked when a target is (or descends to) a view, and when a runtime
-   * `@id:ref` pin causes a side to load via `resolveSourceResult` outside the
-   * warm engine map cache.
-   */
   resolutionRegistry: ReadonlyArray<ParsedSource>;
   leftTarget: ParsedSource;
   rightTarget: ParsedSource;
@@ -249,9 +239,6 @@ function resolveGraphSide(
     }
 
     if (target.id === undefined) {
-      // Defensive: every ParsedSource the served registry yields carries an id
-      // (engine-map's allIds enumerates exactly those entries). A target
-      // without one would have failed `selectFromRegistry`.
       return err<GraphSideOk, DiffError>({
         kind: 'inline-upstream-kind',
         side,
@@ -362,9 +349,8 @@ async function runTabular(args: RunTabularArgs): Promise<DiffResponse> {
     variables,
   );
   if (tab.isErr()) {
-    // Should be unreachable: per-side firstBlankNodeColumn above intercepts
-    // every blank-node column before tabularDiff sees it. The check exists
-    // only so TypeScript exhausts the Result.
+    // Unreachable: per-side firstBlankNodeColumn intercepts every blank-node
+    // column before tabularDiff sees it. The check satisfies type exhaustion.
     return { kind: 'error', errors: { top: tab.error } };
   }
   return {
@@ -375,13 +361,8 @@ async function runTabular(args: RunTabularArgs): Promise<DiffResponse> {
   };
 }
 
-/**
- * Per-side pre-check that lets `runTabular` attribute a blank-node-keying
- * failure to `left` or `right` in the envelope. `tabularDiff` itself returns
- * a single `TabularBlankNodeError` (it sees both bags merged into a single
- * key map and cannot know which side an offending row came from); we run the
- * same check per-side here so the UI can highlight the offending SELECT.
- */
+// Per-side pre-check so a blank-node-keying failure can be attributed to left
+// or right; tabularDiff sees both bags merged and cannot tell sides apart.
 function firstBlankNodeColumn(
   rows: ReadonlyArray<TabularRow>,
   variables: ReadonlyArray<string>,

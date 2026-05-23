@@ -140,19 +140,13 @@ class LineTrackingParser extends N3ParserBase {
 
 export interface ParseRdfFileOptions {
   /**
-   * Buffer of raw file content. When provided, the parser uses this content
-   * instead of reading `path` from disk; the `path` is still used for
-   * extension detection, base-IRI, and error attribution (ADR-0029 — pinned
-   * source content comes from the git tree, not the working tree).
+   * Raw file content (used for pinned sources that read from a git tree).
+   * `path` is still used for extension detection, base-IRI, and error attribution.
    */
   contentOverride?: Buffer;
 }
 
-/**
- * Primary `Result`-typed parser. Failures collapse into a single
- * {@link GlobLoadError} variant carrying the offending file path and the
- * wrapped underlying message (ADR-0024).
- */
+// Failures collapse into a {@link GlobLoadError} naming the offending file.
 export function parseRdfFileResult(
   path: string,
   options: ParseRdfFileOptions = {},
@@ -165,10 +159,7 @@ export function parseRdfFileResult(
   }));
 }
 
-/**
- * @deprecated Use {@link parseRdfFileResult} (ADR-0024). Retained as a thin
- * throw-based adapter for callers that have not migrated yet.
- */
+/** @deprecated Use {@link parseRdfFileResult}. Thin throw-based adapter. */
 export async function parseRdfFile(
   path: string,
   options: ParseRdfFileOptions = {},
@@ -244,13 +235,9 @@ function parseWithN3(
 }
 
 /**
- * Streams a file's quads without ever holding the whole file in heap (#347).
- * An async generator: the underlying n3 / rdf-parse quad stream is consumed
- * lazily, so Node stream backpressure keeps memory flat while a slow consumer
- * (the batched disk-index ingest) catches up. Unlike {@link parseRdfFile}
- * this carries no source-line tracking — disk-backed globs index quads only
- * and reject the hash/diff surfaces that need lines. A parse or IO failure
- * surfaces as a {@link GlobLoadError} naming the offending file (ADR-0024).
+ * Streams a file's quads as an async generator so Node backpressure keeps
+ * memory flat while a slow consumer catches up. Carries no source-line
+ * tracking — only used by disk-backed indexes, which don't surface lines.
  */
 export async function* streamRdfFileQuads(
   path: string,
