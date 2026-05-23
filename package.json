@@ -22,7 +22,7 @@
     "tdd": "nx run-many -t lint test --no-tui",
     "e2e": "nx run-many -t build e2e",
     "check": "nx run-many -t build lint test e2e",
-    "sparqly": "nx build cli --no-tui && node dist/apps/cli/main.js"
+    "sparqly": "nx build cli --no-tui && node dist/apps/cli/main.js serve --config=test/sparqly.config.yaml"
   },
   "devDependencies": {
     "@angular-devkit/core": "~21.2.0",
