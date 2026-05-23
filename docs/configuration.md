@@ -15,9 +15,10 @@ serve: # serve-command settings
 format: # format-command settings
 cache: # cache-block settings
 context: # shared IRI-display config (prefixes, base)
+describe: # describe-page defaults (serve's webapp)
 ```
 
-`context:` is the project-wide carve-out: every IRI-rendering command (`query`, `format`, `diff`, `serve`'s webapp) reads it. The other blocks follow the "block name = command name" convention: `serve` reads `sources` + `serve` + `context`; `format` reads `sources` + `format` + `context`; `query` / `diff` read `sources` + `context`; `hash` reads `sources`; `cache list` / `cache clear` read `cache`. `query` has no command-scoped block — every flag it has is per-invocation. The whole-file schema design lives in [ADR-0010](./adr/0010-project-config-scope-layout-and-discovery.md); the `context:` carve-out is [ADR-0012](./adr/0012-context-block-shared-display-config.md).
+`context:` is the project-wide carve-out: every IRI-rendering command (`query`, `format`, `diff`, `serve`'s webapp) reads it. The other blocks follow the "block name = command name" convention: `serve` reads `sources` + `serve` + `context` + `describe`; `format` reads `sources` + `format` + `context`; `query` / `diff` read `sources` + `context`; `hash` reads `sources`; `cache list` / `cache clear` read `cache`. `query` has no command-scoped block — every flag it has is per-invocation. The whole-file schema design lives in [ADR-0010](./adr/0010-project-config-scope-layout-and-discovery.md); the `context:` carve-out is [ADR-0012](./adr/0012-context-block-shared-display-config.md).
 
 ## Discovery
 
@@ -42,6 +43,7 @@ serve:
   watchDebounce: 250
   watchPoll: 1000
   mutable: false
+  readOnly: false
 ```
 
 | Field           | Type    | Meaning                                                                                                                |
@@ -51,6 +53,7 @@ serve:
 | `watchDebounce` | integer | Debounce window for `--watch` rebuilds, in ms. Default `250`.                                                          |
 | `watchPoll`     | integer | Poll interval (ms) for cache-freshness ASK probes under `--watch`. Default `1000`.                                     |
 | `mutable`       | boolean | If true, the SPARQL endpoint accepts `INSERT` / `DELETE` against the in-memory store.                                  |
+| `readOnly`      | boolean | If true, refuse writes to the **saved-query sidecar** (`PUT` / `DELETE` return 405) and refuse Sources-page admin actions (Load / Reload / Unload / (Re)build index return 403). The webapp hides the corresponding affordances. Default `false`. Override at runtime with `--read-only`. Independent of `mutable`, which only gates SPARQL-protocol writes against the in-memory store. |
 
 All fields are optional; unset fields fall back to their built-in defaults.
 
@@ -88,6 +91,25 @@ context:
 Both fields are optional; an empty `context:` block is legal and equivalent to omitting it. The block is named after JSON-LD's `@context` for the prefix-map + base semantic, but the contents use sparqly-internal subkeys.
 
 There are no CLI overrides for these values — `--prefix`, `--prefixes`, and `--base` were removed across `format`, `diff`, and `query`. Display config lives in `context:` or it doesn't live (ADR-0012).
+
+## `describe:`
+
+Defaults for the webapp's describe page (see [ADR-0015](./adr/0015-webapp-describe-page-with-multi-source-aggregation.md), [ADR-0025](./adr/0025-multi-origin-best-effort-aggregation-in-describe.md)). Consumed by `serve` only.
+
+```yaml
+describe:
+  perSourceSoftLimit: 1000
+  perSourceHardLimit: 10000
+  fromSourcePredicate: urn:sparqly:fromSource
+```
+
+| Field                 | Type    | Meaning                                                                                                                                                                              |
+| --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `perSourceSoftLimit`  | integer | Per-source quad cap applied when a describe request omits `perSourceLimit`. A source that hits the cap reports `truncated: true` on its response entry.                              |
+| `perSourceHardLimit`  | integer | Absolute ceiling: a request-supplied `perSourceLimit` larger than this is clamped down to it.                                                                                        |
+| `fromSourcePredicate` | string  | Predicate IRI used in the RDF-star annotation that records per-quad source membership on the describe response. Defaults to a built-in `urn:sparqly:*` IRI; override to namespace it. |
+
+All fields are optional.
 
 ## `cache:`
 
