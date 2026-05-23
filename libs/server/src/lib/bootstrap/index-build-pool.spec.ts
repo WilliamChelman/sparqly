@@ -363,6 +363,142 @@ describe('IndexBuildPool', () => {
     expect(spawned).toEqual(['bad', 'bad']);
   });
 
+  it('cancel(id) on a running build SIGTERMs the child and invokes the injected temp-dir sweeper (ADR-0043, #358)', () => {
+    const swept: string[] = [];
+    const children = new Map<string, FakeChild>();
+    const spawn: SpawnIndexBuild = (id) => {
+      const child = new FakeChild();
+      children.set(id, child);
+      return child;
+    };
+    const pool = new IndexBuildPool({
+      concurrency: 1,
+      spawn,
+      sweepTempDir: (id) => {
+        swept.push(id);
+        return Promise.resolve();
+      },
+    });
+
+    pool.request('big');
+    pool.cancel('big');
+
+    // The child receives a SIGTERM in response to the cancel — sparqly never
+    // lets a disowned build keep burning CPU on a multi-GB index (ADR-0043).
+    expect(children.get('big')?.killed).toBe('SIGTERM');
+
+    // Sweep does not fire before the child exits — the temp dir is still in
+    // active use up to that point; sweeping it under a still-writing child is
+    // exactly the race the ADR-0042 atomic-rename pattern exists to avoid.
+    expect(swept).toEqual([]);
+
+    // The child exits in response to the signal (null code — signalled). The
+    // pool's cleanup hook now runs the sweeper for that source's temp dir.
+    children.get('big')?.exit(null);
+    expect(swept).toEqual(['big']);
+  });
+
+  it('cancel(id) of an unknown source is a silent no-op — the sweeper never fires', () => {
+    const swept: string[] = [];
+    const pool = new IndexBuildPool({
+      concurrency: 1,
+      spawn: () => new FakeChild(),
+      sweepTempDir: (id) => {
+        swept.push(id);
+        return Promise.resolve();
+      },
+    });
+
+    // The pool has no running or queued entry for 'ghost'. Cancel must not
+    // throw and must not invoke the sweeper.
+    expect(() => pool.cancel('ghost')).not.toThrow();
+    expect(swept).toEqual([]);
+  });
+
+  it('cancel(id) of a queued (not-yet-spawned) source drops it from the queue and never spawns it', () => {
+    const spawned: string[] = [];
+    const children = new Map<string, FakeChild>();
+    const spawn: SpawnIndexBuild = (id) => {
+      spawned.push(id);
+      const child = new FakeChild();
+      children.set(id, child);
+      return child;
+    };
+    const pool = new IndexBuildPool({ concurrency: 1, spawn });
+
+    pool.request('a');
+    pool.request('b'); // queued — past the cap.
+    expect(spawned).toEqual(['a']);
+
+    // Disowning the queued 'b' before it runs is a pure queue-drop: no child
+    // exists to SIGTERM, no temp dir exists to sweep.
+    pool.cancel('b');
+
+    // 'a' finishing must not promote the now-cancelled 'b' — the queue is
+    // empty.
+    children.get('a')?.exit(0);
+    expect(spawned).toEqual(['a']);
+  });
+
+  it('cancel(id) clears any prior failure cooldown for the same id — a cancelled build is not a failed build (ADR-0043)', () => {
+    const spawned: string[] = [];
+    const children = new Map<string, FakeChild>();
+    const spawn: SpawnIndexBuild = (id) => {
+      spawned.push(id);
+      const child = new FakeChild();
+      children.set(id, child);
+      return child;
+    };
+    let clock = 1_000;
+    const pool = new IndexBuildPool({
+      concurrency: 1,
+      spawn,
+      cooldownMs: 30_000,
+      now: () => clock,
+    });
+
+    pool.request('big');
+    pool.cancel('big');
+    children.get('big')?.exit(null); // signalled — null code
+
+    // A follow-up trigger inside what would have been the failure cooldown
+    // window must still spawn — the user undid the prior build, they did not
+    // discover it was broken.
+    clock += 10;
+    pool.request('big');
+    expect(spawned).toEqual(['big', 'big']);
+  });
+
+  it('onSettle(id, outcome) is invoked once per child — success / failure / cancel — so EngineMap can emit build-* transitions (#358)', () => {
+    const settled: Array<{ id: string; outcome: 'success' | 'failure' | 'cancel' }> = [];
+    const children = new Map<string, FakeChild>();
+    const spawn: SpawnIndexBuild = (id) => {
+      const child = new FakeChild();
+      children.set(id, child);
+      return child;
+    };
+    const pool = new IndexBuildPool({
+      concurrency: 3,
+      spawn,
+      onSettle: (id, outcome) => settled.push({ id, outcome }),
+    });
+
+    pool.request('happy');
+    pool.request('broken');
+    pool.request('cancelled');
+
+    children.get('happy')?.exit(0); // clean exit → success
+    children.get('broken')?.exit(1); // non-zero → failure
+    pool.cancel('cancelled');
+    children.get('cancelled')?.exit(null); // signalled → cancel
+
+    expect(settled).toEqual([
+      { id: 'happy', outcome: 'success' },
+      { id: 'broken', outcome: 'failure' },
+      { id: 'cancelled', outcome: 'cancel' },
+    ]);
+  });
+
   it('whenIdle() resolves once every running and queued build has settled', async () => {
     const children = new Map<string, FakeChild>();
     const spawn: SpawnIndexBuild = (id) => {

@@ -71,6 +71,26 @@ async function prepare(indexDir: string, parent: string): Promise<void> {
 }
 
 /**
+ * Public sweep helper for the **(Re)build index** cancel path (ADR-0043,
+ * #358). After `IndexBuildPool.cancel(id)` SIGTERMs the running build child,
+ * its `<indexDir>.building-<pid>-*` temp dir is left behind on disk —
+ * normally these are cleaned up at the start of the *next* build by
+ * {@link prepare}, but a cancelled rebuild may never be followed by another,
+ * so the cancel path sweeps actively. Reuses the dead-pid filter so an
+ * unrelated live build sharing the same source id is never clobbered.
+ */
+export async function sweepGlobIndexTempDirs(indexDir: string): Promise<void> {
+  const parent = dirname(indexDir);
+  try {
+    await sweepStaleTempDirs(indexDir, parent);
+    await sweepReplacedOrphans(indexDir);
+  } catch {
+    // Best-effort cleanup — a permissions glitch or a missing parent dir
+    // (e.g. the index was never built) is not a cancel failure.
+  }
+}
+
+/**
  * Removes `<entry>.replaced-<pid>-*` orphans inside `indexDir` left by a build
  * that crashed mid-swap (between {@link promote}'s rename-aside and the new
  * rename-into-place). Each orphan holds the prior version of one entry; once

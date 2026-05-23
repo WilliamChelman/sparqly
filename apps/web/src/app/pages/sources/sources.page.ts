@@ -222,6 +222,40 @@ interface Layer3Fields {
                 admin actions capability is off — a read-only serve should
                 not advertise affordances it will then 403 on.
               -->
+              <!--
+                Disk-backed admin verbs (#358, ADR-0043). (Re)build appears on
+                every disk-backed row except an in-flight indexing one — a
+                fresh trigger during an in-flight build would coalesce
+                server-side, so the UI hides it to avoid pretending a queued
+                second build exists. Cancel is the inverse: visible only
+                during indexing so the operator can disown an accidental
+                20-minute rebuild with one click. Confirm-on-rebuild gates
+                the ready/stale cases where the existing on-disk index is
+                the meaningful state to preserve; not-built and failed skip
+                confirm — there is no built-up state to lose.
+              -->
+              @if (allowAdminActions() && row.mode === 'disk-backed') {
+                @if (row.state !== 'indexing') {
+                  <button
+                    type="button"
+                    class="rounded border border-border-muted bg-surface-muted px-2 py-0.5 text-xs text-foreground hover:bg-surface"
+                    data-testid="row-action-rebuild-index"
+                    (click)="rebuildIndex(row.id, row.state)"
+                  >
+                    (Re)build index
+                  </button>
+                }
+                @if (row.state === 'indexing') {
+                  <button
+                    type="button"
+                    class="rounded border border-border-muted bg-surface-muted px-2 py-0.5 text-xs text-foreground hover:bg-surface"
+                    data-testid="row-action-cancel-build"
+                    (click)="cancelBuild(row.id)"
+                  >
+                    Cancel
+                  </button>
+                }
+              }
               @if (allowAdminActions() && row.mode === 'in-memory') {
                 @if (row.state === 'not-loaded' || row.state === 'failed') {
                   <button
@@ -318,6 +352,55 @@ export class SourcesPage implements OnInit, OnDestroy {
    */
   unload(id: string): void {
     this.postAction(id, 'unload');
+  }
+
+  /**
+   * Fires `POST /api/sources/:id/index-build` — user-triggered (Re)build of
+   * a disk-backed Glob index (ADR-0043, #358). Prompts the operator before
+   * destroying the existing index when there is built-up state to preserve
+   * (`ready` or `stale`); skips the confirm on `not-built` / `failed` where
+   * rebuild is the only path forward. Same swallow-and-let-SSE-drive
+   * pattern as the in-memory verbs — the `build-start`/`build-success`
+   * transitions arrive on the live stream.
+   */
+  rebuildIndex(id: string, state: DiskBackedState): void {
+    if (state === 'ready' || state === 'stale') {
+      const ok = window.confirm(
+        `Rebuild the Glob index for ${id}? The current index will be replaced once the new build completes.`,
+      );
+      if (!ok) return;
+    }
+    this.http
+      .post(`/api/sources/${encodeURIComponent(id)}/index-build`, null)
+      .pipe(takeUntilDestroyed(this.destroy))
+      .subscribe({
+        next: () => {
+          /* SSE drives the UI update. */
+        },
+        error: () => {
+          /* Layer 1 swallows; later slices wire an error toast. */
+        },
+      });
+  }
+
+  /**
+   * Fires `DELETE /api/sources/:id/index-build` — operator cancel of an
+   * in-flight (Re)build (ADR-0043, #358). No confirm: cancel is the
+   * "cheap, always-safe undo" the ADR explicitly designs for; the prior
+   * index stays intact at the real path.
+   */
+  cancelBuild(id: string): void {
+    this.http
+      .delete(`/api/sources/${encodeURIComponent(id)}/index-build`)
+      .pipe(takeUntilDestroyed(this.destroy))
+      .subscribe({
+        next: () => {
+          /* SSE drives the UI update. */
+        },
+        error: () => {
+          /* Layer 1 swallows. */
+        },
+      });
   }
 
   private postAction(id: string, verb: 'load' | 'reload' | 'unload'): void {

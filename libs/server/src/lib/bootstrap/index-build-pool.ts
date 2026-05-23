@@ -30,6 +30,30 @@ export interface IndexBuildPoolOptions {
   cooldownMs?: number;
   /** Clock injection for tests; defaults to `Date.now`. */
   now?: () => number;
+  /**
+   * Sweeps the cancelled build's temp directory (ADR-0042's
+   * `<indexDir>.building-<pid>-*`) after the SIGTERMed child exits. Injected
+   * from `EngineMap`, which knows where each source's `indexDir` lives — the
+   * pool itself only sees `@id`s. Omit to make {@link IndexBuildPool.cancel}
+   * a no-op for the sweep half (the kill half still fires) — useful in tests
+   * that don't care about the on-disk side. Awaited inside the exit listener
+   * so a cancel-induced exit completes its cleanup before the next queued
+   * build takes the freed slot.
+   */
+  sweepTempDir?: (sourceId: string) => Promise<void>;
+  /**
+   * Per-build settlement callback (ADR-0044, #358). Invoked exactly once per
+   * spawned child, after the slot has freed: `'success'` for a `code === 0`
+   * exit, `'failure'` for any other exit or spawn `'error'`, `'cancel'` for an
+   * exit that followed a {@link IndexBuildPool.cancel} request. The pool
+   * itself stays decoupled from the SSE stream — `EngineMap` subscribes here
+   * and maps each outcome to a `build-success` / `build-failure` /
+   * `build-cancel` transition so the Sources page sees the row update.
+   */
+  onSettle?: (
+    sourceId: string,
+    outcome: 'success' | 'failure' | 'cancel',
+  ) => void;
 }
 
 /**
@@ -43,8 +67,19 @@ export class IndexBuildPool {
   private readonly spawnChild: SpawnIndexBuild;
   private readonly cooldownMs: number;
   private readonly now: () => number;
+  private readonly sweepTempDir: ((sourceId: string) => Promise<void>) | undefined;
+  private readonly onSettle:
+    | ((sourceId: string, outcome: 'success' | 'failure' | 'cancel') => void)
+    | undefined;
   /** Build children currently running, keyed by source `@id`. */
   private readonly running = new Map<string, RunningBuild>();
+  /**
+   * Source ids whose running child was cancelled via {@link cancel}. The exit
+   * listener consults this set so a cancel-induced exit (a) skips the
+   * cooldown bookkeeping a normal failure triggers and (b) fires the temp-dir
+   * sweep. Cleared when the child finishes settling.
+   */
+  private readonly cancelling = new Set<string>();
   /** Source `@id`s requested past the cap, waiting for a free slot. */
   private readonly queue: string[] = [];
   /**
@@ -63,6 +98,33 @@ export class IndexBuildPool {
     this.spawnChild = options.spawn;
     this.cooldownMs = options.cooldownMs ?? 30_000;
     this.now = options.now ?? Date.now;
+    this.sweepTempDir = options.sweepTempDir;
+    this.onSettle = options.onSettle;
+  }
+
+  /**
+   * User-triggered cancel of an in-flight Glob index build (ADR-0043, #358).
+   * SIGTERMs the running child and — once the child exits — runs the injected
+   * {@link IndexBuildPoolOptions.sweepTempDir} so the partial temp dir doesn't
+   * linger. The cancel-induced exit is *not* treated as a failure: no
+   * cooldown entry is recorded, so a follow-up rebuild can spawn immediately
+   * (the cancel was a user decision, not a broken source). Cancel of an
+   * unknown id — or an id sitting in the post-failure cooldown window with
+   * no live child — is a silent no-op.
+   */
+  cancel(sourceId: string): void {
+    // Drop a queued-but-not-yet-spawned request — the user disowned this
+    // build before it even started, so there's no child to SIGTERM and no
+    // temp dir to sweep.
+    const queueIndex = this.queue.indexOf(sourceId);
+    if (queueIndex !== -1) {
+      this.queue.splice(queueIndex, 1);
+      return;
+    }
+    const running = this.running.get(sourceId);
+    if (running === undefined) return; // unknown id or cooldown — no-op.
+    this.cancelling.add(sourceId);
+    running.child.kill('SIGTERM');
   }
 
   /**
@@ -75,7 +137,7 @@ export class IndexBuildPool {
     if (this.shuttingDown) return;
     if (this.running.has(sourceId)) return;
     if (this.queue.includes(sourceId)) return;
-    if (this.isInCooldown(sourceId)) return;
+    if (this.checkCooldown(sourceId)) return;
     if (this.running.size < this.concurrency) {
       this.start(sourceId);
     } else {
@@ -94,7 +156,17 @@ export class IndexBuildPool {
     return this.running.has(sourceId) || this.queue.includes(sourceId);
   }
 
-  private isInCooldown(sourceId: string): boolean {
+  /**
+   * Reports whether {@link request} would currently be suppressed by the
+   * post-failure cooldown window for `sourceId` (#358). Read by the
+   * `POST /api/sources/:id/index-build` route so it can refuse with
+   * `429 Too Many Requests` instead of silently swallowing the trigger.
+   */
+  isInCooldown(sourceId: string): boolean {
+    return this.checkCooldown(sourceId);
+  }
+
+  private checkCooldown(sourceId: string): boolean {
     const at = this.lastFailureAt.get(sourceId);
     if (at === undefined) return false;
     return this.now() - at < this.cooldownMs;
@@ -142,12 +214,27 @@ export class IndexBuildPool {
       if (settled) return;
       settled = true;
       this.running.delete(sourceId);
-      if (failed) {
+      const cancelled = this.cancelling.delete(sourceId);
+      let outcome: 'success' | 'failure' | 'cancel';
+      if (cancelled) {
+        // A cancel-induced exit is a user decision, not a broken build — skip
+        // the cooldown bookkeeping so a follow-up rebuild trigger can spawn
+        // immediately (ADR-0043's "cheap, always-safe undo" property). Run
+        // the injected sweep so the temp dir doesn't linger after the kill.
+        this.lastFailureAt.delete(sourceId);
+        if (this.sweepTempDir) {
+          void this.sweepTempDir(sourceId);
+        }
+        outcome = 'cancel';
+      } else if (failed) {
         this.lastFailureAt.set(sourceId, this.now());
+        outcome = 'failure';
       } else {
         this.lastFailureAt.delete(sourceId);
+        outcome = 'success';
       }
       markExited();
+      this.onSettle?.(sourceId, outcome);
       if (this.shuttingDown) return;
       const next = this.queue.shift();
       if (next !== undefined) this.start(next);
