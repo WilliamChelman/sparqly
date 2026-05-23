@@ -290,3 +290,135 @@ describe('projectSourceRow — Layer 2 (materialization metrics, #355)', () => {
     });
   });
 });
+
+/*
+ * Layer 3 (disk-backed extras, #357). Surfaces the on-disk **Glob index**
+ * details on the **Sources page**: where it lives (`indexDir`), how much
+ * space it takes (`indexBytes`), what sparqly built it (`manifestSparqlyVersion`),
+ * and — for the `stale` state only — a human-readable mismatch reason.
+ *
+ * Layer 3 fields apply only to disk-backed rows; in-memory and endpoint rows
+ * never carry them. The projector is a pure function — the caller (`projectEntryState`)
+ * supplies the extras after reading the manifest / walking `indexDir`.
+ */
+describe('projectSourceRow — Layer 3 (disk-backed extras, #357)', () => {
+  const DISK_EXTRAS = {
+    indexDir: '/abs/.sparqly/index/big',
+    indexBytes: 4_096_000,
+    manifestSparqlyVersion: '0.29.0',
+  } as const;
+
+  describe('disk-backed mode', () => {
+    it('emits indexDir, indexBytes, manifestSparqlyVersion on a ready row', () => {
+      const row = projectSourceRow(diskGlob, {
+        mode: 'disk-backed',
+        state: 'ready',
+        metrics: { files: 3, loadedAt: 1, loadMs: 42, quads: 100 },
+        disk: DISK_EXTRAS,
+      });
+      expect(row).toMatchObject({
+        mode: 'disk-backed',
+        state: 'ready',
+        indexDir: DISK_EXTRAS.indexDir,
+        indexBytes: DISK_EXTRAS.indexBytes,
+        manifestSparqlyVersion: DISK_EXTRAS.manifestSparqlyVersion,
+        quads: 100,
+      });
+      // `staleReason` is the one Layer 3 field whose presence is gated on
+      // state — `ready` never carries it.
+      expect('staleReason' in row).toBe(false);
+    });
+
+    it("populates staleReason exactly when state is 'stale'", () => {
+      const row = projectSourceRow(diskGlob, {
+        mode: 'disk-backed',
+        state: 'stale',
+        disk: { ...DISK_EXTRAS, staleReason: 'matched file changed: /data/a.nq' },
+      });
+      expect(row).toMatchObject({
+        mode: 'disk-backed',
+        state: 'stale',
+        indexDir: DISK_EXTRAS.indexDir,
+        indexBytes: DISK_EXTRAS.indexBytes,
+        manifestSparqlyVersion: DISK_EXTRAS.manifestSparqlyVersion,
+        staleReason: 'matched file changed: /data/a.nq',
+      });
+    });
+
+    for (const state of [
+      'ready',
+      'indexing',
+      'not-built',
+      'failed',
+    ] as DiskBackedState[]) {
+      it(`omits staleReason when state is '${state}' even if the disk extras carry one`, () => {
+        // Defensive: the broker shouldn't pass a staleReason for a non-stale
+        // state, but if it does, the projector strips it so the wire shape
+        // can't lie about the state machine.
+        const row = projectSourceRow(diskGlob, {
+          mode: 'disk-backed',
+          state,
+          disk: { ...DISK_EXTRAS, staleReason: 'should not appear' },
+        });
+        expect('staleReason' in row).toBe(false);
+      });
+    }
+
+    it('omits Layer 3 fields when the runtime carries no disk extras (legacy / pre-load)', () => {
+      const row = projectSourceRow(diskGlob, {
+        mode: 'disk-backed',
+        state: 'not-built',
+      });
+      expect('indexDir' in row).toBe(false);
+      expect('indexBytes' in row).toBe(false);
+      expect('manifestSparqlyVersion' in row).toBe(false);
+      expect('staleReason' in row).toBe(false);
+    });
+
+    it('emits Layer 3 extras on stale even without a metrics block', () => {
+      // A stale disk-backed index isn't `ready` — the entry has no live load,
+      // so there is no Layer 2 metrics block. Layer 3 still ships so the page
+      // can show the user *which* index is stale, where it sits, and why.
+      const row = projectSourceRow(diskGlob, {
+        mode: 'disk-backed',
+        state: 'stale',
+        disk: { ...DISK_EXTRAS, staleReason: 'sparqly version changed' },
+      });
+      expect(row).toMatchObject({
+        indexDir: DISK_EXTRAS.indexDir,
+        indexBytes: DISK_EXTRAS.indexBytes,
+        manifestSparqlyVersion: DISK_EXTRAS.manifestSparqlyVersion,
+        staleReason: 'sparqly version changed',
+      });
+      expect('quads' in row).toBe(false);
+      expect('files' in row).toBe(false);
+    });
+  });
+
+  describe('in-memory mode', () => {
+    it('never carries Layer 3 fields', () => {
+      // Defensive: a runtime accidentally carrying `disk` extras on an in-
+      // memory mode is rejected by the discriminated union at compile time;
+      // at runtime the projector simply has no path that reads them.
+      const row = projectSourceRow(inMemoryGlob, {
+        mode: 'in-memory',
+        state: 'loaded',
+        metrics: { quads: 1, files: 1, loadedAt: 1, loadMs: 1 },
+      });
+      expect('indexDir' in row).toBe(false);
+      expect('indexBytes' in row).toBe(false);
+      expect('manifestSparqlyVersion' in row).toBe(false);
+      expect('staleReason' in row).toBe(false);
+    });
+  });
+
+  describe('endpoint mode', () => {
+    it('never carries Layer 3 fields', () => {
+      const row = projectSourceRow(endpoint, { mode: 'endpoint' });
+      expect('indexDir' in row).toBe(false);
+      expect('indexBytes' in row).toBe(false);
+      expect('manifestSparqlyVersion' in row).toBe(false);
+      expect('staleReason' in row).toBe(false);
+    });
+  });
+});

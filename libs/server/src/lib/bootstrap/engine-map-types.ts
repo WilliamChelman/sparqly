@@ -105,4 +105,13 @@ export interface Entry {
   disk: Promise<Result<LoadedEntry, SourceError | IndexingError>> | undefined;
   closeIndex: (() => Promise<void>) | undefined;
   current: LoadedEntry | undefined;
+  /**
+   * The last `staleReason` `readState` reported for this disk-backed entry
+   * (#357). Used to de-duplicate `stale-detected` SSE emissions — `readState`
+   * compares the freshly-observed reason against this cache and only emits
+   * when it changes (rest → stale, or stale-reason-A → stale-reason-B). Reset
+   * to `undefined` when the entry transitions back to non-stale (the next
+   * stale observation should re-emit).
+   */
+  staleReasonSeen: string | undefined;
 }

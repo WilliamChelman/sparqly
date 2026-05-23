@@ -83,6 +83,17 @@ export class IndexBuildPool {
     }
   }
 
+  /**
+   * Reports whether a build child is currently running or queued for `sourceId`
+   * (#357). Read by `projectEntryState` so a disk-backed source whose Glob
+   * index build is in flight surfaces as `indexing` on the Sources page —
+   * `entry.disk` alone can't tell that apart from "already opened" once the
+   * memoized resolution settled.
+   */
+  isBuilding(sourceId: string): boolean {
+    return this.running.has(sourceId) || this.queue.includes(sourceId);
+  }
+
   private isInCooldown(sourceId: string): boolean {
     const at = this.lastFailureAt.get(sourceId);
     if (at === undefined) return false;

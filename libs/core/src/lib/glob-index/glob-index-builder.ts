@@ -93,6 +93,7 @@ async function buildGlobIndexAsync(
     dataFactory: DataFactory,
   });
   await store.open();
+  let quadCount = 0;
   try {
     // Stream every matched file's quads through a fixed-size batched ingest
     // (#347), applying the `graphName` transform inline as a per-quad rewrite
@@ -100,8 +101,10 @@ async function buildGlobIndexAsync(
     // glob — in heap: at most one batch is resident, whether or not a
     // transform is declared. That flat memory ceiling is the disk tier's
     // purpose (ADR-0041, amends ADR-0006). Each written batch advances the
-    // `index-progress` heartbeat (#349).
-    await ingestQuadStream(
+    // `index-progress` heartbeat (#349). The total comes back from the ingest
+    // loop and lands on the manifest as `quadCount` (#357) — the **Sources
+    // page** surfaces it as the disk-backed `quads` metric without re-counting.
+    quadCount = await ingestQuadStream(
       store,
       streamGlobQuads(files, options.transforms, progress),
       INGEST_BATCH_SIZE,
@@ -114,6 +117,7 @@ async function buildGlobIndexAsync(
     files: fingerprints,
     transforms: options.transforms,
     sparqlyVersion: options.sparqlyVersion,
+    quadCount,
   });
   await writeGlobIndexManifest(options.indexDir, manifest);
   return { indexDir: options.indexDir, files };

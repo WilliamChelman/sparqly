@@ -139,6 +139,31 @@ describe('disk-backed glob index', () => {
     expect(typeof manifest.files[0].mtimeMs).toBe('number');
   });
 
+  /*
+   * #357: the manifest carries `quadCount` so the **Sources page** can show
+   * the disk-backed `quads` metric without re-counting the index. The build
+   * path is the only producer — `ingestQuadStream` is the single point that
+   * observes every quad on its way to disk, so the count it returns is the
+   * count we persist.
+   */
+  it('writes quadCount on the manifest matching the number of ingested quads', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      [
+        '@prefix ex: <http://example.org/> .',
+        'ex:a ex:p ex:b .',
+        'ex:a ex:p ex:c .',
+        'ex:a ex:q ex:d .',
+      ].join('\n'),
+    );
+    const indexDir = join(dir, 'index');
+
+    await build(join(dir, '*.ttl'), indexDir);
+
+    const manifest = await readGlobIndexManifest(indexDir);
+    expect(manifest.quadCount).toBe(3);
+  });
+
   it('bakes the transform pipeline into the index at build time', async () => {
     await writeFile(
       join(dir, 'a.ttl'),

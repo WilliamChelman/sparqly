@@ -39,7 +39,8 @@ export type SourceRow =
       state: DiskBackedState;
       default?: true;
       parentId?: string;
-    } & Layer2Fields)
+    } & Layer2Fields &
+      Layer3Fields)
   | {
       mode: 'endpoint';
       id: string;
@@ -68,6 +69,23 @@ interface Layer2Fields {
   files?: number;
   loadedAt?: number;
   loadMs?: number;
+}
+
+/**
+ * Layer 3 disk-backed extras (#357). Only disk-backed rows ever carry these:
+ * `indexDir` is the absolute path of the on-disk Glob index; `indexBytes` is
+ * its LevelDB footprint; `manifestSparqlyVersion` is whichever sparqly built
+ * the index. `staleReason` is gated by the server-side projector — it ships
+ * exactly when `state === 'stale'`, so a stray reason on a `ready` row is a
+ * server bug, not a "harmless extra field" the page should defend against.
+ * Every field is optional on the wire so a pre-`ready` row (`not-built`,
+ * `indexing`) renders blank cells rather than `undefined`.
+ */
+interface Layer3Fields {
+  indexDir?: string;
+  indexBytes?: number;
+  manifestSparqlyVersion?: string;
+  staleReason?: string;
 }
 
 /**
@@ -163,6 +181,39 @@ interface Layer2Fields {
                   data-testid="row-load-ms"
                   >{{ row.loadMs !== undefined ? row.loadMs + ' ms' : '' }}</span
                 >
+              }
+              <!--
+                Layer 3 disk-backed extras (#357). Rendered only on disk-backed
+                rows — in-memory and endpoint sources have no on-disk index to
+                describe. Cells render unconditionally (blank when unknown)
+                inside the disk-backed branch so test selectors can find them;
+                the stale-reason chip is gated on state === stale because it
+                only exists for that state (the wire never carries it
+                elsewhere — that is the server-projector invariant).
+              -->
+              @if (row.mode === 'disk-backed') {
+                <span
+                  class="font-mono text-xs text-foreground-muted"
+                  data-testid="row-index-dir"
+                  >{{ row.indexDir ?? '' }}</span
+                >
+                <span
+                  class="font-mono text-xs text-foreground-muted"
+                  data-testid="row-index-bytes"
+                  >{{ formatBytes(row.indexBytes) }}</span
+                >
+                <span
+                  class="font-mono text-xs text-foreground-muted"
+                  data-testid="row-manifest-version"
+                  >{{ row.manifestSparqlyVersion ?? '' }}</span
+                >
+                @if (row.state === 'stale' && row.staleReason) {
+                  <span
+                    class="rounded bg-warning-muted px-1.5 py-0.5 text-xs text-warning"
+                    data-testid="row-stale-reason"
+                    >{{ row.staleReason }}</span
+                  >
+                }
               }
               <!--
                 Per-row admin action menu (#356, ADR-0045). In-memory only;
@@ -326,6 +377,25 @@ export class SourcesPage implements OnInit, OnDestroy {
         this.fetchSnapshot(/* subscribeAfter */ true);
       },
     });
+  }
+
+  /**
+   * Formats a Layer 3 `indexBytes` count for the row cell (#357). Renders an
+   * empty cell for `undefined` so "unknown" stays distinct from "really zero
+   * bytes". Picks a binary unit (KiB/MiB/GiB) so a 600 MiB index doesn't
+   * print as a nine-digit byte count.
+   */
+  formatBytes(bytes: number | undefined): string {
+    if (bytes === undefined) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let v = bytes / 1024;
+    let unit = units[0];
+    for (let i = 1; i < units.length && v >= 1024; i++) {
+      v /= 1024;
+      unit = units[i];
+    }
+    return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${unit}`;
   }
 
   private applyRow(row: SourceRow): void {

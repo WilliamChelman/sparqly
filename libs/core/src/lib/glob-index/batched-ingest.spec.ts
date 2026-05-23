@@ -72,4 +72,24 @@ describe('ingestQuadStream', () => {
     // caller can advance a progress counter as quads land on disk (#349).
     expect(written).toEqual([3, 3, 1]);
   });
+
+  /*
+   * #357 surfaces the ingested quad count on the **Glob index** manifest, then
+   * on the **Sources page** as the disk-backed `quads` metric. The single
+   * place that observes every quad on its way to disk is the ingest loop —
+   * the caller can't count quads itself without buffering the stream and
+   * defeating the bounded-heap contract this module exists for. So the total
+   * comes back as the function's return.
+   */
+  it('returns the total number of quads written across all batches', async () => {
+    const store = { multiPut: async () => undefined };
+    const total = await ingestQuadStream(store, quadStream(7), 3);
+    expect(total).toBe(7);
+  });
+
+  it('returns 0 for an empty stream', async () => {
+    const store = { multiPut: async () => undefined };
+    const total = await ingestQuadStream(store, quadStream(0), 3);
+    expect(total).toBe(0);
+  });
 });

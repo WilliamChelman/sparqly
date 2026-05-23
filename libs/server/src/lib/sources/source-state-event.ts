@@ -16,7 +16,15 @@ export type SourceTransitionKind =
   | 'build-start'
   | 'build-success'
   | 'build-failure'
-  | 'build-cancel';
+  | 'build-cancel'
+  /**
+   * `readState` observed a disk-backed **Glob index** whose freshly-recomputed
+   * manifest no longer matches the on-disk one (#357). Emitted once per
+   * distinct `staleReason` so a live Sources page learns about the drift
+   * without waiting for the next snapshot fetch; sparqly never silently
+   * rebuilds — the user clears `stale` with a manual rebuild (ADR-0043).
+   */
+  | 'stale-detected';
 
 /**
  * Raw transition record emitted by `EngineMap` into the

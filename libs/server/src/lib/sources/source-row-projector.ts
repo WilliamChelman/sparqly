@@ -28,7 +28,8 @@ export type SourceRow =
       state: DiskBackedState;
       default?: true;
       parentId?: string;
-    } & Layer2Fields)
+    } & Layer2Fields &
+      Layer3Fields)
   | {
       mode: 'endpoint';
       id: string;
@@ -78,6 +79,46 @@ export interface LoadMetrics {
 }
 
 /**
+ * Layer 3 disk-backed extras on the Sources page row (#357). Disk-backed
+ * **Glob index** entries surface where the index lives, how much disk it
+ * occupies, and which sparqly version baked it; a `stale` entry additionally
+ * carries a human-readable mismatch reason. Every field is optional on the
+ * wire — a pre-`ready` row (e.g. `not-built`, `indexing`) has nothing to
+ * report yet; `manifestSparqlyVersion` is absent when no manifest has ever
+ * been written; `staleReason` appears exactly when `state === 'stale'`.
+ */
+interface Layer3Fields {
+  /** Absolute path of the on-disk index directory. */
+  indexDir?: string;
+  /** Total bytes occupied by the LevelDB index on disk. */
+  indexBytes?: number;
+  /** The sparqly version recorded in the index's manifest. */
+  manifestSparqlyVersion?: string;
+  /**
+   * Human-readable mismatch reason ("sparqly version changed: 0.28.0 → 0.29.0",
+   * "matched file changed: /data/a.nq", …). Populated exactly when
+   * `state === 'stale'`; never appears on any other disk-backed state, even
+   * if the runtime supplied one.
+   */
+  staleReason?: string;
+}
+
+/**
+ * Layer 3 disk extras supplied alongside a disk-backed {@link SourceRuntime}
+ * (#357). The projector copies these onto the row, gating `staleReason` on
+ * `state === 'stale'`. Sourced by `projectEntryState`: `indexDir` from the
+ * **Glob index** layout helper, `indexBytes` from a walk of the index db
+ * directory, `manifestSparqlyVersion` from the read manifest, and
+ * `staleReason` from `compareGlobIndexManifests`.
+ */
+export interface DiskExtras {
+  indexDir?: string;
+  indexBytes?: number;
+  manifestSparqlyVersion?: string;
+  staleReason?: string;
+}
+
+/**
  * In-memory **Source load state** (CONTEXT.md, parent #352). `not-loaded` is
  * the post-boot resting state under lazy materialization (ADR-0031);
  * `loading` covers an in-flight first touch; `loaded` is the memoized
@@ -110,7 +151,13 @@ export type DiskBackedState =
  */
 export type SourceRuntime =
   | { mode: 'in-memory'; state: InMemoryState; metrics?: LoadMetrics }
-  | { mode: 'disk-backed'; state: DiskBackedState; metrics?: LoadMetrics }
+  | {
+      mode: 'disk-backed';
+      state: DiskBackedState;
+      metrics?: LoadMetrics;
+      /** Layer 3 extras for the **Sources page** (#357). */
+      disk?: DiskExtras;
+    }
   | { mode: 'endpoint' };
 
 /**
@@ -164,6 +211,7 @@ export function projectSourceRow(
     };
     if (parentId !== undefined) row.parentId = parentId;
     if (runtime.state === 'ready') applyLayer2(row, runtime.metrics);
+    applyLayer3(row, runtime.state, runtime.disk);
     return withOptionalDefault(row, isDefault);
   }
   if (
@@ -204,6 +252,30 @@ function applyLayer2(
   row.files = metrics.files;
   row.loadedAt = metrics.loadedAt;
   row.loadMs = metrics.loadMs;
+}
+
+/**
+ * Copies Layer 3 disk-backed extras onto a disk-backed row (#357). `indexDir`,
+ * `indexBytes`, and `manifestSparqlyVersion` ride along whenever the runtime
+ * supplied them — the page renders blank cells for absent values. `staleReason`
+ * is the one field gated on state: it appears exactly when `state === 'stale'`
+ * so the wire shape can never lie about the state machine (a stray reason on a
+ * `ready` row would be a Sources-page bug, not a "harmless extra field").
+ */
+function applyLayer3(
+  row: SourceRow & Layer3Fields,
+  state: DiskBackedState,
+  extras: DiskExtras | undefined,
+): void {
+  if (extras === undefined) return;
+  if (extras.indexDir !== undefined) row.indexDir = extras.indexDir;
+  if (extras.indexBytes !== undefined) row.indexBytes = extras.indexBytes;
+  if (extras.manifestSparqlyVersion !== undefined) {
+    row.manifestSparqlyVersion = extras.manifestSparqlyVersion;
+  }
+  if (state === 'stale' && extras.staleReason !== undefined) {
+    row.staleReason = extras.staleReason;
+  }
 }
 
 function withOptionalDefault(row: SourceRow, isDefault: true | undefined): SourceRow {

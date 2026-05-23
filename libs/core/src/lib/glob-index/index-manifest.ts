@@ -43,6 +43,17 @@ export interface GlobIndexManifest {
   sparqlyVersion: string;
   /** The transform pipeline applied at build time — key + config, in order. */
   transforms: TransformFingerprint[];
+  /**
+   * Total quad count actually ingested into the index (#357). Surfaces on the
+   * **Sources page** as the disk-backed `quads` metric so a `ready` index
+   * shows its size without running a `COUNT(*)`. Forward-compatible additive:
+   * a pre-existing manifest written before this field shipped opens without
+   * it; the page renders `quads` as blank ("unknown") until the next rebuild.
+   * Not part of the freshness fingerprint — only the build path produces a
+   * count, so the freshness-inspect path (which never reads the index) would
+   * always disagree and mark every reused index stale on the next open.
+   */
+  quadCount?: number;
 }
 
 export interface ComputeManifestInput {
@@ -52,6 +63,11 @@ export interface ComputeManifestInput {
   transforms: ReadonlyArray<ParsedTransform>;
   /** The sparqly version that built the index. */
   sparqlyVersion: string;
+  /**
+   * Total quad count actually ingested (#357). Omit on the freshness-inspect
+   * path — only the build path knows it.
+   */
+  quadCount?: number;
 }
 
 /**
@@ -70,6 +86,7 @@ export async function computeGlobIndexManifest(
     files: await snapshotIndexedFiles(input.files),
     transforms: input.transforms,
     sparqlyVersion: input.sparqlyVersion,
+    quadCount: input.quadCount,
   });
 }
 
@@ -80,6 +97,14 @@ export interface ManifestFromFingerprintsInput {
   transforms: ReadonlyArray<ParsedTransform>;
   /** The sparqly version that built the index. */
   sparqlyVersion: string;
+  /**
+   * Total quad count actually ingested (#357). Omit on the freshness-inspect
+   * path — only the build path knows it. The field appears on the resulting
+   * manifest only when supplied: a missing input value leaves the manifest
+   * without `quadCount` rather than recording `0`, so the **Sources page**
+   * can distinguish "we don't know" from "really zero".
+   */
+  quadCount?: number;
 }
 
 /**
@@ -92,7 +117,7 @@ export interface ManifestFromFingerprintsInput {
 export function manifestFromFingerprints(
   input: ManifestFromFingerprintsInput,
 ): GlobIndexManifest {
-  return {
+  const manifest: GlobIndexManifest = {
     files: input.files.map((file) => ({
       path: file.path,
       size: file.size,
@@ -105,6 +130,8 @@ export function manifestFromFingerprints(
         : { key: transform.key, config: transform.config },
     ),
   };
+  if (input.quadCount !== undefined) manifest.quadCount = input.quadCount;
+  return manifest;
 }
 
 /**
