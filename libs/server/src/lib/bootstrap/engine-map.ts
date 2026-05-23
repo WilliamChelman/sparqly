@@ -1,9 +1,11 @@
 import { err, ok, ResultAsync, type Result } from 'neverthrow';
 import type { SparqlyLogger } from 'common';
 import {
+  diskBackedIndexIdentity,
   globIndexDir,
   QueryEngine,
   resolveSourceResult,
+  sweepGlobIndexTempDirs,
   unionDefaultGraphEnabled,
   type ParsedSource,
   type SourceError,
@@ -157,21 +159,58 @@ export class EngineMap {
         staleReasonSeen: undefined,
       });
     }
+    const configDir = options.configDir ?? process.cwd();
+    const indexCacheDir = options.indexCacheDir;
+    // Resolve an entry's on-disk index path once for the pool callbacks —
+    // the pool only sees `@id`s and can't reach the source/configDir.
+    const indexDirOf = (sourceId: string): string | undefined => {
+      const entry = entries.get(sourceId);
+      if (entry === undefined || !isDiskBacked(entry.source)) return undefined;
+      const { indexId } = diskBackedIndexIdentity(entry.source);
+      return globIndexDir(configDir, indexId, indexCacheDir);
+    };
+    const stateEmitter = options.sourceStateEmitter;
     const buildPool = new IndexBuildPool({
       concurrency: options.indexConcurrency ?? 2,
       spawn: options.spawnIndexBuild ?? spawnIndexBuildUnavailable,
       cooldownMs: options.indexBuildCooldownMs,
       now: options.now,
+      // ADR-0043: a cancelled rebuild leaves the prior Glob index intact at
+      // the real path, but its `<indexDir>.building-<pid>-*` temp dir would
+      // linger without an active sweep — `prepare()` only runs at the start
+      // of the *next* build, and a cancel may never be followed by one.
+      sweepTempDir: async (sourceId) => {
+        const dir = indexDirOf(sourceId);
+        if (dir === undefined) return;
+        await sweepGlobIndexTempDirs(dir);
+      },
+      // The pool itself stays SSE-unaware (ADR-0044): it just reports the
+      // settlement outcome and EngineMap maps that to a transition the
+      // SourceStateBroker projects into a wire row.
+      onSettle: (sourceId, outcome) => {
+        if (outcome === 'success') {
+          // Drop any prior memoized open so the next touch re-opens the freshly
+          // built index. Without this, a rebuild that ran while an old `ready`
+          // was settled would keep serving the old quads until restart.
+          const entry = entries.get(sourceId);
+          if (entry) entry.disk = undefined;
+          stateEmitter?.emit({ kind: 'build-success', sourceId });
+        } else if (outcome === 'failure') {
+          stateEmitter?.emit({ kind: 'build-failure', sourceId });
+        } else {
+          stateEmitter?.emit({ kind: 'build-cancel', sourceId });
+        }
+      },
     });
     return new EngineMap(
       entries,
       resolutionRegistry,
       options.logger,
-      options.configDir ?? process.cwd(),
+      configDir,
       options.sparqlyVersion,
-      options.indexCacheDir,
+      indexCacheDir,
       buildPool,
-      options.sourceStateEmitter,
+      stateEmitter,
     );
   }
 
@@ -277,6 +316,54 @@ export class EngineMap {
    */
   async whenIdle(): Promise<void> {
     await this.buildPool.whenIdle();
+  }
+
+  /**
+   * User-triggered **(Re)build index** path (ADR-0043, #358). Coalesces onto
+   * the existing in-flight build for the same source if one is already
+   * running, refuses while the source is inside the post-failure cooldown
+   * window, and otherwise requests a fresh child-process build through the
+   * same {@link IndexBuildPool} the auto-trigger uses. Returns the outcome
+   * so the controller can map to the right HTTP status (`202` vs `429`).
+   * Throws when `id` is not a disk-backed entry — initial-build / rebuild
+   * symmetry only applies to disk-backed globs (an in-memory source uses
+   * Reload instead).
+   */
+  requestBuild(id: string): 'requested' | 'in-flight' | 'cooldown' {
+    const entry = this.entries.get(id);
+    if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
+    if (!isDiskBacked(entry.source)) {
+      throw new Error(
+        `EngineMap.requestBuild: '${id}' is not a disk-backed source — ` +
+          `(Re)build index is disk-backed only (ADR-0043)`,
+      );
+    }
+    if (this.buildPool.isBuilding(id)) return 'in-flight';
+    if (this.buildPool.isInCooldown(id)) return 'cooldown';
+    // Drop any settled-`ready` open so the next touch re-checks the manifest
+    // and observes the freshly-built index — without this clear, a rebuild
+    // against a `ready` entry would keep serving the old quads from the
+    // memoized open until process restart.
+    entry.disk = undefined;
+    this.stateEmitter?.emit({ kind: 'build-start', sourceId: id });
+    this.buildPool.request(id);
+    return 'requested';
+  }
+
+  /**
+   * User-triggered cancel of a disk-backed (Re)build (ADR-0043, #358).
+   * SIGTERMs the running child via the pool; the temp-dir sweep and the
+   * `build-cancel` transition both flow from the pool's cancel-aware exit
+   * handler. Cancel against an unknown id, a non-disk-backed entry, or a
+   * source with no in-flight build is a silent no-op — the route still
+   * returns `202` because the user's intent ("there should be no rebuild
+   * running") is satisfied either way.
+   */
+  cancelBuild(id: string): void {
+    const entry = this.entries.get(id);
+    if (!entry) return;
+    if (!isDiskBacked(entry.source)) return;
+    this.buildPool.cancel(id);
   }
 
   private async loadEntry(

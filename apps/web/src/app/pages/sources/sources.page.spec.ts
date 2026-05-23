@@ -680,22 +680,278 @@ describe('SourcesPage (#353)', () => {
 
     it('never renders in-memory verbs (Load/Reload/Unload) on endpoint or disk-backed rows', async () => {
       // #356 is in-memory only. Pass-through endpoints have no state machine
-      // and disk-backed gets its own verb set (Build / Rebuild / Discard) in
-      // a later slice of #352 — so neither row class may render in-memory
-      // verbs even when the capability is on.
+      // and disk-backed has its own verb set ((Re)build / Cancel — #358), so
+      // neither row class may render the in-memory Load/Reload/Unload verbs
+      // even when the capability is on.
       const ctx = await setup();
       flush(ctx.http, SNAPSHOT, { allowAdminActions: true });
       ctx.detect();
       await ctx.stable();
       ctx.detect();
 
+      const inMemoryVerbTestIds = [
+        'row-action-load',
+        'row-action-reload',
+        'row-action-unload',
+      ];
       for (const id of ['wikidata', 'big']) {
         const row = ctx.nativeElement().querySelector(
           `[data-testid="source-row-${id}"]`,
         );
-        const buttons = row?.querySelectorAll('[data-testid^="row-action-"]');
-        expect(buttons?.length ?? 0).toBe(0);
+        for (const testId of inMemoryVerbTestIds) {
+          const button = row?.querySelector(`[data-testid="${testId}"]`);
+          expect(button).toBeNull();
+        }
       }
+    });
+  });
+
+  describe('disk-backed (Re)build / Cancel action menu (#358)', () => {
+    const DISK_SNAPSHOT: SourceRow[] = [
+      // A disk-backed `ready` row — confirm-on-rebuild path; the existing
+      // built-up state matters, so the click must prompt before destroying it.
+      {
+        mode: 'disk-backed',
+        id: 'ready-big',
+        kind: 'glob',
+        state: 'ready',
+        quads: 4242,
+        files: 12,
+        loadedAt: LOADED_AT,
+        loadMs: 90,
+        indexDir: '/cfg/.sparqly/index/ready-big',
+        indexBytes: 8192,
+        manifestSparqlyVersion: '0.29.0',
+      },
+      // A disk-backed `stale` row — also confirm-on-rebuild; the prior index
+      // is still serving queries and the user might not realise rebuild
+      // is the destructive path (the staleness `warn` was the gentle one).
+      {
+        mode: 'disk-backed',
+        id: 'stale-drifted',
+        kind: 'glob',
+        state: 'stale',
+        indexDir: '/cfg/.sparqly/index/stale-drifted',
+        indexBytes: 4096,
+        manifestSparqlyVersion: '0.29.0',
+        staleReason: 'matched file changed: /data/x.ttl',
+      },
+      // A `not-built` row — no on-disk state to lose, so the confirm is
+      // skipped (per the ADR-0043 "skip confirm when nothing meaningful is
+      // discarded" rule).
+      {
+        mode: 'disk-backed',
+        id: 'fresh',
+        kind: 'glob',
+        state: 'not-built',
+        indexDir: '/cfg/.sparqly/index/fresh',
+      },
+      // A `failed` row — same posture as `not-built`: rebuild is the only
+      // path forward, no built state to discard, so confirm is skipped.
+      {
+        mode: 'disk-backed',
+        id: 'broken',
+        kind: 'glob',
+        state: 'failed',
+        indexDir: '/cfg/.sparqly/index/broken',
+      },
+      // An in-flight build — Cancel is the only verb that should appear; the
+      // (Re)build affordance hides while a build is mid-flight (issuing
+      // another is a no-op anyway and adds UI confusion).
+      {
+        mode: 'disk-backed',
+        id: 'building',
+        kind: 'glob',
+        state: 'indexing',
+        indexDir: '/cfg/.sparqly/index/building',
+      },
+    ];
+
+    it('renders a (Re)build button on every disk-backed row regardless of state — except indexing', async () => {
+      const ctx = await setup();
+      flush(ctx.http, DISK_SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      for (const id of ['ready-big', 'stale-drifted', 'fresh', 'broken']) {
+        const row = ctx.nativeElement().querySelector(
+          `[data-testid="source-row-${id}"]`,
+        );
+        expect(
+          row?.querySelector('[data-testid="row-action-rebuild-index"]'),
+          `expected (Re)build button on row ${id}`,
+        ).not.toBeNull();
+      }
+      // The indexing row hides (Re)build — Cancel is the only verb during
+      // an in-flight build.
+      const indexing = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-building"]',
+      );
+      expect(
+        indexing?.querySelector('[data-testid="row-action-rebuild-index"]'),
+      ).toBeNull();
+    });
+
+    it('renders a Cancel button on indexing rows only', async () => {
+      const ctx = await setup();
+      flush(ctx.http, DISK_SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const indexing = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-building"]',
+      );
+      expect(
+        indexing?.querySelector('[data-testid="row-action-cancel-build"]'),
+      ).not.toBeNull();
+      for (const id of ['ready-big', 'stale-drifted', 'fresh', 'broken']) {
+        const row = ctx.nativeElement().querySelector(
+          `[data-testid="source-row-${id}"]`,
+        );
+        expect(
+          row?.querySelector('[data-testid="row-action-cancel-build"]'),
+          `expected no Cancel on row ${id}`,
+        ).toBeNull();
+      }
+    });
+
+    it('clicking (Re)build on a not-built row POSTs /api/sources/:id/index-build without a confirm prompt', async () => {
+      const ctx = await setup();
+      flush(ctx.http, DISK_SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      // Track confirm() calls so the test can assert it was NOT invoked.
+      let confirmed = 0;
+      const origConfirm = window.confirm;
+      window.confirm = () => {
+        confirmed += 1;
+        return true;
+      };
+      try {
+        const row = ctx.nativeElement().querySelector(
+          '[data-testid="source-row-fresh"]',
+        );
+        const btn = row?.querySelector<HTMLButtonElement>(
+          '[data-testid="row-action-rebuild-index"]',
+        );
+        btn!.click();
+        ctx.detect();
+        await ctx.stable();
+
+        const req = ctx.http.expectOne('/api/sources/fresh/index-build');
+        expect(req.request.method).toBe('POST');
+        req.flush({ id: 'fresh', state: 'indexing' });
+        expect(confirmed).toBe(0);
+      } finally {
+        window.confirm = origConfirm;
+      }
+    });
+
+    it('clicking (Re)build on a ready row prompts a confirm dialog and only POSTs after the user accepts', async () => {
+      const ctx = await setup();
+      flush(ctx.http, DISK_SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const origConfirm = window.confirm;
+      window.confirm = () => false; // user cancels the confirm
+      try {
+        const row = ctx.nativeElement().querySelector(
+          '[data-testid="source-row-ready-big"]',
+        );
+        const btn = row?.querySelector<HTMLButtonElement>(
+          '[data-testid="row-action-rebuild-index"]',
+        );
+        btn!.click();
+        ctx.detect();
+        await ctx.stable();
+        // Confirm refused — no request is issued.
+        ctx.http.expectNone('/api/sources/ready-big/index-build');
+
+        // User accepts the second time.
+        window.confirm = () => true;
+        btn!.click();
+        ctx.detect();
+        await ctx.stable();
+        const req = ctx.http.expectOne('/api/sources/ready-big/index-build');
+        expect(req.request.method).toBe('POST');
+        req.flush({ id: 'ready-big', state: 'indexing' });
+      } finally {
+        window.confirm = origConfirm;
+      }
+    });
+
+    it('clicking (Re)build on a stale row also prompts a confirm — the prior index is still meaningful state', async () => {
+      const ctx = await setup();
+      flush(ctx.http, DISK_SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const origConfirm = window.confirm;
+      let confirmCalls = 0;
+      window.confirm = () => {
+        confirmCalls += 1;
+        return true;
+      };
+      try {
+        const row = ctx.nativeElement().querySelector(
+          '[data-testid="source-row-stale-drifted"]',
+        );
+        const btn = row?.querySelector<HTMLButtonElement>(
+          '[data-testid="row-action-rebuild-index"]',
+        );
+        btn!.click();
+        ctx.detect();
+        await ctx.stable();
+        expect(confirmCalls).toBe(1);
+        const req = ctx.http.expectOne(
+          '/api/sources/stale-drifted/index-build',
+        );
+        req.flush({ id: 'stale-drifted', state: 'indexing' });
+      } finally {
+        window.confirm = origConfirm;
+      }
+    });
+
+    it('clicking Cancel on an indexing row DELETEs /api/sources/:id/index-build', async () => {
+      const ctx = await setup();
+      flush(ctx.http, DISK_SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const row = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-building"]',
+      );
+      const btn = row?.querySelector<HTMLButtonElement>(
+        '[data-testid="row-action-cancel-build"]',
+      );
+      btn!.click();
+      ctx.detect();
+      await ctx.stable();
+
+      const req = ctx.http.expectOne('/api/sources/building/index-build');
+      expect(req.request.method).toBe('DELETE');
+      req.flush({ id: 'building', state: 'indexing' });
+    });
+
+    it('hides (Re)build and Cancel when allowAdminActions is false (read-only serve)', async () => {
+      const ctx = await setup();
+      flush(ctx.http, DISK_SNAPSHOT, { allowAdminActions: false });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const all = ctx.nativeElement().querySelectorAll(
+        '[data-testid="row-action-rebuild-index"], [data-testid="row-action-cancel-build"]',
+      );
+      expect(all.length).toBe(0);
     });
   });
 

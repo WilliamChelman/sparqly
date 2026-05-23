@@ -1,9 +1,12 @@
 import {
+  BadRequestException,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Headers,
   HttpCode,
+  HttpException,
   HttpStatus,
   Inject,
   NotFoundException,
@@ -147,6 +150,68 @@ export class SourcesController {
     this.assertAdminAllowed();
     this.assertKnownId(id);
     await this.engineMap.unload(id);
+    return this.respondWithState(id);
+  }
+
+  /**
+   * `POST /api/sources/:id/index-build` — user-triggered **(Re)build index**
+   * for a disk-backed glob (ADR-0043, #358). Idempotent during an in-flight
+   * build (coalesces onto the running child); refuses with `429 Too Many
+   * Requests` while the source is inside the post-failure cooldown window;
+   * `400 Bad Request` on an in-memory entry (the verb is disk-backed-only —
+   * in-memory uses Reload instead). Gated by
+   * `sourcesAdmin.allowAdminActions`; `403` when off. Returns `202 Accepted`
+   * with the post-action state — the Sources page consumes the row update
+   * over SSE.
+   */
+  @Post(':id/index-build')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async indexBuild(
+    @Param('id') id: string,
+  ): Promise<SourceAdminActionResponse> {
+    this.assertAdminAllowed();
+    this.assertKnownId(id);
+    let outcome: 'requested' | 'in-flight' | 'cooldown';
+    try {
+      outcome = this.engineMap.requestBuild(id);
+    } catch (error) {
+      // `EngineMap.requestBuild` throws on a non-disk-backed source — the
+      // wrong verb for the entry's kind, not a server error.
+      throw new BadRequestException({
+        error: 'not-disk-backed',
+        id,
+        message: (error as Error).message,
+      });
+    }
+    if (outcome === 'cooldown') {
+      // The pool is suppressing repeat triggers after a recent failed build.
+      // Surface that to the page so it can render "wait and retry" instead
+      // of pretending the rebuild kicked off.
+      throw new HttpException(
+        { error: 'index-build-cooldown', id },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    return this.respondWithState(id);
+  }
+
+  /**
+   * `DELETE /api/sources/:id/index-build` — operator cancel of an in-flight
+   * **(Re)build index** (ADR-0043, #358). SIGTERMs the running child via
+   * `IndexBuildPool.cancel(id)`; the temp dir is swept and the row's state
+   * resyncs over SSE. A cancel against an idle source is a silent no-op —
+   * the route still returns `202 Accepted` because the user's intent
+   * ("there should be no rebuild running") is satisfied either way. Gated
+   * by the same capability flag as the trigger; `403` when off.
+   */
+  @Delete(':id/index-build')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async indexBuildCancel(
+    @Param('id') id: string,
+  ): Promise<SourceAdminActionResponse> {
+    this.assertAdminAllowed();
+    this.assertKnownId(id);
+    this.engineMap.cancelBuild(id);
     return this.respondWithState(id);
   }
 

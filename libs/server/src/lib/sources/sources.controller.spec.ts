@@ -5,6 +5,8 @@ import { Logger } from '@nestjs/common';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createServer, type CreatedServer } from '../bootstrap';
 import type { SourceRow } from './source-row-projector';
+import type { BuildChild, SpawnIndexBuild } from '../bootstrap/index-build-pool';
+import { ensureGlobIndex, diskBackedIndexIdentity, globIndexDir, parseSourceSpecs } from 'core';
 
 interface Harness {
   server: CreatedServer;
@@ -639,6 +641,232 @@ describe('In-memory admin actions — POST /api/sources/:id/{load,reload,unload}
     harness = await loadFixtureHarness();
     const resp = await fetch(
       `${harness.base}/api/sources/no-such-id/load`,
+      { method: 'POST' },
+    );
+    expect(resp.status).toBe(404);
+  });
+});
+
+describe('Disk-backed (Re)build / Cancel — POST and DELETE /api/sources/:id/index-build (#358)', () => {
+  let harness: DiskHarness | undefined;
+  afterEach(async () => {
+    if (harness) await harness.cleanup();
+    harness = undefined;
+  });
+
+  interface DiskHarness {
+    server: CreatedServer;
+    base: string;
+    /** Forces `child.exit(code)` on the latest spawn for `sourceId`. */
+    settle: (sourceId: string, code: number | null) => void;
+    /** Latest spawned child's `killed` signal, or `undefined`. */
+    killed: (sourceId: string) => 'SIGTERM' | undefined;
+    /** Source ids spawn was called for, in order. */
+    spawned: () => string[];
+    cleanup: () => Promise<void>;
+  }
+
+  /**
+   * Controllable {@link BuildChild} stub for controller-level tests. The test
+   * drives `exit` and observes `killed` so the assertions don't race a real
+   * subprocess. Mirrors the `StubBuildChild` pattern from `engine-map.spec.ts`
+   * with an added `runRealBuild()` hook the freshness-path test uses to
+   * actually populate the on-disk manifest under the test's `configDir`.
+   */
+  class ControlledChild implements BuildChild {
+    private readonly exitListeners: Array<(code: number | null) => void> = [];
+    private readonly errorListeners: Array<(err: Error) => void> = [];
+    killed: 'SIGTERM' | undefined;
+    on(event: 'exit', listener: (code: number | null) => void): void;
+    on(event: 'error', listener: (err: Error) => void): void;
+    on(
+      event: 'exit' | 'error',
+      listener: ((code: number | null) => void) | ((err: Error) => void),
+    ): void {
+      if (event === 'exit') this.exitListeners.push(listener as (c: number | null) => void);
+      else this.errorListeners.push(listener as (e: Error) => void);
+    }
+    kill(signal: 'SIGTERM'): void {
+      this.killed = signal;
+    }
+    fireExit(code: number | null): void {
+      for (const l of this.exitListeners) l(code);
+    }
+  }
+
+  async function startDiskHarness(
+    options: {
+      readOnly?: boolean;
+      /** Run the real build inline before firing exit(0) on success path. */
+      runRealBuild?: boolean;
+    } = {},
+  ): Promise<DiskHarness> {
+    Logger.overrideLogger(false);
+    const dir = await mkdtemp(join(tmpdir(), 'sparqly-disk-build-'));
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const children = new Map<string, ControlledChild>();
+    const spawned: string[] = [];
+    // The registry the server will see — used by the spawn stub to resolve
+    // the same `indexDir` the EngineMap routes against, so the realBuild
+    // path writes a manifest the controller's snapshot endpoint can read.
+    const registry = parseSourceSpecs([
+      { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+    ]);
+    const spawn: SpawnIndexBuild = (id) => {
+      spawned.push(id);
+      const child = new ControlledChild();
+      children.set(id, child);
+      if (options.runRealBuild) {
+        const source = registry.find((s) => s.id === id);
+        if (source && (source.kind === 'glob' || source.kind === 'file')) {
+          const { indexId, pattern } = diskBackedIndexIdentity(source);
+          const indexDir = globIndexDir(dir, indexId, undefined);
+          void ensureGlobIndex({
+            glob: pattern,
+            transforms: source.transforms ?? [],
+            indexDir,
+            sparqlyVersion: 'test',
+          }).then((outcome) => child.fireExit(outcome.isOk() ? 0 : 1));
+        }
+      }
+      return child;
+    };
+    const server = await createServer({
+      sources: [{ id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' }],
+      port: 0,
+      readOnly: options.readOnly,
+      configDir: dir,
+      spawnIndexBuild: spawn,
+    });
+    return {
+      server,
+      base: `http://localhost:${server.port}`,
+      settle: (id, code) => children.get(id)?.fireExit(code),
+      killed: (id) => children.get(id)?.killed,
+      spawned: () => spawned,
+      cleanup: async () => {
+        await server.close();
+        await rm(dir, { recursive: true, force: true });
+      },
+    };
+  }
+
+  it('POST /api/sources/:id/index-build returns 202 Accepted and spawns a child build', async () => {
+    harness = await startDiskHarness();
+    const resp = await fetch(`${harness.base}/api/sources/big/index-build`, {
+      method: 'POST',
+    });
+    expect(resp.status).toBe(202);
+    expect(harness.spawned()).toEqual(['big']);
+    // Drain so the harness shutdown doesn't race the in-flight child.
+    harness.settle('big', null);
+  });
+
+  it('POST returns 403 Forbidden when sources.allowAdminActions is false (ADR-0045)', async () => {
+    harness = await startDiskHarness({ readOnly: true });
+    const resp = await fetch(`${harness.base}/api/sources/big/index-build`, {
+      method: 'POST',
+    });
+    expect(resp.status).toBe(403);
+    // Capability gate fires before the pool — no spawn happens.
+    expect(harness.spawned()).toEqual([]);
+  });
+
+  it('POST is idempotent during an in-flight build — second POST returns 202 without a second spawn', async () => {
+    harness = await startDiskHarness();
+    const first = await fetch(`${harness.base}/api/sources/big/index-build`, {
+      method: 'POST',
+    });
+    expect(first.status).toBe(202);
+    const second = await fetch(`${harness.base}/api/sources/big/index-build`, {
+      method: 'POST',
+    });
+    expect(second.status).toBe(202);
+    // Coalesced — the in-flight child handles both triggers.
+    expect(harness.spawned()).toEqual(['big']);
+    harness.settle('big', null);
+  });
+
+  it('POST returns 429 Too Many Requests inside the post-failure cooldown window', async () => {
+    harness = await startDiskHarness();
+    const first = await fetch(`${harness.base}/api/sources/big/index-build`, {
+      method: 'POST',
+    });
+    expect(first.status).toBe(202);
+    // The build child exits non-zero — the pool enters its cooldown for 'big'.
+    harness.settle('big', 1);
+    // Wait one microtask flush so the pool sees the exit before the next POST.
+    await new Promise((r) => setImmediate(r));
+    const retry = await fetch(`${harness.base}/api/sources/big/index-build`, {
+      method: 'POST',
+    });
+    expect(retry.status).toBe(429);
+  });
+
+  it('DELETE /api/sources/:id/index-build SIGTERMs the in-flight child and returns 202 Accepted', async () => {
+    harness = await startDiskHarness();
+    await fetch(`${harness.base}/api/sources/big/index-build`, {
+      method: 'POST',
+    });
+    const resp = await fetch(`${harness.base}/api/sources/big/index-build`, {
+      method: 'DELETE',
+    });
+    expect(resp.status).toBe(202);
+    expect(harness.killed('big')).toBe('SIGTERM');
+    // Drain the cancelled child so the server can shut down cleanly.
+    harness.settle('big', null);
+  });
+
+  it('DELETE returns 403 Forbidden when sources.allowAdminActions is false', async () => {
+    harness = await startDiskHarness({ readOnly: true });
+    const resp = await fetch(`${harness.base}/api/sources/big/index-build`, {
+      method: 'DELETE',
+    });
+    expect(resp.status).toBe(403);
+  });
+
+  it('DELETE with nothing in flight returns 202 (no-op satisfies the user intent)', async () => {
+    harness = await startDiskHarness();
+    const resp = await fetch(`${harness.base}/api/sources/big/index-build`, {
+      method: 'DELETE',
+    });
+    expect(resp.status).toBe(202);
+    expect(harness.killed('big')).toBeUndefined();
+  });
+
+  it('POST /api/sources/:id/index-build on an in-memory source returns 400 — Rebuild is disk-backed-only (ADR-0043)', async () => {
+    Logger.overrideLogger(false);
+    const dir = await mkdtemp(join(tmpdir(), 'sparqly-disk-build-mem-'));
+    try {
+      await writeFile(
+        join(dir, 'a.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+      const server = await createServer({
+        sources: [{ id: 'mem', glob: join(dir, '*.ttl') }],
+        port: 0,
+      });
+      try {
+        const resp = await fetch(
+          `http://localhost:${server.port}/api/sources/mem/index-build`,
+          { method: 'POST' },
+        );
+        expect(resp.status).toBe(400);
+      } finally {
+        await server.close();
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('POST on an unknown @id returns 404 — the action menu and the URL must agree on registry membership', async () => {
+    harness = await startDiskHarness();
+    const resp = await fetch(
+      `${harness.base}/api/sources/no-such-id/index-build`,
       { method: 'POST' },
     );
     expect(resp.status).toBe(404);
