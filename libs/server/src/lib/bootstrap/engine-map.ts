@@ -172,6 +172,15 @@ export interface EngineMapOptions {
    * the cap queue for a free slot. Defaults to 2.
    */
   indexConcurrency?: number;
+  /**
+   * Window after a failing build during which a repeat request for the same
+   * source is suppressed — caps the spawn rate so a permanently failing
+   * source (e.g. a malformed RDF file) does not turn every HTTP touch into a
+   * fresh `sparqly index` child. Forwarded to {@link IndexBuildPool}.
+   */
+  indexBuildCooldownMs?: number;
+  /** Clock injection for tests; forwarded to {@link IndexBuildPool}. */
+  now?: () => number;
 }
 
 export class EngineMap {
@@ -243,6 +252,8 @@ export class EngineMap {
     const buildPool = new IndexBuildPool({
       concurrency: options.indexConcurrency ?? 2,
       spawn: options.spawnIndexBuild ?? spawnIndexBuildUnavailable,
+      cooldownMs: options.indexBuildCooldownMs,
+      now: options.now,
     });
     return new EngineMap(
       entries,

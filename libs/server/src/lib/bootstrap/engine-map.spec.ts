@@ -513,17 +513,25 @@ describe('EngineMap', () => {
       ]);
       const builds = inProcessIndexBuilds(registry, dir);
 
+      let clock = 1_000;
       const map = await EngineMap.create(registry, {
         configDir: dir,
         spawnIndexBuild: builds.spawn,
+        // Short cooldown + injected clock — the fix-the-file retry must wait
+        // out the post-failure backoff (see no-spawn-storm test) before the
+        // pool will spawn the second build.
+        indexBuildCooldownMs: 1_000,
+        now: () => clock,
       });
       try {
         const first = await map.ensure('big');
         expect(first.isErr()).toBe(true);
         await map.whenIdle(); // the build child exits non-zero on the bad file
 
-        // Self-heal: fix the file, no restart. The cleared slot retries.
+        // Self-heal: fix the file, no restart. The cleared slot retries —
+        // after the cooldown window has elapsed.
         await writeFile(ttl, SAMPLE);
+        clock += 1_500;
         const retry = await map.ensure('big');
         expect(retry.isErr()).toBe(true);
         if (retry.isErr()) expect(retry.error.kind).toBe('indexing');
@@ -538,6 +546,42 @@ describe('EngineMap', () => {
         // The failing first attempt and the succeeding retry each spawned a
         // child — the non-zero exit did not stick the source in `indexing`.
         expect(builds.spawned).toEqual(['big', 'big']);
+      } finally {
+        await map.whenIdle();
+        await map.close();
+      }
+    });
+
+    it('repeated touches of a permanently failing disk-backed source spawn one build per cooldown window — no process-spawn storm (code-review finding #10)', async () => {
+      // A malformed RDF file: every build child exits non-zero with no
+      // manifest. Without per-source backoff every HTTP touch spawned a fresh
+      // `sparqly index` child — unbounded process-spawn storm.
+      await writeFile(join(dir, 'data.ttl'), 'this is not valid turtle .');
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+      const builds = inProcessIndexBuilds(registry, dir);
+
+      let clock = 1_000;
+      const map = await EngineMap.create(registry, {
+        configDir: dir,
+        spawnIndexBuild: builds.spawn,
+        indexBuildCooldownMs: 60_000,
+        now: () => clock,
+      });
+      try {
+        const first = await map.ensure('big');
+        expect(first.isErr()).toBe(true);
+        await map.whenIdle();
+
+        // Many HTTP touches in rapid succession while the source remains
+        // broken — must not spawn another child within the cooldown.
+        for (let i = 0; i < 25; i++) {
+          clock += 100; // 2.5s total — well inside the 60s cooldown.
+          const r = await map.ensure('big');
+          expect(r.isErr()).toBe(true);
+        }
+        expect(builds.spawned).toEqual(['big']);
       } finally {
         await map.whenIdle();
         await map.close();

@@ -235,6 +235,134 @@ describe('IndexBuildPool', () => {
     expect(spawned).toEqual(['a', 'b']);
   });
 
+  it('a non-zero exit puts the source in a cooldown — request() within the window is a no-op (no spawn storm on a permanently failing build)', () => {
+    const spawned: string[] = [];
+    const children = new Map<string, FakeChild>();
+    const spawn: SpawnIndexBuild = (id) => {
+      spawned.push(id);
+      const child = new FakeChild();
+      children.set(id, child);
+      return child;
+    };
+    let clock = 1_000;
+    const pool = new IndexBuildPool({
+      concurrency: 1,
+      spawn,
+      cooldownMs: 30_000,
+      now: () => clock,
+    });
+
+    pool.request('bad');
+    children.get('bad')?.exit(1); // build failed (malformed RDF)
+
+    // Many HTTP touches in rapid succession — the storm the finding describes.
+    clock += 10;
+    for (let i = 0; i < 50; i++) pool.request('bad');
+
+    // Only the original spawn happened — the cooldown suppressed the storm.
+    expect(spawned).toEqual(['bad']);
+  });
+
+  it('a spawn `error` (no exit ever fires) also puts the source in cooldown — a permanently broken spawn does not storm', () => {
+    const spawned: string[] = [];
+    const children = new Map<string, FakeChild>();
+    const spawn: SpawnIndexBuild = (id) => {
+      spawned.push(id);
+      const child = new FakeChild();
+      children.set(id, child);
+      return child;
+    };
+    let clock = 1_000;
+    const pool = new IndexBuildPool({
+      concurrency: 1,
+      spawn,
+      cooldownMs: 30_000,
+      now: () => clock,
+    });
+
+    pool.request('bad');
+    children.get('bad')?.emitError(new Error('spawn ENOENT'));
+
+    clock += 10;
+    pool.request('bad');
+    pool.request('bad');
+
+    expect(spawned).toEqual(['bad']);
+  });
+
+  it('a successful exit (code 0) clears any prior failure — the next request after a successful build spawns again', () => {
+    const spawned: string[] = [];
+    const children = new Map<string, FakeChild>();
+    const spawn: SpawnIndexBuild = (id) => {
+      spawned.push(id);
+      const child = new FakeChild();
+      // Re-set the latest child under the same id so the test fires the
+      // most recent build's `exit`.
+      children.set(id, child);
+      return child;
+    };
+    let clock = 1_000;
+    const pool = new IndexBuildPool({
+      concurrency: 1,
+      spawn,
+      cooldownMs: 30_000,
+      now: () => clock,
+    });
+
+    // First build fails — source enters cooldown.
+    pool.request('flaky');
+    children.get('flaky')?.exit(1);
+
+    clock += 10;
+    pool.request('flaky');
+    expect(spawned).toEqual(['flaky']); // still in cooldown — suppressed
+
+    // The cooldown window passes naturally — the build is re-attempted and
+    // this time succeeds.
+    clock += 30_000;
+    pool.request('flaky');
+    expect(spawned).toEqual(['flaky', 'flaky']);
+    children.get('flaky')?.exit(0);
+
+    // After the success, a fresh request must spawn again immediately — the
+    // cooldown carried over from the earlier failure must not gate a healthy
+    // source.
+    clock += 10;
+    pool.request('flaky');
+    expect(spawned).toEqual(['flaky', 'flaky', 'flaky']);
+  });
+
+  it('cooldown expires once the clock advances past cooldownMs — request() spawns again', () => {
+    const spawned: string[] = [];
+    const children = new Map<string, FakeChild>();
+    const spawn: SpawnIndexBuild = (id) => {
+      spawned.push(id);
+      const child = new FakeChild();
+      children.set(id, child);
+      return child;
+    };
+    let clock = 1_000;
+    const pool = new IndexBuildPool({
+      concurrency: 1,
+      spawn,
+      cooldownMs: 30_000,
+      now: () => clock,
+    });
+
+    pool.request('bad');
+    children.get('bad')?.exit(1);
+
+    // Just before the window closes — still suppressed.
+    clock += 29_999;
+    pool.request('bad');
+    expect(spawned).toEqual(['bad']);
+
+    // Window has closed — the next request spawns.
+    clock += 2;
+    pool.request('bad');
+    expect(spawned).toEqual(['bad', 'bad']);
+  });
+
   it('whenIdle() resolves once every running and queued build has settled', async () => {
     const children = new Map<string, FakeChild>();
     const spawn: SpawnIndexBuild = (id) => {
