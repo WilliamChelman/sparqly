@@ -20,6 +20,16 @@ export interface IndexBuildPoolOptions {
   /** Maximum number of build children running at once (`index.concurrency`). */
   concurrency: number;
   spawn: SpawnIndexBuild;
+  /**
+   * Window after a failing build during which {@link IndexBuildPool.request}
+   * for the same source is a no-op — caps the spawn rate so a permanently
+   * failing source (e.g. a malformed RDF file) does not turn every HTTP touch
+   * into a fresh `sparqly index` child. A successful exit clears the failure.
+   * Defaults to 30 seconds.
+   */
+  cooldownMs?: number;
+  /** Clock injection for tests; defaults to `Date.now`. */
+  now?: () => number;
 }
 
 /**
@@ -31,16 +41,28 @@ export interface IndexBuildPoolOptions {
 export class IndexBuildPool {
   private readonly concurrency: number;
   private readonly spawnChild: SpawnIndexBuild;
+  private readonly cooldownMs: number;
+  private readonly now: () => number;
   /** Build children currently running, keyed by source `@id`. */
   private readonly running = new Map<string, RunningBuild>();
   /** Source `@id`s requested past the cap, waiting for a free slot. */
   private readonly queue: string[] = [];
+  /**
+   * Wall-clock instant of the most recent failing build per source `@id`.
+   * Populated on a non-zero exit or a spawn `error`; cleared on a clean exit
+   * (`code === 0`). Drives the per-source backoff that caps `request()` to one
+   * spawn per cooldown window — without it a permanently failing build (e.g. a
+   * malformed RDF file) turns every HTTP touch into a fresh child.
+   */
+  private readonly lastFailureAt = new Map<string, number>();
   /** Set by {@link shutdown}; suppresses new spawns and queue draining. */
   private shuttingDown = false;
 
   constructor(options: IndexBuildPoolOptions) {
     this.concurrency = options.concurrency;
     this.spawnChild = options.spawn;
+    this.cooldownMs = options.cooldownMs ?? 30_000;
+    this.now = options.now ?? Date.now;
   }
 
   /**
@@ -53,11 +75,18 @@ export class IndexBuildPool {
     if (this.shuttingDown) return;
     if (this.running.has(sourceId)) return;
     if (this.queue.includes(sourceId)) return;
+    if (this.isInCooldown(sourceId)) return;
     if (this.running.size < this.concurrency) {
       this.start(sourceId);
     } else {
       this.queue.push(sourceId);
     }
+  }
+
+  private isInCooldown(sourceId: string): boolean {
+    const at = this.lastFailureAt.get(sourceId);
+    if (at === undefined) return false;
+    return this.now() - at < this.cooldownMs;
   }
 
   /**
@@ -98,17 +127,26 @@ export class IndexBuildPool {
     // `whenIdle`/`shutdown` would hang. Both handlers funnel into idempotent
     // cleanup so a child that fires both events only drains the queue once.
     let settled = false;
-    const settle = (): void => {
+    const settle = (failed: boolean): void => {
       if (settled) return;
       settled = true;
       this.running.delete(sourceId);
+      if (failed) {
+        this.lastFailureAt.set(sourceId, this.now());
+      } else {
+        this.lastFailureAt.delete(sourceId);
+      }
       markExited();
       if (this.shuttingDown) return;
       const next = this.queue.shift();
       if (next !== undefined) this.start(next);
     };
-    child.on('exit', settle);
-    child.on('error', settle);
+    // Treat any non-zero / null exit code as a failure so the cooldown applies
+    // — a `null` code means the child was signalled, and a signalled build
+    // wrote no manifest just like a non-zero exit. `'error'` (spawn failure)
+    // is unambiguously a failure.
+    child.on('exit', (code) => settle(code !== 0));
+    child.on('error', () => settle(true));
   }
 }
 
