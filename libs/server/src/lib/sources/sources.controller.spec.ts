@@ -139,6 +139,9 @@ describe('GET /api/sources — Sources page snapshot (#353)', () => {
       mode: 'endpoint',
       id: 'remote',
       kind: 'endpoint',
+      // Layer 4 (#359) — Endpoint source rows ship the endpoint URL so the
+      // page chip can render which remote the row points at.
+      endpointUrl: 'https://example.org/sparql',
     });
     expect('state' in row).toBe(false);
   });
@@ -867,6 +870,170 @@ describe('Disk-backed (Re)build / Cancel — POST and DELETE /api/sources/:id/in
     harness = await startDiskHarness();
     const resp = await fetch(
       `${harness.base}/api/sources/no-such-id/index-build`,
+      { method: 'POST' },
+    );
+    expect(resp.status).toBe(404);
+  });
+});
+
+describe('Endpoint Test connection — POST /api/sources/:id/test-connection (#359)', () => {
+  /**
+   * Throwaway local HTTP endpoint that answers SPARQL `ASK` either with
+   * `{ boolean: true }` (`mode: 'ok'`), with HTTP 500 (`mode: 'fail'`), or
+   * never responds — the harness aborts on cleanup (`mode: 'hang'`). The
+   * test wraps every assertion in a try/finally that calls `close()` so a
+   * crashing assertion never leaks a port.
+   */
+  async function startFakeEndpoint(
+    mode: 'ok' | 'fail',
+  ): Promise<{ url: string; asks: number; close: () => Promise<void> }> {
+    const { createServer: createHttp } = await import('node:http');
+    const state = { asks: 0 };
+    const server = createHttp((req, res) => {
+      state.asks += 1;
+      if (mode === 'fail') {
+        res.writeHead(500);
+        res.end('boom');
+        return;
+      }
+      // Comunica may probe with an empty service-description GET before the
+      // real query. Either way we just answer `{ boolean: true }` — the
+      // probe only cares that the round-trip succeeded.
+      res.writeHead(200, {
+        'Content-Type': 'application/sparql-results+json',
+      });
+      res.end(JSON.stringify({ head: {}, boolean: true }));
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', () => resolve()),
+    );
+    const addr = server.address();
+    const port = typeof addr === 'object' && addr ? addr.port : 0;
+    return {
+      url: `http://127.0.0.1:${port}/sparql`,
+      get asks() {
+        return state.asks;
+      },
+      close: () =>
+        new Promise<void>((resolve) => server.close(() => resolve())),
+    };
+  }
+
+  let cleanup: Array<() => Promise<void>> = [];
+  afterEach(async () => {
+    for (const c of cleanup) await c();
+    cleanup = [];
+  });
+
+  it('returns 200 OK with { ok: true, latencyMs } when the endpoint answers the ASK', async () => {
+    const ep = await startFakeEndpoint('ok');
+    cleanup.push(ep.close);
+    Logger.overrideLogger(false);
+    const server = await createServer({
+      sources: [{ id: 'remote', endpoint: ep.url }],
+      port: 0,
+    });
+    cleanup.push(() => server.close());
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/remote/test-connection`,
+      { method: 'POST' },
+    );
+    expect(resp.status).toBe(200);
+    const body = (await resp.json()) as {
+      ok: boolean;
+      latencyMs: number;
+    };
+    expect(body.ok).toBe(true);
+    expect(typeof body.latencyMs).toBe('number');
+    expect(body.latencyMs).toBeGreaterThanOrEqual(0);
+    // The route really probed the endpoint — a memoized verdict from boot
+    // would record zero ASKs at this point.
+    expect(ep.asks).toBeGreaterThanOrEqual(1);
+  });
+
+  it('returns 200 OK with { ok: false, error: { kind, message } } when the endpoint fails', async () => {
+    const ep = await startFakeEndpoint('fail');
+    cleanup.push(ep.close);
+    Logger.overrideLogger(false);
+    const server = await createServer({
+      sources: [{ id: 'remote', endpoint: ep.url }],
+      port: 0,
+    });
+    cleanup.push(() => server.close());
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/remote/test-connection`,
+      { method: 'POST' },
+    );
+    // The probe succeeded — it reached the endpoint and learned it is sick.
+    // 200 OK with `ok: false` is the chip-rendering contract; a 5xx here
+    // would be a category error (the probe itself didn't fail, the
+    // endpoint did).
+    expect(resp.status).toBe(200);
+    const body = (await resp.json()) as {
+      ok: boolean;
+      error?: { kind: string; message: string };
+    };
+    expect(body.ok).toBe(false);
+    expect(body.error?.kind).toBe('endpoint-fetch');
+    expect(typeof body.error?.message).toBe('string');
+  });
+
+  it('returns 403 Forbidden when sources.allowAdminActions is false (ADR-0045 — endpoint hammering guard)', async () => {
+    // PRD user story 41: the Test connection button is gated by the
+    // capability flag so a public viewer can't hammer the endpoint
+    // 100×/second by clicking the button.
+    const ep = await startFakeEndpoint('ok');
+    cleanup.push(ep.close);
+    Logger.overrideLogger(false);
+    const server = await createServer({
+      sources: [{ id: 'remote', endpoint: ep.url }],
+      port: 0,
+      readOnly: true,
+    });
+    cleanup.push(() => server.close());
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/remote/test-connection`,
+      { method: 'POST' },
+    );
+    expect(resp.status).toBe(403);
+    // Capability gate fires before the probe — no ASK reached the endpoint.
+    expect(ep.asks).toBe(0);
+  });
+
+  it('returns 404 Not Found for an unknown @id', async () => {
+    const ep = await startFakeEndpoint('ok');
+    cleanup.push(ep.close);
+    Logger.overrideLogger(false);
+    const server = await createServer({
+      sources: [{ id: 'remote', endpoint: ep.url }],
+      port: 0,
+    });
+    cleanup.push(() => server.close());
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/no-such-id/test-connection`,
+      { method: 'POST' },
+    );
+    expect(resp.status).toBe(404);
+  });
+
+  it('returns 404 Not Found for a non-endpoint @id (Test connection is endpoint-only — PRD AC)', async () => {
+    // PRD acceptance criterion #2: "404 Not Found for non-endpoint ids".
+    // The verb is endpoint-only; from the route's perspective, an
+    // in-memory or disk-backed entry is "no such endpoint with that id".
+    const dir = await mkdtemp(join(tmpdir(), 'sparqly-test-conn-mem-'));
+    cleanup.push(() => rm(dir, { recursive: true, force: true }));
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    Logger.overrideLogger(false);
+    const server = await createServer({
+      sources: [{ id: 'mem', glob: join(dir, '*.ttl') }],
+      port: 0,
+    });
+    cleanup.push(() => server.close());
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/mem/test-connection`,
       { method: 'POST' },
     );
     expect(resp.status).toBe(404);

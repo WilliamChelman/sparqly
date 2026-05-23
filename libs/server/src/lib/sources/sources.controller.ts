@@ -25,6 +25,7 @@ import {
   type EngineMapProvider,
   type SourcesAdminServerConfig,
 } from '../bootstrap/tokens';
+import { probeEndpoint, type ProbeResult } from './endpoint-probe';
 import { projectSourceRow, type SourceRow } from './source-row-projector';
 import type {
   SourcesSseEnvelope,
@@ -213,6 +214,34 @@ export class SourcesController {
     this.assertKnownId(id);
     this.engineMap.cancelBuild(id);
     return this.respondWithState(id);
+  }
+
+  /**
+   * `POST /api/sources/:id/test-connection` — operator-initiated reachability
+   * probe for an **Endpoint source** entry (#359, parent #352). Issues a
+   * single `ASK { ?s ?p ?o }` against the entry's pass-through `QueryEngine`
+   * and returns `{ ok, latencyMs, error? }` for that one click; the result
+   * is **never memoized** so the chip never lies about a stale check (PRD
+   * user story 20). Gated by `sourcesAdmin.allowAdminActions` (PRD user
+   * story 41: prevents a public viewer from hammering the endpoint by
+   * clicking the button). `404 Not Found` covers both unknown ids and
+   * non-endpoint ids — from the route's perspective both mean "no such
+   * endpoint here". Returns `200 OK` (not `202`) — the probe is
+   * synchronous and the chip needs the verdict on the same turn.
+   */
+  @Post(':id/test-connection')
+  @HttpCode(HttpStatus.OK)
+  async testConnection(@Param('id') id: string): Promise<ProbeResult> {
+    this.assertAdminAllowed();
+    const engine = this.engineMap.getEndpointEngine(id);
+    if (engine === undefined) {
+      // Both branches (unknown id, in-memory/disk-backed id) collapse onto
+      // 404 per the PRD's acceptance criterion — the verb is endpoint-only
+      // and the action menu only renders the button on endpoint rows, so a
+      // /test-connection on anything else is a URL the UI never produced.
+      throw new NotFoundException({ error: 'unknown-endpoint', id });
+    }
+    return probeEndpoint(engine);
   }
 
   /**

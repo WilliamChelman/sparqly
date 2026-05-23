@@ -41,12 +41,12 @@ export type SourceRow =
       parentId?: string;
     } & Layer2Fields &
       Layer3Fields)
-  | {
+  | ({
       mode: 'endpoint';
       id: string;
       kind: 'endpoint';
       default?: true;
-    };
+    } & Layer4Fields);
 
 export type InMemoryState = 'not-loaded' | 'loading' | 'loaded' | 'failed';
 export type DiskBackedState =
@@ -87,6 +87,29 @@ interface Layer3Fields {
   manifestSparqlyVersion?: string;
   staleReason?: string;
 }
+
+/**
+ * Layer 4 endpoint extras (#359). Only endpoint rows carry these. `endpointUrl`
+ * is the absolute URL of the remote SPARQL endpoint declared by the source —
+ * surfaces alongside the @id on the row so an operator can tell two
+ * registries with the same id apart, and so the row chip can identify which
+ * remote a `Test connection` probe is about to hit.
+ */
+interface Layer4Fields {
+  endpointUrl?: string;
+}
+
+/**
+ * Outcome of a click on the **Test connection** button (#359). The wire shape
+ * is the controller's `ProbeResult`; the page renders it as a chip on the
+ * endpoint row — green tick + latency on ok, red kind chip + first-line
+ * message on err. Always paired with a `pending` state in the page cache so
+ * the click can render a spinner until the probe settles.
+ */
+export type EndpointProbeChip =
+  | { state: 'pending' }
+  | { state: 'ok'; latencyMs: number }
+  | { state: 'error'; kind: string; message: string };
 
 /**
  * Foundational tracer for the **Sources page** (#353). Layer 1 only — fetches
@@ -234,6 +257,36 @@ interface Layer3Fields {
                 the meaningful state to preserve; not-built and failed skip
                 confirm — there is no built-up state to lose.
               -->
+              @if (allowAdminActions() && row.mode === 'endpoint') {
+                <button
+                  type="button"
+                  class="rounded border border-border-muted bg-surface-muted px-2 py-0.5 text-xs text-foreground hover:bg-surface"
+                  data-testid="row-action-test-connection"
+                  (click)="testConnection(row.id)"
+                >
+                  Test connection
+                </button>
+                @if (probeChip(row.id); as chip) {
+                  <span
+                    class="rounded px-1.5 py-0.5 text-xs"
+                    [class.bg-surface-muted]="chip.state === 'pending'"
+                    [class.text-foreground-muted]="chip.state === 'pending'"
+                    [class.bg-accent-muted]="chip.state === 'ok'"
+                    [class.text-accent]="chip.state === 'ok'"
+                    [class.bg-warning-muted]="chip.state === 'error'"
+                    [class.text-warning]="chip.state === 'error'"
+                    data-testid="row-test-connection-chip"
+                    [attr.data-state]="chip.state"
+                    [attr.data-kind]="chip.state === 'error' ? chip.kind : null"
+                  >
+                    @switch (chip.state) {
+                      @case ('pending') { probing… }
+                      @case ('ok') { ok · {{ chip.latencyMs }} ms }
+                      @case ('error') { {{ chip.kind }} · {{ chip.message }} }
+                    }
+                  </span>
+                }
+              }
               @if (allowAdminActions() && row.mode === 'disk-backed') {
                 @if (row.state !== 'indexing') {
                   <button
@@ -301,6 +354,15 @@ export class SourcesPage implements OnInit, OnDestroy {
 
   /** `null` while the initial snapshot is in flight; never repopulated to `null`. */
   readonly rows = signal<SourceRow[] | null>(null);
+  /**
+   * Per-row **Test connection** chip cache (#359). Keyed by source @id;
+   * absent when the user has not clicked the button yet (so no chip
+   * renders). A click writes `pending` immediately, then overwrites with
+   * the probe verdict when the HTTP turn settles. The verdict is **never
+   * memoized server-side** (PRD user story 20), and the page mirrors that
+   * by overwriting — not merging — on each click.
+   */
+  private readonly probeChips = signal<Record<string, EndpointProbeChip>>({});
   /**
    * **Source admin actions capability** (ADR-0045, #356), read from
    * `GET /api/config` at boot. `true` is the permissive default — an older
@@ -399,6 +461,60 @@ export class SourcesPage implements OnInit, OnDestroy {
         },
         error: () => {
           /* Layer 1 swallows. */
+        },
+      });
+  }
+
+  /**
+   * Reads the current **Test connection** chip for `id` from the per-row
+   * cache (#359). Returns `undefined` when the operator has not clicked the
+   * button yet — the template uses that to skip rendering the chip element
+   * at all, so an unprobed endpoint row stays uncluttered.
+   */
+  probeChip(id: string): EndpointProbeChip | undefined {
+    return this.probeChips()[id];
+  }
+
+  /**
+   * Fires `POST /api/sources/:id/test-connection` (#359). Writes a `pending`
+   * chip immediately so the operator sees feedback within one frame, then
+   * overwrites with the probe verdict when the HTTP turn settles. Mirrors the
+   * server's "never memoize" contract by overwriting (not merging) on every
+   * click — a stale chip from a prior click cannot survive a re-probe.
+   * Transport-level failures (network down, 5xx without a `ProbeResult` body)
+   * surface as a synthetic `transport` error chip so the operator can tell
+   * "endpoint said no" from "couldn't reach the server at all."
+   */
+  testConnection(id: string): void {
+    this.probeChips.update((prev) => ({ ...prev, [id]: { state: 'pending' } }));
+    this.http
+      .post<
+        | { ok: true; latencyMs: number }
+        | { ok: false; error: { kind: string; message: string }; latencyMs: number }
+      >(`/api/sources/${encodeURIComponent(id)}/test-connection`, null)
+      .pipe(takeUntilDestroyed(this.destroy))
+      .subscribe({
+        next: (result) => {
+          this.probeChips.update((prev) => ({
+            ...prev,
+            [id]: result.ok
+              ? { state: 'ok', latencyMs: result.latencyMs }
+              : {
+                  state: 'error',
+                  kind: result.error.kind,
+                  message: result.error.message,
+                },
+          }));
+        },
+        error: () => {
+          this.probeChips.update((prev) => ({
+            ...prev,
+            [id]: {
+              state: 'error',
+              kind: 'transport',
+              message: 'probe request failed',
+            },
+          }));
         },
       });
   }

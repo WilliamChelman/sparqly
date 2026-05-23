@@ -30,12 +30,12 @@ export type SourceRow =
       parentId?: string;
     } & Layer2Fields &
       Layer3Fields)
-  | {
+  | ({
       mode: 'endpoint';
       id: string;
       kind: 'endpoint';
       default?: true;
-    };
+    } & Layer4Fields);
 
 /**
  * Layer 2 of the Sources page row shape (#355, parent #352). Materialization
@@ -101,6 +101,19 @@ interface Layer3Fields {
    * if the runtime supplied one.
    */
   staleReason?: string;
+}
+
+/**
+ * Layer 4 endpoint extras on the Sources page row (#359). **Endpoint source**
+ * entries surface the endpoint URL the row points at, so the operator can
+ * identify a row at a glance without round-tripping through `/api/config`.
+ * The field is unconditional on endpoint rows (every endpoint declaration
+ * has a URL — there is no "unknown" branch) and the discriminated union
+ * forbids it on any other mode.
+ */
+interface Layer4Fields {
+  /** Absolute URL of the remote SPARQL endpoint declared by the source. */
+  endpointUrl?: string;
 }
 
 /**
@@ -192,8 +205,17 @@ export function projectSourceRow(
         `projectSourceRow: endpoint runtime requires kind 'endpoint' (got '${source.kind}')`,
       );
     }
+    // Layer 4 (#359): the endpoint URL rides on every endpoint row — there
+    // is no "unknown" branch for it (a parsed endpoint source by definition
+    // has an `endpoint` URL). The Sources page chip uses it as the row's
+    // identifying detail next to the @id.
     return withOptionalDefault(
-      { mode: 'endpoint', id, kind: 'endpoint' },
+      {
+        mode: 'endpoint',
+        id,
+        kind: 'endpoint',
+        endpointUrl: source.endpoint,
+      },
       isDefault,
     );
   }
