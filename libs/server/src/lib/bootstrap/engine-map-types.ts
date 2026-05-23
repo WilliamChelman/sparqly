@@ -59,3 +59,15 @@ export function indexingError(source: string): IndexingError {
     message: `disk-backed glob '${source}' is building its index — retry shortly`,
   };
 }
+
+/**
+ * Default `SpawnIndexBuild` used when `EngineMapOptions.spawnIndexBuild` is
+ * omitted — touching a not-yet-built disk-backed source then fails loudly
+ * rather than silently never indexing. `serve` always injects a real spawn.
+ */
+export function spawnIndexBuildUnavailable(): never {
+  throw new Error(
+    'EngineMap: a disk-backed source needs an index build, but no ' +
+      'spawnIndexBuild was provided to EngineMap.create (ADR-0042)',
+  );
+}

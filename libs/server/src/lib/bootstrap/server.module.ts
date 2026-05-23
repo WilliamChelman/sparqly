@@ -15,7 +15,7 @@ import {
 } from '../saved-queries';
 import { RegistrySparqlController } from '../sparql';
 import { RefsController } from '../refs';
-import { SourcesController } from '../sources';
+import { SourceStateBroker, SourcesController } from '../sources';
 import {
   SnippetAllowList,
   SnippetController,
@@ -37,6 +37,7 @@ import {
   SPARQL_SAVED_QUERIES_SERVICE,
   SPARQL_SERVED_REGISTRY,
   SPARQL_SNIPPET_ALLOW_LIST,
+  SPARQL_SOURCE_STATE_BROKER,
   type SavedQueriesServerConfig,
   type SparqlContext,
   type SparqlServerConfig,
@@ -69,6 +70,13 @@ export interface ServerModuleOptions {
   describe: DescribeConfig;
   snippetAllowList: SnippetAllowList;
   savedQueries: SavedQueriesServerConfig;
+  /**
+   * Live state broker for the Sources page (ADR-0044, #354). Wired up
+   * in `createServer`, then provided here under
+   * {@link SPARQL_SOURCE_STATE_BROKER} so `SourcesController.@Sse('stream')`
+   * can subscribe.
+   */
+  sourceStateBroker: SourceStateBroker;
 }
 
 @Module({})
@@ -123,6 +131,10 @@ export class ServerModule {
         {
           provide: SPARQL_SAVED_QUERIES_SERVICE,
           useValue: new SavedQueriesService(options.savedQueries),
+        },
+        {
+          provide: SPARQL_SOURCE_STATE_BROKER,
+          useValue: options.sourceStateBroker,
         },
       ],
     };

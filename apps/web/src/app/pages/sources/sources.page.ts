@@ -4,10 +4,15 @@ import {
   Component,
   DestroyRef,
   inject,
+  OnDestroy,
   OnInit,
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  SOURCE_STATE_STREAM_FACTORY,
+  type SourceStateStream,
+} from './source-state-stream';
 
 /**
  * Layer 1 of the Sources page row shape (#353, parent #352). The server-side
@@ -117,25 +122,80 @@ export type DiskBackedState =
     </main>
   `,
 })
-export class SourcesPage implements OnInit {
+export class SourcesPage implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly destroy = inject(DestroyRef);
+  private readonly streamFactory = inject(SOURCE_STATE_STREAM_FACTORY);
 
   /** `null` while the initial snapshot is in flight; never repopulated to `null`. */
   readonly rows = signal<SourceRow[] | null>(null);
+  /**
+   * The live SSE subscription opened after the initial snapshot lands
+   * (ADR-0044, #354). Replaced on `refetch-snapshot`; closed on destroy.
+   */
+  private stream: SourceStateStream | undefined;
 
   ngOnInit(): void {
+    this.fetchSnapshot(/* subscribeAfter */ true);
+  }
+
+  ngOnDestroy(): void {
+    this.stream?.close();
+    this.stream = undefined;
+  }
+
+  /**
+   * Fetches the canonical snapshot and, on success, opens a fresh live
+   * subscription. Used both for first load and for the unbridgeable-
+   * reconnect recovery path (ADR-0044's `refetch-snapshot` sentinel).
+   */
+  private fetchSnapshot(subscribeAfter: boolean): void {
     this.http
       .get<SourceRow[]>('/api/sources')
       .pipe(takeUntilDestroyed(this.destroy))
       .subscribe({
-        next: (snapshot) => this.rows.set(snapshot),
-        // Layer 1 ignores load failure for now — later slices wire an error
-        // banner. Leaving `rows` at `null` keeps the page in its "loading…"
-        // state, which is a visible signal something is wrong.
+        next: (snapshot) => {
+          this.rows.set(snapshot);
+          if (subscribeAfter) this.subscribe();
+        },
+        // Layer 1 ignores snapshot failure for now — later slices wire an
+        // error banner. Leaving `rows` at `null` keeps the page in its
+        // "loading…" state, which is a visible signal something is wrong.
         error: () => {
           /* intentionally empty — see comment above */
         },
       });
+  }
+
+  /**
+   * Opens a fresh stream and binds the row/sentinel handlers. The existing
+   * stream (if any) is closed first — the page never has two live streams
+   * at once.
+   */
+  private subscribe(): void {
+    this.stream?.close();
+    this.stream = this.streamFactory.open({
+      onRow: (row) => this.applyRow(row),
+      onRefetchSnapshot: () => {
+        this.stream?.close();
+        this.stream = undefined;
+        this.fetchSnapshot(/* subscribeAfter */ true);
+      },
+    });
+  }
+
+  private applyRow(row: SourceRow): void {
+    this.rows.update((prev) => {
+      if (prev === null) return prev;
+      let replaced = false;
+      const next = prev.map((r) => {
+        if (r.id !== row.id) return r;
+        replaced = true;
+        return row;
+      });
+      // Unknown id (e.g. a new source added by config reload) — append it
+      // so the page doesn't silently drop the event.
+      return replaced ? next : [...next, row];
+    });
   }
 }

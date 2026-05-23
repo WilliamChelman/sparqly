@@ -10,13 +10,16 @@ import {
 } from 'core';
 import type { StoreRef } from './tokens';
 import { isDiskBacked, manifestExists } from './disk-backed-index';
+import { projectEntryState } from './engine-map-read-state';
 import {
   indexingError,
+  spawnIndexBuildUnavailable,
   type IndexingError,
   type LoadedSources,
 } from './engine-map-types';
 import { IndexBuildPool, type SpawnIndexBuild } from './index-build-pool';
 import type { SourceRuntime } from '../sources/source-row-projector';
+import type { SourceStateEmitter } from '../sources/source-state-emitter';
 
 export type { IndexingError, LoadedSources } from './engine-map-types';
 export { isIndexingError } from './engine-map-types';
@@ -120,6 +123,16 @@ export interface EngineMapOptions {
   indexBuildCooldownMs?: number;
   /** Clock injection for tests; forwarded to {@link IndexBuildPool}. */
   now?: () => number;
+  /**
+   * Observer for **Source load state** transitions — `load-start` /
+   * `load-success` / `load-failure` for in-memory ensures, `build-start`
+   * for disk-backed first-touch builds, `unload` / `build-cancel` for the
+   * operator-initiated edges that arrive in later slices of parent #352.
+   * Default: a fresh no-op emitter (no subscribers). The SSE wiring
+   * (`SourcesController`) injects the shared emitter so transitions reach
+   * the ring buffer and the live stream (ADR-0044, #354).
+   */
+  sourceStateEmitter?: SourceStateEmitter;
 }
 
 export class EngineMap {
@@ -131,6 +144,12 @@ export class EngineMap {
   private readonly indexCacheDir: string | undefined;
   /** Caps and queues the isolated child-process index builds (ADR-0042). */
   private readonly buildPool: IndexBuildPool;
+  /**
+   * Optional **Source load state** transition observer (ADR-0044, #354).
+   * `undefined` means no SSE wiring is attached — `serve` outside the
+   * sources controller still works exactly as before.
+   */
+  private readonly stateEmitter: SourceStateEmitter | undefined;
 
   private constructor(
     entries: Map<string, Entry>,
@@ -140,6 +159,7 @@ export class EngineMap {
     sparqlyVersion: string | undefined,
     indexCacheDir: string | undefined,
     buildPool: IndexBuildPool,
+    stateEmitter: SourceStateEmitter | undefined,
   ) {
     this.entries = entries;
     this.resolutionRegistry = resolutionRegistry;
@@ -148,6 +168,7 @@ export class EngineMap {
     this.sparqlyVersion = sparqlyVersion;
     this.indexCacheDir = indexCacheDir;
     this.buildPool = buildPool;
+    this.stateEmitter = stateEmitter;
   }
 
   static async create(
@@ -202,6 +223,7 @@ export class EngineMap {
       options.sparqlyVersion,
       options.indexCacheDir,
       buildPool,
+      options.sourceStateEmitter,
     );
   }
 
@@ -287,6 +309,15 @@ export class EngineMap {
     // child may have finished); `pool.request` is idempotent, so the repeated
     // touches that precede a clear coalesce onto the one build child.
     entry.disk = undefined;
+    // Emit `build-start` only when a child is actually requested. The
+    // pool's idempotence (a coalesced request inside the cooldown window
+    // or against an already-running child) is intentionally observable
+    // here as a duplicate emit — the Sources page treats each event as
+    // an idempotent row replace, so a redundant `indexing` re-paint is
+    // harmless and cheaper than threading a "was-spawned" boolean back
+    // through the pool. Future slices of #352 wire `build-success` /
+    // `build-failure` / `build-cancel` from a pool completion callback.
+    this.stateEmitter?.emit({ kind: 'build-start', sourceId });
     this.buildPool.request(sourceId);
     return err(indexingError(sourceId));
   }
@@ -305,6 +336,10 @@ export class EngineMap {
   ): Promise<Result<LoadedEntry, SourceError>> {
     const src = entry.source;
     const sourceId = src.id ?? '(source)';
+    // `load-start` fires before any I/O so the Sources page sees `loading`
+    // for the entire duration of the in-flight load, including the
+    // resolveSourceResult turn (which is the slow part for large globs).
+    this.stateEmitter?.emit({ kind: 'load-start', sourceId });
     const start = Date.now();
     const resolved = await resolveSourceResult(src, {
       registry: this.resolutionRegistry,
@@ -317,6 +352,7 @@ export class EngineMap {
       // Clear memoization so the next request retries — gives the user a
       // self-healing path when they fix the underlying file/ref/config.
       entry.loaded = undefined;
+      this.stateEmitter?.emit({ kind: 'load-failure', sourceId });
       return err(resolved.error);
     }
     const sources = resolved.value;
@@ -376,6 +412,7 @@ export class EngineMap {
     }
     entry.current = loaded;
     const ms = Date.now() - start;
+    this.stateEmitter?.emit({ kind: 'load-success', sourceId });
     if (loaded.storeRef) {
       this.logger?.debug('source-loaded', {
         source: sourceId,
@@ -396,39 +433,15 @@ export class EngineMap {
 
   /**
    * Snapshot of an entry's current **Source load state** for the Sources page
-   * (`GET /api/sources`, #353). Pure observer over `current`, `loaded`, `disk`,
-   * and on-disk manifest presence — never triggers lazy materialization
-   * (ADR-0031) and never spawns a child-process build (ADR-0042). Layer 1
-   * states only; `stale` / `failed` discriminations arrive in later slices of
-   * the parent epic (#352).
+   * (`GET /api/sources`, #353). Pure observer — never triggers lazy
+   * materialization (ADR-0031) and never spawns a child-process build
+   * (ADR-0042). The projection logic lives in {@link projectEntryState} to
+   * keep this file under the `max-lines` lint cap.
    */
   async readState(id: string): Promise<SourceRuntime> {
     const entry = this.entries.get(id);
     if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
-    if (entry.source.kind === 'endpoint') return { mode: 'endpoint' };
-    if (isDiskBacked(entry.source)) {
-      if (entry.current !== undefined) {
-        return { mode: 'disk-backed', state: 'ready' };
-      }
-      if (entry.disk !== undefined) {
-        return { mode: 'disk-backed', state: 'indexing' };
-      }
-      // Probe the on-disk manifest without opening — a `stat` of
-      // `manifest.json` reports "ready" without acquiring the LevelDB lock.
-      const indexDir = globIndexDir(
-        this.configDir,
-        entry.source.id as string,
-        this.indexCacheDir,
-      );
-      const state = (await manifestExists(indexDir)) ? 'ready' : 'not-built';
-      return { mode: 'disk-backed', state };
-    }
-    if (entry.current !== undefined) return { mode: 'in-memory', state: 'loaded' };
-    // `loaded` is defined iff in-flight or settled-ok — the err path clears
-    // the slot back to `undefined` (#290), so `not-loaded` covers both rest
-    // and freshly-failed.
-    if (entry.loaded !== undefined) return { mode: 'in-memory', state: 'loading' };
-    return { mode: 'in-memory', state: 'not-loaded' };
+    return projectEntryState(entry, this.configDir, this.indexCacheDir);
   }
 
   /**
@@ -483,14 +496,3 @@ export class EngineMap {
   }
 }
 
-/**
- * Default {@link SpawnIndexBuild} used when {@link EngineMapOptions.spawnIndexBuild}
- * is omitted — touching a not-yet-built disk-backed source then fails loudly
- * rather than silently never indexing. `serve` always injects a real spawn.
- */
-function spawnIndexBuildUnavailable(): never {
-  throw new Error(
-    'EngineMap: a disk-backed source needs an index build, but no ' +
-      'spawnIndexBuild was provided to EngineMap.create (ADR-0042)',
-  );
-}
