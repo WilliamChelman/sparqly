@@ -224,6 +224,12 @@ export async function createServer(
         path: resolveSavedQueriesPath(options),
         writable: options.readOnly !== true,
       },
+      sourcesAdmin: {
+        // ADR-0045: defaulted from the same `serve --read-only` switch as
+        // `savedQueries.writable`. Project config can override this flag
+        // independently in a later slice — for now CLI is the only source.
+        allowAdminActions: options.readOnly !== true,
+      },
       sourceStateBroker,
     }),
     { abortOnError: false },

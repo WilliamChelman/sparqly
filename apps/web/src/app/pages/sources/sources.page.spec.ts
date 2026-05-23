@@ -110,10 +110,42 @@ async function setup(
   };
 }
 
-function flush(http: HttpTestingController, rows = SNAPSHOT): void {
+function flushSources(http: HttpTestingController, rows = SNAPSHOT): void {
   const req = http.expectOne('/api/sources');
   expect(req.request.method).toBe('GET');
   req.flush(rows);
+}
+
+function flushConfig(
+  http: HttpTestingController,
+  opts: { allowAdminActions?: boolean } = {},
+): void {
+  const req = http.expectOne('/api/config');
+  expect(req.request.method).toBe('GET');
+  req.flush({
+    sources: [],
+    context: { prefixes: {} },
+    describe: {
+      perSourceSoftLimit: 0,
+      perSourceHardLimit: 0,
+      fromSourcePredicate: '',
+    },
+    sourcesAdmin: { allowAdminActions: opts.allowAdminActions ?? true },
+  });
+}
+
+/**
+ * Initial-load helper — flushes both the snapshot and the config boot fetch.
+ * The refetch-snapshot path re-issues only `/api/sources`, so that test
+ * calls `flushSources` directly on the second turn.
+ */
+function flush(
+  http: HttpTestingController,
+  rows = SNAPSHOT,
+  opts: { allowAdminActions?: boolean } = {},
+): void {
+  flushSources(http, rows);
+  flushConfig(http, opts);
 }
 
 describe('SourcesPage (#353)', () => {
@@ -239,13 +271,16 @@ describe('SourcesPage (#353)', () => {
     expect(stream.closed()).toBe(true);
 
     // The page re-issues GET /api/sources with the fresh state of the world.
+    // Config is not re-fetched on the refetch path — capability is a boot
+    // concern, not a per-snapshot one — so only the snapshot endpoint is
+    // flushed on the second turn.
     const refetched: SourceRow[] = [
       { mode: 'in-memory', id: 'docs', kind: 'glob', state: 'loaded' },
       { mode: 'in-memory', id: 'projects', kind: 'glob', state: 'loaded' },
       { mode: 'disk-backed', id: 'big', kind: 'glob', state: 'ready' },
       { mode: 'endpoint', id: 'wikidata', kind: 'endpoint' },
     ];
-    flush(ctx.http, refetched);
+    flushSources(ctx.http, refetched);
     ctx.detect();
     await ctx.stable();
     ctx.detect();
@@ -416,6 +451,133 @@ describe('SourcesPage (#353)', () => {
       const cell = row?.querySelector(`[data-testid="${testid}"]`);
       expect(cell?.textContent?.trim() ?? '').toBe('');
     }
+  });
+
+  describe('per-row admin action menu (#356)', () => {
+    it('renders a Load button on a not-loaded in-memory row when allowAdminActions is true', async () => {
+      const ctx = await setup();
+      flush(ctx.http, SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const docsRow = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-docs"]',
+      );
+      expect(
+        docsRow?.querySelector('[data-testid="row-action-load"]'),
+      ).not.toBeNull();
+    });
+
+    it('renders a Reload button on a loaded in-memory row that POSTs /api/sources/:id/reload on click', async () => {
+      const ctx = await setup();
+      flush(ctx.http, SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const projectsRow = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-projects"]',
+      );
+      const reload = projectsRow?.querySelector<HTMLButtonElement>(
+        '[data-testid="row-action-reload"]',
+      );
+      expect(reload).not.toBeNull();
+
+      reload!.click();
+      ctx.detect();
+      await ctx.stable();
+
+      const req = ctx.http.expectOne('/api/sources/projects/reload');
+      expect(req.request.method).toBe('POST');
+      req.flush({ id: 'projects', state: 'loaded' });
+      ctx.http.verify();
+    });
+
+    it('renders an Unload button on a loaded in-memory row that POSTs /api/sources/:id/unload on click', async () => {
+      const ctx = await setup();
+      flush(ctx.http, SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const projectsRow = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-projects"]',
+      );
+      const unload = projectsRow?.querySelector<HTMLButtonElement>(
+        '[data-testid="row-action-unload"]',
+      );
+      expect(unload).not.toBeNull();
+
+      unload!.click();
+      ctx.detect();
+      await ctx.stable();
+
+      const req = ctx.http.expectOne('/api/sources/projects/unload');
+      expect(req.request.method).toBe('POST');
+      req.flush({ id: 'projects', state: 'not-loaded' });
+      ctx.http.verify();
+    });
+
+    it('hides every per-row action button when allowAdminActions is false (read-only serve)', async () => {
+      // The deployment-wide capability flag is the only switch the page
+      // honours — read-only `serve` must not advertise affordances the
+      // server will then 403 on. The assertion sweeps the whole list and
+      // confirms no `row-action-*` element exists anywhere.
+      const ctx = await setup();
+      flush(ctx.http, SNAPSHOT, { allowAdminActions: false });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const buttons = ctx.nativeElement().querySelectorAll(
+        '[data-testid^="row-action-"]',
+      );
+      expect(buttons.length).toBe(0);
+    });
+
+    it('clicking Load on a not-loaded row POSTs /api/sources/:id/load', async () => {
+      const ctx = await setup();
+      flush(ctx.http, SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const docsRow = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-docs"]',
+      );
+      const load = docsRow?.querySelector<HTMLButtonElement>(
+        '[data-testid="row-action-load"]',
+      );
+      load!.click();
+      ctx.detect();
+      await ctx.stable();
+
+      const req = ctx.http.expectOne('/api/sources/docs/load');
+      expect(req.request.method).toBe('POST');
+      req.flush({ id: 'docs', state: 'loading' });
+      ctx.http.verify();
+    });
+
+    it('never renders in-memory verbs (Load/Reload/Unload) on endpoint or disk-backed rows', async () => {
+      // #356 is in-memory only. Pass-through endpoints have no state machine
+      // and disk-backed gets its own verb set (Build / Rebuild / Discard) in
+      // a later slice of #352 — so neither row class may render in-memory
+      // verbs even when the capability is on.
+      const ctx = await setup();
+      flush(ctx.http, SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      for (const id of ['wikidata', 'big']) {
+        const row = ctx.nativeElement().querySelector(
+          `[data-testid="source-row-${id}"]`,
+        );
+        const buttons = row?.querySelectorAll('[data-testid^="row-action-"]');
+        expect(buttons?.length ?? 0).toBe(0);
+      }
+    });
   });
 
   it('opening the page issues zero requests to mutating Sources-page routes (ADR-0031 preserved)', async () => {

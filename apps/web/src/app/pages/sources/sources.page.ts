@@ -10,6 +10,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ConfigService } from '../../core/services/config.service';
 import {
   SOURCE_STATE_STREAM_FACTORY,
   type SourceStateStream,
@@ -163,6 +164,43 @@ interface Layer2Fields {
                   >{{ row.loadMs !== undefined ? row.loadMs + ' ms' : '' }}</span
                 >
               }
+              <!--
+                Per-row admin action menu (#356, ADR-0045). In-memory only;
+                disk-backed verbs (Build / Rebuild / Discard) land in a later
+                slice of #352. Hidden entirely when the deployment's Source
+                admin actions capability is off — a read-only serve should
+                not advertise affordances it will then 403 on.
+              -->
+              @if (allowAdminActions() && row.mode === 'in-memory') {
+                @if (row.state === 'not-loaded' || row.state === 'failed') {
+                  <button
+                    type="button"
+                    class="rounded border border-border-muted bg-surface-muted px-2 py-0.5 text-xs text-foreground hover:bg-surface"
+                    data-testid="row-action-load"
+                    (click)="load(row.id)"
+                  >
+                    Load
+                  </button>
+                }
+                @if (row.state === 'loaded') {
+                  <button
+                    type="button"
+                    class="rounded border border-border-muted bg-surface-muted px-2 py-0.5 text-xs text-foreground hover:bg-surface"
+                    data-testid="row-action-reload"
+                    (click)="reload(row.id)"
+                  >
+                    Reload
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded border border-border-muted bg-surface-muted px-2 py-0.5 text-xs text-foreground hover:bg-surface"
+                    data-testid="row-action-unload"
+                    (click)="unload(row.id)"
+                  >
+                    Unload
+                  </button>
+                }
+              }
             </li>
           }
         </ul>
@@ -174,9 +212,18 @@ export class SourcesPage implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly destroy = inject(DestroyRef);
   private readonly streamFactory = inject(SOURCE_STATE_STREAM_FACTORY);
+  private readonly configService = inject(ConfigService);
 
   /** `null` while the initial snapshot is in flight; never repopulated to `null`. */
   readonly rows = signal<SourceRow[] | null>(null);
+  /**
+   * **Source admin actions capability** (ADR-0045, #356), read from
+   * `GET /api/config` at boot. `true` is the permissive default — an older
+   * `serve` that doesn't expose the flag keeps the action menu reachable.
+   * Flips to `false` when the deployment runs `--read-only`, hiding every
+   * Load / Reload / Unload affordance the template would otherwise render.
+   */
+  readonly allowAdminActions = signal<boolean>(true);
   /**
    * The live SSE subscription opened after the initial snapshot lands
    * (ADR-0044, #354). Replaced on `refetch-snapshot`; closed on destroy.
@@ -185,6 +232,55 @@ export class SourcesPage implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.fetchSnapshot(/* subscribeAfter */ true);
+    this.configService
+      .sourcesAdmin()
+      .pipe(takeUntilDestroyed(this.destroy))
+      .subscribe((c) => this.allowAdminActions.set(c.allowAdminActions));
+  }
+
+  /**
+   * Fires `POST /api/sources/:id/load`. The HTTP turn returns `202 Accepted`
+   * with the post-action state; we drop the response because the SSE stream
+   * is the canonical channel for state transitions — the matching `loading`
+   * → `loaded`/`failed` row events flow through `applyRow()` and refresh the
+   * cell without a parallel update path.
+   */
+  load(id: string): void {
+    this.postAction(id, 'load');
+  }
+
+  /**
+   * Fires `POST /api/sources/:id/reload`. Same swallow-and-let-SSE-drive
+   * pattern as {@link load}: the response body is the post-action state,
+   * but the canonical row update arrives over the live stream regardless.
+   */
+  reload(id: string): void {
+    this.postAction(id, 'reload');
+  }
+
+  /**
+   * Fires `POST /api/sources/:id/unload`. Idempotent on the server side —
+   * an unload against a `not-loaded` entry is a silent no-op there, so the
+   * UI doesn't need to disable the button defensively. The `unload`
+   * transition (when one fires) flows through SSE; in-flight queries
+   * continue against their captured snapshot.
+   */
+  unload(id: string): void {
+    this.postAction(id, 'unload');
+  }
+
+  private postAction(id: string, verb: 'load' | 'reload' | 'unload'): void {
+    this.http
+      .post(`/api/sources/${encodeURIComponent(id)}/${verb}`, null)
+      .pipe(takeUntilDestroyed(this.destroy))
+      .subscribe({
+        next: () => {
+          /* SSE drives the UI update; nothing to do here. */
+        },
+        error: () => {
+          /* Layer 1 swallows; later slices wire an error toast. */
+        },
+      });
   }
 
   ngOnDestroy(): void {

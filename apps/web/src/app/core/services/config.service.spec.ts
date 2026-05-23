@@ -91,6 +91,34 @@ describe('ConfigService', () => {
     http.verify();
   });
 
+  it('sourcesAdmin() returns the allowAdminActions capability from /api/config (#356)', async () => {
+    const { http, service } = setup();
+    const promise = new Promise<{ allowAdminActions: boolean }>((resolve) =>
+      service.sourcesAdmin().subscribe(resolve),
+    );
+    const req = http.expectOne('/api/config');
+    req.flush({
+      ...PAYLOAD,
+      sourcesAdmin: { allowAdminActions: false },
+    });
+    expect(await promise).toEqual({ allowAdminActions: false });
+    http.verify();
+  });
+
+  it('treats a missing sourcesAdmin.allowAdminActions as allowAdminActions=true (matches default — #356)', async () => {
+    // Same convention as `savedQueries.writable`: absence on the wire reads
+    // as the permissive default so an older `serve` that doesn't yet expose
+    // the flag keeps the webapp's action menu reachable.
+    const { http, service } = setup();
+    const promise = new Promise<{ allowAdminActions: boolean }>((resolve) =>
+      service.sourcesAdmin().subscribe(resolve),
+    );
+    const req = http.expectOne('/api/config');
+    req.flush({ ...PAYLOAD, sourcesAdmin: undefined });
+    expect(await promise).toEqual({ allowAdminActions: true });
+    http.verify();
+  });
+
   it('describe() returns just the describe block from /api/config', async () => {
     const { http, service } = setup();
     const promise = new Promise<ConfigPayload['describe']>((resolve) =>

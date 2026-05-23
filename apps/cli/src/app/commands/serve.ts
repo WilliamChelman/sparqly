@@ -70,7 +70,7 @@ const readOnlyField: FieldDescriptor = {
     {
       spec: '--read-only',
       description:
-        'Refuse writes to the saved-query sidecar. PUT/DELETE return 405 and the webapp hides Save / Save-as / Delete affordances. Default: writes allowed.',
+        'Refuse writes to the saved-query sidecar (PUT/DELETE return 405) AND refuse Sources page admin actions — Load / Reload / Unload routes return 403. The webapp hides both the saved-query write affordances and the per-row Sources actions. Default: writes and admin actions allowed.',
     },
   ],
 };

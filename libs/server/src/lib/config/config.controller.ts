@@ -8,8 +8,10 @@ import {
   SPARQL_META_CHILDREN_CACHE,
   SPARQL_SAVED_QUERIES_CONFIG,
   SPARQL_SERVED_REGISTRY,
+  SPARQL_SOURCES_ADMIN_CONFIG,
   type SavedQueriesServerConfig,
   type SourceListingEntry,
+  type SourcesAdminServerConfig,
   type SparqlContext,
 } from '../bootstrap';
 
@@ -26,6 +28,8 @@ export class ConfigController {
     private readonly describe: DescribeConfig,
     @Inject(SPARQL_SAVED_QUERIES_CONFIG)
     private readonly savedQueries: SavedQueriesServerConfig,
+    @Inject(SPARQL_SOURCES_ADMIN_CONFIG)
+    private readonly sourcesAdmin: SourcesAdminServerConfig,
   ) {}
 
   @Get()
@@ -34,6 +38,7 @@ export class ConfigController {
     context: SparqlContext;
     describe: DescribeConfig;
     savedQueries: { path: string; writable: boolean };
+    sourcesAdmin: { allowAdminActions: boolean };
   }> {
     const sources = await this.buildListing();
     return {
@@ -43,6 +48,12 @@ export class ConfigController {
       savedQueries: {
         path: this.savedQueries.path,
         writable: this.savedQueries.writable,
+      },
+      // Source admin actions capability (ADR-0045, #356). Sibling key rather
+      // than nested under `sources` so the existing listing array shape is
+      // untouched. Webapp reads this at boot to gate UI affordances.
+      sourcesAdmin: {
+        allowAdminActions: this.sourcesAdmin.allowAdminActions,
       },
     };
   }
