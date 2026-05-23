@@ -1092,6 +1092,207 @@ describe('SourcesPage (#353)', () => {
     });
   });
 
+  describe('failure surface — inline error chip + Show details + Retry (#360)', () => {
+    /**
+     * Snapshot pairs an in-memory `failed` row and a disk-backed `failed` row
+     * so each test can assert mirrored behaviour for both modes (the user
+     * stories don't differentiate — both surfaces speak the same Layer 5
+     * shape and render the same chip + expander).
+     */
+    const FAILED_SNAPSHOT: SourceRow[] = [
+      {
+        mode: 'in-memory',
+        id: 'broken-glob',
+        kind: 'glob',
+        state: 'failed',
+        error: {
+          kind: 'glob-load',
+          message: 'Unexpected "ex:" on line 3',
+          details:
+            'Unexpected "ex:" on line 3\n  at /tmp/data.ttl:3:0\n  while parsing prefix declarations',
+        },
+      },
+      {
+        mode: 'disk-backed',
+        id: 'broken-index',
+        kind: 'glob',
+        state: 'failed',
+        error: {
+          kind: 'index-build-failed',
+          message: 'exit code 1',
+          // No details — exercises the "Show details absent" path.
+        },
+        indexDir: '/cfg/.sparqly/index/broken-index',
+      },
+    ];
+
+    it('renders an inline error chip on a failed in-memory row carrying the kind class and first-line message', async () => {
+      const ctx = await setup();
+      flush(ctx.http, FAILED_SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const row = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-broken-glob"]',
+      );
+      const chip = row?.querySelector('[data-testid="row-error-chip"]');
+      expect(chip).not.toBeNull();
+      // The kind rides on the chip as a data attribute so a style hook can
+      // pick the right warning colour without parsing the chip text. The
+      // chip text is collapsed to the first line of `error.message` so a
+      // multi-line stack doesn't blow up the row height.
+      expect(chip?.getAttribute('data-kind')).toBe('glob-load');
+      expect(chip?.textContent).toContain('glob-load');
+      expect(chip?.textContent).toContain('Unexpected "ex:" on line 3');
+    });
+
+    it('renders an inline error chip on a failed disk-backed row likewise', async () => {
+      const ctx = await setup();
+      flush(ctx.http, FAILED_SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const row = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-broken-index"]',
+      );
+      const chip = row?.querySelector('[data-testid="row-error-chip"]');
+      expect(chip).not.toBeNull();
+      expect(chip?.getAttribute('data-kind')).toBe('index-build-failed');
+      expect(chip?.textContent).toContain('exit code 1');
+    });
+
+    it('does not render an error chip on a non-failed row (the projector never ships error then, but the page must still guard the @if)', async () => {
+      const ctx = await setup();
+      flush(ctx.http, SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      // None of the default SNAPSHOT rows are `failed` — no chip anywhere.
+      const chips = ctx.nativeElement().querySelectorAll(
+        '[data-testid="row-error-chip"]',
+      );
+      expect(chips.length).toBe(0);
+    });
+
+    it('renders a Show details toggle only when error.details is present, and reveals the details body on click', async () => {
+      const ctx = await setup();
+      flush(ctx.http, FAILED_SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      // The disk-backed row has no `details` — its toggle must be absent.
+      const diskRow = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-broken-index"]',
+      );
+      expect(
+        diskRow?.querySelector('[data-testid="row-error-details-toggle"]'),
+      ).toBeNull();
+      expect(
+        diskRow?.querySelector('[data-testid="row-error-details"]'),
+      ).toBeNull();
+
+      // The in-memory row carries a multi-line `details` payload — toggle
+      // is present, body is collapsed by default, and click reveals it.
+      const memRow = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-broken-glob"]',
+      );
+      const toggle = memRow?.querySelector<HTMLButtonElement>(
+        '[data-testid="row-error-details-toggle"]',
+      );
+      expect(toggle).not.toBeNull();
+      expect(
+        memRow?.querySelector('[data-testid="row-error-details"]'),
+      ).toBeNull();
+
+      toggle!.click();
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const body = memRow?.querySelector(
+        '[data-testid="row-error-details"]',
+      );
+      expect(body).not.toBeNull();
+      expect(body?.textContent).toContain('while parsing prefix declarations');
+    });
+
+    it('relabels the in-memory Load button to Retry on a failed row (#360 user story)', async () => {
+      const ctx = await setup();
+      flush(ctx.http, FAILED_SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const row = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-broken-glob"]',
+      );
+      const btn = row?.querySelector<HTMLButtonElement>(
+        '[data-testid="row-action-load"]',
+      );
+      expect(btn).not.toBeNull();
+      // Same testid (the wire/HTTP verb hasn't changed — `/load`); only
+      // the surface label flips to "Retry" so the operator sees the recovery
+      // affordance the failure invites.
+      expect(btn?.textContent?.trim()).toBe('Retry');
+
+      btn!.click();
+      ctx.detect();
+      await ctx.stable();
+      const req = ctx.http.expectOne('/api/sources/broken-glob/load');
+      expect(req.request.method).toBe('POST');
+      req.flush({ id: 'broken-glob', state: 'loading' });
+    });
+
+    it('relabels the disk-backed (Re)build button to Retry on a failed row', async () => {
+      const ctx = await setup();
+      flush(ctx.http, FAILED_SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const row = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-broken-index"]',
+      );
+      const btn = row?.querySelector<HTMLButtonElement>(
+        '[data-testid="row-action-rebuild-index"]',
+      );
+      expect(btn).not.toBeNull();
+      expect(btn?.textContent?.trim()).toBe('Retry');
+
+      btn!.click();
+      ctx.detect();
+      await ctx.stable();
+      const req = ctx.http.expectOne('/api/sources/broken-index/index-build');
+      expect(req.request.method).toBe('POST');
+      req.flush({ id: 'broken-index', state: 'indexing' });
+    });
+
+    it('hides Retry on a failed row when allowAdminActions is false (read-only serve)', async () => {
+      const ctx = await setup();
+      flush(ctx.http, FAILED_SNAPSHOT, { allowAdminActions: false });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      // The error chip + Show details still surface (read-only operators
+      // still need to see why a source is broken) — only the Retry action
+      // disappears. The existing `row-action-*` sweep elsewhere already
+      // covers the latter, but we mirror it here for the failed-row class.
+      const chips = ctx.nativeElement().querySelectorAll(
+        '[data-testid="row-error-chip"]',
+      );
+      expect(chips.length).toBe(2);
+      const actions = ctx.nativeElement().querySelectorAll(
+        '[data-testid^="row-action-"]',
+      );
+      expect(actions.length).toBe(0);
+    });
+  });
+
   it('opening the page issues zero requests to mutating Sources-page routes (ADR-0031 preserved)', async () => {
     const ctx = await setup();
     flush(ctx.http);

@@ -17,6 +17,7 @@ import type {
   DiskBackedState,
   DiskExtras,
   LoadMetrics,
+  SourceRowError,
   SourceRuntime,
 } from '../sources/source-row-projector';
 import type { SourceStateEmitter } from '../sources/source-state-emitter';
@@ -45,6 +46,12 @@ export interface EntryStateView {
   loadedAt: number | undefined;
   /** Wall-clock ms the last successful load took (#355). */
   loadMs: number | undefined;
+  /**
+   * Layer 5 failure surface (#360). The most recent load / build failure for
+   * this entry, populated by `loadEntry` (in-memory) or the index build
+   * pool's settlement (disk-backed). Drives the projector's `failed` branch.
+   */
+  lastError: SourceRowError | undefined;
 }
 
 /**
@@ -79,10 +86,16 @@ export async function projectEntryState(
       ? { mode: 'in-memory', state: 'loaded', metrics }
       : { mode: 'in-memory', state: 'loaded' };
   }
-  // `loaded` is defined iff in-flight or settled-ok — the err path clears
-  // the slot back to `undefined` (#290), so `not-loaded` covers both rest
-  // and freshly-failed.
+  // An in-flight load takes precedence over a captured `lastError` — the
+  // operator clicked Retry (or the next query touch fired a self-heal) and
+  // the page should paint `loading`, not the stale failure. Layer 5 (#360):
+  // we land here on first-touch failures whose load slot has already cleared
+  // for ADR-0031 self-heal, so an inline `error` block survives between
+  // touches until the next successful ensure() resets it via load-start.
   if (entry.loaded !== undefined) return { mode: 'in-memory', state: 'loading' };
+  if (entry.lastError !== undefined) {
+    return { mode: 'in-memory', state: 'failed', error: entry.lastError };
+  }
   return { mode: 'in-memory', state: 'not-loaded' };
 }
 
@@ -122,6 +135,19 @@ async function projectDiskBackedState(
   extras.indexBytes = await tryWalkIndexBytes(indexDbDir(indexDir));
   if (priorManifest !== undefined) {
     extras.manifestSparqlyVersion = priorManifest.sparqlyVersion;
+  }
+  // Sticky-failed (#360): the most recent child-process index build for this
+  // source failed and no Retry has cleared it. Surface `failed` with the
+  // inline error block — the Sources page renders the kind chip + Show
+  // details + Retry button from it. Takes precedence over the manifest /
+  // staleness branches so a prior good manifest that's since failed a
+  // rebuild still reads `failed` until the user Retries again.
+  if (entry.lastError !== undefined) {
+    const metrics = collectMetrics(entry);
+    const base: SourceRuntime = metrics
+      ? { mode: 'disk-backed', state: 'failed', metrics, disk: extras }
+      : { mode: 'disk-backed', state: 'failed', disk: extras };
+    return { ...base, error: entry.lastError };
   }
   // No manifest → never built. Layer 3 carries `indexDir` (and possibly a
   // half-built directory's `indexBytes`) so the page can still show *where*

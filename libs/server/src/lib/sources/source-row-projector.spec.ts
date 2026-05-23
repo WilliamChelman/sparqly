@@ -477,3 +477,113 @@ describe('projectSourceRow — Layer 4 (endpoint extras, #359)', () => {
     expect('endpointUrl' in row).toBe(false);
   });
 });
+
+/*
+ * Layer 5 (failure surface, #360). Inline `error` chip on `failed` rows of the
+ * **Sources page** — `kind` (the internal tag verbatim: 'glob-load',
+ * 'view-validation', 'index-build-failed', …), `message` (one-line summary),
+ * `details` (optional full body — stderr tail for disk-backed builds; absent
+ * for in-memory by default). The projector emits `error` exactly when the
+ * runtime is `failed` — never on any other state, even if the runtime
+ * accidentally carries one — so the wire shape can never lie about the state
+ * machine, mirroring the Layer 3 staleReason gating.
+ */
+describe('projectSourceRow — Layer 5 (failure surface, #360)', () => {
+  const IN_MEMORY_ERROR = {
+    kind: 'glob-load',
+    message: 'Failed to parse /abs/docs/broken.ttl: Unexpected ":"',
+  } as const;
+  const DISK_BACKED_ERROR = {
+    kind: 'index-build-failed',
+    message: 'exit code 1',
+    details: 'last 4KB of stderr…\nError: bad triple at line 42',
+  } as const;
+
+  describe('in-memory mode', () => {
+    it("emits error on a failed row with the SourceError's kind and message", () => {
+      const row = projectSourceRow(inMemoryGlob, {
+        mode: 'in-memory',
+        state: 'failed',
+        error: IN_MEMORY_ERROR,
+      });
+      expect(row).toEqual<SourceRow>({
+        mode: 'in-memory',
+        id: 'docs',
+        kind: 'glob',
+        state: 'failed',
+        error: IN_MEMORY_ERROR,
+      });
+    });
+
+    for (const state of [
+      'not-loaded',
+      'loading',
+      'loaded',
+    ] as InMemoryState[]) {
+      it(`omits error when state is '${state}' even if runtime carries one`, () => {
+        const row = projectSourceRow(inMemoryGlob, {
+          mode: 'in-memory',
+          state,
+          error: IN_MEMORY_ERROR,
+        });
+        expect('error' in row).toBe(false);
+      });
+    }
+
+    it('omits error when failed but the runtime carries no error block', () => {
+      // Defensive: a failed runtime without an error block is a server bug,
+      // but the projector treats it as "no chip" rather than synthesizing a
+      // placeholder — the wire never lies about the absence of details.
+      const row = projectSourceRow(inMemoryGlob, {
+        mode: 'in-memory',
+        state: 'failed',
+      });
+      expect('error' in row).toBe(false);
+    });
+  });
+
+  describe('disk-backed mode', () => {
+    it('emits error on a failed disk-backed row including details (stderr tail)', () => {
+      const row = projectSourceRow(diskGlob, {
+        mode: 'disk-backed',
+        state: 'failed',
+        error: DISK_BACKED_ERROR,
+        disk: { indexDir: '/abs/.sparqly/index/big' },
+      });
+      expect(row).toMatchObject({
+        mode: 'disk-backed',
+        state: 'failed',
+        error: DISK_BACKED_ERROR,
+        indexDir: '/abs/.sparqly/index/big',
+      });
+    });
+
+    for (const state of [
+      'not-built',
+      'indexing',
+      'ready',
+      'stale',
+    ] as DiskBackedState[]) {
+      it(`omits error when disk-backed state is '${state}' even if runtime carries one`, () => {
+        const row = projectSourceRow(diskGlob, {
+          mode: 'disk-backed',
+          state,
+          error: DISK_BACKED_ERROR,
+        });
+        expect('error' in row).toBe(false);
+      });
+    }
+  });
+
+  describe('endpoint mode', () => {
+    it('never carries an error field — endpoint probe results ride a separate channel', () => {
+      // Endpoint failures surface via the `Test connection` chip
+      // (`POST /api/sources/:id/test-connection`), not via the row's `error`
+      // field — there is no per-endpoint persistent failure state in the
+      // row schema. The discriminated union forbids `error` on endpoint at
+      // compile time; this is a runtime sanity check.
+      const row = projectSourceRow(endpoint, { mode: 'endpoint' });
+      expect('error' in row).toBe(false);
+    });
+  });
+});

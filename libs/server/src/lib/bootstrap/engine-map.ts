@@ -2,6 +2,7 @@ import { err, ok, ResultAsync, type Result } from 'neverthrow';
 import type { SparqlyLogger } from 'common';
 import {
   diskBackedIndexIdentity,
+  formatSourceError,
   globIndexDir,
   QueryEngine,
   resolveSourceResult,
@@ -144,6 +145,7 @@ export class EngineMap {
           closeIndex: undefined,
           current: loaded,
           staleReasonSeen: undefined,
+          lastError: undefined,
         });
         continue;
       }
@@ -157,6 +159,7 @@ export class EngineMap {
         closeIndex: undefined,
         current: undefined,
         staleReasonSeen: undefined,
+        lastError: undefined,
       });
     }
     const configDir = options.configDir ?? process.cwd();
@@ -187,15 +190,25 @@ export class EngineMap {
       // The pool itself stays SSE-unaware (ADR-0044): it just reports the
       // settlement outcome and EngineMap maps that to a transition the
       // SourceStateBroker projects into a wire row.
-      onSettle: (sourceId, outcome) => {
+      onSettle: (sourceId, outcome, info) => {
+        const entry = entries.get(sourceId);
         if (outcome === 'success') {
           // Drop any prior memoized open so the next touch re-opens the freshly
           // built index. Without this, a rebuild that ran while an old `ready`
-          // was settled would keep serving the old quads until restart.
-          const entry = entries.get(sourceId);
-          if (entry) entry.disk = undefined;
+          // was settled would keep serving the old quads until restart. Also
+          // clear any prior sticky failure (#360) — a successful build returns
+          // the entry to the normal `ready` rest state.
+          if (entry) {
+            entry.disk = undefined;
+            entry.lastError = undefined;
+          }
           stateEmitter?.emit({ kind: 'build-success', sourceId });
         } else if (outcome === 'failure') {
+          // Sticky-failed (#360): land the pool's failure info on the entry
+          // so `readState` projects `failed` with the inline error block and
+          // `ensureDiskBacked` skips re-spawning until Retry. `info` is the
+          // pool's guarantee on every `'failure'` outcome.
+          if (entry && info !== undefined) entry.lastError = info;
           stateEmitter?.emit({ kind: 'build-failure', sourceId });
         } else {
           stateEmitter?.emit({ kind: 'build-cancel', sourceId });
@@ -281,6 +294,16 @@ export class EngineMap {
     entry: Entry,
   ): Promise<Result<LoadedEntry, SourceError | IndexingError>> {
     const sourceId = entry.source.id as string;
+    // Sticky-failed (#360): a prior build for this entry failed and no Retry
+    // has cleared it — repeated query touches must not silently re-spawn the
+    // child (turning every HTTP touch into a fresh malformed-file build). We
+    // return the same `indexing` retry-error so the existing 503 boundary
+    // still applies; the Sources page surfaces `failed` via `readState`,
+    // which reads `entry.lastError` directly.
+    if (entry.lastError !== undefined) {
+      entry.disk = undefined;
+      return err(indexingError(sourceId));
+    }
     const indexDir = globIndexDir(this.configDir, sourceId, this.indexCacheDir);
     if (await manifestExists(indexDir)) {
       // A built index is present — open it straight to `ready` (a fast
@@ -319,17 +342,18 @@ export class EngineMap {
   }
 
   /**
-   * User-triggered **(Re)build index** path (ADR-0043, #358). Coalesces onto
-   * the existing in-flight build for the same source if one is already
-   * running, refuses while the source is inside the post-failure cooldown
-   * window, and otherwise requests a fresh child-process build through the
-   * same {@link IndexBuildPool} the auto-trigger uses. Returns the outcome
-   * so the controller can map to the right HTTP status (`202` vs `429`).
+   * User-triggered **(Re)build index** path (ADR-0043, #358, #360). Coalesces
+   * onto the existing in-flight build for the same source if one is already
+   * running; otherwise clears any sticky-failed marker (#360) along with the
+   * pool's post-failure cooldown for the same id and requests a fresh
+   * child-process build through the same {@link IndexBuildPool} the
+   * auto-trigger uses. Returns the outcome so the controller can map to the
+   * right HTTP status (`202` for `'requested'` / `'in-flight'`).
    * Throws when `id` is not a disk-backed entry — initial-build / rebuild
    * symmetry only applies to disk-backed globs (an in-memory source uses
    * Reload instead).
    */
-  requestBuild(id: string): 'requested' | 'in-flight' | 'cooldown' {
+  requestBuild(id: string): 'requested' | 'in-flight' {
     const entry = this.entries.get(id);
     if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
     if (!isDiskBacked(entry.source)) {
@@ -339,12 +363,18 @@ export class EngineMap {
       );
     }
     if (this.buildPool.isBuilding(id)) return 'in-flight';
-    if (this.buildPool.isInCooldown(id)) return 'cooldown';
     // Drop any settled-`ready` open so the next touch re-checks the manifest
     // and observes the freshly-built index — without this clear, a rebuild
     // against a `ready` entry would keep serving the old quads from the
-    // memoized open until process restart.
+    // memoized open until process restart. Also clear the sticky-failed
+    // marker (#360): Retry is the only path that transitions a sticky-failed
+    // disk-backed entry back out of `failed`, so the next touch can spawn.
+    // The pool's per-source post-failure cooldown gets cleared in lockstep —
+    // Retry is an operator-explicit recovery and must not be suppressed by
+    // the automatic backoff that gates the spawn-storm path.
     entry.disk = undefined;
+    entry.lastError = undefined;
+    this.buildPool.forgetFailure(id);
     this.stateEmitter?.emit({ kind: 'build-start', sourceId: id });
     this.buildPool.request(id);
     return 'requested';
@@ -374,6 +404,10 @@ export class EngineMap {
     // `load-start` fires before any I/O so the Sources page sees `loading`
     // for the entire duration of the in-flight load, including the
     // resolveSourceResult turn (which is the slow part for large globs).
+    // Clear any prior failure now — the row transitions out of `failed` for
+    // the lifetime of this attempt (the projector reads `loading` instead).
+    // A re-failure overwrites the slot below; a success leaves it cleared.
+    entry.lastError = undefined;
     this.stateEmitter?.emit({ kind: 'load-start', sourceId });
     const start = Date.now();
     const resolved = await resolveSourceResult(src, {
@@ -387,6 +421,17 @@ export class EngineMap {
       // Clear memoization so the next request retries — gives the user a
       // self-healing path when they fix the underlying file/ref/config.
       entry.loaded = undefined;
+      // Capture the failure inline (#360). The internal `SourceError.kind`
+      // ('glob-load', 'view-validation', 'endpoint-fetch', …) rides verbatim
+      // onto the Sources page row's error chip; the formatted message is the
+      // one-liner the chip shows. The slot persists across the cleared
+      // `entry.loaded` so `readState` can project `failed` between query
+      // touches — a successful follow-up load clears it via the load-start
+      // path above, preserving ADR-0031's self-heal.
+      entry.lastError = {
+        kind: resolved.error.kind,
+        message: formatSourceError(resolved.error),
+      };
       this.stateEmitter?.emit({ kind: 'load-failure', sourceId });
       return err(resolved.error);
     }

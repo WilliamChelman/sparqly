@@ -5,6 +5,7 @@ import type {
   SourceError,
   SourceRecordSidecar,
 } from 'core';
+import type { SourceRowError } from '../sources/source-row-projector';
 import type * as RDF from '@rdfjs/types';
 import type { Store } from 'n3';
 import type { Result } from 'neverthrow';
@@ -114,4 +115,20 @@ export interface Entry {
    * stale observation should re-emit).
    */
   staleReasonSeen: string | undefined;
+  /**
+   * Inline failure surface for the Sources page row (#360). Populated when
+   * the most recent load (in-memory) or child-process index build
+   * (disk-backed) settled in error; cleared when the next attempt starts.
+   *
+   * For in-memory entries this is observational only — `entry.loaded` still
+   * clears on err to preserve ADR-0031's self-heal contract (the next query
+   * touch retries). `readState` reads `lastError` to project `failed` with
+   * the inline error block; a successful follow-up load clears it.
+   *
+   * For disk-backed entries this is *sticky*: while set, `ensureDiskBacked`
+   * skips re-spawning a build (so a permanently failing source does not
+   * silently respawn `sparqly index` children on every query, parent #352);
+   * only an operator-initiated `requestBuild` (Retry) clears it and spawns.
+   */
+  lastError: SourceRowError | undefined;
 }

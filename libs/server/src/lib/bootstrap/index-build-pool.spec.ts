@@ -50,6 +50,27 @@ class FakeChild implements BuildChild {
   }
 }
 
+/**
+ * Extends {@link FakeChild} with a synthetic `stderr` readable so the pool
+ * can capture the rolling tail it surfaces in {@link BuildChild} failures
+ * (#360). Real `ChildProcess` exposes `stderr` as a `Readable`; the pool only
+ * binds to the `data` event, so the stand-in keeps the surface minimal.
+ */
+class FakeChildWithStderr extends FakeChild {
+  private readonly stderrListeners: Array<(chunk: Buffer | string) => void> =
+    [];
+
+  readonly stderr = {
+    on: (event: 'data', listener: (chunk: Buffer | string) => void): void => {
+      if (event === 'data') this.stderrListeners.push(listener);
+    },
+  };
+
+  writeStderr(chunk: string): void {
+    for (const listener of this.stderrListeners) listener(chunk);
+  }
+}
+
 describe('IndexBuildPool', () => {
   it('request(id) spawns an index-build child for that source id', () => {
     const spawned: string[] = [];
@@ -467,6 +488,75 @@ describe('IndexBuildPool', () => {
     clock += 10;
     pool.request('big');
     expect(spawned).toEqual(['big', 'big']);
+  });
+
+  /*
+   * #360: the Sources page needs `kind`, `message`, and a stderr-tail
+   * `details` to render the inline error chip + Show details expander on a
+   * `failed` disk-backed row. The pool is the only layer that sees the
+   * child's stderr stream and exit code, so the failure metadata originates
+   * here and rides onSettle's optional third argument.
+   */
+  it('onSettle(id, "failure", info) carries kind=index-build-failed, the exit reason as message, and the stderr tail as details (#360)', () => {
+    const settled: Array<{
+      id: string;
+      outcome: 'success' | 'failure' | 'cancel';
+      info?: { kind: string; message: string; details?: string };
+    }> = [];
+    const child = new FakeChildWithStderr();
+    const pool = new IndexBuildPool({
+      concurrency: 1,
+      spawn: () => child,
+      onSettle: (id, outcome, info) => settled.push({ id, outcome, info }),
+    });
+
+    pool.request('broken');
+    child.writeStderr('parsing /data/a.nq\n');
+    child.writeStderr('Error: bad triple at line 42\n');
+    child.exit(1);
+
+    expect(settled).toHaveLength(1);
+    expect(settled[0].outcome).toBe('failure');
+    expect(settled[0].info?.kind).toBe('index-build-failed');
+    expect(settled[0].info?.message).toBe('exit code 1');
+    expect(settled[0].info?.details).toContain('Error: bad triple at line 42');
+  });
+
+  it('onSettle("failure", info) on a spawn `error` reports the error message (no stderr captured) (#360)', () => {
+    const settled: Array<{
+      info?: { kind: string; message: string; details?: string };
+    }> = [];
+    const child = new FakeChildWithStderr();
+    const pool = new IndexBuildPool({
+      concurrency: 1,
+      spawn: () => child,
+      onSettle: (_id, _outcome, info) => settled.push({ info }),
+    });
+
+    pool.request('broken');
+    child.emitError(new Error('ENOENT: no such file or directory, posix_spawn'));
+
+    expect(settled[0].info?.kind).toBe('index-build-failed');
+    expect(settled[0].info?.message).toContain('ENOENT');
+    // No stderr was ever written; details stays absent rather than empty.
+    expect(settled[0].info?.details).toBeUndefined();
+  });
+
+  it('onSettle(id, "success") is invoked without an info argument (the third slot exists for failures only) (#360)', () => {
+    const args: Array<{ outcome: string; hasInfo: boolean }> = [];
+    const child = new FakeChild();
+    const pool = new IndexBuildPool({
+      concurrency: 1,
+      spawn: () => child,
+      onSettle: (_id, outcome, info) => {
+        args.push({ outcome, hasInfo: info !== undefined });
+      },
+    });
+
+    pool.request('happy');
+    child.exit(0);
+
+    expect(args).toEqual([{ outcome: 'success', hasInfo: false }]);
   });
 
   it('onSettle(id, outcome) is invoked once per child — success / failure / cancel — so EngineMap can emit build-* transitions (#358)', () => {
