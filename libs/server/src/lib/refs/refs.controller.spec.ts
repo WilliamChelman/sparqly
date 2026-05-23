@@ -222,6 +222,28 @@ describe('GET /api/sources/:id/refs', () => {
     expect(json.branches.map((b) => b.ref)).toEqual(['main']);
   });
 
+  it('returns 404 { error: "pin-unsupported", reason: "storage-disk" } for a disk-backed glob', async () => {
+    // The /refs endpoint exists to feed the SourcePicker's pin selector.
+    // A disk-backed glob can't be pinned (ADR-0041: the on-disk index is
+    // keyed on glob, not SHA; `resolveSourceResult` refuses the combination
+    // with a typed `glob-load` error). Returning the ref list anyway would
+    // train the UI to offer pin actions that always fail downstream — so
+    // the endpoint must mirror the resolve-time refusal here.
+    server = await createServer({
+      sources: [
+        { id: 'docs', glob: join(repo, '*.ttl'), storage: 'disk' },
+      ],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/docs/refs`,
+    );
+    expect(resp.status).toBe(404);
+    const json = (await resp.json()) as { error?: string; reason?: string };
+    expect(json.error).toBe('pin-unsupported');
+    expect(json.reason).toBe('storage-disk');
+  });
+
   it('returns the leaf glob refs for a multi-hop view chain (view → view → glob)', async () => {
     server = await createServer({
       sources: [
@@ -353,6 +375,23 @@ describe('POST /api/sources/:id/refs/fetch', () => {
     };
     expect(json.branches.map((b) => b.ref)).toEqual(['main']);
     expect(json.remoteBranches.map((r) => r.ref)).toContain('origin/main');
+  });
+
+  it('returns 404 { error: "pin-unsupported", reason: "storage-disk" } on /fetch for a disk-backed glob', async () => {
+    server = await createServer({
+      sources: [
+        { id: 'docs', glob: join(repo, '*.ttl'), storage: 'disk' },
+      ],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/docs/refs/fetch`,
+      { method: 'POST' },
+    );
+    expect(resp.status).toBe(404);
+    const json = (await resp.json()) as { error?: string; reason?: string };
+    expect(json.error).toBe('pin-unsupported');
+    expect(json.reason).toBe('storage-disk');
   });
 
   it('fetches the leaf glob refs for a view whose `from:` chain bottoms on a glob', async () => {

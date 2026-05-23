@@ -68,6 +68,15 @@ export class RefsController {
       if (failure.kind === 'unknown-source') {
         throw new NotFoundException({ error: 'unknown-source', id });
       }
+      if (failure.kind === 'pin-unsupported') {
+        // ADR-0041: a `storage: disk` glob can't be pinned (load path
+        // rejects `gitRef`/`--at`), so the SourcePicker must not be offered
+        // a ref list to pin against. Mirror the resolve-time refusal here.
+        throw new HttpException(
+          { error: 'pin-unsupported', reason: failure.reason },
+          HttpStatus.NOT_FOUND,
+        );
+      }
       throw new HttpException(
         { error: 'no-git-repo', kind: failure.terminatingKind },
         HttpStatus.NOT_FOUND,
