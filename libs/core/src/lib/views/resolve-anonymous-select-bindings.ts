@@ -212,6 +212,19 @@ function executeSelectBindingsResult(
       AnonymousSelectBindingsResult,
       ResolveAnonymousSelectBindingsError
     >((sources) => {
+    if (sources.mode === 'disk-backed') {
+      // Comunica's bindings iterator does not stream from a disk-backed
+      // RDF.Source the way it does an in-memory Store — and the disk tier
+      // exists to keep the quads out of the V8 heap (ADR-0041). Surface the
+      // unsupported combination as a typed `glob-load` error and release the
+      // embedded LevelDB lock before returning, so the next open of the
+      // index dir succeeds.
+      void sources.close();
+      const message =
+        'anonymous select-bindings: disk-backed glob upstream (`storage: disk`) cannot be materialized for tabular diff (ADR-0041)';
+      eventErr(new Error(message));
+      return errAsync({ kind: 'glob-load', glob: [], message });
+    }
     if (sources.mode !== 'materialized') {
       const message =
         'anonymous select-bindings: endpoint upstream cannot be materialized in tabular diff (use pass-through)';

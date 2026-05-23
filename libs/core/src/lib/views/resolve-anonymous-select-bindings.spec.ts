@@ -6,6 +6,8 @@ import {
   resolveAnonymousSelectBindings,
   resolveAnonymousSelectBindingsResult,
 } from './resolve-anonymous-select-bindings';
+import { resolveSourceResult } from '../sources/resolve-source-result';
+import { parseSourceSpec } from '../sources/source-spec';
 import {
   startFakeSparqlEndpoint,
   type FakeSparqlEndpoint,
@@ -329,5 +331,57 @@ describe('resolveAnonymousSelectBindingsResult', () => {
     expect(result.isErr()).toBe(true);
     if (!result.isErr()) throw new Error('unreachable');
     expect(result.error.kind).toBe('view-validation');
+  });
+
+  /**
+   * Tabular diff (and any other anonymous-select-bindings consumer) cannot run
+   * over a `storage: disk` glob: Comunica's bindings iterator does not stream
+   * from a disk-backed RDF.Source the way it does an in-memory Store — the
+   * value of the disk tier (ADR-0041) is that the quads never enter the V8
+   * heap, which the materialized-bindings flow violates. The previous guard
+   * funneled this mode through a misleading "endpoint upstream cannot be
+   * materialized" message and dropped `sources.close()`, leaking the
+   * embedded LevelDB lock. The contract: surface a typed `glob-load` error
+   * naming disk-backed, and release the lock before returning.
+   */
+  it('returns Result.err with glob-load (not endpoint diagnostic) and releases the LevelDB lock for a disk-backed glob upstream', async () => {
+    // The disk-backed resolver builds its index under `<configDir>/.sparqly/index/<id>/`,
+    // where configDir defaults to process.cwd(). Sandbox cwd so the index lives
+    // inside this test's temp dir.
+    const cwdSandbox = await mkdtemp(join(tmpdir(), 'sparqly-tab-disk-cwd-'));
+    const originalCwd = process.cwd();
+    process.chdir(cwdSandbox);
+    try {
+      const a = join(dataDir, 'a.ttl');
+      await writeFile(
+        a,
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+
+      const result = await resolveAnonymousSelectBindingsResult({
+        source: { id: 'disk-data', glob: a, storage: 'disk' },
+        query: 'PREFIX ex: <http://example.org/> SELECT ?s WHERE { ?s ?p ?o }',
+      });
+
+      expect(result.isErr()).toBe(true);
+      if (!result.isErr()) throw new Error('unreachable');
+      expect(result.error.kind).toBe('glob-load');
+      expect(result.error.message).toMatch(/disk-backed/);
+      expect(result.error.message).not.toMatch(/endpoint/);
+
+      // A leaked LevelDB lock prevents reopening the index dir. Re-resolving
+      // the same disk-backed source proves close() was called on the failure
+      // path.
+      const reopened = await resolveSourceResult(
+        parseSourceSpec({ id: 'disk-data', glob: a, storage: 'disk' }),
+      );
+      expect(reopened.isOk()).toBe(true);
+      if (reopened.isOk() && reopened.value.mode === 'disk-backed') {
+        await reopened.value.close();
+      }
+    } finally {
+      process.chdir(originalCwd);
+      await rm(cwdSandbox, { recursive: true, force: true });
+    }
   });
 });

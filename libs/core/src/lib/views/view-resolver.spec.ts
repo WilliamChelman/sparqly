@@ -950,6 +950,58 @@ describe('resolveViewResult — per-leaf parallel-name impl', () => {
     expect(result.error.reason).toBe('unknown');
   });
 
+  /**
+   * A view's `from:` chain is materialized into an in-memory Store before the
+   * view query runs — the whole point of `storage: disk` (ADR-0041) is that
+   * its quads never enter the V8 heap. Resolving a view whose upstream is a
+   * disk-backed glob would fully materialize the index into RAM, defeating
+   * the disk tier. The boundary contract: refuse the combination with a typed
+   * `glob-load` error, and refuse early — never build the index dir.
+   */
+  it('returns Result.err with glob-load for a view whose `from:` resolves to a disk-backed glob upstream, without building the disk-backed index', async () => {
+    const a = join(dir, 'a.ttl');
+    await writeFile(
+      a,
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const registry = parseSourceSpecs([
+      { id: 'big', glob: a, storage: 'disk' },
+      {
+        id: 'projected',
+        from: '@big',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+    ]);
+    const view = registry[1] as ParsedViewSource;
+
+    // Sandbox cwd so any accidental disk-index build lands inside the test's
+    // temp dir (configDir defaults to process.cwd()).
+    const cwdSandbox = await mkdtemp(join(tmpdir(), 'sparqly-view-disk-cwd-'));
+    const originalCwd = process.cwd();
+    process.chdir(cwdSandbox);
+    try {
+      const result = await resolveViewResult({ view, registry });
+
+      expect(result.isErr()).toBe(true);
+      if (!result.isErr()) throw new Error('unreachable');
+      expect(result.error.kind).toBe('glob-load');
+      expect(result.error.message).toMatch(/disk-backed/);
+
+      // Early rejection: no `.sparqly` index dir was created in the cwd
+      // sandbox. A late-stage rejection (post-build) would leave artifacts.
+      let sandboxEntries: string[] = [];
+      try {
+        sandboxEntries = await readdir(cwdSandbox);
+      } catch {
+        // dir might not exist, treat as empty
+      }
+      expect(sandboxEntries).not.toContain('.sparqly');
+    } finally {
+      process.chdir(originalCwd);
+      await rm(cwdSandbox, { recursive: true, force: true });
+    }
+  });
+
   it('returns Result.err with a view-reference variant on a self-cycle', async () => {
     const registry = parseSourceSpecs([
       {

@@ -77,8 +77,8 @@ export function loadSideSources(
       .mapErr(indexingToSourceError)
       .andThen(rejectDiskBackedSources);
   }
-  return resolveSourceResult(target, { registry: resolutionRegistry }).map(
-    toLoadedLikeSources,
+  return resolveSourceResult(target, { registry: resolutionRegistry }).andThen(
+    rejectDiskBackedQuerySources,
   );
 }
 
@@ -119,22 +119,32 @@ export type LoadedLikeSources =
   | { mode: 'pass-through'; endpoint: { endpoint: string } }
   | { mode: 'materialized'; store: Store; sourceRecords?: SourceRecordSidecar };
 
-function toLoadedLikeSources(sources: QuerySources): LoadedLikeSources {
-  if (sources.mode === 'pass-through') return sources;
+/**
+ * Symmetric counterpart to {@link rejectDiskBackedSources} for the pin-override
+ * path: takes a freshly-resolved {@link QuerySources} and returns a typed
+ * `SourceError` for the `disk-backed` mode (releasing the LevelDB lock on the
+ * way out) instead of throwing inside a neverthrow callback. RDFC-1.0
+ * canonicalization cannot scale to a disk-backed glob (ADR-0041 amends
+ * ADR-0032).
+ */
+export function rejectDiskBackedQuerySources(
+  sources: QuerySources,
+): Result<LoadedLikeSources, SourceError> {
   if (sources.mode === 'disk-backed') {
-    // diff canonicalizes both sides with RDFC-1.0, which cannot scale to a
-    // disk-backed glob — the very cost `storage: disk` exists to escape
-    // (ADR-0041 amends ADR-0032). Release the LevelDB lock and reject.
     void sources.close();
-    throw new Error(
-      'diff does not support disk-backed glob sources (`storage: disk`); RDFC-1.0 canonicalization cannot scale to a disk-backed glob (ADR-0041)',
-    );
+    return err({
+      kind: 'glob-load',
+      glob: [],
+      message:
+        'diff does not support disk-backed glob sources (`storage: disk`); RDFC-1.0 canonicalization cannot scale to a disk-backed glob (ADR-0041)',
+    });
   }
-  return {
+  if (sources.mode === 'pass-through') return ok(sources);
+  return ok({
     mode: 'materialized',
     store: sources.store,
     sourceRecords: sources.sourceRecords,
-  };
+  });
 }
 
 function hasRuntimePinOverride(
