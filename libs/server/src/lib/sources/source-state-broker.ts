@@ -16,12 +16,6 @@ import type {
   SourceTransitionEvent,
 } from './source-state-event';
 
-/**
- * The wire-format envelope `GET /api/sources/stream` writes per event
- * (ADR-0044, #354). Matches what NestJS `@Sse()` flattens into the SSE
- * frame: `id: …\nevent: …\ndata: …\n\n`. `data` is JSON-stringified by
- * Nest when non-string.
- */
 export interface SourcesSseEnvelope {
   id?: string;
   type?: string;
@@ -29,24 +23,11 @@ export interface SourcesSseEnvelope {
 }
 
 /**
- * Bridge between `EngineMap`'s {@link SourceStateEmitter} and the Sources
- * page SSE stream (ADR-0044, #354). One broker instance per server
- * lifetime. Subscribes to the emitter once and:
- *
- * 1. asks `EngineMap.readState(id)` for the current runtime,
- * 2. projects to the wire `SourceRow` (idempotent payload contract),
- * 3. appends to a {@link SourceStateRingBuffer} (assigns the monotonic id),
- * 4. multicasts to all live SSE subscribers.
- *
- * Ordering is preserved across rapid emits via a single async tail
- * promise — projection N starts only after projection N-1 has appended.
- * Without this, two transitions on different sources could append out of
- * source-event order because `readState` is async for disk-backed entries.
- *
- * The heartbeat cadence lives here but the heartbeat *emission* is the
- * controller's responsibility (it merges a `rxjs/interval` into the live
- * stream). That split lets the broker stay free of timing concerns and
- * keeps tests deterministic.
+ * Bridges `EngineMap`'s `SourceStateEmitter` into the Sources page SSE stream:
+ * reads state, projects the row, appends to the ring buffer, multicasts.
+ * Ordering is preserved across rapid emits via a single async tail promise —
+ * `readState` is async for disk-backed entries, so without serialization
+ * transitions on different sources could append out of source-event order.
  */
 export class SourceStateBroker {
   private readonly ringBuffer: SourceStateRingBuffer;
@@ -56,6 +37,7 @@ export class SourceStateBroker {
   private readonly heartbeatMs: number;
   /** Tail of the serial projection queue — guarantees per-emit ordering. */
   private projectionTail: Promise<void> = Promise.resolve();
+
 
   constructor(
     private readonly engineMap: EngineMap,
@@ -76,17 +58,14 @@ export class SourceStateBroker {
     );
   }
 
-  /** Heartbeat cadence in ms — read by the SSE route. */
   getHeartbeatMs(): number {
     return this.heartbeatMs;
   }
 
   /**
-   * Build the live-stream observable for a single SSE subscriber. If
-   * `lastEventId` is set, the observable starts with the buffered replay
-   * (or a single `refetch-snapshot` sentinel envelope when the gap exceeds
-   * the ring's horizon — the client then re-fetches `GET /api/sources`
-   * per ADR-0044), then continues with live events.
+   * Build the live-stream observable for one subscriber. With `lastEventId`,
+   * starts with the buffered replay (or a single `refetch-snapshot` sentinel
+   * if the gap exceeds the ring's horizon), then continues live.
    */
   subscribe(lastEventId: number | undefined): Observable<SourcesSseEnvelope> {
     const replay$ = this.buildReplay(lastEventId);
@@ -94,22 +73,16 @@ export class SourceStateBroker {
     return concat(replay$, live$);
   }
 
-  /** Releases the emitter subscription. Called when the server shuts down. */
   close(): void {
     this.unsubscribeEmitter();
     this.live$.complete();
   }
 
-  /** The most recent id assigned to a buffered event, or 0 if none. */
   latestId(): number {
     return this.ringBuffer.latestId();
   }
 
-  /**
-   * Resolves once every emit observed up to the call has been projected,
-   * appended, and multicast. Tests use this to drain the queue without
-   * `setTimeout`. Production code never needs it.
-   */
+  /** Drains the projection queue — used by tests instead of `setTimeout`. */
   whenIdle(): Promise<void> {
     return this.projectionTail;
   }
@@ -142,8 +115,7 @@ export class SourceStateBroker {
       const runtime = await this.engineMap.readState(transition.sourceId);
       row = projectSourceRow(source, runtime);
     } catch {
-      // Projection failure on a transition is not fatal — skip this event;
-      // the next snapshot fetch will re-baseline the client if needed.
+      // Skip — next snapshot fetch re-baselines the client.
       return;
     }
     const event = this.ringBuffer.append({

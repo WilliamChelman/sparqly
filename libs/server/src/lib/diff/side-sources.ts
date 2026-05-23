@@ -20,11 +20,7 @@ import {
   type LoadedSources,
 } from '../bootstrap';
 
-/**
- * Split a wire-format source ref into a bare registry id plus an optional
- * address-form `:ref` pin (ADR-0029). Tolerant of inputs without the leading
- * `@` (the controller historically accepted both).
- */
+/** Tolerant of inputs without the leading `@`. */
 export function parsePinnedInput(raw: string): { id: string; pin?: string } {
   if (!raw.startsWith('@')) return { id: raw };
   const parsed = parseSourceAddress(raw);
@@ -32,14 +28,7 @@ export function parsePinnedInput(raw: string): { id: string; pin?: string } {
   return { id: parsed.value.id, pin: parsed.value.ref };
 }
 
-/**
- * Apply an address-form `:ref` pin to the resolved target. Globs receive
- * `gitRef`; views receive `fromGitRef` so the resolver walks the `from:` chain
- * down to the leaf glob (ADR-0029). Split-glob file children (`kind: 'file'`)
- * are re-synthesized as a one-file pinned glob so `pinAndLoadGlob` resolves
- * SHA + repoRoot at load time — the engine map only warmed the working-tree
- * variant. Other target kinds pass through unchanged.
- */
+/** Split-glob `file` children get re-synthesized as a one-file pinned glob. */
 export function applyAddressPin(
   entry: ParsedSource,
   ref: string,
@@ -58,14 +47,7 @@ export function applyAddressPin(
   return entry;
 }
 
-/**
- * The diff endpoint's engine map is warmed against each declared source's
- * `gitRef` (or working tree) at bootstrap. When a request supplies an
- * address-form `:ref` pin that overrides what was warmed, the cached engine
- * holds the wrong content — so the side resolves directly via
- * `resolveSourceResult`, paying a fresh load but honoring the per-call pin
- * (ADR-0029). Sides without an override stay on the warm cache.
- */
+/** Sides with a runtime pin override bypass the warm cache and resolve fresh. */
 export function loadSideSources(
   engineMap: EngineMap,
   resolutionRegistry: ReadonlyArray<ParsedSource>,
@@ -82,12 +64,7 @@ export function loadSideSources(
   );
 }
 
-/**
- * `diff` cannot run against a disk-backed glob (ADR-0041): RDFC-1.0
- * canonicalization needs every quad in memory — the very cost `storage: disk`
- * exists to escape. A `503`-style "still building" outcome is no different
- * here; either way diff rejects the side with a clear `glob-load` error.
- */
+/** diff cannot run against a disk-backed glob — RDFC-1.0 needs every quad in memory. */
 function indexingToSourceError(
   error: SourceError | IndexingError,
 ): SourceError {
@@ -95,7 +72,7 @@ function indexingToSourceError(
     return {
       kind: 'glob-load',
       glob: [],
-      message: `diff cannot run while disk-backed glob '${error.source}' is still building its index (ADR-0041)`,
+      message: `diff cannot run while disk-backed glob '${error.source}' is still building its index`,
     };
   }
   return error;
@@ -109,7 +86,7 @@ function rejectDiskBackedSources(
       kind: 'glob-load',
       glob: [],
       message:
-        'diff does not support disk-backed glob sources (`storage: disk`); RDFC-1.0 canonicalization cannot scale to a disk-backed glob (ADR-0041)',
+        'diff does not support disk-backed glob sources (`storage: disk`); RDFC-1.0 canonicalization cannot scale to a disk-backed glob',
     });
   }
   return ok(sources);
@@ -119,14 +96,7 @@ export type LoadedLikeSources =
   | { mode: 'pass-through'; endpoint: { endpoint: string } }
   | { mode: 'materialized'; store: Store; sourceRecords?: SourceRecordSidecar };
 
-/**
- * Symmetric counterpart to {@link rejectDiskBackedSources} for the pin-override
- * path: takes a freshly-resolved {@link QuerySources} and returns a typed
- * `SourceError` for the `disk-backed` mode (releasing the LevelDB lock on the
- * way out) instead of throwing inside a neverthrow callback. RDFC-1.0
- * canonicalization cannot scale to a disk-backed glob (ADR-0041 amends
- * ADR-0032).
- */
+/** Releases the LevelDB lock before erroring. */
 export function rejectDiskBackedQuerySources(
   sources: QuerySources,
 ): Result<LoadedLikeSources, SourceError> {
@@ -136,7 +106,7 @@ export function rejectDiskBackedQuerySources(
       kind: 'glob-load',
       glob: [],
       message:
-        'diff does not support disk-backed glob sources (`storage: disk`); RDFC-1.0 canonicalization cannot scale to a disk-backed glob (ADR-0041)',
+        'diff does not support disk-backed glob sources (`storage: disk`); RDFC-1.0 canonicalization cannot scale to a disk-backed glob',
     });
   }
   if (sources.mode === 'pass-through') return ok(sources);
@@ -154,8 +124,7 @@ function hasRuntimePinOverride(
   if (target.id === undefined) return false;
   const declared = engineMap.getSource(target.id);
   if (!declared) return false;
-  // applyAddressPin re-synthesizes a `kind: 'file'` declared child as a
-  // `kind: 'glob'` target — that kind shift is itself the override signal.
+  // applyAddressPin re-synthesizes `file` children as `glob` — kind shift is the override signal.
   if (target.kind !== declared.kind) return true;
   if (target.kind === 'glob' && declared.kind === 'glob') {
     return target.gitRef !== declared.gitRef;

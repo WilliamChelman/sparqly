@@ -9,33 +9,10 @@ import {
   type GlobIndexBuildResult,
 } from './glob-index-builder';
 
-/**
- * Atomic-rename Glob index build (#346, ADR-0042). Wraps {@link buildGlobIndex}
- * so a build never leaves a half-index at the real index path: every quad and
- * the manifest are written under a unique temp dir, and only once the manifest
- * has landed is that dir atomic-renamed onto `indexDir`. A build interrupted
- * before the rename — a crash, an OOM, a SIGKILL — leaves the real path
- * untouched; its partial temp dir is swept on the next build of the same
- * source.
- */
-
-/** Infix marking a temp build dir, e.g. `<indexDir>.building-<pid>-<rand>`. */
 const TEMP_DIR_INFIX = '.building-';
-
-/** Infix marking an old artifact set aside mid-swap, e.g. `<entry>.replaced-<pid>-<rand>`. */
 const REPLACED_INFIX = '.replaced-';
-
-/** Filename of the manifest written by {@link buildGlobIndex}. */
 const MANIFEST_ENTRY = 'manifest.json';
 
-/**
- * Builds the Glob index for `options.glob` and atomic-renames it onto
- * `options.indexDir`. Sweeps any stale temp dirs left by a prior interrupted
- * build first, then streams the index into a fresh temp dir; the rename runs
- * only after {@link buildGlobIndex} has written the manifest. A failed build
- * drops its temp dir and propagates the {@link GlobLoadError} — the real index
- * path, and any index already there, is left as-is.
- */
 export function buildGlobIndexAtomic(
   options: BuildGlobIndexOptions,
 ): ResultAsync<GlobIndexBuildResult, GlobLoadError> {
@@ -63,39 +40,23 @@ export function buildGlobIndexAtomic(
     );
 }
 
-/** Ensures the index parent exists and sweeps stale temp dirs before a build. */
 async function prepare(indexDir: string, parent: string): Promise<void> {
   await mkdir(parent, { recursive: true });
   await sweepStaleTempDirs(indexDir, parent);
   await sweepReplacedOrphans(indexDir);
 }
 
-/**
- * Public sweep helper for the **(Re)build index** cancel path (ADR-0043,
- * #358). After `IndexBuildPool.cancel(id)` SIGTERMs the running build child,
- * its `<indexDir>.building-<pid>-*` temp dir is left behind on disk —
- * normally these are cleaned up at the start of the *next* build by
- * {@link prepare}, but a cancelled rebuild may never be followed by another,
- * so the cancel path sweeps actively. Reuses the dead-pid filter so an
- * unrelated live build sharing the same source id is never clobbered.
- */
+/** Active sweep for the cancel path; a cancelled rebuild may never be followed by another build. */
 export async function sweepGlobIndexTempDirs(indexDir: string): Promise<void> {
   const parent = dirname(indexDir);
   try {
     await sweepStaleTempDirs(indexDir, parent);
     await sweepReplacedOrphans(indexDir);
   } catch {
-    // Best-effort cleanup — a permissions glitch or a missing parent dir
-    // (e.g. the index was never built) is not a cancel failure.
+    // Best-effort cleanup.
   }
 }
 
-/**
- * Removes `<entry>.replaced-<pid>-*` orphans inside `indexDir` left by a build
- * that crashed mid-swap (between {@link promote}'s rename-aside and the new
- * rename-into-place). Each orphan holds the prior version of one entry; once
- * the build that owned them is dead, they're disk junk taking up space.
- */
 async function sweepReplacedOrphans(indexDir: string): Promise<void> {
   let entries: string[];
   try {
@@ -112,13 +73,7 @@ async function sweepReplacedOrphans(indexDir: string): Promise<void> {
   }
 }
 
-/**
- * Removes every `<indexDir>.building-*` sibling whose owning pid is no longer
- * alive — each the partial output of a build for this same source that was
- * interrupted before its atomic rename. Temp dirs owned by a live pid are
- * preserved, so an overlapping build (e.g. `IndexBuildPool` spawning while a
- * manual `sparqly index` runs) is never clobbered mid-ingest.
- */
+/** Preserves temp dirs of live pids so overlapping builds aren't clobbered mid-ingest. */
 async function sweepStaleTempDirs(
   indexDir: string,
   parent: string,
@@ -132,7 +87,6 @@ async function sweepStaleTempDirs(
   }
 }
 
-/** Extracts the pid from the `<pid>-<rand>` suffix of a temp dir name. */
 function parseTempDirPid(suffix: string): number | undefined {
   const dash = suffix.indexOf('-');
   const raw = dash === -1 ? suffix : suffix.slice(0, dash);
@@ -141,11 +95,7 @@ function parseTempDirPid(suffix: string): number | undefined {
   return Number.isInteger(pid) && pid > 0 ? pid : undefined;
 }
 
-/**
- * `process.kill(pid, 0)` doesn't signal — it probes the pid. ESRCH means the
- * process is gone; EPERM means it exists but this process can't signal it
- * (still alive, just owned by another user).
- */
+/** `process.kill(pid, 0)` probes without signalling; EPERM means alive but owned by another user. */
 function isPidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -155,21 +105,7 @@ function isPidAlive(pid: number): boolean {
   }
 }
 
-/**
- * Atomic-renames each artifact written by the build onto its real path,
- * replacing any prior version in place. Only the entries this build produced
- * are touched — anything else already in `indexDir` (e.g. a nested split-glob
- * child index at `<indexDir>/<file>/`) is preserved.
- *
- * Each replacement goes through {@link renameReplace}: a single `rename` for
- * regular files (atomic on POSIX) and a rename-aside-then-rename-into-place
- * swap for non-empty directories — so the real path is never absent mid-swap
- * and a `serve` process's open LevelDB inodes survive the rebuild. The
- * manifest is renamed *last* (it's the commit marker that makes the new
- * index visible as fresh); a crash mid-promote before that final rename
- * leaves the old manifest in place and the next open detects the source
- * drift and triggers a rebuild.
- */
+/** Manifest is renamed last — it's the commit marker that makes the new index visible as fresh. */
 async function promote(
   tempDir: string,
   indexDir: string,
@@ -188,16 +124,7 @@ async function promote(
   return { indexDir, files: built.files };
 }
 
-/**
- * Replaces `target` with `src` using `rename(2)` semantics so the real path is
- * never absent at any point. For a regular file or an empty target dir,
- * POSIX `rename` atomically swaps in place. For a non-empty target dir
- * (LevelDB's `db/`), `rename` would fail with ENOTEMPTY/EEXIST — we move the
- * old dir to a sibling `<target>.replaced-<pid>-<rand>` then rename the new
- * one into place. A crash between the two renames leaves the old data
- * recoverable at the sibling (swept on the next build); a failure of the
- * second rename restores the old target before re-throwing.
- */
+/** Non-empty dirs (LevelDB's `db/`) need rename-aside-then-rename since `rename` would fail with ENOTEMPTY. */
 async function renameReplace(src: string, target: string): Promise<void> {
   try {
     await rename(src, target);

@@ -37,11 +37,9 @@ import type { SparqlContext } from './tokens';
 export interface CreateServerOptions {
   sources: SourceSpecInput | ReadonlyArray<SourceSpecInput>;
   /**
-   * Scope filter for what `serve` exposes. An `@id` ref into `sources` narrows
-   * the served/listed set to that one entry (its `from:` deps stay resolvable
-   * but unlisted); an inline glob/URL serves a single synthesized `@default`
-   * with the configured `sources:` available for `from:` resolution only.
-   * Absent → the whole non-`reference` registry is served.
+   * Scope filter. `@id` ref narrows to one entry (its `from:` deps stay
+   * resolvable but unlisted); an inline glob/URL serves `@default`. Absent →
+   * the whole non-`reference` registry is served.
    */
   scope?: string;
   port: number;
@@ -51,74 +49,24 @@ export interface CreateServerOptions {
   watch?: boolean;
   watchDebounceMs?: number;
   watchPollMs?: number;
-  /**
-   * Display context (`prefixes`/`base`) surfaced to clients via /api/config so
-   * they can shorten IRIs the same way the CLI does. Optional — defaults to
-   * empty `prefixes` and no `base`.
-   */
   context?: SparqlContext;
-  /**
-   * Registry-wide describe defaults (from the project config's `describe:`
-   * block). Any missing field falls back to {@link DEFAULT_DESCRIBE_CONFIG}.
-   * Surfaced to clients via /api/config.
-   */
   describe?: Partial<DescribeConfig>;
-  /**
-   * Boundary logger (ADR-0020). Emits the per-request `info` line and the
-   * `--verbose` SPARQL-execution `debug` lines for the served sources.
-   * Defaults to the no-op logger so non-CLI callers stay silent.
-   */
+  /** Defaults to no-op. */
   logger?: SparqlyLogger;
-  /**
-   * Absolute or config-relative path to the saved-query sidecar (ADR-0036).
-   * Defaults to `<cwd>/.sparqly-queries.yaml`. Surfaced on `/api/config` so the
-   * webapp can name the file in tooltips.
-   */
+  /** Defaults to `<configDir>/.sparqly-queries.yaml`. */
   savedQueriesPath?: string;
-  /**
-   * Override the `configDir` used to resolve a relative `savedQueriesPath` to
-   * an absolute path, and as the root for `<configDir>/.sparqly/index/<id>/`
-   * disk-backed Glob index directories (ADR-0041). Defaults to `process.cwd()`.
-   */
+  /** Defaults to `process.cwd()`. */
   configDir?: string;
-  /**
-   * Overrides the Glob index cache root (ADR-0041, #345). When set, disk-backed
-   * globs build and reuse their index under `<indexCacheDir>/<id>/` instead of
-   * the default `<configDir>/.sparqly/index/<id>/`. Threaded from the project
-   * config's `index.dir` field.
-   */
+  /** Overrides the Glob index cache root. */
   indexCacheDir?: string;
-  /**
-   * When `true`, `serve` refuses writes to the saved-query sidecar: PUT/DELETE
-   * return 405 and `/api/config` advertises `savedQueries.writable: false`.
-   * Defaults to `false` (writes allowed).
-   */
+  /** Refuses sidecar writes (405) and gates admin actions. */
   readOnly?: boolean;
-  /**
-   * Spawns the isolated `sparqly index @id` child that builds a disk-backed
-   * glob's Glob index (ADR-0042). The CLI `serve` command injects a real
-   * implementation; omitting it leaves disk-backed builds unavailable, so
-   * touching a not-yet-built disk-backed source then throws.
-   */
   spawnIndexBuild?: SpawnIndexBuild;
-  /**
-   * Maximum number of child-process index builds running at once
-   * (`index.concurrency`, ADR-0042). Disk-backed sources first-touched past
-   * the cap queue for a free slot. Defaults to 2.
-   */
+  /** Defaults to 2. */
   indexConcurrency?: number;
-  /**
-   * Heartbeat cadence for the Sources page SSE stream (ADR-0044, #354)
-   * in milliseconds. Defaults to 15_000 — the proxy-friendly idle window.
-   * Tests pass a small value (e.g. 30) so heartbeat assertions are fast.
-   */
+  /** Defaults to 15_000. */
   sseHeartbeatMs?: number;
-  /**
-   * Capacity of the {@link SourceStateBroker}'s ring buffer of recent
-   * transitions (ADR-0044, #354). Defaults to 256 — the conventional
-   * reconnect window. Tests pass a tiny value (e.g. 1) to drive the
-   * `refetch-snapshot` sentinel branch on unbridgeable reconnects.
-   */
+  /** Defaults to 256. */
   sseRingCapacity?: number;
 }
 
@@ -154,9 +102,8 @@ export async function createServer(
   }
 
   const startedAt = Date.now();
-  // Source state emitter feeds the Sources page SSE stream (ADR-0044,
-  // #354). Constructed before EngineMap so transitions emitted during the
-  // very first `ensure()` (e.g. an auto-warmed endpoint) are observed.
+  // Constructed before EngineMap so transitions emitted during the very
+  // first `ensure()` are observed.
   const sourceStateEmitter = new SourceStateEmitter({
     onListenerError: (error) =>
       boundaryLogger.warn('source-state-listener-error', {
@@ -166,8 +113,6 @@ export async function createServer(
   const engineMap = await EngineMap.create(scope.servedRegistry, {
     resolutionRegistry: scope.resolutionRegistry,
     logger: boundaryLogger,
-    // Root for `<configDir>/.sparqly/index/<id>/` disk-backed Glob index
-    // directories (ADR-0041); `indexCacheDir` redirects that root (#345).
     configDir: options.configDir ?? process.cwd(),
     indexCacheDir: options.indexCacheDir,
     spawnIndexBuild: options.spawnIndexBuild,
@@ -193,10 +138,8 @@ export async function createServer(
     logger: boundaryLogger,
   });
 
-  // Lazy materialization (ADR-0031): the snippet allow-list and per-source
-  // file paths are seeded eagerly via `walkGlobPaths` (cheap FS / git-tree
-  // walk, no parsing) so `/api/source-snippet` requests succeed for files
-  // under sources whose Stores have not yet been built.
+  // Snippet allow-list is seeded eagerly via a cheap FS/git walk (no parsing)
+  // so `/api/source-snippet` works for files under sources not yet loaded.
   const walkGitGlobForSnippets = createGitTreeWalker({
     configDir: process.cwd(),
     logger: boundaryLogger,
@@ -225,9 +168,6 @@ export async function createServer(
         writable: options.readOnly !== true,
       },
       sourcesAdmin: {
-        // ADR-0045: defaulted from the same `serve --read-only` switch as
-        // `savedQueries.writable`. Project config can override this flag
-        // independently in a later slice — for now CLI is the only source.
         allowAdminActions: options.readOnly !== true,
       },
       sourceStateBroker,
@@ -313,9 +253,7 @@ async function seedSnippetPaths(
     if (src.kind === 'glob') {
       const paths = await walkGlobPaths(src, deps);
       engineMap.setFiles(src.id, paths);
-      // Discoverability hint (ADR-0041): an un-flagged glob whose matched
-      // bytes are heap-risky earns a `storage: disk` nudge. Rides the eager
-      // path walk above — file sizes only, no parsing.
+      // Discoverability nudge for un-flagged globs that should use `storage: disk`.
       await warnIfOversizedGlob(src, paths, { logger: deps.logger });
     } else if (src.kind === 'file') {
       engineMap.setFiles(src.id, [src.path]);
@@ -375,9 +313,8 @@ function mountWebPlayground(
       next();
       return;
     }
-    // Static-assets middleware already handled real files. Anything still
-    // unresolved with a file extension is a missing asset — let it 404
-    // rather than silently masking it with the SPA shell.
+    // Unresolved paths with a file extension are missing assets — let them
+    // 404 rather than masking them with the SPA shell.
     const lastSegment = path.slice(path.lastIndexOf('/') + 1);
     if (lastSegment.includes('.')) {
       next();

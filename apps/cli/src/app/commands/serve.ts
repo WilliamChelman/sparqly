@@ -113,8 +113,6 @@ const watchPollField: FieldDescriptor = {
   ],
 };
 
-// Registry-wide describe defaults, read from the top-level `describe:` block
-// (see `describeBlockSchema`). No CLI flags — these are deployment knobs.
 const describeSoftLimitField: FieldDescriptor = {
   key: 'perSourceSoftLimit',
   schema: z.number().int().positive(),
@@ -130,25 +128,16 @@ const describeFromSourcePredicateField: FieldDescriptor = {
   schema: z.string().min(1),
 };
 
-// Saved-query sidecar path, read from the top-level `savedQueries.path` config
-// block (ADR-0036). No CLI flag — saved-query state is project-shaped, not
-// per-invocation.
 const savedQueriesPathField: FieldDescriptor = {
   key: 'savedQueriesPath',
   schema: z.string().min(1),
 };
 
-// Glob index cache root, read from the top-level `index.dir` config block
-// (ADR-0041, #345). No CLI flag — where disk-backed indexes live is a
-// project-shaped deployment knob, not a per-invocation choice.
 const indexCacheDirField: FieldDescriptor = {
   key: 'indexCacheDir',
   schema: z.string().min(1),
 };
 
-// Capped child-process index-build concurrency, read from the top-level
-// `index.concurrency` config block (ADR-0042, #350). No CLI flag — a
-// deployment-shaped knob. `EngineMap` defaults it to 2 when omitted.
 const indexConcurrencyField: FieldDescriptor = {
   key: 'indexConcurrency',
   schema: z.number().int().positive(),
@@ -208,8 +197,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       );
     }
 
-    // `main.ts` overwrites `process.argv[1]` with the bare program name, so the
-    // CLI entry a build child must re-invoke is read from `require.main`.
+    // `main.ts` overwrites `process.argv[1]` with the bare program name.
     const cliEntry = require.main?.filename ?? __filename;
 
     const created = await createServer({
@@ -238,9 +226,6 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       logger: boundaryLog,
     });
 
-    // Graceful shutdown (ADR-0042): SIGTERM any in-flight `sparqly index` build
-    // children and release the embedded index locks before exiting. A second
-    // Ctrl-C falls through to Node's default and hard-kills instantly.
     const shutdown = makeShutdownHandler({
       close: () => created.close(),
       exit: (code) => process.exit(code),
