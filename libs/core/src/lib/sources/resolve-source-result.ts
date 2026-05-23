@@ -117,6 +117,14 @@ export function resolveSourceResult(
     if (transformsResult.isErr()) return errAsync(transformsResult.error);
     const transforms = transformsResult.value;
     if (storageTier(target) === 'disk') {
+      // Disk-backed indexes are keyed on `(id, glob)` only (ADR-0041) — they
+      // have no place to record a pinned SHA, so the working tree would be
+      // indexed regardless of the pin. Refusing here surfaces the unsupported
+      // combination as a typed error instead of silently serving answers from
+      // the wrong revision.
+      if (target.gitRef !== undefined) {
+        return errAsync(diskPinUnsupportedError(target));
+      }
       return resolveDiskBackedGlob(target, transforms, options);
     }
     return loadGlobIntoStore(target, transforms, options).map(materializeLoad);
@@ -420,6 +428,20 @@ function materializeFileLoad(
       sub.perFileRecords ?? new Map(),
       pin,
     ),
+  };
+}
+
+function diskPinUnsupportedError(
+  source: ParsedGlobSource,
+): SourceError {
+  return {
+    kind: 'glob-load',
+    glob: [source.glob],
+    message:
+      `\`storage: disk\` does not support \`gitRef\` (or \`--at\`) — a ` +
+      `disk-backed index is keyed on its glob, not a pinned SHA, so the ` +
+      `pin would be silently ignored and the working tree indexed instead. ` +
+      `Drop \`gitRef\` or use \`storage: memory\`.`,
   };
 }
 

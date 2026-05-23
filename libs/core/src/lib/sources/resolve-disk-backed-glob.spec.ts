@@ -86,6 +86,31 @@ describe('disk-backed glob — index cache location', () => {
     }
   });
 
+  it('rejects a disk-backed glob with a gitRef as unsupported instead of silently ignoring the pin', async () => {
+    // ADR-0041 disk-backed indexes are keyed on `(id, glob)` only — they have
+    // no place to record a pinned SHA. Resolving one with `gitRef` (declared
+    // or applied via `--at`) used to fall straight through `resolveDiskBackedGlob`
+    // and index the working tree, returning answers from the wrong revision
+    // with no warning. The boundary contract: surface this combination as a
+    // typed `glob-load` error so the user sees the unsupported combo instead
+    // of wrong-revision data.
+    const pinned = parseSourceSpec({
+      id: 'data',
+      glob: join(dir, 'data', '*.ttl'),
+      storage: 'disk',
+      gitRef: 'v1.0.0',
+    });
+    const result = await resolveSourceResult(pinned, {
+      configDir: dir,
+      sparqlyVersion: 'pin-rejection-test',
+    });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('glob-load');
+    expect(result.error.message).toMatch(/gitRef/);
+    expect(result.error.message).toMatch(/disk/);
+  });
+
   it('reopens and reuses an override-located index across resolves', async () => {
     const override = join(dir, 'elsewhere');
     const opts = {
