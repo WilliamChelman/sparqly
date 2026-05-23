@@ -5,6 +5,7 @@ import { createServer } from 'server';
 import { configureLogger } from '../logging';
 import { printServeSplash } from './serve-splash';
 import { makeSpawnIndexBuild } from './serve-index-spawn';
+import { makeShutdownHandler } from './serve-shutdown';
 import type { FieldDescriptor } from '../runner/fields/field';
 import {
   coercedBooleanSchema,
@@ -240,9 +241,11 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     // Graceful shutdown (ADR-0042): SIGTERM any in-flight `sparqly index` build
     // children and release the embedded index locks before exiting. A second
     // Ctrl-C falls through to Node's default and hard-kills instantly.
-    const shutdown = (): void => {
-      void created.close().then(() => process.exit(0));
-    };
+    const shutdown = makeShutdownHandler({
+      close: () => created.close(),
+      exit: (code) => process.exit(code),
+      logger: boundaryLog,
+    });
     process.once('SIGINT', shutdown);
     process.once('SIGTERM', shutdown);
   },
