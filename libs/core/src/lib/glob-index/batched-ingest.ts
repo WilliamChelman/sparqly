@@ -20,24 +20,34 @@ interface BatchPutStore {
  *
  * `onBatch` is invoked with each batch's size once that batch has been written,
  * letting a caller advance a progress counter as quads land on disk (#349).
+ *
+ * Returns the total number of quads written. The ingest loop is the single
+ * place in the build pipeline that observes every quad on its way to disk;
+ * the build path threads this total into the **Glob index manifest**'s
+ * `quadCount` so the **Sources page** can surface it as the disk-backed
+ * `quads` metric without re-counting (#357).
  */
 export async function ingestQuadStream(
   store: BatchPutStore,
   quads: AsyncIterable<Quad>,
   batchSize: number = INGEST_BATCH_SIZE,
   onBatch?: (count: number) => void,
-): Promise<void> {
+): Promise<number> {
   let batch: Quad[] = [];
+  let total = 0;
   for await (const quad of quads) {
     batch.push(quad);
     if (batch.length >= batchSize) {
       await store.multiPut(batch);
+      total += batch.length;
       onBatch?.(batch.length);
       batch = [];
     }
   }
   if (batch.length > 0) {
     await store.multiPut(batch);
+    total += batch.length;
     onBatch?.(batch.length);
   }
+  return total;
 }

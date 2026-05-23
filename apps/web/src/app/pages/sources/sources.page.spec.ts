@@ -453,6 +453,125 @@ describe('SourcesPage (#353)', () => {
     }
   });
 
+  describe('Layer 3 disk-backed extras (#357)', () => {
+    /**
+     * The Layer 3 fixture sets `quads` so the existing Layer 2 cell now has
+     * a number to show, plus the on-disk extras the server now ships once
+     * the manifest carries `quadCount`. The `ready` row's extras render
+     * unconditionally on disk-backed rows (a blank cell still means
+     * "unknown"); `stale` adds a chip + reason that no other state shows.
+     */
+    const SNAPSHOT_WITH_L3: SourceRow[] = [
+      {
+        mode: 'disk-backed',
+        id: 'big',
+        kind: 'glob',
+        state: 'ready',
+        quads: 4242,
+        files: 12,
+        loadedAt: LOADED_AT,
+        loadMs: 90,
+        indexDir: '/cfg/.sparqly/index/big',
+        indexBytes: 8192,
+        manifestSparqlyVersion: '0.29.0',
+      },
+      {
+        mode: 'disk-backed',
+        id: 'drifted',
+        kind: 'glob',
+        state: 'stale',
+        indexDir: '/cfg/.sparqly/index/drifted',
+        indexBytes: 4096,
+        manifestSparqlyVersion: '0.29.0',
+        staleReason: 'matched file changed: /data/newcomer.ttl',
+      },
+    ];
+
+    it('renders Layer 3 cells (indexDir, indexBytes, manifestSparqlyVersion) and a quads number on a disk-backed ready row', async () => {
+      const ctx = await setup();
+      flush(ctx.http, SNAPSHOT_WITH_L3);
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const row = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-big"]',
+      );
+      expect(
+        row?.querySelector('[data-testid="row-quads"]')?.textContent,
+      ).toContain('4242');
+      expect(
+        row?.querySelector('[data-testid="row-index-dir"]')?.textContent,
+      ).toContain('/cfg/.sparqly/index/big');
+      // 8192 bytes → a human-readable size, not the raw byte count.
+      const bytesCell = row?.querySelector('[data-testid="row-index-bytes"]');
+      expect(bytesCell?.textContent ?? '').toMatch(/8(\.0)? ?KB|8192/);
+      expect(
+        row?.querySelector('[data-testid="row-manifest-version"]')?.textContent,
+      ).toContain('0.29.0');
+    });
+
+    it('renders a stale chip with the human-readable reason on a stale disk-backed row', async () => {
+      const ctx = await setup();
+      flush(ctx.http, SNAPSHOT_WITH_L3);
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const row = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-drifted"]',
+      );
+      // The state chip itself already exists (Layer 1); the new affordance is
+      // a separate `row-stale-reason` element that surfaces the human-readable
+      // mismatch so the operator can read *why* without opening the index.
+      expect(
+        row?.querySelector('[data-testid="row-state"]')?.textContent,
+      ).toContain('stale');
+      const reason = row?.querySelector('[data-testid="row-stale-reason"]');
+      expect(reason).not.toBeNull();
+      expect(reason?.textContent).toContain('newcomer.ttl');
+    });
+
+    it('omits row-stale-reason on a non-stale disk-backed row (the wire never lies about state)', async () => {
+      const ctx = await setup();
+      flush(ctx.http, SNAPSHOT_WITH_L3);
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const row = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-big"]',
+      );
+      expect(
+        row?.querySelector('[data-testid="row-stale-reason"]'),
+      ).toBeNull();
+    });
+
+    it('omits Layer 3 cells entirely on in-memory and endpoint rows', async () => {
+      const ctx = await setup();
+      flush(ctx.http);
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      for (const id of ['projects', 'docs', 'wikidata']) {
+        const row = ctx.nativeElement().querySelector(
+          `[data-testid="source-row-${id}"]`,
+        );
+        for (const testid of [
+          'row-index-dir',
+          'row-index-bytes',
+          'row-manifest-version',
+          'row-stale-reason',
+        ]) {
+          expect(
+            row?.querySelector(`[data-testid="${testid}"]`),
+          ).toBeNull();
+        }
+      }
+    });
+  });
+
   describe('per-row admin action menu (#356)', () => {
     it('renders a Load button on a not-loaded in-memory row when allowAdminActions is true', async () => {
       const ctx = await setup();

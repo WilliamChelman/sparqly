@@ -829,11 +829,15 @@ describe('EngineMap', () => {
       const map = await EngineMap.create(registry, { configDir: dir });
       try {
         const state = await map.readState('big');
-        expect(state).toEqual({ mode: 'disk-backed', state: 'not-built' });
-        // Crucially: readState did not request a build (the Sources page must
-        // not kick a child off the snapshot endpoint).
-        // No spawned builds: we never injected a spawn, and pool.whenIdle
-        // would block if one were requested — but we asserted state directly.
+        // `not-built` has no manifest yet, so manifestSparqlyVersion /
+        // indexBytes are unknown; `indexDir` is layout-derivable and always
+        // present so the page can show the user where the index *will* land.
+        expect(state).toMatchObject({ mode: 'disk-backed', state: 'not-built' });
+        if (state.mode !== 'disk-backed') throw new Error('narrow');
+        expect(state.disk?.indexDir).toBe(globIndexDir(dir, 'big'));
+        expect(state.disk?.indexBytes).toBeUndefined();
+        expect(state.disk?.manifestSparqlyVersion).toBeUndefined();
+        expect(state.disk?.staleReason).toBeUndefined();
       } finally {
         await map.close();
       }
@@ -891,7 +895,133 @@ describe('EngineMap', () => {
       const map = await EngineMap.create(registry, { configDir: dir });
       try {
         const state = await map.readState('big');
-        expect(state).toEqual({ mode: 'disk-backed', state: 'ready' });
+        expect(state).toMatchObject({ mode: 'disk-backed', state: 'ready' });
+      } finally {
+        await map.close();
+      }
+    });
+
+    /*
+     * #357: a `ready` disk-backed entry's readState carries Layer 3 extras so
+     * the **Sources page** can show where the index lives, how big it is, what
+     * sparqly built it, and how many quads it holds — without opening the
+     * index (the snapshot endpoint must never grab a LevelDB lock).
+     */
+    it('returns Layer 3 extras (indexDir, indexBytes, manifestSparqlyVersion) and quads for a built disk-backed glob (#357)', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+      const source = registry[0] as ParsedGlobSource;
+      const { indexId, pattern } = diskBackedIndexIdentity(source);
+      const indexDir = globIndexDir(dir, indexId);
+      await ensureGlobIndex({
+        glob: pattern,
+        transforms: [],
+        indexDir,
+        sparqlyVersion: '0.29.0',
+      });
+
+      const map = await EngineMap.create(registry, { configDir: dir });
+      try {
+        const state = await map.readState('big');
+        expect(state.mode).toBe('disk-backed');
+        if (state.mode !== 'disk-backed') throw new Error('narrow');
+        expect(state.state).toBe('ready');
+        expect(state.disk?.indexDir).toBe(indexDir);
+        expect(state.disk?.indexBytes).toBeGreaterThan(0);
+        expect(state.disk?.manifestSparqlyVersion).toBe('0.29.0');
+        expect(state.disk?.staleReason).toBeUndefined();
+        // `quads` from the manifest's quadCount (#357) — the page surfaces it
+        // without running a COUNT(*).
+        expect(state.metrics?.quads).toBeGreaterThan(0);
+      } finally {
+        await map.close();
+      }
+    });
+
+    /*
+     * #357: when the matched file set drifts away from the built manifest's
+     * fingerprint, readState reports `stale` with a human-readable reason
+     * sourced from `compareGlobIndexManifests`. The state never silently
+     * clears — only an explicit rebuild (later slice) does.
+     */
+    it('a query touch (ensure → entry.current set) does not mask subsequent staleness — readState still reports stale once files drift (#357, ADR-0043 no-silent-rebuild)', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+      const source = registry[0] as ParsedGlobSource;
+      const { indexId, pattern } = diskBackedIndexIdentity(source);
+      const indexDir = globIndexDir(dir, indexId);
+      await ensureGlobIndex({
+        glob: pattern,
+        transforms: [],
+        indexDir,
+        sparqlyVersion: '0.29.0',
+      });
+
+      const map = await EngineMap.create(registry, { configDir: dir });
+      try {
+        // A query touch opens the index; readState now sees `entry.current`.
+        (await map.ensure('big'))._unsafeUnwrap();
+        const fresh = await map.readState('big');
+        expect(fresh.mode).toBe('disk-backed');
+        if (fresh.mode !== 'disk-backed') throw new Error('narrow');
+        expect(fresh.state).toBe('ready');
+
+        // Drift the file set after the open: the open path's stale check is
+        // *not* the authoritative signal for the page (the user has not
+        // rebuilt). readState must re-detect drift and report `stale` —
+        // ignoring `entry.current` is the only way sparqly stays true to
+        // "no silent rebuild" (ADR-0043).
+        await writeFile(
+          join(dir, 'newcomer.ttl'),
+          '@prefix ex: <http://example.org/> . ex:x ex:y ex:z .',
+        );
+        const drifted = await map.readState('big');
+        expect(drifted.mode).toBe('disk-backed');
+        if (drifted.mode !== 'disk-backed') throw new Error('narrow');
+        expect(drifted.state).toBe('stale');
+        expect(drifted.disk?.staleReason).toMatch(/newcomer\.ttl/);
+      } finally {
+        await map.close();
+      }
+    });
+
+    it("returns 'stale' with a staleReason when matched files drift from the built manifest (#357)", async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+      const source = registry[0] as ParsedGlobSource;
+      const { indexId, pattern } = diskBackedIndexIdentity(source);
+      const indexDir = globIndexDir(dir, indexId);
+      await ensureGlobIndex({
+        glob: pattern,
+        transforms: [],
+        indexDir,
+        sparqlyVersion: '0.29.0',
+      });
+      // A newly-added file matched by the same glob: the prior manifest knew
+      // nothing about it, so the comparison must surface `stale`.
+      await writeFile(
+        join(dir, 'newcomer.ttl'),
+        '@prefix ex: <http://example.org/> . ex:x ex:y ex:z .',
+      );
+
+      const map = await EngineMap.create(registry, { configDir: dir });
+      try {
+        const state = await map.readState('big');
+        expect(state.mode).toBe('disk-backed');
+        if (state.mode !== 'disk-backed') throw new Error('narrow');
+        expect(state.state).toBe('stale');
+        expect(state.disk?.staleReason).toMatch(/newcomer\.ttl/);
+        // Layer 3 extras still ship on stale so the page can show where the
+        // mismatched index sits and what sparqly built it.
+        expect(state.disk?.indexDir).toBe(indexDir);
+        expect(state.disk?.indexBytes).toBeGreaterThan(0);
+        expect(state.disk?.manifestSparqlyVersion).toBe('0.29.0');
       } finally {
         await map.close();
       }
@@ -927,6 +1057,57 @@ describe('EngineMap', () => {
         expect(rec.transitions.map((t) => [t.sourceId, t.kind])).toEqual([
           ['files', 'load-start'],
           ['files', 'load-success'],
+        ]);
+      } finally {
+        await map.close();
+      }
+    });
+
+    /*
+     * #357: a freshly-observed stale **Glob index** emits one `stale-detected`
+     * transition over the SSE stream so all live Sources-page subscribers
+     * pick it up — not only the next snapshot fetch. The cache is per-entry:
+     * subsequent reads of the same stale reason do not re-emit (the page is
+     * already up-to-date for that row). A *new* reason (e.g. a different
+     * file changed next) re-emits so the row text refreshes.
+     */
+    it("emits 'stale-detected' exactly once when readState first observes a stale Glob index (#357)", async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+      const source = registry[0] as ParsedGlobSource;
+      const { indexId, pattern } = diskBackedIndexIdentity(source);
+      const indexDir = globIndexDir(dir, indexId);
+      await ensureGlobIndex({
+        glob: pattern,
+        transforms: [],
+        indexDir,
+        sparqlyVersion: '0.29.0',
+      });
+      // Drift the file set after the build so the next readState observes
+      // staleness.
+      await writeFile(
+        join(dir, 'newcomer.ttl'),
+        '@prefix ex: <http://example.org/> . ex:x ex:y ex:z .',
+      );
+
+      const rec = recordingEmitter();
+      const map = await EngineMap.create(registry, {
+        configDir: dir,
+        sourceStateEmitter: rec.emitter,
+      });
+      try {
+        // First read: stale is observed for the first time → exactly one
+        // `stale-detected` transition fires.
+        await map.readState('big');
+        // Second read: same reason, same row payload — no re-emit.
+        await map.readState('big');
+        const kinds = rec.transitions
+          .filter((t) => t.sourceId === 'big')
+          .map((t) => t.kind);
+        expect(kinds.filter((k) => k === 'stale-detected')).toEqual([
+          'stale-detected',
         ]);
       } finally {
         await map.close();

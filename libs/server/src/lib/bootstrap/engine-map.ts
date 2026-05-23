@@ -11,7 +11,7 @@ import {
 import type { StoreRef } from './tokens';
 import { isDiskBacked, manifestExists } from './disk-backed-index';
 import { reloadEntry, unloadEntry } from './engine-map-actions';
-import { projectEntryState } from './engine-map-read-state';
+import { projectEntryState, reconcileStaleDedup } from './engine-map-read-state';
 import {
   indexingError,
   spawnIndexBuildUnavailable,
@@ -97,40 +97,21 @@ export interface EngineMapOptions {
 }
 
 export class EngineMap {
-  private readonly entries: Map<string, Entry>;
-  private readonly resolutionRegistry: ReadonlyArray<ParsedSource>;
-  private readonly logger: SparqlyLogger | undefined;
-  private readonly configDir: string;
-  private readonly sparqlyVersion: string | undefined;
-  private readonly indexCacheDir: string | undefined;
-  /** Caps and queues the isolated child-process index builds (ADR-0042). */
-  private readonly buildPool: IndexBuildPool;
-  /**
-   * Optional **Source load state** transition observer (ADR-0044, #354).
-   * `undefined` means no SSE wiring is attached — `serve` outside the
-   * sources controller still works exactly as before.
-   */
-  private readonly stateEmitter: SourceStateEmitter | undefined;
-
+  // TypeScript parameter properties collapse the field declarations and the
+  // constructor body — `buildPool` caps the child-process index builds
+  // (ADR-0042); `stateEmitter` is the optional **Source load state**
+  // transition observer (ADR-0044, #354), undefined when no SSE wiring is
+  // attached so `serve` outside the sources controller still works as before.
   private constructor(
-    entries: Map<string, Entry>,
-    resolutionRegistry: ReadonlyArray<ParsedSource>,
-    logger: SparqlyLogger | undefined,
-    configDir: string,
-    sparqlyVersion: string | undefined,
-    indexCacheDir: string | undefined,
-    buildPool: IndexBuildPool,
-    stateEmitter: SourceStateEmitter | undefined,
-  ) {
-    this.entries = entries;
-    this.resolutionRegistry = resolutionRegistry;
-    this.logger = logger;
-    this.configDir = configDir;
-    this.sparqlyVersion = sparqlyVersion;
-    this.indexCacheDir = indexCacheDir;
-    this.buildPool = buildPool;
-    this.stateEmitter = stateEmitter;
-  }
+    private readonly entries: Map<string, Entry>,
+    private readonly resolutionRegistry: ReadonlyArray<ParsedSource>,
+    private readonly logger: SparqlyLogger | undefined,
+    private readonly configDir: string,
+    private readonly sparqlyVersion: string | undefined,
+    private readonly indexCacheDir: string | undefined,
+    private readonly buildPool: IndexBuildPool,
+    private readonly stateEmitter: SourceStateEmitter | undefined,
+  ) {}
 
   static async create(
     servedRegistry: ReadonlyArray<ParsedSource>,
@@ -160,6 +141,7 @@ export class EngineMap {
           disk: undefined,
           closeIndex: undefined,
           current: loaded,
+          staleReasonSeen: undefined,
         });
         continue;
       }
@@ -172,6 +154,7 @@ export class EngineMap {
         disk: undefined,
         closeIndex: undefined,
         current: undefined,
+        staleReasonSeen: undefined,
       });
     }
     const buildPool = new IndexBuildPool({
@@ -438,7 +421,15 @@ export class EngineMap {
   async readState(id: string): Promise<SourceRuntime> {
     const entry = this.entries.get(id);
     if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
-    return projectEntryState(entry, this.configDir, this.indexCacheDir);
+    const runtime = await projectEntryState(
+      entry,
+      this.configDir,
+      this.indexCacheDir,
+      this.sparqlyVersion,
+      (sid) => this.buildPool.isBuilding(sid),
+    );
+    reconcileStaleDedup(entry, id, runtime, this.stateEmitter);
+    return runtime;
   }
 
   /**
