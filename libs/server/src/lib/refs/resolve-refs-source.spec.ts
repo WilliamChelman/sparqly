@@ -147,6 +147,68 @@ describe('resolveRefsSource — locates the glob whose repo backs ref-discovery'
     });
   });
 
+  it('errors pin-unsupported when the resolved glob is `storage: disk`', () => {
+    // ADR-0041 disk-backed indexes are keyed on `(id, glob)` only — they have
+    // no place to record a pinned SHA, so `resolveSourceResult` refuses to
+    // resolve them with `gitRef`/`--at`. The refs endpoint must mirror that
+    // refusal: advertising a ref list for a source the load path will reject
+    // teaches the UI to offer a pin action that always fails downstream.
+    const registry = parseSourceSpecs([
+      { id: 'docs', glob: 'data/*.ttl', storage: 'disk' },
+    ]);
+
+    const result = resolveRefsSource('docs', registry);
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error).toEqual({
+      kind: 'pin-unsupported',
+      reason: 'storage-disk',
+    });
+  });
+
+  it('errors pin-unsupported when a view chain bottoms on a disk-backed glob', () => {
+    const registry = parseSourceSpecs([
+      { id: 'docs', glob: 'data/*.ttl', storage: 'disk' },
+      {
+        id: 'kept',
+        from: '@docs',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+    ]);
+
+    const result = resolveRefsSource('kept', registry);
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error).toEqual({
+      kind: 'pin-unsupported',
+      reason: 'storage-disk',
+    });
+  });
+
+  it('errors pin-unsupported when a file child walks up to a disk-backed parent glob', () => {
+    const parsed = parseSourceSpecs([
+      { id: 'docs', glob: 'data/*.ttl', splitByFile: true, storage: 'disk' },
+    ]);
+    const child: ParsedFileSource = {
+      kind: 'file',
+      id: 'docs/alice.ttl',
+      path: '/abs/data/alice.ttl',
+      parentId: 'docs',
+    };
+    const registry: ReadonlyArray<ParsedSource> = [...parsed, child];
+
+    const result = resolveRefsSource('docs/alice.ttl', registry);
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error).toEqual({
+      kind: 'pin-unsupported',
+      reason: 'storage-disk',
+    });
+  });
+
   it('errors unknown-source when the id is not in the registry', () => {
     const registry = parseSourceSpecs([{ id: 'docs', glob: 'data/*.ttl' }]);
 
