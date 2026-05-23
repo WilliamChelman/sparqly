@@ -6,7 +6,6 @@ import {
   Get,
   Headers,
   HttpCode,
-  HttpException,
   HttpStatus,
   Inject,
   NotFoundException,
@@ -172,9 +171,8 @@ export class SourcesController {
   ): Promise<SourceAdminActionResponse> {
     this.assertAdminAllowed();
     this.assertKnownId(id);
-    let outcome: 'requested' | 'in-flight' | 'cooldown';
     try {
-      outcome = this.engineMap.requestBuild(id);
+      this.engineMap.requestBuild(id);
     } catch (error) {
       // `EngineMap.requestBuild` throws on a non-disk-backed source — the
       // wrong verb for the entry's kind, not a server error.
@@ -184,15 +182,9 @@ export class SourcesController {
         message: (error as Error).message,
       });
     }
-    if (outcome === 'cooldown') {
-      // The pool is suppressing repeat triggers after a recent failed build.
-      // Surface that to the page so it can render "wait and retry" instead
-      // of pretending the rebuild kicked off.
-      throw new HttpException(
-        { error: 'index-build-cooldown', id },
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
+    // Under the sticky-failed contract (#360) Retry always proceeds — a
+    // recent failure is recovered by clearing the sticky marker + the pool's
+    // cooldown in lockstep; no `429` path remains.
     return this.respondWithState(id);
   }
 

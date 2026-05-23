@@ -793,20 +793,27 @@ describe('Disk-backed (Re)build / Cancel — POST and DELETE /api/sources/:id/in
     harness.settle('big', null);
   });
 
-  it('POST returns 429 Too Many Requests inside the post-failure cooldown window', async () => {
+  it('POST after a non-zero exit clears the sticky-failed marker and respawns — Retry is the user-explicit recovery path (#360)', async () => {
     harness = await startDiskHarness();
     const first = await fetch(`${harness.base}/api/sources/big/index-build`, {
       method: 'POST',
     });
     expect(first.status).toBe(202);
-    // The build child exits non-zero — the pool enters its cooldown for 'big'.
+    // The build child exits non-zero — the entry enters sticky-failed and
+    // the pool records a post-failure cooldown for 'big'. Under #360 the
+    // explicit Retry path bypasses the cooldown and clears the sticky.
     harness.settle('big', 1);
-    // Wait one microtask flush so the pool sees the exit before the next POST.
+    // Wait one microtask flush so the settle handler runs before the POST.
     await new Promise((r) => setImmediate(r));
     const retry = await fetch(`${harness.base}/api/sources/big/index-build`, {
       method: 'POST',
     });
-    expect(retry.status).toBe(429);
+    expect(retry.status).toBe(202);
+    // A second child was spawned — the user clicked Retry.
+    expect(harness.spawned()).toEqual(['big', 'big']);
+    // Settle the Retry child so the harness's `server.close()` (which
+    // SIGTERMs and awaits running children) can drain in `afterEach`.
+    harness.settle('big', null);
   });
 
   it('DELETE /api/sources/:id/index-build SIGTERMs the in-flight child and returns 202 Accepted', async () => {

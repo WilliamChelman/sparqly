@@ -1,12 +1,40 @@
 /**
  * The minimal child-process surface {@link IndexBuildPool} drives — Node's
  * `ChildProcess` satisfies it structurally, so production passes a real spawned
- * process and tests pass a synthetic stand-in.
+ * process and tests pass a synthetic stand-in. `stderr` is the optional
+ * Readable the pool taps to capture the rolling tail it surfaces in failure
+ * onSettle info (#360); a child spawned without `stdio: 'pipe'` for stderr
+ * simply has no `details` on failure — the pool still reports `kind` and
+ * `message` from the exit code.
  */
 export interface BuildChild {
   on(event: 'exit', listener: (code: number | null) => void): void;
   on(event: 'error', listener: (err: Error) => void): void;
   kill(signal: 'SIGTERM'): void;
+  stderr?: BuildChildStderr | null;
+}
+
+/**
+ * Minimal surface of a child's stderr Readable that {@link IndexBuildPool}
+ * binds to (#360). Real `ChildProcess.stderr` (a `Readable`) and the test
+ * stand-in both implement this — the pool only ever listens for `data`.
+ */
+export interface BuildChildStderr {
+  on(event: 'data', listener: (chunk: Buffer | string) => void): void;
+}
+
+/**
+ * Disk-backed **(Re)build index** failure metadata surfaced to consumers of
+ * {@link IndexBuildPoolOptions.onSettle} on a failure outcome (#360). Travels
+ * from the pool up to `EngineMap`, where it lands on `entry.lastError` and
+ * powers the Sources page's inline error chip + Show details expander.
+ */
+export interface BuildFailureInfo {
+  kind: 'index-build-failed';
+  /** One-line summary: `'exit code N'` or `'signalled'` or the spawn error message. */
+  message: string;
+  /** Rolling tail of the child's stderr — absent when none was captured. */
+  details?: string;
 }
 
 /**
@@ -49,11 +77,26 @@ export interface IndexBuildPoolOptions {
    * itself stays decoupled from the SSE stream — `EngineMap` subscribes here
    * and maps each outcome to a `build-success` / `build-failure` /
    * `build-cancel` transition so the Sources page sees the row update.
+   *
+   * On `'failure'` the optional third argument carries the failure metadata
+   * the Sources page renders on the row (#360): `kind: 'index-build-failed'`,
+   * a one-line `message` (exit code or spawn error), and an optional `details`
+   * string holding the captured stderr tail. The pool guarantees it is
+   * present on every `'failure'` outcome and absent on `'success'`/`'cancel'`.
    */
   onSettle?: (
     sourceId: string,
     outcome: 'success' | 'failure' | 'cancel',
+    info?: BuildFailureInfo,
   ) => void;
+  /**
+   * Maximum bytes of child stderr the pool retains for the {@link
+   * BuildFailureInfo.details} field (#360). Older bytes are dropped so a
+   * verbose build does not balloon memory; defaults to 4 KiB (~32 average
+   * Node error lines) — small enough to inline on the page, large enough to
+   * carry a top stack frame for diagnosis.
+   */
+  stderrTailBytes?: number;
 }
 
 /**
@@ -69,8 +112,13 @@ export class IndexBuildPool {
   private readonly now: () => number;
   private readonly sweepTempDir: ((sourceId: string) => Promise<void>) | undefined;
   private readonly onSettle:
-    | ((sourceId: string, outcome: 'success' | 'failure' | 'cancel') => void)
+    | ((
+        sourceId: string,
+        outcome: 'success' | 'failure' | 'cancel',
+        info?: BuildFailureInfo,
+      ) => void)
     | undefined;
+  private readonly stderrTailBytes: number;
   /** Build children currently running, keyed by source `@id`. */
   private readonly running = new Map<string, RunningBuild>();
   /**
@@ -100,6 +148,7 @@ export class IndexBuildPool {
     this.now = options.now ?? Date.now;
     this.sweepTempDir = options.sweepTempDir;
     this.onSettle = options.onSettle;
+    this.stderrTailBytes = options.stderrTailBytes ?? 4 * 1024;
   }
 
   /**
@@ -166,6 +215,18 @@ export class IndexBuildPool {
     return this.checkCooldown(sourceId);
   }
 
+  /**
+   * Clears the post-failure cooldown record for `sourceId` so the next
+   * {@link request} for that source is not suppressed. Called from
+   * `EngineMap.requestBuild` (Retry) under the sticky-failed contract
+   * (#360): an operator-explicit Retry recovers a failed source immediately,
+   * bypassing the automatic per-source backoff the pool applies to the
+   * spawn-storm path. A no-op when no failure is recorded.
+   */
+  forgetFailure(sourceId: string): void {
+    this.lastFailureAt.delete(sourceId);
+  }
+
   private checkCooldown(sourceId: string): boolean {
     const at = this.lastFailureAt.get(sourceId);
     if (at === undefined) return false;
@@ -205,6 +266,30 @@ export class IndexBuildPool {
     });
     const child = this.spawnChild(sourceId);
     this.running.set(sourceId, { child, exited });
+    // Rolling stderr tail powers the inline error chip's Show details
+    // expander on the Sources page (#360). The buffer is capped at
+    // `stderrTailBytes` so a verbose build (e.g. logging every parsed file)
+    // does not balloon memory — older bytes drop off the front as new ones
+    // arrive. Captured even on success paths (cheap), but only surfaced on
+    // failure so a normal log line never leaks into the page.
+    let stderrTail = '';
+    if (child.stderr) {
+      child.stderr.on('data', (chunk) => {
+        const text =
+          typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+        stderrTail =
+          stderrTail.length + text.length <= this.stderrTailBytes
+            ? stderrTail + text
+            : (stderrTail + text).slice(-this.stderrTailBytes);
+      });
+    }
+    // Track the most recent exit code / spawn error so the failure info we
+    // hand to `onSettle` reads as a one-line cause (`'exit code 1'` /
+    // `'signalled'` / the spawn error's `message`). Captured on the event,
+    // formatted on settle so the `error → exit` path overwrites a stale
+    // signalled reason without leaking it.
+    let exitCode: number | null | undefined = undefined;
+    let spawnErrorMessage: string | undefined = undefined;
     // A spawn failure (ENOENT bad cliEntry/nodeBin) emits `'error'` and never
     // `'exit'` — without an `'error'` handler the slot would never free and
     // `whenIdle`/`shutdown` would hang. Both handlers funnel into idempotent
@@ -216,6 +301,7 @@ export class IndexBuildPool {
       this.running.delete(sourceId);
       const cancelled = this.cancelling.delete(sourceId);
       let outcome: 'success' | 'failure' | 'cancel';
+      let info: BuildFailureInfo | undefined;
       if (cancelled) {
         // A cancel-induced exit is a user decision, not a broken build — skip
         // the cooldown bookkeeping so a follow-up rebuild trigger can spawn
@@ -229,12 +315,17 @@ export class IndexBuildPool {
       } else if (failed) {
         this.lastFailureAt.set(sourceId, this.now());
         outcome = 'failure';
+        info = {
+          kind: 'index-build-failed',
+          message: buildFailureMessage(exitCode, spawnErrorMessage),
+        };
+        if (stderrTail.length > 0) info.details = stderrTail;
       } else {
         this.lastFailureAt.delete(sourceId);
         outcome = 'success';
       }
       markExited();
-      this.onSettle?.(sourceId, outcome);
+      this.onSettle?.(sourceId, outcome, info);
       if (this.shuttingDown) return;
       const next = this.queue.shift();
       if (next !== undefined) this.start(next);
@@ -243,8 +334,14 @@ export class IndexBuildPool {
     // — a `null` code means the child was signalled, and a signalled build
     // wrote no manifest just like a non-zero exit. `'error'` (spawn failure)
     // is unambiguously a failure.
-    child.on('exit', (code) => settle(code !== 0));
-    child.on('error', () => settle(true));
+    child.on('exit', (code) => {
+      exitCode = code;
+      settle(code !== 0);
+    });
+    child.on('error', (err) => {
+      spawnErrorMessage = err.message;
+      settle(true);
+    });
   }
 }
 
@@ -252,4 +349,21 @@ interface RunningBuild {
   child: BuildChild;
   /** Resolves when this build child fires `exit`. */
   exited: Promise<void>;
+}
+
+/**
+ * One-line cause string for {@link BuildFailureInfo.message} (#360). A spawn
+ * `'error'` message wins over an exit code — the spawn path never gets to
+ * the child's exit, so any captured `exitCode` from a prior settle on the
+ * same slot would be stale. `null` exit codes (signalled-but-not-cancelled,
+ * a rare edge: e.g. OOM-killer) collapse to `'signalled'` so the chip
+ * doesn't read as `'exit code null'`.
+ */
+function buildFailureMessage(
+  exitCode: number | null | undefined,
+  spawnErrorMessage: string | undefined,
+): string {
+  if (spawnErrorMessage !== undefined) return spawnErrorMessage;
+  if (exitCode === null || exitCode === undefined) return 'signalled';
+  return `exit code ${exitCode}`;
 }

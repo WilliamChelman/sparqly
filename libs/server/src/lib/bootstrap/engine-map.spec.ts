@@ -507,7 +507,7 @@ describe('EngineMap', () => {
       }
     });
 
-    it('a build child that exits non-zero clears the slot so a later ensure() retries the build — fix-the-file → success', async () => {
+    it('a build child that exits non-zero sticks the disk-backed entry in failed — the next ensure() does NOT re-spawn; the operator must Retry to recover (#360, parent #352)', async () => {
       const ttl = join(dir, 'data.ttl');
       await writeFile(ttl, 'this is not valid turtle .');
       const registry = parseSourceSpecs([
@@ -515,29 +515,27 @@ describe('EngineMap', () => {
       ]);
       const builds = inProcessIndexBuilds(registry, dir);
 
-      let clock = 1_000;
       const map = await EngineMap.create(registry, {
         configDir: dir,
         spawnIndexBuild: builds.spawn,
-        // Short cooldown + injected clock — the fix-the-file retry must wait
-        // out the post-failure backoff (see no-spawn-storm test) before the
-        // pool will spawn the second build.
-        indexBuildCooldownMs: 1_000,
-        now: () => clock,
       });
       try {
         const first = await map.ensure('big');
         expect(first.isErr()).toBe(true);
         await map.whenIdle(); // the build child exits non-zero on the bad file
 
-        // Self-heal: fix the file, no restart. The cleared slot retries —
-        // after the cooldown window has elapsed.
+        // Self-heal: fix the file. Under the sticky-failed contract (#360),
+        // the next query touch must NOT silently re-spawn — only an
+        // operator-initiated `requestBuild` (Retry) clears the sticky and
+        // spawns the rebuild that observes the fixed file.
         await writeFile(ttl, SAMPLE);
-        clock += 1_500;
-        const retry = await map.ensure('big');
-        expect(retry.isErr()).toBe(true);
-        if (retry.isErr()) expect(retry.error.kind).toBe('indexing');
+        const stuck = await map.ensure('big');
+        expect(stuck.isErr()).toBe(true);
+        expect(builds.spawned).toEqual(['big']); // still just the one spawn
 
+        // Retry path: clears the sticky and spawns a fresh child.
+        const outcome = map.requestBuild('big');
+        expect(outcome).toBe('requested');
         await map.whenIdle();
         const ready = await map.ensure('big');
         expect(ready.isOk()).toBe(true);
@@ -545,8 +543,6 @@ describe('EngineMap', () => {
           ._unsafeUnwrap()
           .execute(SELECT, { format: 'json' });
         expect(subjects(exec.body)).toEqual(['http://example.org/a']);
-        // The failing first attempt and the succeeding retry each spawned a
-        // child — the non-zero exit did not stick the source in `indexing`.
         expect(builds.spawned).toEqual(['big', 'big']);
       } finally {
         await map.whenIdle();
@@ -554,36 +550,39 @@ describe('EngineMap', () => {
       }
     });
 
-    it('repeated touches of a permanently failing disk-backed source spawn one build per cooldown window — no process-spawn storm (code-review finding #10)', async () => {
-      // A malformed RDF file: every build child exits non-zero with no
-      // manifest. Without per-source backoff every HTTP touch spawned a fresh
-      // `sparqly index` child — unbounded process-spawn storm.
+    it('repeated touches of a permanently failing disk-backed source spawn exactly one build — sticky-failed never silently respawns (#360)', async () => {
+      // A malformed RDF file: every build child exits non-zero. Under the
+      // sticky-failed contract (#360) the FIRST touch spawns, the build
+      // fails, and every subsequent ensure() observes the sticky lastError
+      // and returns the same `indexing` retry-error without touching the
+      // pool — no more process-spawn storms, no more per-cooldown reruns,
+      // until the operator clicks Retry on the Sources page.
       await writeFile(join(dir, 'data.ttl'), 'this is not valid turtle .');
       const registry = parseSourceSpecs([
         { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
       ]);
       const builds = inProcessIndexBuilds(registry, dir);
 
-      let clock = 1_000;
       const map = await EngineMap.create(registry, {
         configDir: dir,
         spawnIndexBuild: builds.spawn,
-        indexBuildCooldownMs: 60_000,
-        now: () => clock,
       });
       try {
         const first = await map.ensure('big');
         expect(first.isErr()).toBe(true);
         await map.whenIdle();
 
-        // Many HTTP touches in rapid succession while the source remains
-        // broken — must not spawn another child within the cooldown.
+        // 25 HTTP touches while the source remains broken — must spawn
+        // exactly zero further children.
         for (let i = 0; i < 25; i++) {
-          clock += 100; // 2.5s total — well inside the 60s cooldown.
           const r = await map.ensure('big');
           expect(r.isErr()).toBe(true);
         }
         expect(builds.spawned).toEqual(['big']);
+        // Now Retry — the sticky clears and a fresh build spawns.
+        const outcome = map.requestBuild('big');
+        expect(outcome).toBe('requested');
+        expect(builds.spawned).toEqual(['big', 'big']);
       } finally {
         await map.whenIdle();
         await map.close();
@@ -702,6 +701,72 @@ describe('EngineMap', () => {
         await map.close();
       }
     });
+
+    it('readState reports `failed` with the pool-captured error after a non-zero build exit (#360, parent #352)', async () => {
+      // A bad input file → the build child exits non-zero → the pool's
+      // failure info lands on entry.lastError → readState surfaces `failed`
+      // with the inline `error` block ready for the Sources page row.
+      await writeFile(join(dir, 'data.ttl'), 'this is not valid turtle .');
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+      const builds = inProcessIndexBuilds(registry, dir);
+      const map = await EngineMap.create(registry, {
+        configDir: dir,
+        spawnIndexBuild: builds.spawn,
+      });
+      try {
+        const first = await map.ensure('big');
+        expect(first.isErr()).toBe(true);
+        await map.whenIdle();
+
+        const state = await map.readState('big');
+        expect(state.mode).toBe('disk-backed');
+        if (state.mode !== 'disk-backed') throw new Error('narrow');
+        expect(state.state).toBe('failed');
+        expect(state.error?.kind).toBe('index-build-failed');
+        // The pool's `inProcessIndexBuilds` settles with code 1; no real
+        // stderr stream is wired in the stub, so `details` is absent — the
+        // real `sparqly index` child piping its stderr through the pool
+        // populates it in production.
+        expect(state.error?.message).toMatch(/exit code/);
+      } finally {
+        await map.whenIdle();
+        await map.close();
+      }
+    });
+
+    it('Retry (requestBuild) clears the sticky failure and a successful subsequent build returns the entry to ready (#360)', async () => {
+      const ttl = join(dir, 'data.ttl');
+      await writeFile(ttl, 'this is not valid turtle .');
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+      const builds = inProcessIndexBuilds(registry, dir);
+      const map = await EngineMap.create(registry, {
+        configDir: dir,
+        spawnIndexBuild: builds.spawn,
+      });
+      try {
+        const first = await map.ensure('big');
+        expect(first.isErr()).toBe(true);
+        await map.whenIdle();
+
+        // Fix the file before Retry — the operator's flow on the page.
+        await writeFile(ttl, SAMPLE);
+        map.requestBuild('big');
+        await map.whenIdle();
+
+        const state = await map.readState('big');
+        expect(state.mode).toBe('disk-backed');
+        if (state.mode !== 'disk-backed') throw new Error('narrow');
+        expect(state.state).toBe('ready');
+        expect(state.error).toBeUndefined();
+      } finally {
+        await map.whenIdle();
+        await map.close();
+      }
+    });
   });
 
   describe('readState(id) — Sources page snapshot (#353)', () => {
@@ -742,6 +807,68 @@ describe('EngineMap', () => {
         // state-machine projection itself.
         expect(state.mode).toBe('in-memory');
         if (state.mode === 'in-memory') expect(state.state).toBe('loaded');
+      } finally {
+        await map.close();
+      }
+    });
+
+    /*
+     * #360: a failing in-memory load surfaces on the Sources page as a
+     * `failed` row with the inline `error` block — preserving ADR-0031's
+     * self-heal contract (the load slot still clears so the next `ensure()`
+     * retries the underlying file/ref). The `lastError` lives on the entry
+     * until the next load-start clears it; until then `readState` projects
+     * `failed` with `{ kind, message }` ready for the projector to ship.
+     */
+    it('returns failed with an error block after an in-memory load fails (#360)', async () => {
+      await writeFile(join(dir, 'broken.ttl'), 'this is not valid turtle .');
+      const registry = parseSourceSpecs([
+        { id: 'files', glob: join(dir, '*.ttl') },
+      ]);
+      const map = await EngineMap.create(registry);
+      try {
+        const result = await map.ensure('files');
+        expect(result.isErr()).toBe(true);
+        const state = await map.readState('files');
+        expect(state.mode).toBe('in-memory');
+        if (state.mode !== 'in-memory') throw new Error('narrow');
+        expect(state.state).toBe('failed');
+        expect(state.error?.kind).toBe('glob-load');
+        // The message is the formatted `SourceError` body — covers the file
+        // path so the operator can diagnose without opening logs.
+        expect(state.error?.message).toContain('broken.ttl');
+      } finally {
+        await map.close();
+      }
+    });
+
+    it('clears the failed error on the next successful ensure() — ADR-0031 self-heal (#360)', async () => {
+      const ttl = join(dir, 'data.ttl');
+      await writeFile(ttl, 'this is not valid turtle .');
+      const registry = parseSourceSpecs([
+        { id: 'files', glob: join(dir, '*.ttl') },
+      ]);
+      const map = await EngineMap.create(registry);
+      try {
+        (await map.ensure('files'))._unsafeUnwrap = (): never => {
+          throw new Error('expected err');
+        };
+        await map.ensure('files');
+        const failed = await map.readState('files');
+        if (failed.mode !== 'in-memory') throw new Error('narrow');
+        expect(failed.state).toBe('failed');
+
+        // Fix the file, retry — the next ensure() drives the load and the
+        // error clears (a successful load supersedes the prior failure).
+        await writeFile(
+          ttl,
+          '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+        );
+        (await map.ensure('files'))._unsafeUnwrap();
+        const healed = await map.readState('files');
+        if (healed.mode !== 'in-memory') throw new Error('narrow');
+        expect(healed.state).toBe('loaded');
+        expect(healed.error).toBeUndefined();
       } finally {
         await map.close();
       }

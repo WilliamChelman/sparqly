@@ -31,7 +31,8 @@ export type SourceRow =
       state: InMemoryState;
       default?: true;
       parentId?: string;
-    } & Layer2Fields)
+    } & Layer2Fields &
+      Layer5Fields)
   | ({
       mode: 'disk-backed';
       id: string;
@@ -40,7 +41,8 @@ export type SourceRow =
       default?: true;
       parentId?: string;
     } & Layer2Fields &
-      Layer3Fields)
+      Layer3Fields &
+      Layer5Fields)
   | ({
       mode: 'endpoint';
       id: string;
@@ -97,6 +99,26 @@ interface Layer3Fields {
  */
 interface Layer4Fields {
   endpointUrl?: string;
+}
+
+/**
+ * Layer 5 failure surface (#360). Inline error block on `failed` rows — the
+ * server-side projector ships it exactly when state is `failed` (in-memory or
+ * disk-backed). `kind` is the internal tag verbatim ('glob-load',
+ * 'view-validation', 'index-build-failed', …) and drives the class chip;
+ * `message` is the one-line summary the collapsed chip shows; `details` (when
+ * present) is the full body the Show details expander reveals (stderr tail
+ * for disk-backed builds). Endpoint rows never carry Layer 5 — endpoint
+ * failures surface through the `Test connection` chip channel instead.
+ */
+interface Layer5Fields {
+  error?: SourceRowError;
+}
+
+export interface SourceRowError {
+  kind: string;
+  message: string;
+  details?: string;
 }
 
 /**
@@ -214,6 +236,41 @@ export type EndpointProbeChip =
                 only exists for that state (the wire never carries it
                 elsewhere — that is the server-projector invariant).
               -->
+              <!--
+                Layer 5 inline failure surface (#360). The server projector
+                ships an error exactly when state is failed (both in-memory
+                and disk-backed); the chip carries the kind verbatim as a
+                data attribute so a style hook can pick the warning colour
+                without parsing text, and renders the kind + first line of
+                the message so a multi-line stack does not blow up the row
+                height. The full body — including details (a stderr tail
+                for disk-backed builds) — lives behind the Show details
+                expander and stays collapsed until the operator opens it.
+              -->
+              @if (row.mode !== 'endpoint' && row.state === 'failed' && row.error; as err) {
+                <span
+                  class="rounded bg-warning-muted px-1.5 py-0.5 text-xs text-warning"
+                  data-testid="row-error-chip"
+                  [attr.data-kind]="err.kind"
+                  >{{ err.kind }} · {{ errorMessageFirstLine(err.message) }}</span
+                >
+                @if (err.details) {
+                  <button
+                    type="button"
+                    class="rounded border border-border-muted bg-surface-muted px-2 py-0.5 text-xs text-foreground hover:bg-surface"
+                    data-testid="row-error-details-toggle"
+                    (click)="toggleErrorDetails(row.id)"
+                  >
+                    {{ isErrorDetailsExpanded(row.id) ? 'Hide details' : 'Show details' }}
+                  </button>
+                  @if (isErrorDetailsExpanded(row.id)) {
+                    <pre
+                      class="basis-full whitespace-pre-wrap rounded bg-surface-muted px-2 py-1 font-mono text-xs text-foreground"
+                      data-testid="row-error-details"
+                      >{{ err.details }}</pre>
+                  }
+                }
+              }
               @if (row.mode === 'disk-backed') {
                 <span
                   class="font-mono text-xs text-foreground-muted"
@@ -295,7 +352,7 @@ export type EndpointProbeChip =
                     data-testid="row-action-rebuild-index"
                     (click)="rebuildIndex(row.id, row.state)"
                   >
-                    (Re)build index
+                    {{ row.state === 'failed' ? 'Retry' : '(Re)build index' }}
                   </button>
                 }
                 @if (row.state === 'indexing') {
@@ -317,7 +374,7 @@ export type EndpointProbeChip =
                     data-testid="row-action-load"
                     (click)="load(row.id)"
                   >
-                    Load
+                    {{ row.state === 'failed' ? 'Retry' : 'Load' }}
                   </button>
                 }
                 @if (row.state === 'loaded') {
@@ -354,6 +411,15 @@ export class SourcesPage implements OnInit, OnDestroy {
 
   /** `null` while the initial snapshot is in flight; never repopulated to `null`. */
   readonly rows = signal<SourceRow[] | null>(null);
+  /**
+   * Per-row **Show details** expander state for the Layer 5 failure surface
+   * (#360). Keyed by source @id; absent (or `false`) keeps the row's details
+   * body collapsed. A click on the chip's toggle flips the entry — kept on
+   * the page rather than synthesised off `applyRow` so a live row event
+   * arriving mid-investigation (a refreshed `failed` SSE replace) does not
+   * snap the expander shut under the operator's cursor.
+   */
+  private readonly detailsExpanded = signal<Record<string, boolean>>({});
   /**
    * Per-row **Test connection** chip cache (#359). Keyed by source @id;
    * absent when the user has not clicked the button yet (so no chip
@@ -473,6 +539,39 @@ export class SourcesPage implements OnInit, OnDestroy {
    */
   probeChip(id: string): EndpointProbeChip | undefined {
     return this.probeChips()[id];
+  }
+
+  /**
+   * Reads whether the **Show details** expander for the failure surface
+   * (#360) is open for `id`. Defaults to `false` so a freshly received
+   * `failed` row paints with the body collapsed; the operator opens it
+   * explicitly. Pure read — flipped by {@link toggleErrorDetails}.
+   */
+  isErrorDetailsExpanded(id: string): boolean {
+    return this.detailsExpanded()[id] === true;
+  }
+
+  /**
+   * Flips the {@link isErrorDetailsExpanded} state for `id` (#360). Called
+   * from the chip's Show details / Hide details button. Independent per
+   * row — opening one failed row's expander has no effect on any sibling.
+   */
+  toggleErrorDetails(id: string): void {
+    this.detailsExpanded.update((prev) => ({
+      ...prev,
+      [id]: prev[id] !== true,
+    }));
+  }
+
+  /**
+   * One-line summary the inline error chip on a `failed` row renders
+   * (#360). Collapses `error.message` to its first line so a multi-line
+   * stack does not blow up the row height — the full body lives behind
+   * the Show details expander.
+   */
+  errorMessageFirstLine(message: string): string {
+    const newline = message.indexOf('\n');
+    return newline === -1 ? message : message.slice(0, newline);
   }
 
   /**

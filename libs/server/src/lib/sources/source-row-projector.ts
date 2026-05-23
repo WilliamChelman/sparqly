@@ -20,7 +20,8 @@ export type SourceRow =
       default?: true;
       /** Split-glob children expose their meta's id for grouping on the page. */
       parentId?: string;
-    } & Layer2Fields)
+    } & Layer2Fields &
+      Layer5Fields)
   | ({
       mode: 'disk-backed';
       id: string;
@@ -29,7 +30,8 @@ export type SourceRow =
       default?: true;
       parentId?: string;
     } & Layer2Fields &
-      Layer3Fields)
+      Layer3Fields &
+      Layer5Fields)
   | ({
       mode: 'endpoint';
       id: string;
@@ -117,6 +119,39 @@ interface Layer4Fields {
 }
 
 /**
+ * Layer 5 failure surface on the Sources page row (#360, parent #352). A
+ * `failed` row carries an inline `error` block so the operator can diagnose
+ * (and Retry) without leaving the page. `kind` is the internal tag verbatim
+ * (an in-memory load surfaces the `SourceError.kind` — `'glob-load'`,
+ * `'view-validation'`, … — and a disk-backed build surfaces
+ * `'index-build-failed'`), so the row renders the same class chip the rest of
+ * sparqly's tooling uses. `message` is the one-line summary that drives the
+ * collapsed chip; `details` is the optional full body the **Show details**
+ * expander reveals (stderr tail for a build failure; absent for in-memory
+ * Layer 1). Endpoint rows never carry Layer 5 — endpoint probe failures ride
+ * the `Test connection` chip channel, not the persistent row error.
+ */
+interface Layer5Fields {
+  error?: SourceRowError;
+}
+
+/**
+ * Wire shape of the {@link SourceRow} `error` block (#360). `kind` is the
+ * internal tag verbatim — the Sources page renders it as the class chip and
+ * the rest of sparqly's tooling already uses these labels (`SourceError.kind`
+ * for in-memory loads; `'index-build-failed'` for disk-backed builds). The
+ * type stays a plain string so future error sources can extend the taxonomy
+ * without churning the wire schema.
+ */
+export interface SourceRowError {
+  kind: string;
+  /** One-line summary; drives the collapsed chip's second column. */
+  message: string;
+  /** Optional full body revealed by the Show details expander (e.g. stderr tail). */
+  details?: string;
+}
+
+/**
  * Layer 3 disk extras supplied alongside a disk-backed {@link SourceRuntime}
  * (#357). The projector copies these onto the row, gating `staleReason` on
  * `state === 'stale'`. Sourced by `projectEntryState`: `indexDir` from the
@@ -163,13 +198,21 @@ export type DiskBackedState =
  * "problem" (#352 user story 45).
  */
 export type SourceRuntime =
-  | { mode: 'in-memory'; state: InMemoryState; metrics?: LoadMetrics }
+  | {
+      mode: 'in-memory';
+      state: InMemoryState;
+      metrics?: LoadMetrics;
+      /** Layer 5 failure surface (#360) — populated exactly when state is `failed`. */
+      error?: SourceRowError;
+    }
   | {
       mode: 'disk-backed';
       state: DiskBackedState;
       metrics?: LoadMetrics;
       /** Layer 3 extras for the **Sources page** (#357). */
       disk?: DiskExtras;
+      /** Layer 5 failure surface (#360) — populated exactly when state is `failed`. */
+      error?: SourceRowError;
     }
   | { mode: 'endpoint' };
 
@@ -234,6 +277,7 @@ export function projectSourceRow(
     if (parentId !== undefined) row.parentId = parentId;
     if (runtime.state === 'ready') applyLayer2(row, runtime.metrics);
     applyLayer3(row, runtime.state, runtime.disk);
+    applyLayer5(row, runtime.state, runtime.error);
     return withOptionalDefault(row, isDefault);
   }
   if (
@@ -254,6 +298,7 @@ export function projectSourceRow(
   };
   if (parentId !== undefined) row.parentId = parentId;
   if (runtime.state === 'loaded') applyLayer2(row, runtime.metrics);
+  applyLayer5(row, runtime.state, runtime.error);
   return withOptionalDefault(row, isDefault);
 }
 
@@ -298,6 +343,25 @@ function applyLayer3(
   if (state === 'stale' && extras.staleReason !== undefined) {
     row.staleReason = extras.staleReason;
   }
+}
+
+/**
+ * Copies the Layer 5 failure surface onto an in-memory or disk-backed row
+ * exactly when state is `failed` (#360). A stray `error` on any other state
+ * is dropped — the wire shape must never lie about the state machine
+ * (mirroring the Layer 3 `staleReason` gating). When `error` is absent on a
+ * `failed` row, the row stays without the field; the page reads that as
+ * "failed, no details available" rather than synthesizing a placeholder.
+ */
+function applyLayer5(
+  row: SourceRow & Layer5Fields,
+  state: InMemoryState | DiskBackedState,
+  error: SourceRowError | undefined,
+): void {
+  if (state !== 'failed' || error === undefined) return;
+  row.error = error.details !== undefined
+    ? { kind: error.kind, message: error.message, details: error.details }
+    : { kind: error.kind, message: error.message };
 }
 
 function withOptionalDefault(row: SourceRow, isDefault: true | undefined): SourceRow {

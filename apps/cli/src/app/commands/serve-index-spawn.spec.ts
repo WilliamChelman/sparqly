@@ -28,16 +28,29 @@ describe('makeSpawnIndexBuild', () => {
     expect(child).toBe(noopChild);
   });
 
-  it('inherits the child stderr so build logs surface in serve output', () => {
+  it('pipes the child stderr so the pool can capture a failure tail and the helper mirrors it to process.stderr (#360)', () => {
     let stdio: unknown;
+    const piped: NodeJS.WritableStream[] = [];
+    const childWithStderr: BuildChild = {
+      on: () => undefined,
+      kill: () => undefined,
+      stderr: {
+        on: () => undefined,
+        pipe: (dest: NodeJS.WritableStream) => {
+          piped.push(dest);
+          return dest;
+        },
+      } as unknown as BuildChild['stderr'],
+    };
     const spawn: SpawnFn = (_command, _args, options) => {
       stdio = options.stdio;
-      return noopChild;
+      return childWithStderr;
     };
 
     makeSpawnIndexBuild({ cliEntry: '/app/cli/main.js', spawn })('people');
 
-    expect(stdio).toEqual(['ignore', 'ignore', 'inherit']);
+    expect(stdio).toEqual(['ignore', 'ignore', 'pipe']);
+    expect(piped).toEqual([process.stderr]);
   });
 
   it('defaults the node binary to the running process executable', () => {
