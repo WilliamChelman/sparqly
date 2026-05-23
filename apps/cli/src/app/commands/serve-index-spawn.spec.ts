@@ -5,7 +5,7 @@ import { makeSpawnIndexBuild, type SpawnFn } from './serve-index-spawn';
 const noopChild: BuildChild = { on: () => undefined, kill: () => undefined };
 
 describe('makeSpawnIndexBuild', () => {
-  it('spawns `<cliEntry> index <sourceId>` and returns the child', () => {
+  it('spawns `<cliEntry> index <sourceId> --force` and returns the child (#362)', () => {
     const calls: { command: string; args: ReadonlyArray<string> }[] = [];
     const spawn: SpawnFn = (command, args) => {
       calls.push({ command, args });
@@ -22,7 +22,7 @@ describe('makeSpawnIndexBuild', () => {
     expect(calls).toEqual([
       {
         command: '/usr/bin/node',
-        args: ['/app/cli/main.js', 'index', 'people'],
+        args: ['/app/cli/main.js', 'index', 'people', '--force'],
       },
     ]);
     expect(child).toBe(noopChild);
