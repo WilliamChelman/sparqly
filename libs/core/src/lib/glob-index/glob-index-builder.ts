@@ -20,44 +20,19 @@ import {
   writeGlobIndexManifest,
 } from './index-manifest';
 
-/**
- * Glob index builder (ADR-0041). Streams each file matched by a glob into a
- * persistent quadstore index at a target directory. The index is the
- * disk-backed counterpart of the in-memory `n3.Store` a `storage: memory`
- * glob materializes into — every quad lands on disk, so a glob whose triples
- * exceed RAM stays buildable.
- */
 export interface BuildGlobIndexOptions {
-  /** Glob pattern(s) selecting the RDF files to index. */
   glob: string | string[];
-  /** Transform pipeline baked into the index at build time. */
   transforms: ReadonlyArray<ParsedTransform>;
-  /** Target directory the LevelDB-backed index is written under. */
   indexDir: string;
-  /** The sparqly version recorded in the index manifest. */
   sparqlyVersion: string;
-  /**
-   * Boundary logger for the build's progress events (#349, ADR-0020/-0042):
-   * `index-file-start` / `index-file-done` per matched file and a throttled
-   * `index-progress` heartbeat, all at `info`. Also carries the staleness
-   * `warn` on the open path (see `openOrBuildGlobIndex`). Omit to build
-   * silently.
-   */
   logger?: SparqlyLogger;
 }
 
 export interface GlobIndexBuildResult {
-  /** Directory the index was written under. */
   indexDir: string;
-  /** Absolute paths of the files indexed, in glob-enumeration order. */
   files: string[];
 }
 
-/**
- * Builds a {@link GlobIndexBuildResult} by streaming every matched file into a
- * quadstore index at `indexDir`. A parse failure on any file surfaces as a
- * {@link GlobLoadError} naming the offending file (ADR-0024).
- */
 export function buildGlobIndex(
   options: BuildGlobIndexOptions,
 ): ResultAsync<GlobIndexBuildResult, GlobLoadError> {
@@ -76,14 +51,9 @@ async function buildGlobIndexAsync(
   options: BuildGlobIndexOptions,
 ): Promise<GlobIndexBuildResult> {
   const files = await tinyGlob(options.glob, { absolute: true });
-  // Snapshot fingerprints up front: the manifest must record the size and
-  // mtime of the bytes the build ingests, not whatever the filesystem reports
-  // after a 10-15 min stream. Re-statting at the end would absorb any
-  // concurrent edit's new mtime into the manifest, hiding the staleness
-  // forever (ADR-0041 / glob-index TOCTOU).
+  // Snapshot fingerprints up front to avoid absorbing a concurrent edit's
+  // mtime into the manifest after a long stream (TOCTOU).
   const fingerprints = await snapshotIndexedFiles(files);
-  // The byte-% heartbeat reuses the same snapshot — its denominator is known
-  // before a single quad is read (#349).
   const progress = new BuildProgress({
     files: fingerprints.map((file) => ({ path: file.path, bytes: file.size })),
     logger: options.logger,
@@ -95,15 +65,6 @@ async function buildGlobIndexAsync(
   await store.open();
   let quadCount = 0;
   try {
-    // Stream every matched file's quads through a fixed-size batched ingest
-    // (#347), applying the `graphName` transform inline as a per-quad rewrite
-    // (#348). The build never materializes a whole file — let alone the whole
-    // glob — in heap: at most one batch is resident, whether or not a
-    // transform is declared. That flat memory ceiling is the disk tier's
-    // purpose (ADR-0041, amends ADR-0006). Each written batch advances the
-    // `index-progress` heartbeat (#349). The total comes back from the ingest
-    // loop and lands on the manifest as `quadCount` (#357) — the **Sources
-    // page** surfaces it as the disk-backed `quads` metric without re-counting.
     quadCount = await ingestQuadStream(
       store,
       streamGlobQuads(files, options.transforms, progress),
@@ -123,17 +84,6 @@ async function buildGlobIndexAsync(
   return { indexDir: options.indexDir, files };
 }
 
-/**
- * Concatenates every matched file's quad stream into one lazy quad stream in
- * glob-enumeration order, applying the `graphName` transform inline as a
- * per-quad graph-term rewrite (#348). A disk-backed glob's only legal
- * transform is `graphName` (ADR-0041), a pure per-quad rewrite — so the build
- * never materializes the whole glob in heap whether or not a transform is
- * declared. A parse failure on any file surfaces as the {@link GlobLoadError}
- * {@link streamRdfFileQuads} throws, naming that file. Brackets each file's
- * quads with `progress.fileStarted` / `fileDone` so the build reports per-file
- * progress (#349).
- */
 async function* streamGlobQuads(
   files: ReadonlyArray<string>,
   transforms: ReadonlyArray<ParsedTransform>,
@@ -150,13 +100,6 @@ async function* streamGlobQuads(
   }
 }
 
-/**
- * Composes the per-file `graphName` rewrite the streamed ingest applies as
- * quads flow by. ADR-0041 restricts a disk-backed glob to `graphName`
- * transforms; a non-`graphName` transform reaching the builder is an
- * invariant violation, not user error. An empty pipeline yields the identity
- * rewrite, so an un-transformed build streams unchanged.
- */
 function graphNameRewriteFor(
   transforms: ReadonlyArray<ParsedTransform>,
   file: string,
@@ -164,7 +107,7 @@ function graphNameRewriteFor(
   const rewriters = transforms.map((transform) => {
     if (transform.key !== 'graphName') {
       throw new Error(
-        `disk-backed glob index supports only \`graphName\` transforms (ADR-0041), got "${transform.key}"`,
+        `disk-backed glob index supports only \`graphName\` transforms, got "${transform.key}"`,
       );
     }
     return graphNameQuadRewriter(transform.config as GraphNameConfig, file);

@@ -35,29 +35,15 @@ export interface AnonymousSelectBindingsInput {
   source: SourceSpecInput;
   query?: string;
   queryFile?: string;
-  /**
-   * Sibling source-specs needed to resolve a `view` upstream's `from:` chain.
-   * Untargeted entries are never opened. Omit when the upstream is a bare
-   * glob or empty source.
-   */
+  /** Sibling source-specs to resolve a `view` upstream's `from:` chain. */
   registry?: ReadonlyArray<SourceSpecInput>;
-  /** Test seam: inject a Comunica engine. */
   engine?: ComunicaQueryEngine;
-  /** When set, the SELECT execution emits a `query` debug event (`mode=view`). */
   logger?: SparqlyLogger;
 }
 
 export interface AnonymousSelectBindingsResult {
-  /**
-   * Projected variable names in projection order, omitting any leading `?`.
-   * Matches `detectSelectShape`'s ordering — the right-hand side of the
-   * tabular formatter's `vars` field.
-   */
   variables: string[];
-  /**
-   * Bindings rows in source-iteration order. Multiplicity is preserved (no
-   * dedup); callers that want bag semantics consume the array as-is.
-   */
+  /** In source-iteration order; multiplicity preserved (no dedup). */
   rows: TabularRow[];
 }
 
@@ -78,13 +64,6 @@ function upstreamLabel(upstream: ParsedSource): string {
   return upstream.id ?? `(${upstream.kind})`;
 }
 
-/**
- * Primary `Result`-typed sibling of {@link resolveAnonymousViewResult} for
- * tabular diff. Validation failures (no/both `query`/`queryFile`, `@id`
- * upstream, non-SELECT, defensive endpoint-materialization mismatch) surface
- * as {@link ViewValidationError}; downstream resolution and execution errors
- * pass through with their structured variants (ADR-0024).
- */
 export function resolveAnonymousSelectBindingsResult(
   input: AnonymousSelectBindingsInput,
 ): ResultAsync<AnonymousSelectBindingsResult, ResolveAnonymousSelectBindingsError> {
@@ -213,15 +192,10 @@ function executeSelectBindingsResult(
       ResolveAnonymousSelectBindingsError
     >((sources) => {
     if (sources.mode === 'disk-backed') {
-      // Comunica's bindings iterator does not stream from a disk-backed
-      // RDF.Source the way it does an in-memory Store — and the disk tier
-      // exists to keep the quads out of the V8 heap (ADR-0041). Surface the
-      // unsupported combination as a typed `glob-load` error and release the
-      // embedded LevelDB lock before returning, so the next open of the
-      // index dir succeeds.
+      // Release the LevelDB lock before returning so the next open of the index dir succeeds.
       void sources.close();
       const message =
-        'anonymous select-bindings: disk-backed glob upstream (`storage: disk`) cannot be materialized for tabular diff (ADR-0041)';
+        'anonymous select-bindings: disk-backed glob upstream (`storage: disk`) cannot be materialized for tabular diff';
       eventErr(new Error(message));
       return errAsync({ kind: 'glob-load', glob: [], message });
     }
@@ -253,12 +227,7 @@ function executeSelectBindingsResult(
   });
 }
 
-/**
- * @deprecated Use {@link resolveAnonymousSelectBindingsResult} (ADR-0024).
- * Retained as a thin throw-based adapter for callers that have not migrated
- * yet. Endpoint failures get the legacy `endpoint <url>: <message>` prefix to
- * preserve the historical message shape.
- */
+/** @deprecated Use {@link resolveAnonymousSelectBindingsResult}. Throw-based adapter. */
 export async function resolveAnonymousSelectBindings(
   input: AnonymousSelectBindingsInput,
 ): Promise<AnonymousSelectBindingsResult> {
@@ -273,13 +242,7 @@ export async function resolveAnonymousSelectBindings(
   return result.value;
 }
 
-/**
- * `resolveSourceResult` returns the full `SourceError` union, which includes
- * `reference-target` — filtered out at the start of
- * {@link resolveAnonymousSelectBindingsResult}, so it cannot reach this
- * mapper in practice; we map it to a `view-validation` entry defensively so
- * the public error union stays narrow.
- */
+/** Defensively narrows `reference-target` (filtered upstream) into `view-validation`. */
 function narrowUpstreamError(
   err: SourceError,
 ): ResolveAnonymousSelectBindingsError {

@@ -46,44 +46,19 @@ import {
 } from './tokens';
 
 export interface ServerModuleOptions {
-  /** Engines for the served sources (eager for materialized, lazy for pass-through). */
   engineMap: EngineMap;
-  /**
-   * The sources `serve` exposes: routed at `/api/sparql/<id>`, listed via
-   * `/api/config`, and the default enumeration set for `/api/diff` and
-   * `/api/describe`.
-   */
   servedRegistry: ReadonlyArray<ParsedSource>;
-  /**
-   * Resolution registry — a superset of the served set used to walk `from:`
-   * chains (e.g. a scoped `@view`'s upstreams that are otherwise unlisted).
-   */
+  /** Superset of `servedRegistry` used to walk `from:` chains. */
   resolutionRegistry: ReadonlyArray<ParsedSource>;
-  /**
-   * Per-meta children cache for `splitByFile: true` globs (ADR-0027). Drives
-   * the dynamic `/api/config` listing: watcher events invalidate per parent,
-   * and the next request re-walks the meta's glob to refresh children.
-   */
   metaChildrenCache: MetaChildrenCache;
-  /** `@id` the unparameterized `/api/sparql` forwards to, or `undefined` if none. */
+  /** `@id` the unparameterized `/api/sparql` forwards to. */
   defaultId: string | undefined;
   config: SparqlServerConfig;
   context: SparqlContext;
   describe: DescribeConfig;
   snippetAllowList: SnippetAllowList;
   savedQueries: SavedQueriesServerConfig;
-  /**
-   * Source admin actions capability (ADR-0045, #356). Surfaced on
-   * `GET /api/config` as `sourcesAdmin.allowAdminActions` and consulted by
-   * the mutating routes on {@link SourcesController}.
-   */
   sourcesAdmin: SourcesAdminServerConfig;
-  /**
-   * Live state broker for the Sources page (ADR-0044, #354). Wired up
-   * in `createServer`, then provided here under
-   * {@link SPARQL_SOURCE_STATE_BROKER} so `SourcesController.@Sse('stream')`
-   * can subscribe.
-   */
   sourceStateBroker: SourceStateBroker;
 }
 

@@ -1,16 +1,5 @@
 import { formatSourceError, type SourceError } from '../sources/errors';
 
-/**
- * The describe feature folder's per-source error union (ADR-0025). A
- * per-source resolution failure travels as **data** inside the ok payload's
- * `perSource[id].error?` — only the all-failed terminal case errs the
- * top-level `Result`. Adding a variant is one edit here plus one new case in
- * `formatDescribePerSourceError`.
- *
- * Follows ADR-0024's wrap-don't-duplicate idiom for upstream errors: a glob
- * or view materialization failure surfaces as `SourceWrappedError` rather
- * than re-declaring `SourceError`'s variants here.
- */
 export type DescribeError =
   | DescribeSourceWrappedError
   | EndpointDescribeError
@@ -18,49 +7,28 @@ export type DescribeError =
   | ReferenceSourceError
   | DiskBackedSourceError;
 
-/**
- * Wraps an upstream {@link SourceError} from {@link resolveSourceResult}
- * (glob load, view error, endpoint fetch on a view's upstream, …) per
- * ADR-0024's wrap-don't-duplicate rule. Prefixed to disambiguate from
- * `diff/errors`'s side-bearing `SourceWrappedError`.
- */
 export interface DescribeSourceWrappedError {
   kind: 'source';
   source: SourceError;
 }
 
-/**
- * Failure of the describe-endpoint flow itself (depth-0 SELECT / RDF-star
- * post-pass) — distinct from a view's upstream-endpoint fetch failure, which
- * arrives as a `SourceWrappedError` carrying `EndpointFetchError`.
- */
 export interface EndpointDescribeError {
   kind: 'endpoint-describe';
   endpoint: string;
   message: string;
 }
 
-/** The selected source is an `empty` kind; it has no data of its own. */
 export interface EmptySourceError {
   kind: 'empty-source';
   id: string;
 }
 
-/** The selected source is a `reference` alias, not a describable entry. */
 export interface ReferenceSourceError {
   kind: 'reference-source';
   id: string;
   ref: string;
 }
 
-/**
- * The selected source resolves to a `storage: disk` glob (ADR-0041). The
- * describe algorithm consumes an in-heap `n3.Store` synchronously, whereas a
- * disk-backed index exposes its quads via an async `RDF.Source.match` stream
- * — and the disk tier exists precisely to keep those quads out of V8. Surfaced
- * as a per-source error so the user sees the unsupported combination instead
- * of a silent `count: 0`.
- */
 export interface DiskBackedSourceError {
   kind: 'disk-backed-source';
   id: string;
@@ -77,17 +45,10 @@ export function formatDescribePerSourceError(error: DescribeError): string {
     case 'reference-source':
       return `source '${error.id}' is a \`reference\` alias to '${error.ref}'; describe that source directly`;
     case 'disk-backed-source':
-      return `source '${error.id}' is a disk-backed glob (\`storage: disk\`); describe does not support streaming from a disk-backed index (ADR-0041)`;
+      return `source '${error.id}' is a disk-backed glob (\`storage: disk\`); describe does not support streaming from a disk-backed index`;
   }
 }
 
-/**
- * The describe feature folder's top-level error union (ADR-0025). These
- * variants fail the *whole* request — either a precondition was violated, or
- * every selected source failed (`AllSourcesFailedError`). Per-source
- * resolution failures live inside `ok.perSource[id].error` (see
- * {@link DescribeError}).
- */
 export type DescribeTopLevelError =
   | AllSourcesFailedError
   | EmptyTargetError
@@ -101,41 +62,23 @@ export interface AllSourcesFailedError {
   perSource: Readonly<Record<string, DescribeError>>;
 }
 
-/** No describable target after request filtering (e.g. `sources: []`). */
 export interface EmptyTargetError {
   kind: 'empty-target';
 }
 
-/** Seed value isn't a non-empty IRI. */
 export interface SeedNotIriError {
   kind: 'seed-not-iri';
   value: string;
 }
 
-/**
- * Every selected target source is a `reference` alias. Prefixed to
- * disambiguate from `sources/errors`'s call-time `ReferenceTargetError`
- * (which fires inside `resolveSourceResult`, not as a top-level precondition).
- */
 export interface DescribeReferenceTargetError {
   kind: 'reference-target';
 }
 
-/**
- * `expandedPaths` was supplied without `source`. Under ADR-0033 the field is
- * scoped to exactly one endpoint source per request, so it has no meaning
- * under the all-sources fan-out branch.
- */
 export interface ExpandedPathsWithoutSourceError {
   kind: 'expanded-paths-without-source';
 }
 
-/**
- * `expandedPaths` was supplied with a `source` whose kind is not `endpoint`.
- * Path expansion only applies to endpoint sources — materialized sources are
- * already fully expanded — so the coupling is enforced at the request
- * boundary rather than silently ignored.
- */
 export interface ExpandedPathsNonEndpointSourceError {
   kind: 'expanded-paths-non-endpoint-source';
   id: string;

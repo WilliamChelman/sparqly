@@ -48,46 +48,16 @@ import { propagateViewPin } from './propagate-view-pin';
 export interface ResolveViewOptions {
   view: ParsedViewSource;
   registry: ReadonlyArray<ParsedSource>;
-  /**
-   * Absolute directory used for persistent caching of views that declare a
-   * `cache` block. When omitted, the cache is skipped (lazy + process-lifetime
-   * materialization only). Anonymous CLI views always omit this.
-   */
+  /** Persistent cache root; omit to skip caching (lazy + process-lifetime only). */
   cacheDir?: string;
-  /** Injectable clock; defaults to `Date.now`. */
   now?: () => number;
-  /** Test seam: inject a Comunica engine. */
   engine?: ComunicaQueryEngine;
-  /**
-   * When set, each SPARQL execution along the `from:` chain emits a `query`
-   * debug event (`mode=view`) on this logger — same shape as `sparqly query`
-   * (ADR-0020).
-   */
   logger?: SparqlyLogger;
-  /**
-   * Absolute path to the project config dir, used as the resolution root for
-   * `gitRoot:` relative overrides when a view propagates a pin (ADR-0029,
-   * #275). Defaults to `process.cwd()`.
-   */
   configDir?: string;
-  /**
-   * Injectable git port used when the view's `from:` carries a `:<ref>` pin
-   * (ADR-0029, #275). Defaults to the production `GitCliPort`.
-   */
   gitPort?: GitPort;
-  /**
-   * Injectable repo-discovery deps used when the view's `from:` carries a
-   * `:<ref>` pin (ADR-0029, #275). Defaults to a filesystem-backed impl.
-   */
   repoDiscovery?: RepoDiscoveryDeps;
 }
 
-/**
- * Union of every variant a view resolution can produce. Each variant carries
- * structured fields per ADR-0024; the `view-reference` reason discriminates
- * between an unknown ref, a cycle on the `from:` DAG, and a reference-kind
- * upstream entry (which is an alias, not data).
- */
 export type ResolveViewError =
   | ViewValidationError
   | ViewReferenceError
@@ -97,13 +67,6 @@ export type ResolveViewError =
   | GlobLoadError
   | GitPinError;
 
-/**
- * Primary `Result`-typed view resolver. Returns the same `Store` payload as
- * the legacy `resolveView` on success, and a tagged {@link ResolveViewError}
- * on failure. The legacy `resolveView` is a thin throw-wrapping adapter that
- * preserves the historical message shape for downstream `legacy-message`
- * consumers until they migrate (ADR-0024).
- */
 export function resolveViewResult(
   opts: ResolveViewOptions,
 ): ResultAsync<Store, ResolveViewError> {
@@ -124,10 +87,7 @@ export function resolveViewResult(
   );
 }
 
-/**
- * @deprecated Use {@link resolveViewResult} (ADR-0024). Retained as a thin
- * throw-based adapter for callers that have not migrated yet.
- */
+/** @deprecated Use {@link resolveViewResult}. Throw-based adapter. */
 export async function resolveView(opts: ResolveViewOptions): Promise<Store> {
   const result = await resolveViewResult(opts);
   if (result.isErr()) {
@@ -175,11 +135,6 @@ function resolveViewWithCacheResult(
   });
 }
 
-/**
- * Bridges the cache freshness-ASK probe back to a `Promise<Store>` for the
- * binding contract. Throws to match the binding's existing shape; failures
- * surface as caught errors that get mapped by the cache layer.
- */
 async function loadUpstreamPromise(
   view: ParsedViewSource,
   registry: ReadonlyArray<ParsedSource>,
@@ -348,18 +303,14 @@ function loadUpstreamResult(
     return okAsync(new Store());
   }
   if (upstream.kind === 'file' || upstream.kind === 'glob') {
-    // A view materializes its `from:` chain into an in-memory Store before
-    // running its query — the very cost a `storage: disk` glob exists to
-    // escape (ADR-0041). Refuse the combination here, before any index dir
-    // is opened or built, with a typed `glob-load` error.
+    // A view materializes its `from:` into heap — refuse a disk-backed upstream.
     if (storageTier(upstream) === 'disk') {
       return errAsync({
         kind: 'glob-load',
         glob: upstream.kind === 'glob' ? [upstream.glob] : [upstream.path],
         message:
           `view "${view.id}" cannot resolve from a disk-backed upstream @${refId} ` +
-          '(`storage: disk`): a view materializes its `from:` into the V8 heap, ' +
-          'which is precisely the cost the disk tier exists to escape (ADR-0041)',
+          '(`storage: disk`): a view materializes its `from:` into the V8 heap',
       });
     }
   }
@@ -371,8 +322,7 @@ function loadUpstreamResult(
     );
   }
   if (upstream.kind !== 'glob') {
-    // Endpoint upstreams are routed via pass-through above; this branch is
-    // unreachable for the current source kinds.
+    // Endpoint upstreams are routed via pass-through above; unreachable today.
     return errAsync({
       kind: 'view-reference',
       viewId: view.id,
@@ -386,13 +336,6 @@ function loadUpstreamResult(
   return loadPinnedGlobUpstreamResult(view, upstream, logger, pinDeps);
 }
 
-/**
- * Resolves the union-default-graph setting that applies to a view's own query
- * (ADR-0040). The flag belongs to the immediate `from:` upstream: a glob/file
- * upstream contributes its `unionDefaultGraph` (default `true`), while a view,
- * empty, or endpoint upstream contributes `false` — querying a view's output
- * Store, or an empty/endpoint dataset, runs with standard SPARQL semantics.
- */
 function unionDefaultGraphForUpstream(
   view: ParsedViewSource,
   registry: ReadonlyArray<ParsedSource>,

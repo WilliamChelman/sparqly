@@ -58,44 +58,15 @@ export interface ResolveSourceResultOptions {
   now?: ResolveViewOptions['now'];
   engine?: ResolveViewOptions['engine'];
   logger?: ResolveViewOptions['logger'];
-  /**
-   * Absolute path to the project config directory (or cwd when no config is
-   * loaded). Used as the resolution root for `gitRoot:` relative overrides on
-   * pinned glob sources (ADR-0029). Defaults to `process.cwd()`.
-   */
+  /** Resolution root for `gitRoot:` relative overrides; defaults to `process.cwd()`. */
   configDir?: string;
-  /**
-   * Injectable git port for pinned-source loading (ADR-0029). Defaults to the
-   * production `GitCliPort` (shells out to `git`).
-   */
   gitPort?: GitPort;
-  /**
-   * Injectable repo-discovery deps for pinned-source loading (ADR-0029).
-   * Defaults to a filesystem-backed implementation.
-   */
   repoDiscovery?: RepoDiscoveryDeps;
-  /**
-   * The sparqly version recorded in a disk-backed glob's index manifest
-   * (ADR-0041). Defaults to a placeholder token for callers that resolve no
-   * disk-backed source; the CLI threads its real version.
-   */
   sparqlyVersion?: string;
-  /**
-   * Overrides the Glob index cache root for disk-backed globs (ADR-0041,
-   * #345). When set, a `storage: disk` glob's index is built and reused under
-   * `<indexCacheDir>/<source-id>/` instead of the default
-   * `<configDir>/.sparqly/index/<source-id>/`. Threaded from the project
-   * config's `index.dir` field.
-   */
+  /** Overrides the Glob index cache root for disk-backed globs. */
   indexCacheDir?: string;
 }
 
-/**
- * Primary `Result`-typed implementation of source resolution. Returns the
- * same payload as the legacy `resolveSource` for ok paths, and a tagged
- * `SourceError` for failure paths. The legacy `resolveSource` is a thin
- * throw-wrapping adapter around this function (ADR-0024).
- */
 export function resolveSourceResult(
   target: ParsedSource,
   options: ResolveSourceResultOptions = {},
@@ -117,11 +88,8 @@ export function resolveSourceResult(
     if (transformsResult.isErr()) return errAsync(transformsResult.error);
     const transforms = transformsResult.value;
     if (storageTier(target) === 'disk') {
-      // Disk-backed indexes are keyed on `(id, glob)` only (ADR-0041) — they
-      // have no place to record a pinned SHA, so the working tree would be
-      // indexed regardless of the pin. Refusing here surfaces the unsupported
-      // combination as a typed error instead of silently serving answers from
-      // the wrong revision.
+      // Disk-backed indexes are keyed on `(id, glob)` only — no place to
+      // record a pinned SHA, so the working tree would be indexed regardless.
       if (target.gitRef !== undefined) {
         return errAsync(diskPinUnsupportedError(target));
       }
@@ -167,11 +135,6 @@ function resolveViewTargetResult(
 }
 
 interface MaterializedLoadResult extends LoadResult {
-  /**
-   * Loader-attached source-record sidecar (ADR-0032). Always present on
-   * glob/file load paths — built from `perFileRecords` with `gitRef` /
-   * `gitSha` populated from the load's pin context, if any.
-   */
   sourceRecords: SourceRecordSidecar;
 }
 
@@ -205,11 +168,8 @@ function pinAndLoadGlob(
     .andThen<MaterializedLoadResult, SourceError>((pinned) => {
       const transformPin = { ref: pinned.ref, sha: pinned.resolvedSha };
       if (source.splitByFile === true) {
-        // Split-glob parents enumerate from the git tree at the resolved SHA
-        // (mirroring `expandSplitGlobs.expandPinned`) so the load sees the
-        // ref-time file set, not the working tree's. Without this branch the
-        // working-tree walk would surface files added after the ref as
-        // pinned-file-missing errors (ADR-0029 ad-hoc pin path).
+        // Enumerate from the git tree at the resolved SHA so the load sees the
+        // ref-time file set, not the working tree's.
         return loadPinnedSplitGlob(source, pinned, port, repoDiscovery)
           .map((sub) => applyGlobTransforms(sub, transforms, transformPin));
       }
@@ -282,10 +242,7 @@ function applyGlobTransforms(
 function mapPinnedLoadError(
   err: SourceError,
 ): ResultAsync<MaterializedLoadResult, SourceError> {
-  // The contentReader can throw PinnedFileMissingError when a working-tree
-  // match is absent from the git tree at the resolved revision. The loader
-  // surfaces that as a glob-load error wrapping the thrown message; promote
-  // it to a typed git-pin error so the surface decorators can render it.
+  // Promote a wrapped PinnedFileMissingError to a typed git-pin error.
   if (
     err.kind === 'glob-load' &&
     err.message.includes('pinned source: file ')
@@ -304,10 +261,6 @@ function loadFileIntoStore(
   transforms: ReadonlyArray<ParsedTransform>,
   options: ResolveSourceResultOptions,
 ): ResultAsync<MaterializedLoadResult, SourceError> {
-  // A synthesized file child resolves like a one-file glob — same loader,
-  // same transform pipeline (ADR-0027). When the child inherited a pin from
-  // its parent split-glob meta (ADR-0029), the loader reads from the git tree
-  // at the resolved SHA instead of the working tree.
   const pin = pinFromFileSource(source);
   if (pin === null) {
     return loadRdfResult({ sources: source.path, logger: options.logger }).map(
@@ -315,10 +268,7 @@ function loadFileIntoStore(
         materializeFileLoad(sub, transforms),
     );
   }
-  // Pinned child: its working-tree file may be absent (deleted-after-ref) or
-  // stale (modified-after-ref). Bypass `tinyglobby` enumeration — the
-  // synthesized child already names the exact git-tree path — and parse the
-  // bytes returned by the git-tree contentReader directly (ADR-0029).
+  // Pinned child: bypass tinyglobby and read bytes from the git-tree contentReader.
   const port = options.gitPort ?? new GitCliPort();
   const contentReader = makeGitTreeContentReader(port, pin);
   return ResultAsync.fromPromise(

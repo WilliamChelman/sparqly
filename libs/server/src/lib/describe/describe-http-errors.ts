@@ -5,14 +5,6 @@ import {
 } from '@nestjs/common';
 import type { DescribeError, DescribeTopLevelError } from 'core';
 
-/**
- * Per-ADR-0024 / ADR-0025 mapper from the describe service's top-level error
- * union to `HttpException`. `all-sources-failed` is the only 5xx variant
- * (502, every selected source failed); the three precondition variants
- * (`empty-target`, `seed-not-iri`, `reference-target`) map to 400. Per-source
- * resolution failures live inside the ok payload's `perSource[id].error?`
- * and are not routed through this mapper.
- */
 export function mapDescribeHttpError(
   error: DescribeTopLevelError,
 ): HttpException {

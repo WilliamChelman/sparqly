@@ -1,28 +1,15 @@
 import type { SparqlyLogger } from 'common';
 
 export interface ShutdownDeps {
-  /** Releases index locks and SIGTERMs in-flight build children. */
   close: () => Promise<void>;
-  /** process.exit (injectable for tests). */
   exit: (code: number) => void;
-  /** Optional logger for shutdown failures. */
   logger?: SparqlyLogger;
-  /**
-   * Force-exit timeout in ms. If `close()` doesn't settle within this window,
-   * the handler still exits with code 1 so a hung close can't pin the process.
-   * Defaults to 10_000.
-   */
+  /** Defaults to 10_000. */
   forceExitMs?: number;
   setTimeoutFn?: (cb: () => void, ms: number) => unknown;
   clearTimeoutFn?: (id: unknown) => void;
 }
 
-/**
- * Wraps `created.close()` in a one-shot signal handler that:
- *   - exits 0 once close settles cleanly,
- *   - catches a rejection and exits 1 (instead of leaving an unhandled promise),
- *   - force-exits 1 if close hangs past `forceExitMs`.
- */
 export function makeShutdownHandler(deps: ShutdownDeps): () => void {
   const scheduleTimer = deps.setTimeoutFn ?? ((cb, ms) => setTimeout(cb, ms));
   const clearTimer = deps.clearTimeoutFn ?? ((id) => clearTimeout(id as ReturnType<typeof setTimeout>));

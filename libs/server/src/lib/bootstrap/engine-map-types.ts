@@ -11,47 +11,24 @@ import type { Store } from 'n3';
 import type { Result } from 'neverthrow';
 import type { StoreRef } from './tokens';
 
-/**
- * Loaded view of a served source, surfaced to consumers that need the
- * underlying Store and (where available) the loader-attached source-record
- * sidecar (ADR-0032). Discriminated mirrors `QuerySources` so callers can
- * dispatch on `mode` without reaching into `engine-map` internals.
- */
 export type LoadedSources =
   | { mode: 'materialized'; store: Store; sourceRecords?: SourceRecordSidecar }
   | { mode: 'pass-through'; endpoint: ParsedEndpointSource }
   | {
-      /**
-       * A `storage: disk` glob hosted by `serve` from its on-disk Glob index
-       * (ADR-0041). The quads live in an embedded quad store, not the V8 heap,
-       * and carry no Source record sidecar — `diff` rejects this mode.
-       */
+      /** A `storage: disk` glob served from its on-disk Glob index — no sidecar. */
       mode: 'disk-backed';
       source: RDF.Source;
       indexDir: string;
     };
 
-/**
- * Returned by {@link EngineMap.ensure}/{@link EngineMap.ensureSources} when a
- * disk-backed glob's Glob index is still building in the background (ADR-0041,
- * #340). It is not a load *failure* — it is a transient "retry shortly" state
- * — but it travels the same `Result` error channel so the `serve` HTTP
- * boundary can route it to a `503` the way every other source outcome routes
- * through an error-to-status mapper.
- */
+/** Transient "retry shortly" — travels the `Result` error channel so the HTTP
+ * boundary maps it to a 503 like any other source outcome. */
 export interface IndexingError {
   kind: 'indexing';
-  /** Source `@id` whose Glob index is still building. */
   source: string;
   message: string;
 }
 
-/**
- * Type guard separating an {@link IndexingError} from any other tagged error
- * travelling the `Result` channel (a core `SourceError`, a `TargetError`). The
- * parameter is the structural `{ kind }` shape every such error carries so the
- * `serve` boundary can call this on its widest error union.
- */
 export function isIndexingError(
   error: { kind: string },
 ): error is IndexingError {
@@ -66,11 +43,7 @@ export function indexingError(source: string): IndexingError {
   };
 }
 
-/**
- * Default `SpawnIndexBuild` used when `EngineMapOptions.spawnIndexBuild` is
- * omitted — touching a not-yet-built disk-backed source then fails loudly
- * rather than silently never indexing. `serve` always injects a real spawn.
- */
+/** Default when no spawn is provided — fail loudly rather than never index. */
 export function spawnIndexBuildUnavailable(): never {
   throw new Error(
     'EngineMap: a disk-backed source needs an index build, but no ' +
@@ -78,25 +51,12 @@ export function spawnIndexBuildUnavailable(): never {
   );
 }
 
-/**
- * Settled-`ok` view of a successful entry load — the engine, its store ref
- * (when materialized), and the `LoadedSources` projection consumers see.
- * Lives here so peer modules (`engine-map-actions.ts`) can manipulate it
- * without a circular import back into `engine-map.ts`.
- */
 export interface LoadedEntry {
   engine: QueryEngine;
   storeRef: StoreRef | undefined;
   sources: LoadedSources;
 }
 
-/**
- * Per-source bookkeeping held inside {@link EngineMap}. Exported so the
- * peer action helpers (`reloadEntry`, `unloadEntry` — see
- * `engine-map-actions.ts`) can read and mutate the same record the class
- * stores in its internal `Map<id, Entry>`. Field-by-field comments live in
- * the class file where the lifecycle is wired.
- */
 export interface Entry {
   source: ParsedSource;
   files: string[];
@@ -106,29 +66,13 @@ export interface Entry {
   disk: Promise<Result<LoadedEntry, SourceError | IndexingError>> | undefined;
   closeIndex: (() => Promise<void>) | undefined;
   current: LoadedEntry | undefined;
-  /**
-   * The last `staleReason` `readState` reported for this disk-backed entry
-   * (#357). Used to de-duplicate `stale-detected` SSE emissions — `readState`
-   * compares the freshly-observed reason against this cache and only emits
-   * when it changes (rest → stale, or stale-reason-A → stale-reason-B). Reset
-   * to `undefined` when the entry transitions back to non-stale (the next
-   * stale observation should re-emit).
-   */
+  /** De-dups `stale-detected` SSE emissions — reset when leaving `stale`. */
   staleReasonSeen: string | undefined;
   /**
-   * Inline failure surface for the Sources page row (#360). Populated when
-   * the most recent load (in-memory) or child-process index build
-   * (disk-backed) settled in error; cleared when the next attempt starts.
-   *
-   * For in-memory entries this is observational only — `entry.loaded` still
-   * clears on err to preserve ADR-0031's self-heal contract (the next query
-   * touch retries). `readState` reads `lastError` to project `failed` with
-   * the inline error block; a successful follow-up load clears it.
-   *
-   * For disk-backed entries this is *sticky*: while set, `ensureDiskBacked`
-   * skips re-spawning a build (so a permanently failing source does not
-   * silently respawn `sparqly index` children on every query, parent #352);
-   * only an operator-initiated `requestBuild` (Retry) clears it and spawns.
+   * Inline failure surface for the Sources page row. For in-memory entries
+   * this is observational (the load slot still clears on err for self-heal).
+   * For disk-backed entries it is *sticky*: while set, `ensureDiskBacked`
+   * skips re-spawning a build — only Retry clears it.
    */
   lastError: SourceRowError | undefined;
 }

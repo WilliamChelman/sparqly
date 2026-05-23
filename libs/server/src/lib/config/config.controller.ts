@@ -49,9 +49,6 @@ export class ConfigController {
         path: this.savedQueries.path,
         writable: this.savedQueries.writable,
       },
-      // Source admin actions capability (ADR-0045, #356). Sibling key rather
-      // than nested under `sources` so the existing listing array shape is
-      // untouched. Webapp reads this at boot to gate UI affordances.
       sourcesAdmin: {
         allowAdminActions: this.sourcesAdmin.allowAdminActions,
       },

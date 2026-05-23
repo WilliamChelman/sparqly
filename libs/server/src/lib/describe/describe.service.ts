@@ -30,58 +30,31 @@ export const DEFAULT_DESCRIBE_CONFIG: DescribeConfig = {
 };
 
 export interface DescribeConfig {
-  /** Per-source quad cap applied when a request omits `perSourceLimit`. */
   perSourceSoftLimit: number;
-  /** Absolute ceiling — a request-supplied `perSourceLimit` cannot exceed it. */
   perSourceHardLimit: number;
-  /** Default RDF-star annotation predicate for describe provenance. */
   fromSourcePredicate: string;
 }
 
 export interface DescribeRequest {
   iri: string;
-  /**
-   * Either a single source id (with optional leading `@`) to describe against,
-   * or omitted to fan out across the served registry under the absorbing-meta
-   * rule (ADR-0033): split-glob `kind: 'file'` children whose parent meta is
-   * also served are dropped, and `kind: 'empty'` sources are dropped. An
-   * explicit id resolves the named source verbatim — no absorption, no
-   * auto-expansion.
-   */
+  /** Source id (optional leading `@`) or omit to fan out across the served registry. */
   source?: string;
   withProvenance?: boolean;
   perSourceLimit?: number;
   fromSourcePredicate?: string;
-  /**
-   * UI-driven blank-node expansion paths (ADR-0019, ADR-0033). Scoped to a
-   * single endpoint source per request, so valid only when `source` is set
-   * and that source is `kind: 'endpoint'` — anything else errs at the request
-   * boundary. Forwarded as `paths` to {@link describeEndpointResult}. Paths
-   * longer than {@link MAX_EXPANSION_PATH_STEPS} are clamped and the source
-   * is reported `truncated`.
-   */
+  /** Only valid when `source` names an endpoint. Over-long paths are clamped. */
   expandedPaths?: PathStep[][];
 }
 
-/** Cap on expansion-path length (ADR-0019); over-long paths are clamped, not rejected. */
+/** Over-long paths are clamped, not rejected. */
 export const MAX_EXPANSION_PATH_STEPS = 12;
 
 export interface DescribePerSourceEntry {
   count: number;
   truncated: boolean;
-  /**
-   * Present when this source's describe run failed; the source contributed
-   * no quads but the request still succeeds if any other source did. Carries
-   * a structured `DescribeError` (ADR-0024 + ADR-0025).
-   */
   error?: DescribeError;
 }
 
-/**
- * The describe service's ok payload (ADR-0025). The top-level `Result` errs
- * only on precondition violations or when every selected source failed;
- * per-source failures travel as data inside `perSource[id].error?`.
- */
 export interface DescribeResult {
   iri: string;
   quads: string;
@@ -92,11 +65,9 @@ export interface DescribeResult {
 @Injectable()
 export class DescribeService {
   private readonly config: DescribeConfig;
-  /** Registry used to walk `from:` chains while resolving a source's graph. */
   private readonly resolutionRegistry: ReadonlyArray<ParsedSource>;
 
   constructor(
-    /** Sources `serve` exposes — the default enumeration set when a request omits `sources`. */
     private readonly servedRegistry: ReadonlyArray<ParsedSource>,
     config: DescribeConfig = DEFAULT_DESCRIBE_CONFIG,
     resolutionRegistry: ReadonlyArray<ParsedSource> = servedRegistry,
@@ -121,8 +92,6 @@ export class DescribeService {
       if (req.source === undefined) {
         return errAsync({ kind: 'expanded-paths-without-source' });
       }
-      // `selected` resolved to exactly one entry when `source` is set, so the
-      // first element is the chosen target.
       const target = selected[0];
       if (target.kind !== 'endpoint') {
         return errAsync({
@@ -143,16 +112,10 @@ export class DescribeService {
       this.config.perSourceHardLimit,
     );
 
-    // Aggregator (ADR-0025): each per-source resolution is folded into an
-    // `Ok<SourceRun>` whose `error` field carries the per-source failure as
-    // data. Combining never short-circuits — a single failing source does
-    // not fail the request. The all-failed terminal case is checked below
-    // after every source has resolved.
+    // Combining never short-circuits — a single failing source does not fail
+    // the request; the all-failed case is checked after all sources resolve.
     const folded = selected.map((target) => {
       const id = target.id ?? 'source';
-      // Paths are only meaningful when an endpoint source is explicitly
-      // named — the precondition above ensures `expandedPaths` is only
-      // forwarded to that endpoint, never to a sibling under fan-out.
       const requestedPaths =
         target.kind === 'endpoint' && req.source !== undefined
           ? req.expandedPaths ?? []
@@ -228,10 +191,6 @@ export class DescribeService {
     const quads = serializeDescribeWire(wire);
     const result: DescribeResult = { iri, quads, total, perSource };
 
-    // All-failed terminal case (ADR-0025): only fires when sources were
-    // attempted AND every one of them failed. Zero attempted sources is
-    // caught earlier as `empty-target`, so `attempted > 0` always holds when
-    // we get here.
     const attempted = runs.length;
     const failed = runs.filter((r) => r.error !== undefined).length;
     if (attempted > 0 && failed === attempted) {
@@ -244,16 +203,6 @@ export class DescribeService {
     return okAsync(result);
   }
 
-  /**
-   * Per-source dispatch (ADR-0015, issues #189/#190). `glob` and `view` resolve
-   * via {@link resolveSourceResult} to an in-memory materialized store — a view's
-   * upstream (glob, endpoint, or another view) is snapshotted first — then run
-   * {@link describeStore} against that stable store. `endpoint` runs
-   * {@link describeEndpointResult} over the wire. `empty` and `reference`
-   * sources have no describable graph of their own — they resolve to their
-   * respective {@link DescribeError} variants and {@link runDescribe} surfaces
-   * them as per-source errors rather than global failures.
-   */
   private describeOneResult(
     target: ParsedSource,
     id: string,
@@ -278,10 +227,6 @@ export class DescribeService {
           quads: raw.quads,
           truncated: raw.truncated || clamped,
         }))
-        // Surface as `endpoint-describe` (a DescribeError variant) — the
-        // failure is the describe-endpoint flow itself, not a view's
-        // upstream fetch (which would arrive via resolveSourceResult and
-        // wrap as `SourceWrappedError`).
         .mapErr(
           (e: EndpointDescribeError): DescribeError => ({
             kind: 'endpoint-describe',
@@ -296,9 +241,6 @@ export class DescribeService {
     if (target.kind === 'reference') {
       return errAsync({ kind: 'reference-source', id, ref: target.ref });
     }
-    // `glob`, `file` (split-glob child), and `view` all land here;
-    // `resolveSourceResult` materializes a view's upstream chain — or a
-    // file/glob's quads — into an in-memory store before we describe over it.
     return resolveSourceResult(target, {
       registry: this.resolutionRegistry,
     })
@@ -306,17 +248,11 @@ export class DescribeService {
       .andThen<{ quads: Quad[]; truncated: boolean }, DescribeError>(
         (resolved: QuerySources) => {
           if (resolved.mode === 'disk-backed') {
-            // describe consumes a synchronous in-heap Store; a disk-backed
-            // index exposes its quads via an async RDF.Source stream and the
-            // disk tier exists to keep them out of V8 (ADR-0041). Release the
-            // embedded LevelDB lock and surface a typed per-source error.
+            // Release the LevelDB lock; describe needs a synchronous in-heap Store.
             void resolved.close();
             return errAsync({ kind: 'disk-backed-source', id });
           }
           if (resolved.mode !== 'materialized') {
-            // A declared glob/view always resolves to a materialized store;
-            // anything else here is a guard against an unexpected resolver
-            // outcome.
             return okAsync({ quads: [] as Quad[], truncated: false });
           }
           const raw = describeStore({
@@ -329,17 +265,6 @@ export class DescribeService {
       );
   }
 
-  /**
-   * Source selection under ADR-0033's single-or-all contract.
-   *
-   * - Omitted `source`: fan out across the served registry under the
-   *   absorbing-meta rule — drop split-glob `kind: 'file'` children whose
-   *   `parentId` is also served (the meta carries their quads), drop
-   *   `kind: 'empty'` sources (no data of their own), keep everything else.
-   * - Explicit `source`: resolve the named id verbatim. No absorption, no
-   *   auto-expansion. An unknown id is `empty-target`; a `reference` alias is
-   *   `reference-target`.
-   */
   private selectSources(
     requested: string | undefined,
   ): Result<ParsedSource[], DescribeTopLevelError> {
@@ -378,9 +303,7 @@ interface SourceRun {
 }
 
 function isSupportedKind(src: ParsedSource): boolean {
-  // `glob`, `file` (split-glob child, ADR-0027), `endpoint`, `view`, `empty`,
-  // and `reference` are all surfaced so the caller gets an explanatory
-  // per-source error (for `empty`/`reference`) rather than a silent omission.
+  // `empty`/`reference` are surfaced so callers see an explanatory per-source error.
   return (
     src.kind === 'glob' ||
     src.kind === 'file' ||
@@ -391,14 +314,7 @@ function isSupportedKind(src: ParsedSource): boolean {
   );
 }
 
-/**
- * Reject anything that doesn't look like an IRI before we hand it to source
- * resolution. Cheap shape check — a non-empty value with a scheme-style
- * `scheme:` prefix (per RFC 3987 §2.2). Full IRI validation is deferred to
- * the underlying engines; this gate just catches obvious junk (empty strings,
- * paths, plain words) at the request boundary so it surfaces as a 400
- * precondition violation rather than a 502 endpoint failure.
- */
+/** Cheap shape check — catches obvious junk at the boundary so it 400s instead of 502s. */
 function parseSeed(value: string): Result<NamedNode, DescribeTopLevelError> {
   if (typeof value !== 'string' || value.length === 0) {
     return err({ kind: 'seed-not-iri', value: String(value) });
