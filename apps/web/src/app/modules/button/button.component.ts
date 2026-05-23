@@ -1,8 +1,6 @@
 /* eslint-disable @angular-eslint/component-selector, @angular-eslint/directive-selector */
-// ADR-0034: this primitive is an attribute component on native <button>/<a>
-// hosts, and its iconStart/iconEnd named-slot directives use bare attribute
-// names by design — the lint rule's app-/appCamelCase prefix requirements
-// don't fit either choice.
+// Attribute component on native <button>/<a>; iconStart/iconEnd use bare
+// attribute names by design — the lint prefix rules don't fit either.
 import {
   ChangeDetectionStrategy,
   Component,

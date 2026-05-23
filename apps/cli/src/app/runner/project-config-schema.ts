@@ -36,8 +36,7 @@ const cacheBlockSchema = z
 
 const savedQueriesBlockSchema = z
   .object({
-    // Path to the saved-query sidecar YAML file (ADR-0036). Relative paths are
-    // resolved against the project config dir; absolute paths are honored as-is.
+    // Path to the sidecar YAML; relative resolves against the project config dir.
     path: z.string().min(1),
   })
   .partial()
@@ -45,14 +44,10 @@ const savedQueriesBlockSchema = z
 
 const indexBlockSchema = z
   .object({
-    // Overrides the Glob index cache root (ADR-0041, #345). A `storage: disk`
-    // glob's index is built and reused under `<dir>/<source-id>/` instead of
-    // the default `<configDir>/.sparqly/index/<source-id>/`. Relative paths
-    // resolve against the project config dir; absolute paths are honored as-is.
+    // Glob index cache root; defaults to `<configDir>/.sparqly/index/`.
+    // Relative resolves against the project config dir.
     dir: z.string().min(1),
-    // Maximum number of `sparqly index` child processes `serve` runs at once
-    // for not-yet-built disk-backed globs (ADR-0042, #350). Further sources
-    // queue for a free slot. Defaults to 2 when omitted.
+    // Max parallel `sparqly index` child builds `serve` runs. Defaults to 2.
     concurrency: z.number().int().positive(),
   })
   .partial()

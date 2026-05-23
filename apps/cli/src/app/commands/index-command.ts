@@ -56,10 +56,8 @@ const forceField: FieldDescriptor = {
   ],
 };
 
-// Glob index cache root, read from the top-level `index.dir` config block
-// (ADR-0041, #345). No CLI flag — where disk-backed indexes live is a
-// project-shaped deployment knob, so `sparqly index` writes to the same root
-// the query/serve open path reads from.
+// Read from the top-level `index.dir` config block, not a CLI flag — so
+// `sparqly index` writes to the same root that query/serve opens from.
 const indexCacheDirField: FieldDescriptor = {
   key: 'indexCacheDir',
   schema: z.string().min(1),
@@ -82,7 +80,7 @@ function renderOutcome(label: string, outcome: EnsureGlobIndexOutcome): string {
 export const indexSpec: CommandSpec<IndexConfig> = {
   name: 'index',
   description:
-    'Build the Glob index for every `storage: disk` source in the config registry (ADR-0041). With no positional args, builds every disk-backed glob and split-glob file child; pass one or more `@id` refs to build only those. A non-disk-backed `@id` is rejected. An already-fresh index is skipped; a stale one is rebuilt. `--force` rebuilds even a fresh index. The build writes to a unique temp directory and atomic-renames into place once its manifest is written, so an interrupted build never leaves a half-index at the real path.',
+    'Build the Glob index for every `storage: disk` source in the config registry. With no positional args, builds every disk-backed glob and split-glob file child; pass one or more `@id` refs to build only those. A non-disk-backed `@id` is rejected. An already-fresh index is skipped; a stale one is rebuilt. `--force` rebuilds even a fresh index. The build writes to a unique temp directory and atomic-renames into place once its manifest is written, so an interrupted build never leaves a half-index at the real path.',
   fields: [
     sourcesRegistryField,
     idsField,
@@ -127,7 +125,6 @@ export const indexSpec: CommandSpec<IndexConfig> = {
         indexDir,
         sparqlyVersion,
         force: config.force === true,
-        // Surfaces the build's `index-file-*` / `index-progress` events (#349).
         logger,
       });
       if (outcome.isErr()) {

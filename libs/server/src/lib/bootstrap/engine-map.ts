@@ -31,26 +31,17 @@ export type { IndexingError, LoadedSources } from './engine-map-types';
 export { isIndexingError } from './engine-map-types';
 
 export interface EngineMapOptions {
-  /** Superset of the served set used to walk `from:` chains. Defaults to served. */
+  // Superset of the served set used to walk `from:` chains. Defaults to served.
   resolutionRegistry?: ReadonlyArray<ParsedSource>;
   logger?: SparqlyLogger;
-  /** Defaults to `process.cwd()`. */
   configDir?: string;
-  /** Recorded in freshly built Glob index manifests. */
   sparqlyVersion?: string;
-  /** Overrides the Glob index cache root (default `<configDir>/.sparqly/index/<id>/`). */
   indexCacheDir?: string;
-  /**
-   * Spawns the isolated `sparqly index @id` child process. Injected by the CLI
-   * since `libs/server` can't reach the CLI entry. Omitting it makes first
-   * touch of a not-yet-built disk-backed source throw.
-   */
+  // Spawns the isolated `sparqly index @id` child. Omitting it makes first
+  // touch of a not-yet-built disk-backed source throw.
   spawnIndexBuild?: SpawnIndexBuild;
-  /** Max concurrent child-process index builds. Defaults to 2. */
   indexConcurrency?: number;
-  /** Window suppressing repeat build requests after a failure. */
   indexBuildCooldownMs?: number;
-  /** Clock injection for tests. */
   now?: () => number;
   sourceStateEmitter?: SourceStateEmitter;
 }
@@ -115,7 +106,6 @@ export class EngineMap {
     }
     const configDir = options.configDir ?? process.cwd();
     const indexCacheDir = options.indexCacheDir;
-    // The pool only sees `@id`s; this resolves the on-disk path for it.
     const indexDirOf = (sourceId: string): string | undefined => {
       const entry = entries.get(sourceId);
       if (entry === undefined || !isDiskBacked(entry.source)) return undefined;
@@ -129,8 +119,7 @@ export class EngineMap {
       cooldownMs: options.indexBuildCooldownMs,
       now: options.now,
       // A cancel leaves the prior index intact, but its `.building-<pid>-*`
-      // temp dir would linger — `prepare()` only runs at the start of the
-      // next build, and a cancel may never be followed by one.
+      // temp dir would linger if no follow-up build runs.
       sweepTempDir: async (sourceId) => {
         const dir = indexDirOf(sourceId);
         if (dir === undefined) return;
@@ -139,15 +128,14 @@ export class EngineMap {
       onSettle: (sourceId, outcome, info) => {
         const entry = entries.get(sourceId);
         if (outcome === 'success') {
-          // Drop the memoized open so the next touch re-opens the freshly
-          // built index instead of serving old quads.
+          // Drop the memoized open so the next touch re-opens the fresh index.
           if (entry) {
             entry.disk = undefined;
             entry.lastError = undefined;
           }
           stateEmitter?.emit({ kind: 'build-success', sourceId });
         } else if (outcome === 'failure') {
-          // Sticky: makes `ensureDiskBacked` skip re-spawning until Retry.
+          // Sticky — `ensureDiskBacked` skips re-spawning until Retry clears it.
           if (entry && info !== undefined) entry.lastError = info;
           stateEmitter?.emit({ kind: 'build-failure', sourceId });
         } else {
@@ -171,17 +159,12 @@ export class EngineMap {
     return Array.from(this.entries.keys());
   }
 
-  /**
-   * Returns the engine for `id`, triggering a one-shot lazy load on first call.
-   * Concurrent first-touches share the in-flight promise. On `err`, the memo
-   * slot is cleared so a follow-up retries fresh (self-heal). Disk-backed
-   * globs run a separate state machine — see {@link ensureDiskBacked}.
-   */
+  // Triggers a one-shot lazy load on first call; concurrent first-touches share
+  // the in-flight promise. On `err` the memo slot is cleared for self-heal.
   ensure(id: string): ResultAsync<QueryEngine, SourceError | IndexingError> {
     return this.ensureEntry(id).map((loaded) => loaded.engine);
   }
 
-  /** Like {@link ensure} but returns the `LoadedSources` discriminant (for diff). */
   ensureSources(
     id: string,
   ): ResultAsync<LoadedSources, SourceError | IndexingError> {
@@ -202,13 +185,8 @@ export class EngineMap {
     return new ResultAsync(entry.loaded);
   }
 
-  /**
-   * Disk-backed glob state machine. A touch either opens an already-built
-   * index (`ready`, then memoized) or requests a capped child build and
-   * reports `indexing`. The `indexing` outcome is not memoized — each touch
-   * re-checks the manifest — yet concurrent touches share the in-flight
-   * resolution, so the build is requested once per attempt.
-   */
+  // `indexing` outcome is not memoized so each touch re-checks the manifest;
+  // concurrent touches share the in-flight resolution.
   private ensureDiskBacked(
     entry: Entry,
   ): ResultAsync<LoadedEntry, SourceError | IndexingError> {
@@ -222,9 +200,9 @@ export class EngineMap {
     entry: Entry,
   ): Promise<Result<LoadedEntry, SourceError | IndexingError>> {
     const sourceId = entry.source.id as string;
-    // Sticky-failed: skip re-spawning until Retry clears it. We still return
+    // Sticky-failed: skip re-spawning until Retry clears it. Still return
     // `indexing` so the 503 boundary applies; the Sources page surfaces
-    // `failed` via `readState` reading `entry.lastError` directly.
+    // `failed` via `readState` reading `entry.lastError`.
     if (entry.lastError !== undefined) {
       entry.disk = undefined;
       return err(indexingError(sourceId));
@@ -235,8 +213,7 @@ export class EngineMap {
       if (loaded.isErr()) entry.disk = undefined;
       return loaded;
     }
-    // No index yet — request a capped child build and report `indexing`.
-    // The slot is cleared so the next touch re-checks the manifest;
+    // Slot is cleared so the next touch re-checks the manifest;
     // `pool.request` is idempotent so coalesced touches share one child.
     entry.disk = undefined;
     this.stateEmitter?.emit({ kind: 'build-start', sourceId });
@@ -244,28 +221,23 @@ export class EngineMap {
     return err(indexingError(sourceId));
   }
 
-  /** Resolves once no child build is running or queued. */
   async whenIdle(): Promise<void> {
     await this.buildPool.whenIdle();
   }
 
-  /**
-   * User-triggered rebuild. Coalesces onto an in-flight build for the same
-   * source; otherwise clears any sticky-failed marker and the pool's
-   * post-failure cooldown and spawns a fresh child. Throws when `id` is
-   * not disk-backed (in-memory sources use Reload).
-   */
+  // Coalesces onto an in-flight build for the same source; otherwise clears any
+  // sticky-failed marker and the pool's post-failure cooldown and spawns a
+  // fresh child. Throws when `id` is not disk-backed.
   requestBuild(id: string): 'requested' | 'in-flight' {
     const entry = this.entries.get(id);
     if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
     if (!isDiskBacked(entry.source)) {
       throw new Error(
         `EngineMap.requestBuild: '${id}' is not a disk-backed source — ` +
-          `(Re)build index is disk-backed only (ADR-0043)`,
+          `(Re)build index is disk-backed only`,
       );
     }
     if (this.buildPool.isBuilding(id)) return 'in-flight';
-    // Drop the memoized `ready` open so the next touch picks up the new index.
     // Retry is the only path out of sticky-failed and must bypass the
     // automatic backoff that gates the spawn-storm path.
     entry.disk = undefined;
@@ -276,10 +248,8 @@ export class EngineMap {
     return 'requested';
   }
 
-  /**
-   * SIGTERMs the running build child. Cancel against an unknown id, a
-   * non-disk-backed entry, or an idle source is a silent no-op.
-   */
+  // Cancel against an unknown id, a non-disk-backed entry, or an idle source
+  // is a silent no-op.
   cancelBuild(id: string): void {
     const entry = this.entries.get(id);
     if (!entry) return;
@@ -292,8 +262,8 @@ export class EngineMap {
   ): Promise<Result<LoadedEntry, SourceError>> {
     const src = entry.source;
     const sourceId = src.id ?? '(source)';
-    // Clear prior failure so the row reads `loading`, not stale `failed`,
-    // for the lifetime of this attempt. Re-failure overwrites below.
+    // Clear prior failure so the row reads `loading` for the lifetime of this
+    // attempt; re-failure overwrites below.
     entry.lastError = undefined;
     this.stateEmitter?.emit({ kind: 'load-start', sourceId });
     const start = Date.now();
@@ -305,9 +275,8 @@ export class EngineMap {
       indexCacheDir: this.indexCacheDir,
     });
     if (resolved.isErr()) {
-      // Clear memoization so the next request retries (self-heal).
       // `lastError` persists across the cleared `entry.loaded` so the row
-      // reads `failed` between query touches.
+      // still reads `failed` between query touches (self-heal on next call).
       entry.loaded = undefined;
       entry.lastError = {
         kind: resolved.error.kind,
@@ -330,7 +299,7 @@ export class EngineMap {
       };
       entry.files = [];
     } else if (sources.mode === 'disk-backed') {
-      // Uses the same engine as in-memory globs; LevelDB lock held until close().
+      // LevelDB lock held until close().
       loaded = {
         engine: new QueryEngine(
           sources.source,
@@ -391,26 +360,22 @@ export class EngineMap {
     return ok(loaded);
   }
 
-  /**
-   * Re-resolves an in-memory entry and atomically swaps `StoreRef.current`
-   * to the freshly built store — same `StoreRef` instance, so existing
-   * holders pick up the new store transparently. Endpoint and disk-backed
-   * entries short-circuit (disk-backed uses {@link requestBuild}).
-   */
+  // Atomically swaps `StoreRef.current` to the freshly built store — same
+  // `StoreRef` instance, so existing holders pick up the new store
+  // transparently. Endpoint and disk-backed entries short-circuit.
   async reload(id: string): Promise<Result<QueryEngine, SourceError>> {
     const entry = this.entries.get(id);
     if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
     return reloadEntry(entry, (e) => this.loadEntry(e));
   }
 
-  /** Drops the live materialization of an in-memory entry. */
   async unload(id: string): Promise<void> {
     const entry = this.entries.get(id);
     if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
     await unloadEntry(id, entry, this.stateEmitter);
   }
 
-  /** Pure observer — never triggers lazy load and never spawns a child build. */
+  // Pure observer — never triggers lazy load, never spawns a child build.
   async readState(id: string): Promise<SourceRuntime> {
     const entry = this.entries.get(id);
     if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
@@ -429,7 +394,6 @@ export class EngineMap {
     return this.entries.get(id)?.source;
   }
 
-  /** Pass-through engine pre-built at boot for endpoint entries; otherwise undefined. */
   getEndpointEngine(id: string): QueryEngine | undefined {
     const entry = this.entries.get(id);
     if (!entry || entry.source.kind !== 'endpoint') return undefined;
@@ -459,7 +423,6 @@ export class EngineMap {
   }
 
   async close(): Promise<void> {
-    // SIGTERM running build children so shutdown isn't blocked on a multi-GB build.
     await this.buildPool.shutdown();
     for (const entry of this.entries.values()) {
       if (entry.closeIndex) {

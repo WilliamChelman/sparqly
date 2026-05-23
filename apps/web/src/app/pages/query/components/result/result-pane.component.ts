@@ -280,10 +280,8 @@ export class ResultPaneComponent {
     return lines;
   });
 
-  // Token model for the `turtle`/`trig` tab — the browser-side `sparqly format`
-  // body (ADR-0014). Computed lazily, only while `turtle` is the active tab, and
-  // memoized per DecodedResult so re-opening the tab is instant. Mirrors the
-  // `formatted()` and `rawHighlightLines()` memoization above.
+  // Computed lazily, only while `turtle` is the active tab, and memoized per
+  // DecodedResult so re-opening the tab is instant.
   readonly formattedHighlightLines = computed<CodeLine[] | null>(() => {
     const r = this.currentResult();
     if (!r || this._activeTab() !== 'turtle') return null;

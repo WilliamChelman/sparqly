@@ -17,11 +17,8 @@ export interface CodeToken {
 /** An ordered list of the tokens on one source line. */
 export type CodeLine = readonly CodeToken[];
 
-/**
- * Soft caps above which highlighting is skipped in favour of plain text:
- * highlighting replaces each line with several DOM nodes, so an unbounded
- * result would otherwise freeze the tab (ADR-0039).
- */
+// Above these, fall back to plain text — each line becomes several DOM
+// nodes, so an unbounded result would freeze the tab.
 export const HIGHLIGHT_MAX_LINES = 4000;
 export const HIGHLIGHT_MAX_CHARS = 400_000;
 

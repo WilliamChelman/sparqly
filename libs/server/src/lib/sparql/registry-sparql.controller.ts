@@ -171,12 +171,9 @@ export class RegistrySparqlController {
     if (this.isAdHocPin(target)) {
       return await this.executeAdHocPinned(target, query, format);
     }
-    // Lazy materialization (ADR-0031): ensure() drives a one-shot per-source
-    // load on first request; concurrent first-touches share the in-flight
-    // promise so resolveSourceResult runs at most once per attempt. Load
-    // failures surface as a typed SourceError so the boundary `mapError` can
-    // route 4xx (bad ref/config) and 5xx (filesystem/IO) appropriately,
-    // instead of every load failure becoming an opaque 500 (#290).
+    // ensure() shares the in-flight promise so concurrent first-touches load
+    // exactly once. Failures surface as typed SourceError so mapError can route
+    // 4xx vs 5xx instead of collapsing everything to 500.
     return this.engineMap
       .ensure(target.id as string)
       .andThen<ExecuteResult, SourceError | TargetError | IndexingError>(
@@ -188,13 +185,8 @@ export class RegistrySparqlController {
       );
   }
 
-  /**
-   * `true` when the target carries a `gitRef`/`fromGitRef` pin that the
-   * pre-built engine for its id was not constructed with — i.e. an incoming
-   * `@id:ref` (or view target with a propagated `fromGitRef`) that asks for a
-   * different variant than the boot-time-registered one. The route resolves
-   * such requests ad-hoc (ADR-0029, issue #278).
-   */
+  // `true` when the target's pin doesn't match the pre-built engine — the
+  // route then resolves it ad-hoc instead of using the registered variant.
   private isAdHocPin(target: ParsedSource): boolean {
     const registered = this.engineMap.getSource(target.id as string);
     if (!registered) return false;
@@ -219,15 +211,13 @@ export class RegistrySparqlController {
         }).executeResult(query, { format, mutable: this.config.mutable });
       }
       if (sources.mode === 'disk-backed') {
-        // `serve` does not yet host disk-backed globs (ADR-0041). Release the
-        // LevelDB lock, then surface a typed glob-load error so `mapError`
-        // routes it like any other source failure.
+        // Release the LevelDB lock, then surface a typed glob-load error.
         return ResultAsync.fromSafePromise(sources.close()).andThen(() =>
           errAsync<ExecuteResult, SourceError | TargetError>({
             kind: 'glob-load',
             glob: target.kind === 'glob' ? [target.glob] : [],
             message:
-              'serve does not yet support disk-backed glob sources (`storage: disk`); query them with `sparqly query` (ADR-0041)',
+              'serve does not yet support disk-backed glob sources (`storage: disk`); query them with `sparqly query`',
           }),
         );
       }
@@ -247,8 +237,7 @@ function mapError(
   error: SourceError | TargetError | IndexingError,
 ): HttpException {
   if (isIndexingError(error)) {
-    // A disk-backed glob is still building its Glob index (ADR-0041, #340):
-    // a transient `503` telling the client to retry, not a load failure.
+    // Index is still building — transient 503 telling the client to retry.
     return new ServiceUnavailableException(cloneError(error));
   }
   if (isTargetError(error)) {

@@ -93,12 +93,8 @@ export const sourceField: FieldDescriptor = {
   ],
 };
 
-/**
- * Legacy multi-source field. Retained for `hash`, `serve`, and `format` until
- * those commands are migrated to the single-target model in #106 / #107. New
- * commands should use `sourceField` and rely on `selectTarget` + `resolveSource`
- * to honor ADR-0005.
- */
+// Legacy multi-source field, retained for `hash`, `serve`, `format`. New
+// commands should use `sourceField` + `selectTarget` + `resolveSource`.
 export const sourcesField: FieldDescriptor = {
   key: 'sources',
   schema: z.union([sourceSpecInputSchema, z.array(sourceSpecInputSchema).min(1)]),
@@ -225,11 +221,8 @@ export const contextBaseField: FieldDescriptor = {
   schema: z.string(),
 };
 
-/**
- * Per-invocation `--at <ref>` flag (ADR-0029). Desugars at the handler edge
- * onto the resolved glob target's `gitRef` (see `applyAtOverride`). Off-target
- * kinds (endpoint, view, …) produce an error.
- */
+// Desugars at the handler edge onto the resolved glob target's `gitRef`
+// (see `applyAtOverride`). Non-glob kinds reject.
 export const atRefField: FieldDescriptor = {
   key: 'at',
   schema: z.string().min(1),

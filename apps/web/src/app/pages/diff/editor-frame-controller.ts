@@ -3,12 +3,8 @@ import { signal, type WritableSignal } from '@angular/core';
 import type { ParameterDeclaration } from 'common';
 import type { SavedQueriesService } from '@app/core';
 
-/**
- * Per-side run-surface state for an EditorFrame on the diff page (ADR-0038).
- * Carries query body + loaded parameters + load error. Authoring (Save / Save-as
- * / Delete / stale / modified-from) lives on `/queries` and is not part of the
- * diff run surface.
- */
+// Per-side EditorFrame state for the diff page: query body + loaded
+// parameters + load error. Authoring lives on `/queries`, not here.
 export class EditorFrameController {
   readonly query: WritableSignal<string> = signal('');
   readonly loadedSlug = signal<string | null>(null);

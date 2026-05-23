@@ -15,14 +15,13 @@ export type LoadedSources =
   | { mode: 'materialized'; store: Store; sourceRecords?: SourceRecordSidecar }
   | { mode: 'pass-through'; endpoint: ParsedEndpointSource }
   | {
-      /** A `storage: disk` glob served from its on-disk Glob index — no sidecar. */
       mode: 'disk-backed';
       source: RDF.Source;
       indexDir: string;
     };
 
-/** Transient "retry shortly" — travels the `Result` error channel so the HTTP
- * boundary maps it to a 503 like any other source outcome. */
+// Transient "retry shortly" — surfaced via the Result error channel so the HTTP
+// boundary maps it to a 503 like any other source outcome.
 export interface IndexingError {
   kind: 'indexing';
   source: string;
@@ -43,11 +42,11 @@ export function indexingError(source: string): IndexingError {
   };
 }
 
-/** Default when no spawn is provided — fail loudly rather than never index. */
+// Default when no spawn is provided — fail loudly rather than never index.
 export function spawnIndexBuildUnavailable(): never {
   throw new Error(
     'EngineMap: a disk-backed source needs an index build, but no ' +
-      'spawnIndexBuild was provided to EngineMap.create (ADR-0042)',
+      'spawnIndexBuild was provided to EngineMap.create',
   );
 }
 
@@ -66,13 +65,9 @@ export interface Entry {
   disk: Promise<Result<LoadedEntry, SourceError | IndexingError>> | undefined;
   closeIndex: (() => Promise<void>) | undefined;
   current: LoadedEntry | undefined;
-  /** De-dups `stale-detected` SSE emissions — reset when leaving `stale`. */
+  // De-dups `stale-detected` SSE emissions — reset when leaving `stale`.
   staleReasonSeen: string | undefined;
-  /**
-   * Inline failure surface for the Sources page row. For in-memory entries
-   * this is observational (the load slot still clears on err for self-heal).
-   * For disk-backed entries it is *sticky*: while set, `ensureDiskBacked`
-   * skips re-spawning a build — only Retry clears it.
-   */
+  // Sticky for disk-backed entries: while set, `ensureDiskBacked` skips
+  // re-spawning a build — only Retry clears it. Observational for in-memory.
   lastError: SourceRowError | undefined;
 }

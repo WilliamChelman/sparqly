@@ -1,13 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { SavedQueryEntry } from './saved-query-entry';
 
-/**
- * Saved-query ETag (ADR-0036): `sha256(serialized-entry).slice(0, 16)`. The
- * canonicalization collapses internal whitespace runs in the body and trims
- * the body's edges so two formatting variants of the same SPARQL produce the
- * same ETag — otherwise hand-edits that reflow whitespace would surface as
- * `412` conflicts on every write.
- */
+// `sha256(serialized-entry).slice(0, 16)`. Body whitespace is collapsed and
+// edges trimmed so reformatted SPARQL doesn't surface as 412 conflicts.
 export function deriveEntryEtag(entry: SavedQueryEntry): string {
   const canonical = JSON.stringify({
     slug: entry.slug,

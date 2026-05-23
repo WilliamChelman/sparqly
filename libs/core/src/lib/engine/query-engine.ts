@@ -44,42 +44,28 @@ export interface ExecuteResult {
   contentType: string;
 }
 
-/**
- * A materialized RDF source the engine queries through Comunica's
- * `sources: [...]` context — either an RDF/JS source directly (an in-memory
- * `n3.Store`, or a disk-backed quadstore index via ADR-0041) or a thunk that
- * resolves one lazily.
- */
+// Materialized RDF source for Comunica's `sources: [...]` context — an
+// RDF/JS source (in-memory `n3.Store` or a disk-backed quadstore index) or
+// a thunk that resolves one lazily.
 export type StoreSource = RDF.Source | (() => RDF.Source);
 
 export type QueryEngineSource = StoreSource | ParsedEndpointSource;
 
 export type { QueryResolutionMode };
 
-/**
- * Optional context for boundary logging: the source `@id` (or endpoint URL),
- * how it was resolved, and the {@link SparqlyLogger} to emit the `query` event
- * on. Omitting it — or supplying no `logger` — makes the engine emit nothing.
- */
+// With no `logger`, the engine emits nothing on the query boundary.
 export interface QueryEngineMeta {
   id: string;
   mode: QueryResolutionMode;
   logger?: SparqlyLogger;
 }
 
-/**
- * Execution-semantics options for a materialized-store engine (ADR-0040).
- * Ignored on the endpoint pass-through path — a remote endpoint owns its own
- * dataset semantics and cannot honor a local query-context option.
- */
+// Materialized-store-only options; ignored on the endpoint pass-through path.
 export interface QueryEngineOptions {
   /**
-   * When `true`, SPARQL runs with Comunica's `unionDefaultGraph` query-context
-   * option: the default graph behaves as the union of the default graph and
-   * every named graph, so a plain `WHERE { ?s ?p ?o }` reaches named-graph
-   * quads while `GRAPH ?g` still addresses them individually. The resolution
-   * layer sets this for glob/file targets whose `unionDefaultGraph` field
-   * resolves to `true`.
+   * Runs SPARQL with Comunica's `unionDefaultGraph`: the default graph behaves
+   * as the union of all graphs, so `WHERE { ?s ?p ?o }` reaches named-graph
+   * quads while `GRAPH ?g` still addresses them individually.
    */
   unionDefaultGraph?: boolean;
 }
@@ -116,12 +102,10 @@ export class QueryEngine {
   }
 
   /**
-   * Primary `Result`-typed execute. On failure, the underlying throw is
-   * collapsed into either an {@link EndpointFetchError} (when the engine was
-   * configured with a remote endpoint) or a {@link QueryExecutionError}
-   * (materialized store path, including format/result-type mismatches and
-   * Comunica parse failures). The mutability guard and other "this can't
-   * happen" invariants still throw — see ADR-0024's pragmatic throw policy.
+   * Primary `Result`-typed execute. Throws collapse into either an
+   * {@link EndpointFetchError} (endpoint path) or {@link QueryExecutionError}
+   * (materialized path). The mutability guard and "can't happen" invariants
+   * still throw.
    */
   executeResult(
     query: string,

@@ -53,12 +53,8 @@ export class SourcesPage implements OnInit, OnDestroy {
   /** `null` while the initial snapshot is in flight; never repopulated to `null`. */
   readonly rows = signal<SourceRow[] | null>(null);
   private readonly detailsExpanded = signal<Record<string, boolean>>({});
-  /** Split-glob meta disclosure state — collapsed by default (#361). */
   private readonly metaExpanded = signal<Record<string, boolean>>({});
 
-  // Flattens children of expanded split-glob meta rows in-line, so the
-  // template's single @for loop renders meta + revealed children without
-  // duplicating the row markup. Collapsed metas keep their children hidden.
   readonly displayRows = computed<SourceRow[] | null>(() => {
     const list = this.rows();
     if (list === null) return null;
@@ -151,9 +147,7 @@ export class SourcesPage implements OnInit, OnDestroy {
 
   hasLoadedChild = hasLoadedChild;
 
-  // Client-side cascade (#361). One POST per qualifying child; per-child
-  // failures stay isolated — siblings still get their request and surface
-  // independently in the browser's network panel. No server-side fan-out.
+  // One POST per child so a failure doesn't stop siblings from being reloaded.
   reloadLoadedChildren(row: SourceRow): void {
     for (const id of loadedChildIds(row)) this.postAction(id, 'reload');
   }
@@ -257,8 +251,6 @@ export class SourcesPage implements OnInit, OnDestroy {
       if (prev === null) return prev;
       const incomingParentId = this.parentIdOf(row);
       if (incomingParentId !== undefined) {
-        // Split-glob child event: re-key inside the meta's `children` and
-        // re-aggregate the meta's state + Layer 2 summary (#361).
         return prev.map((r) =>
           r.id === incomingParentId ? reaggregateMeta(r, row) : r,
         );
@@ -267,14 +259,12 @@ export class SourcesPage implements OnInit, OnDestroy {
       const next = prev.map((r) => {
         if (r.id !== row.id) return r;
         replaced = true;
-        // Preserve any existing children — a meta-row event from the server
-        // is Layer 1-3 only and never carries the child array.
+        // Meta-row events from the server omit the child array — preserve it.
         if (r.mode !== 'endpoint' && row.mode !== 'endpoint' && r.children) {
           return { ...row, children: r.children } as SourceRow;
         }
         return row;
       });
-      // Unknown id: append (e.g. source added by config reload).
       return replaced ? next : [...next, row];
     });
   }

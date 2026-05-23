@@ -8,7 +8,6 @@ export type SourceRow =
       state: InMemoryState | 'mixed';
       default?: true;
       parentId?: string;
-      /** Split-glob meta only (#361): synthesized file-source children. */
       children?: SourceRow[];
     } & Layer2Fields &
       Layer5Fields)
@@ -19,7 +18,6 @@ export type SourceRow =
       state: DiskBackedState | 'mixed';
       default?: true;
       parentId?: string;
-      /** Split-glob meta only (#361): synthesized file-source children. */
       children?: SourceRow[];
     } & Layer2Fields &
       Layer3Fields &
@@ -99,10 +97,6 @@ export type SourceRuntime =
     }
   | { mode: 'endpoint' };
 
-/**
- * Pure mapping from a {@link ParsedSource} + its {@link SourceRuntime} to the
- * wire row. Reference sources are filtered by the caller — they're never served.
- */
 export function projectSourceRow(
   source: ParsedSource,
   runtime: SourceRuntime,
@@ -201,8 +195,7 @@ function applyLayer3(
   }
 }
 
-// `error` is gated on `state === 'failed'` so the wire shape can't lie about
-// the state machine — a stray error on a non-failed state is dropped.
+// `error` is gated on `state === 'failed'` so a stray error never leaks.
 function applyLayer5(
   row: SourceRow & Layer5Fields,
   state: InMemoryState | DiskBackedState,
@@ -214,12 +207,6 @@ function applyLayer5(
     : { kind: error.kind, message: error.message };
 }
 
-/**
- * Project a **Split glob** meta row that aggregates its synthesized **File
- * source** children into a single disclosable row (#361). The meta is always
- * an in-memory or disk-backed glob; the caller supplies already-projected
- * child rows so this stays a pure aggregation step.
- */
 export function projectSplitGlobMeta(
   meta: ParsedSource,
   metaRuntime: SourceRuntime,
@@ -232,9 +219,8 @@ export function projectSplitGlobMeta(
     );
   }
   const aggregatedState = aggregateChildState(children, row.state);
-  // Layer 2 fields originating from the meta's *own* runtime are dropped — the
-  // summary below is sourced from children, so a stale meta-runtime metric
-  // can't leak through and lie.
+  // Drop the meta's own metrics so a stale meta-runtime value can't leak
+  // past the summary aggregated from children.
   const base = stripLayer2(row);
   const summary = summarizeChildMetrics(children);
   return { ...base, ...summary, state: aggregatedState, children } as SourceRow;

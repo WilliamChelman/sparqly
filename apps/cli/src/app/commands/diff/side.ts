@@ -103,9 +103,7 @@ export async function resolveSide(
     });
   }
   if (sources.mode === 'disk-backed') {
-    // diff canonicalizes both sides with RDFC-1.0, which needs every quad in
-    // memory — the very cost `storage: disk` exists to escape (ADR-0041
-    // amends ADR-0032). Release the LevelDB lock and reject.
+    // diff canonicalization needs every quad in memory — defeats `storage: disk`.
     await sources.close();
     throw new DiffErrorSignal({
       kind: 'disk-backed-diff-target',

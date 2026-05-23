@@ -5,17 +5,10 @@ import {
   type ParsedSource,
 } from 'core';
 
-/**
- * A disk-backed source the `sparqly index` command can build (#346): a
- * `storage: disk` glob, or a split-glob file child that inherited the tier.
- */
 export type IndexTarget = ParsedGlobSource | ParsedFileSource;
 
-/**
- * Resolves the disk-backed sources `sparqly index` should build from the
- * expanded registry. With no `ids`, every disk-backed source is selected and
- * non-disk-backed entries are silently skipped.
- */
+// With no `ids`, every disk-backed source is selected; non-disk-backed entries
+// are silently skipped.
 export function selectIndexTargets(
   registry: ReadonlyArray<ParsedSource>,
   ids: ReadonlyArray<string>,

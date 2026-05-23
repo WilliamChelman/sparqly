@@ -1,18 +1,7 @@
 import type { SparqlyLogger } from 'common';
 
-/**
- * Disk-backed Glob index build progress (#349). Encapsulates the build's
- * default-on (`info`) progress events — `index-file-start` / `index-file-done`
- * per matched file and a time-throttled `index-progress` heartbeat — so a
- * ~10-15-min build is no longer a silent black box (ADR-0042, extends
- * ADR-0020's levels). With no logger every method is a no-op.
- */
-
-/**
- * `index-progress` heartbeat throttle. Time-based, not quad-based, so a build's
- * heartbeat line count is bounded regardless of dataset size — a 15-min build
- * is ~180 lines. An internal constant, not a user knob.
- */
+// Time-based (not quad-based) so heartbeat lines stay bounded regardless of
+// dataset size — a 15-min build is ~180 lines.
 export const HEARTBEAT_MS = 5000;
 
 /** A matched file the build will index, with the byte size feeding byte-%. */

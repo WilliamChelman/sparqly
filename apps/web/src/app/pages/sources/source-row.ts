@@ -1,9 +1,3 @@
-/**
- * Sources-page row schema — mirror of the server's `SourceRow` wire shape
- * (libs/server/.../source-row-projector.ts). Lives in its own file so the
- * page component module stays focused on rendering.
- */
-
 export type SourceRow =
   | ({
       mode: 'in-memory';
@@ -12,7 +6,6 @@ export type SourceRow =
       state: InMemoryState | 'mixed';
       default?: true;
       parentId?: string;
-      /** Split-glob meta only (#361). */
       children?: SourceRow[];
     } & Layer2Fields &
       Layer5Fields)
@@ -23,7 +16,6 @@ export type SourceRow =
       state: DiskBackedState | 'mixed';
       default?: true;
       parentId?: string;
-      /** Split-glob meta only (#361). */
       children?: SourceRow[];
     } & Layer2Fields &
       Layer3Fields &

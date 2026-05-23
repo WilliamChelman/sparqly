@@ -61,11 +61,9 @@ export interface DiffSideStore {
    */
   annotationPredicates?: AnnotationPredicateIris;
   /**
-   * Loader-attached source-record sidecar (ADR-0032). When supplied, diff
-   * re-keys the sidecar's `(s, p, o)` map to canonical N-Quads, fanning
-   * out across graphs so each asserted quad gets the records authored
-   * under its triple. When absent, the per-side source-record map is
-   * empty.
+   * Loader-attached source-record sidecar. When supplied, diff re-keys the
+   * sidecar's `(s, p, o)` map to canonical N-Quads, fanning out across graphs
+   * so each asserted quad gets the records authored under its triple.
    */
   sourceRecords?: SourceRecordSidecar;
 }

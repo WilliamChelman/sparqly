@@ -7,12 +7,7 @@ import {
   type ParsedSource,
 } from 'core';
 
-/**
- * Whether a source materializes onto the disk tier (ADR-0041) — a `storage:
- * disk` glob, or a split-glob File child that inherited the tier (#344). Both
- * run the same background-build state machine; only the Glob index pattern
- * differs (the glob's pattern vs. the child's single file path).
- */
+// A `storage: disk` glob or a split-glob File child that inherited the tier.
 export function isDiskBacked(
   source: ParsedSource,
 ): source is ParsedGlobSource | ParsedFileSource {

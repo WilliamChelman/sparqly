@@ -1,24 +1,12 @@
 import type { ParsedSource, SourceSpecObjectInput } from './source-spec';
 import type { ParsedTransform } from './transform-spec';
 
-/**
- * Glob storage-tier parsing helpers (ADR-0041). Kept in a dedicated module so
- * `source-spec.ts` stays focused on the parse dispatch, mirroring the shape of
- * `union-default-graph.ts` (ADR-0040).
- */
-
-/**
- * Storage tier a glob source materializes into (ADR-0041). `memory` keeps the
- * fast in-heap `n3.Store`; `disk` materializes into an embedded quad store.
- */
+// `memory` keeps the fast in-heap `n3.Store`; `disk` materializes into an
+// embedded quad store.
 export type StorageTier = 'memory' | 'disk';
 
-/**
- * Picks the `storage` field off a glob source-spec input, validating it is one
- * of the known tiers. Returns an empty object when the field is omitted so the
- * spread leaves the parsed glob without the key (the `memory` default is
- * resolved later by {@link storageTier}).
- */
+// Returns `{}` for omitted so the spread leaves the parsed glob without the
+// key — the `memory` default is resolved later by {@link storageTier}.
 export function pickStorage(
   input: SourceSpecObjectInput,
 ): { storage?: StorageTier } {
@@ -31,12 +19,6 @@ export function pickStorage(
   return { storage: input.storage };
 }
 
-/**
- * Rejects `storage` on a non-glob source-spec input (ADR-0041). The storage
- * tier governs how a glob materializes its quads; an endpoint, view, or empty
- * source materializes nothing, so the field is meaningless there — and
- * silently ignoring it would mask a config mistake.
- */
 export function rejectStorageOn(
   input: SourceSpecObjectInput,
   kind: 'endpoint' | 'view' | 'empty',
@@ -48,15 +30,10 @@ export function rejectStorageOn(
   }
 }
 
-/**
- * Rejects an `annotateSource` transform on a disk-backed glob (ADR-0041,
- * resolving its further-note 1). `annotateSource` projects an RDF-star
- * **Source record** — a quoted triple `<<s p o>>` as the annotation's
- * subject — and the embedded quad store backing a **Glob index** does not
- * persist quoted triples as terms: a built index would silently corrupt them.
- * `graphName` only rewrites the graph term and bakes cleanly, so it is
- * unaffected. The user keeps `annotateSource` by dropping to `storage: memory`.
- */
+// `annotateSource` projects an RDF-star quoted triple as the annotation's
+// subject; the embedded quad store can't persist quoted triples as terms, so
+// a built index would silently corrupt them. `graphName` rewrites only the
+// graph term and is unaffected.
 export function rejectAnnotateSourceOnDiskGlob(
   storage: StorageTier | undefined,
   transforms: ReadonlyArray<ParsedTransform> | undefined,
@@ -71,14 +48,8 @@ export function rejectAnnotateSourceOnDiskGlob(
   }
 }
 
-/**
- * Resolves the effective storage tier for any source (ADR-0041). A glob — and
- * a synthesized file child that inherited the field from its parent split-glob
- * meta — defaults to `memory` when the field is omitted; every other source
- * kind reports `memory`, as only a glob/file source materializes quads into a
- * store. This is the single defaulting point: read the effective value here,
- * never the raw `storage` field.
- */
+// Single defaulting point — callers read the effective value here, never the
+// raw `storage` field.
 export function storageTier(source: ParsedSource): StorageTier {
   if (source.kind === 'glob' || source.kind === 'file') {
     return source.storage ?? 'memory';

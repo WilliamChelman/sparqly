@@ -109,10 +109,9 @@ export function registerSpec<T extends Record<string, unknown>>(
           ? await ctx.loadFile(configPath, ctx.cwd)
           : { data: {}, filepath: null };
 
-      // Normalize the resolved config location into the env so any child
-      // process a handler spawns (e.g. `serve`'s `sparqly index` build
-      // children, ADR-0042) resolves the exact same config regardless of its
-      // own working directory.
+      // Pin the resolved config location in the env so spawned children
+      // (e.g. `serve`'s `sparqly index` builds) resolve the same config
+      // regardless of their own cwd.
       if (noConfig) {
         ctx.env['SPARQLY_CONFIG'] = '';
       } else if (configPath !== undefined) {
