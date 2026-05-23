@@ -38,9 +38,16 @@ export type EnsureGlobIndexOutcome =
 export function ensureGlobIndex(
   options: EnsureGlobIndexOptions,
 ): ResultAsync<EnsureGlobIndexOutcome, GlobLoadError> {
-  return ResultAsync.fromSafePromise(
-    inspectGlobIndexFreshness(options),
-  ).andThen((freshness) => {
+  // `inspectGlobIndexFreshness` reads and JSON-parses the manifest — a
+  // truncated/corrupt manifest throws a `SyntaxError` that would escape the
+  // typed `GlobLoadError` channel if wrapped in `fromSafePromise`. Route
+  // *any* freshness-inspect failure through the typed channel so callers see
+  // a rendarable `glob-load` error instead of an unhandled rejection.
+  return ResultAsync.fromPromise(inspectGlobIndexFreshness(options), (err) => ({
+    kind: 'glob-load' as const,
+    glob: Array.isArray(options.glob) ? [...options.glob] : [options.glob],
+    message: err instanceof Error ? err.message : String(err),
+  })).andThen((freshness) => {
     if (!options.force && freshness.verdict === 'fresh') {
       return okAsync<EnsureGlobIndexOutcome, GlobLoadError>({
         status: 'skipped',
