@@ -66,5 +66,7 @@ function cloneDescribeError(error: DescribeError): DescribeError {
       return { kind: 'empty-source', id: error.id };
     case 'reference-source':
       return { kind: 'reference-source', id: error.id, ref: error.ref };
+    case 'disk-backed-source':
+      return { kind: 'disk-backed-source', id: error.id };
   }
 }
