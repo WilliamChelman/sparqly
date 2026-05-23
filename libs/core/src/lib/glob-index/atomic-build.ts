@@ -51,7 +51,7 @@ export function buildGlobIndexAtomic(
         promote(tempDir, options.indexDir, built),
         (error): GlobLoadError => ({
           kind: 'glob-load',
-          glob: [options.glob],
+          glob: Array.isArray(options.glob) ? options.glob : [options.glob],
           message: `failed to promote glob index into place: ${(error as Error).message}`,
         }),
       ),
