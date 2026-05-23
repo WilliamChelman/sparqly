@@ -194,6 +194,56 @@ describe('GET /api/sources — Sources page snapshot (#353)', () => {
     expect(rows.map((r) => r.id)).toEqual(['blank']);
   });
 
+  it('nests split-glob File children under their meta `children` array; children do not appear at the top level (#361)', async () => {
+    // A split-glob meta with 2 matched .ttl files exposes them as synthesized
+    // **File source** children (ADR-0027). On the **Sources page** they are
+    // not rendered as siblings — they collapse under one disclosable meta row.
+    const dir = await mkdtemp(join(tmpdir(), 'sparqly-sources-split-snap-'));
+    try {
+      await writeFile(
+        join(dir, 'a.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+      await writeFile(
+        join(dir, 'b.ttl'),
+        '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .',
+      );
+      Logger.overrideLogger(false);
+      const server = await createServer({
+        sources: [
+          { id: 'docs', glob: join(dir, '*.ttl'), splitByFile: true },
+        ],
+        port: 0,
+      });
+      try {
+        const rows = (await (
+          await fetch(`http://localhost:${server.port}/api/sources`)
+        ).json()) as SourceRow[];
+        // One row at the top level: the meta.
+        expect(rows.map((r) => r.id)).toEqual(['docs']);
+        const [meta] = rows;
+        expect(meta.mode).toBe('in-memory');
+        if (meta.mode !== 'in-memory') throw new Error('narrow');
+        // The meta carries its children verbatim.
+        expect(meta.children).toBeDefined();
+        const childIds = (meta.children ?? []).map((c) => c.id).sort();
+        expect(childIds).toEqual(['docs/a.ttl', 'docs/b.ttl']);
+        // Each child carries its own state + parentId, identical to what a
+        // standalone row of the same shape would look like.
+        for (const child of meta.children ?? []) {
+          if (child.mode !== 'in-memory') throw new Error('narrow');
+          expect(child.state).toBe('not-loaded');
+          expect(child.parentId).toBe('docs');
+          expect(child.kind).toBe('file');
+        }
+      } finally {
+        await server.close();
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('projects a glob source as in-memory not-loaded with kind glob', async () => {
     harness = await startHarness([{ id: 'docs', empty: true }]);
     // The 'empty' covers Layer 1 of in-memory; we add a glob fixture too so

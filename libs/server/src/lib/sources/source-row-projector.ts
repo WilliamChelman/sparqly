@@ -5,18 +5,22 @@ export type SourceRow =
       mode: 'in-memory';
       id: string;
       kind: 'glob' | 'file' | 'view' | 'empty';
-      state: InMemoryState;
+      state: InMemoryState | 'mixed';
       default?: true;
       parentId?: string;
+      /** Split-glob meta only (#361): synthesized file-source children. */
+      children?: SourceRow[];
     } & Layer2Fields &
       Layer5Fields)
   | ({
       mode: 'disk-backed';
       id: string;
       kind: 'glob' | 'file';
-      state: DiskBackedState;
+      state: DiskBackedState | 'mixed';
       default?: true;
       parentId?: string;
+      /** Split-glob meta only (#361): synthesized file-source children. */
+      children?: SourceRow[];
     } & Layer2Fields &
       Layer3Fields &
       Layer5Fields)
@@ -208,6 +212,91 @@ function applyLayer5(
   row.error = error.details !== undefined
     ? { kind: error.kind, message: error.message, details: error.details }
     : { kind: error.kind, message: error.message };
+}
+
+/**
+ * Project a **Split glob** meta row that aggregates its synthesized **File
+ * source** children into a single disclosable row (#361). The meta is always
+ * an in-memory or disk-backed glob; the caller supplies already-projected
+ * child rows so this stays a pure aggregation step.
+ */
+export function projectSplitGlobMeta(
+  meta: ParsedSource,
+  metaRuntime: SourceRuntime,
+  children: SourceRow[],
+): SourceRow {
+  const row = projectSourceRow(meta, metaRuntime);
+  if (row.mode === 'endpoint') {
+    throw new Error(
+      `projectSplitGlobMeta: split-glob meta cannot be endpoint kind (id '${row.id}')`,
+    );
+  }
+  const aggregatedState = aggregateChildState(children, row.state);
+  // Layer 2 fields originating from the meta's *own* runtime are dropped — the
+  // summary below is sourced from children, so a stale meta-runtime metric
+  // can't leak through and lie.
+  const base = stripLayer2(row);
+  const summary = summarizeChildMetrics(children);
+  return { ...base, ...summary, state: aggregatedState, children } as SourceRow;
+}
+
+function stripLayer2<R extends SourceRow>(row: R): R {
+  const { quads: _q, files: _f, loadedAt: _l, loadMs: _m, ...rest } =
+    row as R & Layer2Fields;
+  void _q; void _f; void _l; void _m;
+  return rest as R;
+}
+
+function summarizeChildMetrics(children: SourceRow[]): Layer2Fields {
+  const out: Layer2Fields = {};
+  let quadsSum: number | undefined;
+  let filesCount = 0;
+  let latestLoadedAt: number | undefined;
+  for (const child of children) {
+    if (child.mode === 'endpoint') continue;
+    if (!isLoadedState(child.state)) continue;
+    if (typeof child.files === 'number') filesCount += child.files;
+    if (typeof child.quads === 'number') {
+      quadsSum = (quadsSum ?? 0) + child.quads;
+    }
+    if (typeof child.loadedAt === 'number') {
+      latestLoadedAt =
+        latestLoadedAt === undefined
+          ? child.loadedAt
+          : Math.max(latestLoadedAt, child.loadedAt);
+    }
+  }
+  if (filesCount === 0 && quadsSum === undefined && latestLoadedAt === undefined) {
+    return out;
+  }
+  if (quadsSum !== undefined) out.quads = quadsSum;
+  out.files = filesCount;
+  if (latestLoadedAt !== undefined) out.loadedAt = latestLoadedAt;
+  return out;
+}
+
+function isLoadedState(state: string): boolean {
+  return state === 'loaded' || state === 'ready';
+}
+
+// No children: meta keeps its own runtime state (zero-match warn case).
+// All children share a state: meta carries that state.
+// Otherwise: 'mixed'.
+function aggregateChildState(
+  children: SourceRow[],
+  fallback: string,
+): string {
+  if (children.length === 0) return fallback;
+  const first = childState(children[0]);
+  for (let i = 1; i < children.length; i++) {
+    if (childState(children[i]) !== first) return 'mixed';
+  }
+  return first;
+}
+
+function childState(row: SourceRow): string {
+  if (row.mode === 'endpoint') return 'endpoint';
+  return row.state;
 }
 
 function withOptionalDefault(row: SourceRow, isDefault: true | undefined): SourceRow {

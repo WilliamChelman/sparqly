@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ParsedSource } from 'core';
 import {
   projectSourceRow,
+  projectSplitGlobMeta,
   type DiskBackedState,
   type InMemoryState,
   type LoadMetrics,
@@ -585,5 +586,185 @@ describe('projectSourceRow — Layer 5 (failure surface, #360)', () => {
       const row = projectSourceRow(endpoint, { mode: 'endpoint' });
       expect('error' in row).toBe(false);
     });
+  });
+});
+
+/*
+ * Split-glob meta-row aggregation (#361). A **Split glob** renders as a single
+ * disclosable meta row that aggregates its synthesized **File source** children
+ * — so a glob matching 200 files does not drown the **Sources page**. The meta
+ * row carries:
+ *   - an aggregated state: the common child state when every child agrees,
+ *     `'mixed'` when they disagree, the meta's own runtime state when there
+ *     are no children;
+ *   - a Layer 2 metric summary: `quads` summed across children that report a
+ *     value; `files` = count of children currently in a loaded/ready state;
+ *     `loadedAt` = max child `loadedAt`; `loadMs` omitted (heterogeneous);
+ *   - `children: SourceRow[]` carrying each child's own state, metrics, error,
+ *     and id verbatim (already-projected by `projectSourceRow`).
+ *
+ * The projector is pure — the caller (snapshot controller) walks the parsed
+ * registry, projects children first, then asks `projectSplitGlobMeta` for the
+ * meta row.
+ */
+describe('projectSplitGlobMeta — Split glob disclosure (#361)', () => {
+  const splitMeta: ParsedSource = {
+    kind: 'glob',
+    id: 'docs',
+    glob: 'docs/**/*.ttl',
+    splitByFile: true,
+  };
+
+  const childA: ParsedSource = {
+    kind: 'file',
+    id: 'docs/a.ttl',
+    path: '/abs/docs/a.ttl',
+    parentId: 'docs',
+  };
+  const childB: ParsedSource = {
+    kind: 'file',
+    id: 'docs/b.ttl',
+    path: '/abs/docs/b.ttl',
+    parentId: 'docs',
+  };
+
+  it('returns a meta row with empty children when the split glob has no matched files', () => {
+    // ADR-0028: a zero-match split glob is a `warn`, not an error — the meta
+    // is still a registry entry and must still appear as a row.
+    const row = projectSplitGlobMeta(
+      splitMeta,
+      { mode: 'in-memory', state: 'not-loaded' },
+      [],
+    );
+    expect(row).toEqual<SourceRow>({
+      mode: 'in-memory',
+      id: 'docs',
+      kind: 'glob',
+      state: 'not-loaded',
+      children: [],
+    });
+  });
+
+  it("carries the common child state when every child agrees ('loaded' across the board)", () => {
+    const childRows: SourceRow[] = [
+      projectSourceRow(childA, { mode: 'in-memory', state: 'loaded' }),
+      projectSourceRow(childB, { mode: 'in-memory', state: 'loaded' }),
+    ];
+    const row = projectSplitGlobMeta(
+      splitMeta,
+      // Whatever the meta's own runtime says, the children's unanimous state
+      // wins — the meta row is a *summary*, not an independent state machine.
+      { mode: 'in-memory', state: 'not-loaded' },
+      childRows,
+    );
+    if (row.mode !== 'in-memory') throw new Error('narrow');
+    expect(row.state).toBe('loaded');
+    expect(row.children).toEqual(childRows);
+  });
+
+  it("carries state 'mixed' when children disagree", () => {
+    const childRows: SourceRow[] = [
+      projectSourceRow(childA, { mode: 'in-memory', state: 'loaded' }),
+      projectSourceRow(childB, { mode: 'in-memory', state: 'not-loaded' }),
+    ];
+    const row = projectSplitGlobMeta(
+      splitMeta,
+      { mode: 'in-memory', state: 'loaded' },
+      childRows,
+    );
+    if (row.mode !== 'in-memory') throw new Error('narrow');
+    expect(row.state).toBe('mixed');
+  });
+
+  it('summarizes Layer 2 metrics across loaded children — sum quads, count loaded files, max loadedAt', () => {
+    // Each File source child is its own materialization; the meta has no
+    // independent metric block. The summary is what the operator wants at a
+    // glance: how many quads sit under this glob in total, how many files have
+    // been loaded so far, when was the most recent.
+    const childRows: SourceRow[] = [
+      projectSourceRow(childA, {
+        mode: 'in-memory',
+        state: 'loaded',
+        metrics: { quads: 100, files: 1, loadedAt: 1_700_000_000_000, loadMs: 10 },
+      }),
+      projectSourceRow(childB, {
+        mode: 'in-memory',
+        state: 'loaded',
+        metrics: { quads: 250, files: 1, loadedAt: 1_700_000_100_000, loadMs: 20 },
+      }),
+    ];
+    const row = projectSplitGlobMeta(
+      splitMeta,
+      { mode: 'in-memory', state: 'loaded' },
+      childRows,
+    );
+    expect(row).toMatchObject({
+      mode: 'in-memory',
+      id: 'docs',
+      state: 'loaded',
+      quads: 350,
+      files: 2,
+      loadedAt: 1_700_000_100_000,
+    });
+    // loadMs is heterogeneous across children — no meaningful single value.
+    expect('loadMs' in row).toBe(false);
+  });
+
+  it('omits Layer 2 fields entirely when no child is loaded yet', () => {
+    const childRows: SourceRow[] = [
+      projectSourceRow(childA, { mode: 'in-memory', state: 'not-loaded' }),
+      projectSourceRow(childB, { mode: 'in-memory', state: 'not-loaded' }),
+    ];
+    const row = projectSplitGlobMeta(
+      splitMeta,
+      { mode: 'in-memory', state: 'not-loaded' },
+      childRows,
+    );
+    expect('quads' in row).toBe(false);
+    expect('files' in row).toBe(false);
+    expect('loadedAt' in row).toBe(false);
+    expect('loadMs' in row).toBe(false);
+  });
+
+  it('counts only loaded children in `files`; ignores not-loaded siblings in the totals', () => {
+    const childRows: SourceRow[] = [
+      projectSourceRow(childA, {
+        mode: 'in-memory',
+        state: 'loaded',
+        metrics: { quads: 42, files: 1, loadedAt: 1, loadMs: 1 },
+      }),
+      projectSourceRow(childB, { mode: 'in-memory', state: 'not-loaded' }),
+    ];
+    const row = projectSplitGlobMeta(
+      splitMeta,
+      { mode: 'in-memory', state: 'loaded' },
+      childRows,
+    );
+    expect(row).toMatchObject({ quads: 42, files: 1, loadedAt: 1 });
+  });
+
+  it('omits `quads` from the summary when no loaded child reports quads (forward-compat with quadCount-less manifests)', () => {
+    // ADR amendment to **Glob index**: `quadCount` is forward-compatible additive.
+    // A disk-backed `ready` child without a manifest `quadCount` carries
+    // `quads: undefined`, so the meta sum has no defined number to report.
+    const diskChildA: ParsedSource = {
+      kind: 'file',
+      id: 'big/a.nq',
+      path: '/abs/data/a.nq',
+      parentId: 'big',
+      storage: 'disk',
+    };
+    const childRow = projectSourceRow(diskChildA, {
+      mode: 'disk-backed',
+      state: 'ready',
+      metrics: { files: 1, loadedAt: 1, loadMs: 1 },
+    });
+    const row = projectSplitGlobMeta(
+      { ...splitMeta, id: 'big', storage: 'disk' },
+      { mode: 'disk-backed', state: 'ready' },
+      [childRow],
+    );
+    expect(row).toMatchObject({ files: 1, loadedAt: 1 });
+    expect('quads' in row).toBe(false);
   });
 });
