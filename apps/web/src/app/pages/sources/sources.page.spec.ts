@@ -15,6 +15,7 @@ import {
   type SourceStateStreamHandlers,
 } from './source-state-stream';
 
+const LOADED_AT = 1_700_000_000_000;
 const SNAPSHOT: SourceRow[] = [
   { mode: 'in-memory', id: 'docs', kind: 'glob', state: 'not-loaded' },
   {
@@ -23,8 +24,20 @@ const SNAPSHOT: SourceRow[] = [
     kind: 'glob',
     state: 'loaded',
     default: true,
+    quads: 42,
+    files: 3,
+    loadedAt: LOADED_AT,
+    loadMs: 17,
   },
-  { mode: 'disk-backed', id: 'big', kind: 'glob', state: 'ready' },
+  {
+    mode: 'disk-backed',
+    id: 'big',
+    kind: 'glob',
+    state: 'ready',
+    files: 12,
+    loadedAt: LOADED_AT,
+    loadMs: 90,
+  },
   { mode: 'endpoint', id: 'wikidata', kind: 'endpoint' },
 ];
 
@@ -262,6 +275,147 @@ describe('SourcesPage (#353)', () => {
 
     ctx.harness.fixture.destroy();
     expect(stream.closed()).toBe(true);
+  });
+
+  it('renders Layer 2 metric cells (quads, files, loadedAt, loadMs) on a loaded in-memory row — #355', async () => {
+    const ctx = await setup();
+    flush(ctx.http);
+    ctx.detect();
+    await ctx.stable();
+    ctx.detect();
+
+    const row = ctx.nativeElement().querySelector(
+      '[data-testid="source-row-projects"]',
+    );
+    expect(row?.querySelector('[data-testid="row-quads"]')?.textContent).toContain(
+      '42',
+    );
+    expect(row?.querySelector('[data-testid="row-files"]')?.textContent).toContain(
+      '3',
+    );
+    expect(
+      row?.querySelector('[data-testid="row-loaded-at"]')?.textContent,
+    ).toBeTruthy();
+    expect(
+      row?.querySelector('[data-testid="row-load-ms"]')?.textContent,
+    ).toContain('17');
+  });
+
+  it('renders Layer 2 metric cells on a disk-backed ready row (quads cell blank pending the manifest slice) — #355', async () => {
+    const ctx = await setup();
+    flush(ctx.http);
+    ctx.detect();
+    await ctx.stable();
+    ctx.detect();
+
+    const row = ctx.nativeElement().querySelector(
+      '[data-testid="source-row-big"]',
+    );
+    expect(row?.querySelector('[data-testid="row-files"]')?.textContent).toContain(
+      '12',
+    );
+    expect(
+      row?.querySelector('[data-testid="row-load-ms"]')?.textContent,
+    ).toContain('90');
+    // `quads` is undefined for disk-backed `ready` until the manifest's
+    // `quadCount` field ships in a later slice of #352 — the cell must render
+    // empty rather than e.g. "0", so the operator can tell "unknown" apart
+    // from "the index really has zero quads".
+    const quadsCell = row?.querySelector('[data-testid="row-quads"]');
+    expect(quadsCell?.textContent?.trim() ?? '').toBe('');
+  });
+
+  it('leaves the metric cells blank for non-loaded / non-ready rows — #355', async () => {
+    const ctx = await setup();
+    flush(ctx.http);
+    ctx.detect();
+    await ctx.stable();
+    ctx.detect();
+
+    const row = ctx.nativeElement().querySelector(
+      '[data-testid="source-row-docs"]',
+    );
+    for (const testid of [
+      'row-quads',
+      'row-files',
+      'row-loaded-at',
+      'row-load-ms',
+    ]) {
+      const cell = row?.querySelector(`[data-testid="${testid}"]`);
+      expect(cell?.textContent?.trim() ?? '').toBe('');
+    }
+  });
+
+  it('a live row event that crosses into loaded populates the metric cells — #355', async () => {
+    const stream = createFakeStream();
+    const ctx = await setup('/sources', { stream });
+    flush(ctx.http);
+    ctx.detect();
+    await ctx.stable();
+    ctx.detect();
+
+    stream.emitRow({
+      mode: 'in-memory',
+      id: 'docs',
+      kind: 'glob',
+      state: 'loaded',
+      quads: 99,
+      files: 5,
+      loadedAt: LOADED_AT,
+      loadMs: 250,
+    });
+    ctx.detect();
+    await ctx.stable();
+    ctx.detect();
+
+    const row = ctx.nativeElement().querySelector(
+      '[data-testid="source-row-docs"]',
+    );
+    expect(row?.querySelector('[data-testid="row-quads"]')?.textContent).toContain(
+      '99',
+    );
+    expect(row?.querySelector('[data-testid="row-files"]')?.textContent).toContain(
+      '5',
+    );
+    expect(
+      row?.querySelector('[data-testid="row-load-ms"]')?.textContent,
+    ).toContain('250');
+  });
+
+  it('a live row event that crosses out of loaded clears the metric cells — #355', async () => {
+    const stream = createFakeStream();
+    const ctx = await setup('/sources', { stream });
+    flush(ctx.http);
+    ctx.detect();
+    await ctx.stable();
+    ctx.detect();
+
+    // `projects` came in loaded with metrics; an `unload` (later slice) or a
+    // failure path drops it back to `not-loaded` with no metrics block. The
+    // page must drop the metric cells back to blank — stale numbers next to
+    // a `not-loaded` chip would be a worse lie than a missing one.
+    stream.emitRow({
+      mode: 'in-memory',
+      id: 'projects',
+      kind: 'glob',
+      state: 'not-loaded',
+    });
+    ctx.detect();
+    await ctx.stable();
+    ctx.detect();
+
+    const row = ctx.nativeElement().querySelector(
+      '[data-testid="source-row-projects"]',
+    );
+    for (const testid of [
+      'row-quads',
+      'row-files',
+      'row-loaded-at',
+      'row-load-ms',
+    ]) {
+      const cell = row?.querySelector(`[data-testid="${testid}"]`);
+      expect(cell?.textContent?.trim() ?? '').toBe('');
+    }
   });
 
   it('opening the page issues zero requests to mutating Sources-page routes (ADR-0031 preserved)', async () => {

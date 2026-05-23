@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
@@ -22,22 +23,22 @@ import {
  * errors) extend the union additively in later slices of #352.
  */
 export type SourceRow =
-  | {
+  | ({
       mode: 'in-memory';
       id: string;
       kind: 'glob' | 'file' | 'view' | 'empty';
       state: InMemoryState;
       default?: true;
       parentId?: string;
-    }
-  | {
+    } & Layer2Fields)
+  | ({
       mode: 'disk-backed';
       id: string;
       kind: 'glob' | 'file';
       state: DiskBackedState;
       default?: true;
       parentId?: string;
-    }
+    } & Layer2Fields)
   | {
       mode: 'endpoint';
       id: string;
@@ -54,6 +55,21 @@ export type DiskBackedState =
   | 'failed';
 
 /**
+ * Layer 2 of the Sources page row shape (#355). The server-side projector
+ * fills these fields only when state is `loaded` (in-memory) or `ready`
+ * (disk-backed). Every field is optional: the page renders an empty cell
+ * for any missing value rather than substituting `0`, because "unknown"
+ * (e.g. a disk-backed `ready` pre-`quadCount`-manifest) is a meaningfully
+ * different signal from "really zero" on this dashboard.
+ */
+interface Layer2Fields {
+  quads?: number;
+  files?: number;
+  loadedAt?: number;
+  loadMs?: number;
+}
+
+/**
  * Foundational tracer for the **Sources page** (#353). Layer 1 only — fetches
  * `GET /api/sources` on init and renders one row per served registry entry
  * with id, kind, and current state. Opening the page must **not** issue any
@@ -64,6 +80,7 @@ export type DiskBackedState =
 @Component({
   selector: 'app-sources-page',
   standalone: true,
+  imports: [DatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <header class="border-b border-border-muted bg-surface px-4 py-3">
@@ -113,6 +130,37 @@ export type DiskBackedState =
                   class="rounded bg-accent-muted px-1.5 py-0.5 text-xs text-accent"
                   data-testid="row-default"
                   >default</span
+                >
+              }
+              <!--
+                Layer 2 metric cells (#355). Rendered for every non-endpoint
+                row so the test can find them by selector; populated only
+                when the projector has emitted the corresponding field. A
+                blank cell means "unknown" — explicitly distinct from a
+                literal zero. Pass-through endpoints have no metrics at all
+                (no state machine, no materialization), so we skip the cells
+                entirely there.
+              -->
+              @if (row.mode !== 'endpoint') {
+                <span
+                  class="ml-auto font-mono text-xs text-foreground-muted"
+                  data-testid="row-quads"
+                  >{{ row.quads ?? '' }}</span
+                >
+                <span
+                  class="font-mono text-xs text-foreground-muted"
+                  data-testid="row-files"
+                  >{{ row.files ?? '' }}</span
+                >
+                <span
+                  class="font-mono text-xs text-foreground-muted"
+                  data-testid="row-loaded-at"
+                  >{{ row.loadedAt ? (row.loadedAt | date: 'short') : '' }}</span
+                >
+                <span
+                  class="font-mono text-xs text-foreground-muted"
+                  data-testid="row-load-ms"
+                  >{{ row.loadMs !== undefined ? row.loadMs + ' ms' : '' }}</span
                 >
               }
             </li>

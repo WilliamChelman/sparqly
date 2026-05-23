@@ -737,7 +737,11 @@ describe('EngineMap', () => {
       try {
         (await map.ensure('files'))._unsafeUnwrap();
         const state = await map.readState('files');
-        expect(state).toEqual({ mode: 'in-memory', state: 'loaded' });
+        // Layer 2 metrics (#355) ride alongside the state — the dedicated
+        // metrics test below asserts their shape; here we just check the
+        // state-machine projection itself.
+        expect(state.mode).toBe('in-memory');
+        if (state.mode === 'in-memory') expect(state.state).toBe('loaded');
       } finally {
         await map.close();
       }
@@ -757,6 +761,48 @@ describe('EngineMap', () => {
         expect(state).toEqual({ mode: 'in-memory', state: 'loading' });
         // Drain so close() does not race the still-resolving Store handle.
         (await inFlight)._unsafeUnwrap();
+      } finally {
+        await map.close();
+      }
+    });
+
+    it('returns Layer 2 metrics (quads, files, loadedAt, loadMs) on a loaded in-memory source — #355', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'files', glob: join(dir, '*.ttl') },
+      ]);
+      const before = Date.now();
+      const map = await EngineMap.create(registry);
+      try {
+        (await map.ensure('files'))._unsafeUnwrap();
+        const after = Date.now();
+        const state = await map.readState('files');
+        expect(state.mode).toBe('in-memory');
+        if (state.mode !== 'in-memory') throw new Error('narrow');
+        expect(state.state).toBe('loaded');
+        // The metrics block is populated on every successful load — the
+        // Sources page projects Layer 2 onto the row from these fields.
+        expect(state.metrics?.quads).toBe(1);
+        expect(state.metrics?.files).toBe(1);
+        // `loadedAt` is an epoch-ms stamp around the resolveSourceResult call.
+        expect(state.metrics?.loadedAt).toBeGreaterThanOrEqual(before);
+        expect(state.metrics?.loadedAt).toBeLessThanOrEqual(after + 1);
+        // `loadMs` is wall-clock; it can be 0 on a fast machine but never < 0.
+        expect(state.metrics?.loadMs).toBeGreaterThanOrEqual(0);
+      } finally {
+        await map.close();
+      }
+    });
+
+    it('omits metrics on an untouched (not-loaded) in-memory source — #355', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'files', glob: join(dir, '*.ttl') },
+      ]);
+      const map = await EngineMap.create(registry);
+      try {
+        const state = await map.readState('files');
+        expect(state).toEqual({ mode: 'in-memory', state: 'not-loaded' });
       } finally {
         await map.close();
       }

@@ -12,7 +12,7 @@ import type { ParsedSource } from 'core';
  * carries no state field at all (the row is just an identity entry).
  */
 export type SourceRow =
-  | {
+  | ({
       mode: 'in-memory';
       id: string;
       kind: 'glob' | 'file' | 'view' | 'empty';
@@ -20,21 +20,62 @@ export type SourceRow =
       default?: true;
       /** Split-glob children expose their meta's id for grouping on the page. */
       parentId?: string;
-    }
-  | {
+    } & Layer2Fields)
+  | ({
       mode: 'disk-backed';
       id: string;
       kind: 'glob' | 'file';
       state: DiskBackedState;
       default?: true;
       parentId?: string;
-    }
+    } & Layer2Fields)
   | {
       mode: 'endpoint';
       id: string;
       kind: 'endpoint';
       default?: true;
     };
+
+/**
+ * Layer 2 of the Sources page row shape (#355, parent #352). Materialization
+ * metrics that surface only when the entry is actually materialized — state is
+ * `loaded` (in-memory) or `ready` (disk-backed). Every field is optional on
+ * the wire so a row that arrives without a complete metrics block (e.g. a
+ * disk-backed `ready` whose pre-`quadCount`-manifest is open — see #352's
+ * forward-compatibility decision) still parses cleanly. Fields are always
+ * absent when state does not qualify (the projector strips them; that
+ * invariant is locked by the fixture table in `source-row-projector.spec.ts`).
+ */
+interface Layer2Fields {
+  /**
+   * Quad count of the materialized store. In-memory loaded reads it from the
+   * live `StoreRef`. Disk-backed `ready` carries it once the **Glob index
+   * manifest** ships its `quadCount` field — until then it is `undefined`
+   * (the page renders that as a blank metric cell).
+   */
+  quads?: number;
+  /** Number of files baked into the source at materialization time. */
+  files?: number;
+  /** Epoch ms when the last successful load settled. */
+  loadedAt?: number;
+  /** Wall-clock ms the last successful load took. */
+  loadMs?: number;
+}
+
+/**
+ * Materialization metrics observed on a materialized entry (#355). Travel
+ * with the {@link SourceRuntime} so the projector can decide — based on
+ * `state` — whether to emit them onto the wire row. `quads` is optional
+ * because the **Glob index manifest** does not yet carry `quadCount`
+ * (separate slice of #352); the in-memory loaded path always fills it from
+ * the live `StoreRef`.
+ */
+export interface LoadMetrics {
+  quads?: number;
+  files: number;
+  loadedAt: number;
+  loadMs: number;
+}
 
 /**
  * In-memory **Source load state** (CONTEXT.md, parent #352). `not-loaded` is
@@ -68,8 +109,8 @@ export type DiskBackedState =
  * "problem" (#352 user story 45).
  */
 export type SourceRuntime =
-  | { mode: 'in-memory'; state: InMemoryState }
-  | { mode: 'disk-backed'; state: DiskBackedState }
+  | { mode: 'in-memory'; state: InMemoryState; metrics?: LoadMetrics }
+  | { mode: 'disk-backed'; state: DiskBackedState; metrics?: LoadMetrics }
   | { mode: 'endpoint' };
 
 /**
@@ -122,6 +163,7 @@ export function projectSourceRow(
       state: runtime.state,
     };
     if (parentId !== undefined) row.parentId = parentId;
+    if (runtime.state === 'ready') applyLayer2(row, runtime.metrics);
     return withOptionalDefault(row, isDefault);
   }
   if (
@@ -141,7 +183,27 @@ export function projectSourceRow(
     state: runtime.state,
   };
   if (parentId !== undefined) row.parentId = parentId;
+  if (runtime.state === 'loaded') applyLayer2(row, runtime.metrics);
   return withOptionalDefault(row, isDefault);
+}
+
+/**
+ * Copies Layer 2 metric fields onto an in-memory or disk-backed row when the
+ * caller has already checked that the state qualifies (`loaded` / `ready`).
+ * Keeps absent fields absent — `quads` is genuinely optional (no
+ * `quadCount` in the **Glob index manifest** yet, #352), and the projector
+ * never substitutes a fallback value: a missing metric reads as "we don't
+ * know" on the page, not as "zero".
+ */
+function applyLayer2(
+  row: SourceRow & Layer2Fields,
+  metrics: LoadMetrics | undefined,
+): void {
+  if (metrics === undefined) return;
+  if (metrics.quads !== undefined) row.quads = metrics.quads;
+  row.files = metrics.files;
+  row.loadedAt = metrics.loadedAt;
+  row.loadMs = metrics.loadMs;
 }
 
 function withOptionalDefault(row: SourceRow, isDefault: true | undefined): SourceRow {
