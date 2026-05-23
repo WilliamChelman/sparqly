@@ -4,6 +4,7 @@ import {
   projectSourceRow,
   type DiskBackedState,
   type InMemoryState,
+  type LoadMetrics,
   type SourceRow,
   type SourceRuntime,
 } from './source-row-projector';
@@ -171,6 +172,121 @@ describe('projectSourceRow — Layer 1 (identity & state)', () => {
         { mode: 'endpoint' },
       );
       expect(row.default).toBe(true);
+    });
+  });
+});
+
+describe('projectSourceRow — Layer 2 (materialization metrics, #355)', () => {
+  const METRICS: LoadMetrics = {
+    quads: 1234,
+    files: 7,
+    loadedAt: 1_700_000_000_000,
+    loadMs: 250,
+  };
+
+  describe('in-memory mode', () => {
+    it('emits quads, files, loadedAt, loadMs on a loaded row', () => {
+      const row = projectSourceRow(inMemoryGlob, {
+        mode: 'in-memory',
+        state: 'loaded',
+        metrics: METRICS,
+      });
+      expect(row).toMatchObject({
+        mode: 'in-memory',
+        id: 'docs',
+        kind: 'glob',
+        state: 'loaded',
+        quads: 1234,
+        files: 7,
+        loadedAt: 1_700_000_000_000,
+        loadMs: 250,
+      });
+    });
+
+    it('omits Layer 2 fields when the metrics block has no quads (e.g. disk-backed never carries quads yet)', () => {
+      // The manifest `quadCount` slice is forward-compatible additive (#352
+      // "Out of scope: Backfilling quadCount into pre-existing manifests").
+      // The projector must propagate that absence: a metrics block without
+      // `quads` produces a row without `quads`.
+      const row = projectSourceRow(inMemoryGlob, {
+        mode: 'in-memory',
+        state: 'loaded',
+        metrics: { files: 1, loadedAt: 1, loadMs: 1 },
+      });
+      expect('quads' in row).toBe(false);
+      expect((row as { files?: number }).files).toBe(1);
+    });
+
+    for (const state of ['not-loaded', 'loading', 'failed'] as InMemoryState[]) {
+      it(`omits Layer 2 fields when state is '${state}' even if runtime carries metrics`, () => {
+        const row = projectSourceRow(inMemoryGlob, {
+          mode: 'in-memory',
+          state,
+          metrics: METRICS,
+        });
+        expect('quads' in row).toBe(false);
+        expect('files' in row).toBe(false);
+        expect('loadedAt' in row).toBe(false);
+        expect('loadMs' in row).toBe(false);
+      });
+    }
+
+    it('omits Layer 2 fields when loaded but runtime carries no metrics block (e.g. legacy reads)', () => {
+      const row = projectSourceRow(inMemoryGlob, {
+        mode: 'in-memory',
+        state: 'loaded',
+      });
+      expect('quads' in row).toBe(false);
+      expect('files' in row).toBe(false);
+      expect('loadedAt' in row).toBe(false);
+      expect('loadMs' in row).toBe(false);
+    });
+  });
+
+  describe('disk-backed mode', () => {
+    it('emits files, loadedAt, loadMs on a ready row (quads optional until manifest slice)', () => {
+      const row = projectSourceRow(diskGlob, {
+        mode: 'disk-backed',
+        state: 'ready',
+        metrics: { files: 3, loadedAt: 1, loadMs: 42 },
+      });
+      expect(row).toMatchObject({
+        mode: 'disk-backed',
+        state: 'ready',
+        files: 3,
+        loadedAt: 1,
+        loadMs: 42,
+      });
+      expect('quads' in row).toBe(false);
+    });
+
+    for (const state of [
+      'not-built',
+      'indexing',
+      'stale',
+      'failed',
+    ] as DiskBackedState[]) {
+      it(`omits Layer 2 fields when state is '${state}' even if runtime carries metrics`, () => {
+        const row = projectSourceRow(diskGlob, {
+          mode: 'disk-backed',
+          state,
+          metrics: METRICS,
+        });
+        expect('quads' in row).toBe(false);
+        expect('files' in row).toBe(false);
+        expect('loadedAt' in row).toBe(false);
+        expect('loadMs' in row).toBe(false);
+      });
+    }
+  });
+
+  describe('endpoint mode', () => {
+    it('never carries Layer 2 fields — pass-through endpoints have no metrics', () => {
+      const row = projectSourceRow(endpoint, { mode: 'endpoint' });
+      expect('quads' in row).toBe(false);
+      expect('files' in row).toBe(false);
+      expect('loadedAt' in row).toBe(false);
+      expect('loadMs' in row).toBe(false);
     });
   });
 });

@@ -41,6 +41,19 @@ interface Entry {
    */
   files: string[];
   /**
+   * Layer 2 materialization metric (#355): epoch-ms stamp captured the
+   * instant the last successful `loadEntry` settled. `undefined` until the
+   * first ok-resolution; later slices clear it again on `unload`. The page
+   * renders this verbatim — no formatting, no timezone assumption.
+   */
+  loadedAt: number | undefined;
+  /**
+   * Layer 2 materialization metric (#355): wall-clock ms the last successful
+   * load took (start measured before any I/O, end measured after the engine
+   * is wired up). The Sources page surfaces this to spot slow loaders.
+   */
+  loadMs: number | undefined;
+  /**
    * Lazy-materialization slot (ADR-0031). `undefined` until first
    * {@link EngineMap.ensure} call; thereafter a memoized in-flight (or
    * settled-`ok`) promise. Endpoint entries are populated synchronously at
@@ -193,6 +206,8 @@ export class EngineMap {
         entries.set(src.id, {
           source: src,
           files: [],
+          loadedAt: undefined,
+          loadMs: undefined,
           loaded: Promise.resolve(ok(loaded)),
           disk: undefined,
           closeIndex: undefined,
@@ -203,6 +218,8 @@ export class EngineMap {
       entries.set(src.id, {
         source: src,
         files: [],
+        loadedAt: undefined,
+        loadMs: undefined,
         loaded: undefined,
         disk: undefined,
         closeIndex: undefined,
@@ -412,6 +429,8 @@ export class EngineMap {
     }
     entry.current = loaded;
     const ms = Date.now() - start;
+    entry.loadMs = ms;
+    entry.loadedAt = Date.now();
     this.stateEmitter?.emit({ kind: 'load-success', sourceId });
     if (loaded.storeRef) {
       this.logger?.debug('source-loaded', {
