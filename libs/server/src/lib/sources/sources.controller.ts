@@ -25,7 +25,11 @@ import {
   type SourcesAdminServerConfig,
 } from '../bootstrap/tokens';
 import { probeEndpoint, type ProbeResult } from './endpoint-probe';
-import { projectSourceRow, type SourceRow } from './source-row-projector';
+import {
+  projectSourceRow,
+  projectSplitGlobMeta,
+  type SourceRow,
+} from './source-row-projector';
 import type {
   SourcesSseEnvelope,
   SourceStateBroker,
@@ -51,13 +55,39 @@ export class SourcesController {
 
   @Get()
   async snapshot(): Promise<SourceRow[]> {
+    // Split-glob children (kind: 'file' + parentId) collapse under their meta
+    // (#361). Index them first so a one-pass projection still emits a single
+    // meta row carrying its `children` array.
+    const childrenByParent = new Map<string, ParsedSource[]>();
+    for (const source of this.servedRegistry) {
+      if (source.kind !== 'file') continue;
+      const parentId = source.parentId;
+      if (parentId === undefined) continue;
+      const list = childrenByParent.get(parentId) ?? [];
+      list.push(source);
+      childrenByParent.set(parentId, list);
+    }
+
     const rows: SourceRow[] = [];
     for (const source of this.servedRegistry) {
       // Reference sources are never served — they exist only as `from:` targets.
       if (source.kind === 'reference') continue;
       if (source.id === undefined) continue;
+      // Children are projected under their meta below, not as top-level rows.
+      if (source.kind === 'file' && source.parentId !== undefined) continue;
       const runtime = await this.engineMap.readState(source.id);
-      rows.push(projectSourceRow(source, runtime));
+      const splitChildren = childrenByParent.get(source.id);
+      if (splitChildren !== undefined) {
+        const childRows: SourceRow[] = [];
+        for (const child of splitChildren) {
+          if (child.id === undefined) continue;
+          const childRuntime = await this.engineMap.readState(child.id);
+          childRows.push(projectSourceRow(child, childRuntime));
+        }
+        rows.push(projectSplitGlobMeta(source, runtime, childRows));
+      } else {
+        rows.push(projectSourceRow(source, runtime));
+      }
     }
     return rows;
   }

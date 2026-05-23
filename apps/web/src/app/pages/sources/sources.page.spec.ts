@@ -1293,6 +1293,377 @@ describe('SourcesPage (#353)', () => {
     });
   });
 
+  describe('Split-glob disclosure (#361)', () => {
+    const SPLIT_SNAPSHOT: SourceRow[] = [
+      {
+        mode: 'in-memory',
+        id: 'docs',
+        kind: 'glob',
+        state: 'not-loaded',
+        children: [
+          {
+            mode: 'in-memory',
+            id: 'docs/a.ttl',
+            kind: 'file',
+            parentId: 'docs',
+            state: 'not-loaded',
+          },
+          {
+            mode: 'in-memory',
+            id: 'docs/b.ttl',
+            kind: 'file',
+            parentId: 'docs',
+            state: 'not-loaded',
+          },
+        ],
+      },
+    ];
+
+    it('renders the meta row with a disclosure toggle and hides children by default', async () => {
+      // A split-glob with 200 matched files would drown the page; the meta
+      // collapses by default and the operator opens it on demand (issue #361).
+      const ctx = await setup();
+      flush(ctx.http, SPLIT_SNAPSHOT);
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const metaRow = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-docs"]',
+      );
+      expect(metaRow).not.toBeNull();
+      // The disclosure control is on the meta row.
+      expect(
+        metaRow?.querySelector('[data-testid="row-disclosure-toggle"]'),
+      ).not.toBeNull();
+      // No child rows are rendered yet.
+      expect(
+        ctx.nativeElement().querySelector('[data-testid="source-row-docs/a.ttl"]'),
+      ).toBeNull();
+      expect(
+        ctx.nativeElement().querySelector('[data-testid="source-row-docs/b.ttl"]'),
+      ).toBeNull();
+    });
+
+    it('SSE child-row events update the child inside its meta and re-aggregate the meta state to "mixed"', async () => {
+      // Acceptance criterion: child rows carry their own state; per the SSE
+      // shape decision, the server emits one event per source-id (meta or
+      // child) and the webapp re-applies it inside `meta.children`, then
+      // re-aggregates the meta's displayed state. A child event must not
+      // surface as a new top-level row.
+      const stream = createFakeStream();
+      const ctx = await setup('/sources', { stream });
+      flush(ctx.http, SPLIT_SNAPSHOT);
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      stream.emitRow({
+        mode: 'in-memory',
+        id: 'docs/a.ttl',
+        kind: 'file',
+        parentId: 'docs',
+        state: 'loaded',
+        quads: 7,
+        files: 1,
+        loadedAt: LOADED_AT,
+        loadMs: 4,
+      });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      // Meta state re-aggregates client-side: one loaded child + one
+      // not-loaded child → 'mixed'.
+      const metaRow = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-docs"]',
+      );
+      expect(
+        metaRow?.querySelector('[data-testid="row-state"]')?.textContent,
+      ).toContain('mixed');
+
+      // The child must not appear as a sibling top-level row.
+      const topLevelIds = Array.from(
+        ctx.nativeElement().querySelectorAll('[data-testid^="source-row-"]'),
+      )
+        .filter((el) => el.getAttribute('data-parent-id') === null)
+        .map((el) => el.getAttribute('data-source-id'));
+      expect(topLevelIds).toEqual(['docs']);
+
+      // Expanding the meta now reveals the updated child.
+      ctx.nativeElement().querySelector<HTMLButtonElement>(
+        '[data-testid="row-disclosure-toggle"]',
+      )?.click();
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+      const childRow = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-docs/a.ttl"]',
+      );
+      expect(
+        childRow?.querySelector('[data-testid="row-state"]')?.textContent,
+      ).toContain('loaded');
+    });
+
+    it('meta-row "Reload all loaded children" cascades one POST per loaded child client-side, skipping not-loaded siblings (no server fan-out)', async () => {
+      // Acceptance criteria: a meta-row cascade fires one HTTP request per
+      // qualifying child from the client; siblings already loaded are
+      // reloaded; not-loaded siblings are skipped. The server never sees a
+      // single fan-out route — proven by the per-child URLs the client hits.
+      const snapshot: SourceRow[] = [
+        {
+          mode: 'in-memory',
+          id: 'docs',
+          kind: 'glob',
+          state: 'mixed',
+          children: [
+            {
+              mode: 'in-memory',
+              id: 'docs/a.ttl',
+              kind: 'file',
+              parentId: 'docs',
+              state: 'loaded',
+              quads: 5,
+              files: 1,
+              loadedAt: LOADED_AT,
+              loadMs: 3,
+            },
+            {
+              mode: 'in-memory',
+              id: 'docs/b.ttl',
+              kind: 'file',
+              parentId: 'docs',
+              state: 'loaded',
+              quads: 8,
+              files: 1,
+              loadedAt: LOADED_AT,
+              loadMs: 4,
+            },
+            {
+              mode: 'in-memory',
+              id: 'docs/c.ttl',
+              kind: 'file',
+              parentId: 'docs',
+              state: 'not-loaded',
+            },
+          ],
+        },
+      ];
+      const ctx = await setup();
+      flush(ctx.http, snapshot);
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const cascade = ctx.nativeElement().querySelector<HTMLButtonElement>(
+        '[data-testid="row-action-reload-loaded-children"]',
+      );
+      expect(cascade).not.toBeNull();
+      cascade?.click();
+      ctx.detect();
+      await ctx.stable();
+
+      // One POST per loaded child; the not-loaded sibling is skipped.
+      const reqA = ctx.http.expectOne(
+        '/api/sources/' + encodeURIComponent('docs/a.ttl') + '/reload',
+      );
+      const reqB = ctx.http.expectOne(
+        '/api/sources/' + encodeURIComponent('docs/b.ttl') + '/reload',
+      );
+      expect(reqA.request.method).toBe('POST');
+      expect(reqB.request.method).toBe('POST');
+      reqA.flush({ id: 'docs/a.ttl', state: 'loaded' });
+      reqB.flush({ id: 'docs/b.ttl', state: 'loaded' });
+      // No request to docs/c.ttl or to the meta itself.
+      ctx.http.verify();
+    });
+
+    it('one cascaded child failing does not abort siblings — every loaded child sees its POST issued', async () => {
+      const snapshot: SourceRow[] = [
+        {
+          mode: 'in-memory',
+          id: 'docs',
+          kind: 'glob',
+          state: 'loaded',
+          children: [
+            {
+              mode: 'in-memory',
+              id: 'docs/a.ttl',
+              kind: 'file',
+              parentId: 'docs',
+              state: 'loaded',
+              files: 1,
+              loadedAt: LOADED_AT,
+              loadMs: 1,
+            },
+            {
+              mode: 'in-memory',
+              id: 'docs/b.ttl',
+              kind: 'file',
+              parentId: 'docs',
+              state: 'loaded',
+              files: 1,
+              loadedAt: LOADED_AT,
+              loadMs: 1,
+            },
+          ],
+        },
+      ];
+      const ctx = await setup();
+      flush(ctx.http, snapshot);
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      ctx.nativeElement().querySelector<HTMLButtonElement>(
+        '[data-testid="row-action-reload-loaded-children"]',
+      )?.click();
+      ctx.detect();
+      await ctx.stable();
+
+      const reqA = ctx.http.expectOne(
+        '/api/sources/' + encodeURIComponent('docs/a.ttl') + '/reload',
+      );
+      const reqB = ctx.http.expectOne(
+        '/api/sources/' + encodeURIComponent('docs/b.ttl') + '/reload',
+      );
+      // Sibling A errors — sibling B's request must still have been issued
+      // (the cascade does not short-circuit on a failed sibling).
+      reqA.flush(
+        { error: 'simulated' },
+        { status: 500, statusText: 'Server Error' },
+      );
+      reqB.flush({ id: 'docs/b.ttl', state: 'loaded' });
+      ctx.http.verify();
+    });
+
+    it('the cascade is hidden when sources.allowAdminActions is false (gated like single-row actions)', async () => {
+      const snapshot: SourceRow[] = [
+        {
+          mode: 'in-memory',
+          id: 'docs',
+          kind: 'glob',
+          state: 'loaded',
+          children: [
+            {
+              mode: 'in-memory',
+              id: 'docs/a.ttl',
+              kind: 'file',
+              parentId: 'docs',
+              state: 'loaded',
+            },
+          ],
+        },
+      ];
+      const ctx = await setup();
+      flush(ctx.http, snapshot, { allowAdminActions: false });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+      expect(
+        ctx.nativeElement().querySelector(
+          '[data-testid="row-action-reload-loaded-children"]',
+        ),
+      ).toBeNull();
+    });
+
+    it('the cascade button is hidden when no child is currently loaded (nothing to reload)', async () => {
+      const snapshot: SourceRow[] = [
+        {
+          mode: 'in-memory',
+          id: 'docs',
+          kind: 'glob',
+          state: 'not-loaded',
+          children: [
+            {
+              mode: 'in-memory',
+              id: 'docs/a.ttl',
+              kind: 'file',
+              parentId: 'docs',
+              state: 'not-loaded',
+            },
+          ],
+        },
+      ];
+      const ctx = await setup();
+      flush(ctx.http, snapshot);
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+      expect(
+        ctx.nativeElement().querySelector(
+          '[data-testid="row-action-reload-loaded-children"]',
+        ),
+      ).toBeNull();
+    });
+
+    it('child rows carry their own per-row action menu (Load on not-loaded children, gated by capability)', async () => {
+      // Acceptance criterion: "Per-child action menu invokes the same gated
+      // routes as a normal in-memory row." A `not-loaded` File child shows
+      // a Load button; clicking it must POST to /api/sources/<child-id>/load,
+      // not to the meta's id (no server-side fan-out).
+      const ctx = await setup();
+      flush(ctx.http, SPLIT_SNAPSHOT);
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      ctx.nativeElement().querySelector<HTMLButtonElement>(
+        '[data-testid="row-disclosure-toggle"]',
+      )?.click();
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const childRow = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-docs/a.ttl"]',
+      );
+      const loadBtn = childRow?.querySelector<HTMLButtonElement>(
+        '[data-testid="row-action-load"]',
+      );
+      expect(loadBtn).not.toBeNull();
+      loadBtn?.click();
+      ctx.detect();
+      await ctx.stable();
+
+      const req = ctx.http.expectOne(
+        '/api/sources/' + encodeURIComponent('docs/a.ttl') + '/load',
+      );
+      expect(req.request.method).toBe('POST');
+      req.flush({ id: 'docs/a.ttl', state: 'loaded' });
+    });
+
+    it('clicking the disclosure toggle reveals each child as a row with id, kind, state', async () => {
+      const ctx = await setup();
+      flush(ctx.http, SPLIT_SNAPSHOT);
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const toggle = ctx.nativeElement().querySelector<HTMLButtonElement>(
+        '[data-testid="row-disclosure-toggle"]',
+      );
+      toggle?.click();
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const childA = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-docs/a.ttl"]',
+      );
+      const childB = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-docs/b.ttl"]',
+      );
+      expect(childA).not.toBeNull();
+      expect(childB).not.toBeNull();
+      // Each child carries its own state chip — operators debug the failing
+      // child independently of its siblings (#361 acceptance criterion).
+      expect(
+        childA?.querySelector('[data-testid="row-state"]')?.textContent,
+      ).toContain('not-loaded');
+    });
+  });
+
   it('opening the page issues zero requests to mutating Sources-page routes (ADR-0031 preserved)', async () => {
     const ctx = await setup();
     flush(ctx.http);
