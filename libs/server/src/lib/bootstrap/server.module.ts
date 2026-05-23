@@ -15,6 +15,7 @@ import {
 } from '../saved-queries';
 import { RegistrySparqlController } from '../sparql';
 import { RefsController } from '../refs';
+import { SourcesController } from '../sources';
 import {
   SnippetAllowList,
   SnippetController,
@@ -83,6 +84,7 @@ export class ServerModule {
         DescribeController,
         SnippetController,
         SavedQueriesController,
+        SourcesController,
       ],
       providers: [
         { provide: SPARQL_CONFIG, useValue: options.config },

@@ -5,71 +5,21 @@ import {
   QueryEngine,
   resolveSourceResult,
   unionDefaultGraphEnabled,
-  type ParsedEndpointSource,
   type ParsedSource,
   type SourceError,
-  type SourceRecordSidecar,
 } from 'core';
-import type * as RDF from '@rdfjs/types';
-import type { Store } from 'n3';
 import type { StoreRef } from './tokens';
 import { isDiskBacked, manifestExists } from './disk-backed-index';
+import {
+  indexingError,
+  type IndexingError,
+  type LoadedSources,
+} from './engine-map-types';
 import { IndexBuildPool, type SpawnIndexBuild } from './index-build-pool';
+import type { SourceRuntime } from '../sources/source-row-projector';
 
-/**
- * Loaded view of a served source, surfaced to consumers that need the
- * underlying Store and (where available) the loader-attached source-record
- * sidecar (ADR-0032). Discriminated mirrors `QuerySources` so callers can
- * dispatch on `mode` without reaching into `engine-map` internals.
- */
-export type LoadedSources =
-  | { mode: 'materialized'; store: Store; sourceRecords?: SourceRecordSidecar }
-  | { mode: 'pass-through'; endpoint: ParsedEndpointSource }
-  | {
-      /**
-       * A `storage: disk` glob hosted by `serve` from its on-disk Glob index
-       * (ADR-0041). The quads live in an embedded quad store, not the V8 heap,
-       * and carry no Source record sidecar — `diff` rejects this mode.
-       */
-      mode: 'disk-backed';
-      source: RDF.Source;
-      indexDir: string;
-    };
-
-/**
- * Returned by {@link EngineMap.ensure}/{@link EngineMap.ensureSources} when a
- * disk-backed glob's Glob index is still building in the background (ADR-0041,
- * #340). It is not a load *failure* — it is a transient "retry shortly" state
- * — but it travels the same `Result` error channel so the `serve` HTTP
- * boundary can route it to a `503` the way every other source outcome routes
- * through an error-to-status mapper.
- */
-export interface IndexingError {
-  kind: 'indexing';
-  /** Source `@id` whose Glob index is still building. */
-  source: string;
-  message: string;
-}
-
-/**
- * Type guard separating an {@link IndexingError} from any other tagged error
- * travelling the `Result` channel (a core `SourceError`, a `TargetError`). The
- * parameter is the structural `{ kind }` shape every such error carries so the
- * `serve` boundary can call this on its widest error union.
- */
-export function isIndexingError(
-  error: { kind: string },
-): error is IndexingError {
-  return error.kind === 'indexing';
-}
-
-function indexingError(source: string): IndexingError {
-  return {
-    kind: 'indexing',
-    source,
-    message: `disk-backed glob '${source}' is building its index — retry shortly`,
-  };
-}
+export type { IndexingError, LoadedSources } from './engine-map-types';
+export { isIndexingError } from './engine-map-types';
 
 interface LoadedEntry {
   engine: QueryEngine;
@@ -88,38 +38,27 @@ interface Entry {
    */
   files: string[];
   /**
-   * `serve`'s lazy-materialization contract (ADR-0031): for materialized
-   * entries this is `undefined` until the first {@link EngineMap.ensure} call
-   * triggers the load, then a memoized in-flight (and eventually settled)
-   * promise of the {@link Result}-typed {@link LoadedEntry}. Endpoint
-   * pass-through entries are populated synchronously at construction time —
-   * no load to defer — and their `loaded` promise resolves immediately with
-   * `ok(loaded)`. When a load resolves with `err(SourceError)`, the slot is
-   * cleared so the next `ensure(id)` call retries fresh, letting the user fix
-   * the underlying file/ref/config without restarting the server (#290).
-   *
-   * Unused by disk-backed globs — those run the {@link disk} state machine.
+   * Lazy-materialization slot (ADR-0031). `undefined` until first
+   * {@link EngineMap.ensure} call; thereafter a memoized in-flight (or
+   * settled-`ok`) promise. Endpoint entries are populated synchronously at
+   * construction. On `err(SourceError)` the slot is cleared so the next
+   * `ensure(id)` retries fresh — fixes #290's restart-required failures.
+   * Unused by disk-backed globs (they run the `disk` state machine).
    */
   loaded: Promise<Result<LoadedEntry, SourceError>> | undefined;
   /**
    * Disk-backed glob state machine (ADR-0041/-0042). `undefined` until first
-   * touch and again after every touch that finds the index still building —
-   * so the next `ensure(id)` re-checks the on-disk manifest (the child may
-   * have finished) and re-requests the capped build. Memoized only once the
-   * index opens `ready`, holding `ok(LoadedEntry)`. Concurrent touches share
-   * the one in-flight promise, so the build is requested once per attempt.
+   * touch and again whenever a touch finds the index still building, so the
+   * next `ensure(id)` re-checks the manifest. Memoized only on `ready`.
+   * Concurrent touches share the one in-flight promise per attempt.
    */
   disk: Promise<Result<LoadedEntry, SourceError | IndexingError>> | undefined;
-  /**
-   * Releases the embedded LevelDB lock on a disk-backed glob's Glob index.
-   * Set once the index opens; awaited by {@link EngineMap.close}.
-   */
+  /** Releases the LevelDB lock on a disk-backed Glob index; awaited by `close()`. */
   closeIndex: (() => Promise<void>) | undefined;
   /**
-   * Synchronously-available view of the loaded shape, mirroring `loaded` once
-   * it has settled with `ok`. Used by watcher / snippet wiring that needs to
-   * peek at the store ref without `await`ing. Remains `undefined` while a
-   * load is in-flight or after a failed load.
+   * Synchronous view of the settled-`ok` `loaded` shape — watcher and snippet
+   * wiring peek at the store ref without `await`. `undefined` while loading
+   * or after a failed load.
    */
   current: LoadedEntry | undefined;
 }
@@ -453,6 +392,43 @@ export class EngineMap {
       });
     }
     return ok(loaded);
+  }
+
+  /**
+   * Snapshot of an entry's current **Source load state** for the Sources page
+   * (`GET /api/sources`, #353). Pure observer over `current`, `loaded`, `disk`,
+   * and on-disk manifest presence — never triggers lazy materialization
+   * (ADR-0031) and never spawns a child-process build (ADR-0042). Layer 1
+   * states only; `stale` / `failed` discriminations arrive in later slices of
+   * the parent epic (#352).
+   */
+  async readState(id: string): Promise<SourceRuntime> {
+    const entry = this.entries.get(id);
+    if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
+    if (entry.source.kind === 'endpoint') return { mode: 'endpoint' };
+    if (isDiskBacked(entry.source)) {
+      if (entry.current !== undefined) {
+        return { mode: 'disk-backed', state: 'ready' };
+      }
+      if (entry.disk !== undefined) {
+        return { mode: 'disk-backed', state: 'indexing' };
+      }
+      // Probe the on-disk manifest without opening — a `stat` of
+      // `manifest.json` reports "ready" without acquiring the LevelDB lock.
+      const indexDir = globIndexDir(
+        this.configDir,
+        entry.source.id as string,
+        this.indexCacheDir,
+      );
+      const state = (await manifestExists(indexDir)) ? 'ready' : 'not-built';
+      return { mode: 'disk-backed', state };
+    }
+    if (entry.current !== undefined) return { mode: 'in-memory', state: 'loaded' };
+    // `loaded` is defined iff in-flight or settled-ok — the err path clears
+    // the slot back to `undefined` (#290), so `not-loaded` covers both rest
+    // and freshly-failed.
+    if (entry.loaded !== undefined) return { mode: 'in-memory', state: 'loading' };
+    return { mode: 'in-memory', state: 'not-loaded' };
   }
 
   /**

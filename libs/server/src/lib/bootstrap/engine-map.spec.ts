@@ -701,4 +701,152 @@ describe('EngineMap', () => {
       }
     });
   });
+
+  describe('readState(id) — Sources page snapshot (#353)', () => {
+    const SAMPLE = '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .';
+
+    it('returns not-loaded for an untouched in-memory glob (no lazy materialization triggered)', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'files', glob: join(dir, '*.ttl') },
+      ]);
+      const rec = recordingLogger();
+      const map = await EngineMap.create(registry, { logger: rec.logger });
+      try {
+        const state = await map.readState('files');
+        expect(state).toEqual({ mode: 'in-memory', state: 'not-loaded' });
+        // Reading state must never trigger a load (ADR-0031 contract): no
+        // source-loaded log was emitted, and the store ref is still empty.
+        expect(
+          rec.entries.filter((e) => e.msg === 'source-loaded'),
+        ).toHaveLength(0);
+        expect(map.getStoreRef('files')).toBeUndefined();
+      } finally {
+        await map.close();
+      }
+    });
+
+    it('returns loaded for an in-memory source after a successful ensure() — Sources page reflects the live current state', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'files', glob: join(dir, '*.ttl') },
+      ]);
+      const map = await EngineMap.create(registry);
+      try {
+        (await map.ensure('files'))._unsafeUnwrap();
+        const state = await map.readState('files');
+        expect(state).toEqual({ mode: 'in-memory', state: 'loaded' });
+      } finally {
+        await map.close();
+      }
+    });
+
+    it('returns loading while an in-flight first-touch load has not yet settled', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'files', glob: join(dir, '*.ttl') },
+      ]);
+      const map = await EngineMap.create(registry);
+      try {
+        // Kick the load but do not await it — readState should observe the
+        // in-flight Promise and report `loading` without forcing settle.
+        const inFlight = map.ensure('files');
+        const state = await map.readState('files');
+        expect(state).toEqual({ mode: 'in-memory', state: 'loading' });
+        // Drain so close() does not race the still-resolving Store handle.
+        (await inFlight)._unsafeUnwrap();
+      } finally {
+        await map.close();
+      }
+    });
+
+    it('returns mode endpoint (no state field) for a pass-through endpoint source', async () => {
+      const registry = parseSourceSpecs([
+        { id: 'remote', endpoint: 'https://example.org/sparql' },
+      ]);
+      const map = await EngineMap.create(registry);
+      try {
+        const state = await map.readState('remote');
+        expect(state).toEqual({ mode: 'endpoint' });
+      } finally {
+        await map.close();
+      }
+    });
+
+    it('returns not-built for a disk-backed glob whose Glob index manifest is absent', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+      const map = await EngineMap.create(registry, { configDir: dir });
+      try {
+        const state = await map.readState('big');
+        expect(state).toEqual({ mode: 'disk-backed', state: 'not-built' });
+        // Crucially: readState did not request a build (the Sources page must
+        // not kick a child off the snapshot endpoint).
+        // No spawned builds: we never injected a spawn, and pool.whenIdle
+        // would block if one were requested — but we asserted state directly.
+      } finally {
+        await map.close();
+      }
+    });
+
+    it('returns ready for a disk-backed glob whose manifest is already on disk (no open required)', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+      // Build the index once in a throwaway lifetime so the manifest exists.
+      const firstBuilds = (() => {
+        const spawned: string[] = [];
+        const spawn: SpawnIndexBuild = (id) => {
+          spawned.push(id);
+          const child = {
+            listeners: [] as Array<(code: number | null) => void>,
+            on(event: 'exit', listener: (code: number | null) => void) {
+              if (event === 'exit') this.listeners.push(listener);
+            },
+            kill() {
+              /* no-op */
+            },
+          };
+          const source = registry.find(
+            (s): s is ParsedGlobSource | ParsedFileSource =>
+              (s.kind === 'glob' || s.kind === 'file') && s.id === id,
+          );
+          if (source === undefined) {
+            queueMicrotask(() => child.listeners.forEach((l) => l(1)));
+            return child;
+          }
+          const { indexId, pattern } = diskBackedIndexIdentity(source);
+          const indexDir = globIndexDir(dir, indexId);
+          void ensureGlobIndex({
+            glob: pattern,
+            transforms: source.transforms ?? [],
+            indexDir,
+            sparqlyVersion: 'test',
+          }).then((outcome) =>
+            child.listeners.forEach((l) => l(outcome.isOk() ? 0 : 1)),
+          );
+          return child;
+        };
+        return { spawn, spawned };
+      })();
+      const builder = await EngineMap.create(registry, {
+        configDir: dir,
+        spawnIndexBuild: firstBuilds.spawn,
+      });
+      await builder.ensure('big');
+      await builder.whenIdle();
+      await builder.close();
+
+      const map = await EngineMap.create(registry, { configDir: dir });
+      try {
+        const state = await map.readState('big');
+        expect(state).toEqual({ mode: 'disk-backed', state: 'ready' });
+      } finally {
+        await map.close();
+      }
+    });
+  });
 });

@@ -7,3 +7,4 @@ export * from './lib/snippet';
 export * from './lib/shared';
 export * from './lib/refs';
 export * from './lib/saved-queries';
+export * from './lib/sources';
