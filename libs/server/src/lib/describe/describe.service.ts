@@ -303,16 +303,30 @@ export class DescribeService {
       registry: this.resolutionRegistry,
     })
       .mapErr((source: SourceError): DescribeError => ({ kind: 'source', source }))
-      .map((resolved: QuerySources) => {
-        if (resolved.mode !== 'materialized') {
-          // A declared glob/view always resolves to a materialized store;
-          // anything else here is a guard against an unexpected resolver
-          // outcome.
-          return { quads: [] as Quad[], truncated: false };
-        }
-        const raw = describeStore({ store: resolved.store, seed, perSourceLimit });
-        return { quads: raw.quads, truncated: raw.truncated };
-      });
+      .andThen<{ quads: Quad[]; truncated: boolean }, DescribeError>(
+        (resolved: QuerySources) => {
+          if (resolved.mode === 'disk-backed') {
+            // describe consumes a synchronous in-heap Store; a disk-backed
+            // index exposes its quads via an async RDF.Source stream and the
+            // disk tier exists to keep them out of V8 (ADR-0041). Release the
+            // embedded LevelDB lock and surface a typed per-source error.
+            void resolved.close();
+            return errAsync({ kind: 'disk-backed-source', id });
+          }
+          if (resolved.mode !== 'materialized') {
+            // A declared glob/view always resolves to a materialized store;
+            // anything else here is a guard against an unexpected resolver
+            // outcome.
+            return okAsync({ quads: [] as Quad[], truncated: false });
+          }
+          const raw = describeStore({
+            store: resolved.store,
+            seed,
+            perSourceLimit,
+          });
+          return okAsync({ quads: raw.quads, truncated: raw.truncated });
+        },
+      );
   }
 
   /**

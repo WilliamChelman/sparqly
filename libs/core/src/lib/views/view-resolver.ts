@@ -6,7 +6,11 @@ import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import type { SparqlyLogger } from 'common';
 import { emitQueryEvent, loadRdfResult } from '../engine';
 import { detectQueryType } from '../canonical/immutability';
-import { applyTransformPipeline, unionDefaultGraphEnabled } from '../sources';
+import {
+  applyTransformPipeline,
+  storageTier,
+  unionDefaultGraphEnabled,
+} from '../sources';
 import {
   type ParsedEndpointSource,
   type ParsedSource,
@@ -342,6 +346,22 @@ function loadUpstreamResult(
   }
   if (upstream.kind === 'empty') {
     return okAsync(new Store());
+  }
+  if (upstream.kind === 'file' || upstream.kind === 'glob') {
+    // A view materializes its `from:` chain into an in-memory Store before
+    // running its query — the very cost a `storage: disk` glob exists to
+    // escape (ADR-0041). Refuse the combination here, before any index dir
+    // is opened or built, with a typed `glob-load` error.
+    if (storageTier(upstream) === 'disk') {
+      return errAsync({
+        kind: 'glob-load',
+        glob: upstream.kind === 'glob' ? [upstream.glob] : [upstream.path],
+        message:
+          `view "${view.id}" cannot resolve from a disk-backed upstream @${refId} ` +
+          '(`storage: disk`): a view materializes its `from:` into the V8 heap, ' +
+          'which is precisely the cost the disk tier exists to escape (ADR-0041)',
+      });
+    }
   }
   if (upstream.kind === 'file') {
     return loadRdfResult({ sources: upstream.path, logger }).map((sub) =>

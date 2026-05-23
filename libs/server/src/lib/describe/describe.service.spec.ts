@@ -5,7 +5,12 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { QueryEngine } from '@comunica/query-sparql';
 import { parseDescribeWire, serializeDescribeWire } from 'common';
-import { parseSourceSpecs, type ParsedSource } from 'core';
+import {
+  parseSourceSpec,
+  parseSourceSpecs,
+  resolveSourceResult,
+  type ParsedSource,
+} from 'core';
 import { Parser, Store, type Quad } from 'n3';
 import {
   DescribeService,
@@ -818,6 +823,64 @@ describe('DescribeService — multi-source aggregation', () => {
         expect(out.total).toBe(1);
       } finally {
         await ep.close();
+      }
+    });
+
+    /**
+     * `describeStore` consumes an in-heap `n3.Store` synchronously; a
+     * `storage: disk` glob (ADR-0041) exposes the quads via an async
+     * `RDF.Source.match` stream and intentionally keeps them out of V8 — the
+     * very cost the disk tier exists to escape. The previous guard fell into
+     * the `mode !== 'materialized'` branch, returned `{quads:[], truncated:false}`
+     * (silent wrong `count:0`), and dropped the `close()` returned by the
+     * resolver — leaking the embedded LevelDB lock so the next open of the
+     * index dir would fail. The boundary contract: surface a typed
+     * per-source error AND release the lock before returning.
+     */
+    it('surfaces a typed per-source error (not silent count:0) for a disk-backed source and releases the LevelDB lock', async () => {
+      // The disk-backed resolver builds its index under
+      // `<configDir>/.sparqly/index/<id>/`, defaulting `configDir` to
+      // `process.cwd()`. Sandbox cwd so the index lives inside the test temp dir.
+      const cwdSandbox = await mkdtemp(join(tmpdir(), 'sparqly-describe-disk-'));
+      const originalCwd = process.cwd();
+      process.chdir(cwdSandbox);
+      try {
+        const registry = parseSourceSpecs([
+          { id: 'big', glob: paths.alphaTtl, storage: 'disk' },
+        ]);
+        const result = await new DescribeService(registry).runDescribe({
+          iri: 'http://example.org/alice',
+          source: 'big',
+        });
+
+        // Single-source, all failed -> top-level all-sources-failed carries
+        // the per-source disk-backed error.
+        expect(result.isErr()).toBe(true);
+        if (!result.isErr()) throw new Error('unreachable');
+        expect(result.error.kind).toBe('all-sources-failed');
+        if (result.error.kind !== 'all-sources-failed')
+          throw new Error('unreachable');
+        const per = result.error.perSource['big'];
+        expect(per).toBeDefined();
+        expect(per.kind).toBe('disk-backed-source');
+
+        // Lock-release check: re-resolving the same disk-backed source via
+        // resolveSourceResult must succeed (a leaked LevelDB lock would
+        // block reopening the index dir).
+        const reopened = await resolveSourceResult(
+          parseSourceSpec({
+            id: 'big',
+            glob: paths.alphaTtl,
+            storage: 'disk',
+          }),
+        );
+        expect(reopened.isOk()).toBe(true);
+        if (reopened.isOk() && reopened.value.mode === 'disk-backed') {
+          await reopened.value.close();
+        }
+      } finally {
+        process.chdir(originalCwd);
+        await rm(cwdSandbox, { recursive: true, force: true });
       }
     });
 

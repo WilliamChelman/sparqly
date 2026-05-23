@@ -15,7 +15,8 @@ export type DescribeError =
   | DescribeSourceWrappedError
   | EndpointDescribeError
   | EmptySourceError
-  | ReferenceSourceError;
+  | ReferenceSourceError
+  | DiskBackedSourceError;
 
 /**
  * Wraps an upstream {@link SourceError} from {@link resolveSourceResult}
@@ -52,6 +53,19 @@ export interface ReferenceSourceError {
   ref: string;
 }
 
+/**
+ * The selected source resolves to a `storage: disk` glob (ADR-0041). The
+ * describe algorithm consumes an in-heap `n3.Store` synchronously, whereas a
+ * disk-backed index exposes its quads via an async `RDF.Source.match` stream
+ * — and the disk tier exists precisely to keep those quads out of V8. Surfaced
+ * as a per-source error so the user sees the unsupported combination instead
+ * of a silent `count: 0`.
+ */
+export interface DiskBackedSourceError {
+  kind: 'disk-backed-source';
+  id: string;
+}
+
 export function formatDescribePerSourceError(error: DescribeError): string {
   switch (error.kind) {
     case 'source':
@@ -62,6 +76,8 @@ export function formatDescribePerSourceError(error: DescribeError): string {
       return `source '${error.id}' is an empty source with no data of its own; to describe over it, describe a view that scopes this empty source's \`SERVICE\` composition`;
     case 'reference-source':
       return `source '${error.id}' is a \`reference\` alias to '${error.ref}'; describe that source directly`;
+    case 'disk-backed-source':
+      return `source '${error.id}' is a disk-backed glob (\`storage: disk\`); describe does not support streaming from a disk-backed index (ADR-0041)`;
   }
 }
 
