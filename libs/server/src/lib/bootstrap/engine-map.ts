@@ -10,11 +10,14 @@ import {
 } from 'core';
 import type { StoreRef } from './tokens';
 import { isDiskBacked, manifestExists } from './disk-backed-index';
+import { reloadEntry, unloadEntry } from './engine-map-actions';
 import { projectEntryState } from './engine-map-read-state';
 import {
   indexingError,
   spawnIndexBuildUnavailable,
+  type Entry,
   type IndexingError,
+  type LoadedEntry,
   type LoadedSources,
 } from './engine-map-types';
 import { IndexBuildPool, type SpawnIndexBuild } from './index-build-pool';
@@ -23,61 +26,6 @@ import type { SourceStateEmitter } from '../sources/source-state-emitter';
 
 export type { IndexingError, LoadedSources } from './engine-map-types';
 export { isIndexingError } from './engine-map-types';
-
-interface LoadedEntry {
-  engine: QueryEngine;
-  storeRef: StoreRef | undefined;
-  sources: LoadedSources;
-}
-
-interface Entry {
-  source: ParsedSource;
-  /**
-   * Absolute paths attributed to this source for the snippet allow-list.
-   * Pre-seeded at boot via `walkGlobPaths` (ADR-0031) for un-touched
-   * materialized sources, then overwritten by {@link EngineMap.setFiles} on
-   * watcher rebuilds and inside `loadEntry` once the source actually
-   * resolves. Empty for endpoint/pass-through entries.
-   */
-  files: string[];
-  /**
-   * Layer 2 materialization metric (#355): epoch-ms stamp captured the
-   * instant the last successful `loadEntry` settled. `undefined` until the
-   * first ok-resolution; later slices clear it again on `unload`. The page
-   * renders this verbatim — no formatting, no timezone assumption.
-   */
-  loadedAt: number | undefined;
-  /**
-   * Layer 2 materialization metric (#355): wall-clock ms the last successful
-   * load took (start measured before any I/O, end measured after the engine
-   * is wired up). The Sources page surfaces this to spot slow loaders.
-   */
-  loadMs: number | undefined;
-  /**
-   * Lazy-materialization slot (ADR-0031). `undefined` until first
-   * {@link EngineMap.ensure} call; thereafter a memoized in-flight (or
-   * settled-`ok`) promise. Endpoint entries are populated synchronously at
-   * construction. On `err(SourceError)` the slot is cleared so the next
-   * `ensure(id)` retries fresh — fixes #290's restart-required failures.
-   * Unused by disk-backed globs (they run the `disk` state machine).
-   */
-  loaded: Promise<Result<LoadedEntry, SourceError>> | undefined;
-  /**
-   * Disk-backed glob state machine (ADR-0041/-0042). `undefined` until first
-   * touch and again whenever a touch finds the index still building, so the
-   * next `ensure(id)` re-checks the manifest. Memoized only on `ready`.
-   * Concurrent touches share the one in-flight promise per attempt.
-   */
-  disk: Promise<Result<LoadedEntry, SourceError | IndexingError>> | undefined;
-  /** Releases the LevelDB lock on a disk-backed Glob index; awaited by `close()`. */
-  closeIndex: (() => Promise<void>) | undefined;
-  /**
-   * Synchronous view of the settled-`ok` `loaded` shape — watcher and snippet
-   * wiring peek at the store ref without `await`. `undefined` while loading
-   * or after a failed load.
-   */
-  current: LoadedEntry | undefined;
-}
 
 export interface EngineMapOptions {
   /**
@@ -448,6 +396,36 @@ export class EngineMap {
       });
     }
     return ok(loaded);
+  }
+
+  /**
+   * Re-resolves an in-memory entry and **atomically swaps** `StoreRef.current`
+   * over to the freshly built store (parent #352, #356). The same `StoreRef`
+   * object the entry exposed before the call is preserved — `getStoreRef(id)`
+   * returns the same instance — so existing holders pick up the new store
+   * transparently. Queries already iterating the prior `Store` continue
+   * against the snapshot they captured: N3 stores are never mutated in place.
+   * Body lives in {@link reloadEntry} (see `engine-map-actions.ts`) to keep
+   * this file under its `max-lines` cap; the class binds `loadEntry` so the
+   * helper runs the same materialization path a first-touch `ensure` would.
+   * Endpoint and disk-backed sources have no in-memory reload semantics and
+   * short-circuit silently (disk-backed uses **(Re)build index** per ADR-0043).
+   */
+  async reload(id: string): Promise<Result<QueryEngine, SourceError>> {
+    const entry = this.entries.get(id);
+    if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
+    return reloadEntry(entry, (e) => this.loadEntry(e));
+  }
+
+  /**
+   * Drops the live materialization of an in-memory entry (parent #352,
+   * #356). Body in {@link unloadEntry} — see `engine-map-actions.ts` for
+   * the idempotence and short-circuit semantics.
+   */
+  async unload(id: string): Promise<void> {
+    const entry = this.entries.get(id);
+    if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
+    await unloadEntry(id, entry, this.stateEmitter);
   }
 
   /**

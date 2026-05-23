@@ -496,6 +496,29 @@ describe('GET /api/sources/stream — Sources page SSE (#354)', () => {
     }
   });
 
+  it('GET /api/config exposes sourcesAdmin.allowAdminActions: true by default (#356)', async () => {
+    harness = await startHarness([{ id: 'blank', empty: true }]);
+    const resp = await fetch(`${harness.base}/api/config`);
+    const json = (await resp.json()) as {
+      sourcesAdmin?: { allowAdminActions?: boolean };
+    };
+    // The capability rides under a sibling key alongside the existing
+    // `sources` listing array. Mirrors the `savedQueries: { writable }`
+    // precedent (ADR-0036) — one cluster object per capability domain.
+    expect(json.sourcesAdmin?.allowAdminActions).toBe(true);
+  });
+
+  it('GET /api/config exposes sourcesAdmin.allowAdminActions: false under serve --read-only (#356, ADR-0045)', async () => {
+    harness = await startHarness([{ id: 'blank', empty: true }], {
+      readOnly: true,
+    });
+    const resp = await fetch(`${harness.base}/api/config`);
+    const json = (await resp.json()) as {
+      sourcesAdmin?: { allowAdminActions?: boolean };
+    };
+    expect(json.sourcesAdmin?.allowAdminActions).toBe(false);
+  });
+
   it('emits a periodic heartbeat that survives an idle connection (no transitions in flight)', async () => {
     harness = await startHarness([{ id: 'blank', empty: true }], {
       // 30ms keeps the test snappy; in production it is 15s.
@@ -518,5 +541,106 @@ describe('GET /api/sources/stream — Sources page SSE (#354)', () => {
     } finally {
       controller.abort();
     }
+  });
+});
+
+describe('In-memory admin actions — POST /api/sources/:id/{load,reload,unload} (#356)', () => {
+  let harness: Harness | undefined;
+  afterEach(async () => {
+    if (harness) await harness.cleanup();
+    harness = undefined;
+  });
+
+  async function loadFixtureHarness(
+    options: { readOnly?: boolean } = {},
+  ): Promise<Harness & { fixtureDir: string }> {
+    Logger.overrideLogger(false);
+    const dir = await mkdtemp(join(tmpdir(), 'sparqly-sources-admin-'));
+    await writeFile(
+      join(dir, 'data.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const server = await createServer({
+      sources: [{ id: 'docs', glob: join(dir, '*.ttl') }],
+      port: 0,
+      readOnly: options.readOnly,
+    });
+    return {
+      server,
+      base: `http://localhost:${server.port}`,
+      dir,
+      fixtureDir: dir,
+      cleanup: async () => {
+        await server.close();
+        await rm(dir, { recursive: true, force: true });
+      },
+    };
+  }
+
+  it('POST /api/sources/:id/load returns 202 Accepted with { id, state: "loaded" } after warming the in-memory entry', async () => {
+    harness = await loadFixtureHarness();
+    const resp = await fetch(`${harness.base}/api/sources/docs/load`, {
+      method: 'POST',
+    });
+    expect(resp.status).toBe(202);
+    const json = (await resp.json()) as { id: string; state: string };
+    expect(json).toEqual({ id: 'docs', state: 'loaded' });
+    // The snapshot now reflects the warmed state — the route did the load,
+    // not just returned a stale state-machine label.
+    const [row] = await fetchRows(harness.base);
+    expect(row.mode).toBe('in-memory');
+    if (row.mode === 'in-memory') expect(row.state).toBe('loaded');
+  });
+
+  it('POST /api/sources/:id/reload returns 202 Accepted with the post-reload state', async () => {
+    harness = await loadFixtureHarness();
+    // Warm the entry first so reload exercises the atomic-swap path, not the
+    // first-load fall-through.
+    await fetch(`${harness.base}/api/sources/docs/load`, { method: 'POST' });
+    const resp = await fetch(`${harness.base}/api/sources/docs/reload`, {
+      method: 'POST',
+    });
+    expect(resp.status).toBe(202);
+    const json = (await resp.json()) as { id: string; state: string };
+    expect(json).toEqual({ id: 'docs', state: 'loaded' });
+  });
+
+  it('POST /api/sources/:id/unload returns 202 Accepted with { id, state: "not-loaded" }', async () => {
+    harness = await loadFixtureHarness();
+    await fetch(`${harness.base}/api/sources/docs/load`, { method: 'POST' });
+    const resp = await fetch(`${harness.base}/api/sources/docs/unload`, {
+      method: 'POST',
+    });
+    expect(resp.status).toBe(202);
+    const json = (await resp.json()) as { id: string; state: string };
+    expect(json).toEqual({ id: 'docs', state: 'not-loaded' });
+    // Snapshot agrees — the entry is back at rest.
+    const [row] = await fetchRows(harness.base);
+    if (row.mode !== 'in-memory') throw new Error('expected in-memory row');
+    expect(row.state).toBe('not-loaded');
+  });
+
+  it('the mutating routes return 403 Forbidden when sourcesAdmin.allowAdminActions is false (ADR-0045)', async () => {
+    harness = await loadFixtureHarness({ readOnly: true });
+    for (const verb of ['load', 'reload', 'unload']) {
+      const resp = await fetch(
+        `${harness.base}/api/sources/docs/${verb}`,
+        { method: 'POST' },
+      );
+      expect(resp.status, `verb ${verb}`).toBe(403);
+    }
+    // And the snapshot still works — read-only monitoring keeps working.
+    const [row] = await fetchRows(harness.base);
+    if (row.mode !== 'in-memory') throw new Error('expected in-memory row');
+    expect(row.state).toBe('not-loaded');
+  });
+
+  it('POST /load on an unknown @id returns 404 — the cascade caller must not silently warm a wrong source', async () => {
+    harness = await loadFixtureHarness();
+    const resp = await fetch(
+      `${harness.base}/api/sources/no-such-id/load`,
+      { method: 'POST' },
+    );
+    expect(resp.status).toBe(404);
   });
 });

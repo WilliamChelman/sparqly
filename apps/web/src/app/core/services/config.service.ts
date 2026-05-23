@@ -27,11 +27,25 @@ export interface SavedQueriesCapability {
   writable: boolean;
 }
 
+/**
+ * **Source admin actions capability** (ADR-0045, #356). Mirrors the
+ * sibling `sourcesAdmin` block on `GET /api/config` — sibling rather than
+ * nested under `sources` so the existing listing array shape stays
+ * untouched. Absence on the wire reads as the permissive default
+ * (`allowAdminActions: true`), same convention as `savedQueries.writable`,
+ * so the webapp's action menu stays reachable against an older `serve`
+ * that doesn't yet expose the flag.
+ */
+export interface SourcesAdminCapability {
+  allowAdminActions: boolean;
+}
+
 export interface ConfigPayload {
   sources: SourceListingEntry[];
   context: DisplayContext;
   describe: DescribeConfig;
   savedQueries?: SavedQueriesCapability;
+  sourcesAdmin?: SourcesAdminCapability;
 }
 
 export interface SourceListing {
@@ -61,6 +75,14 @@ export class ConfigService {
   savedQueries(): Observable<SavedQueriesCapability> {
     return this.config().pipe(
       map((c) => ({ writable: c.savedQueries?.writable ?? true })),
+    );
+  }
+
+  sourcesAdmin(): Observable<SourcesAdminCapability> {
+    return this.config().pipe(
+      map((c) => ({
+        allowAdminActions: c.sourcesAdmin?.allowAdminActions ?? true,
+      })),
     );
   }
 }

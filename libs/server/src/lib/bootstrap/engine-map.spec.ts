@@ -996,6 +996,167 @@ describe('EngineMap', () => {
       }
     });
 
+    it('reload(id) atomically swaps StoreRef.current so an in-flight read of the old store finishes naturally (#356)', async () => {
+      // Write one quad, load, capture the old store ref. Edit the file to add
+      // a second quad, then reload. The captured ref's store keeps the
+      // pre-reload size (in-flight queries against it finish on the old
+      // snapshot); the entry's live store ref sees the new size.
+      const ttl = join(dir, 'data.ttl');
+      await writeFile(ttl, SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'files', glob: join(dir, '*.ttl') },
+      ]);
+      const map = await EngineMap.create(registry);
+      try {
+        (await map.ensure('files'))._unsafeUnwrap();
+        const ref = map.getStoreRef('files');
+        if (!ref) throw new Error('expected store ref');
+        const oldStore = ref.current;
+        expect(oldStore.size).toBe(1);
+
+        // Add a second quad on disk, then reload. The captured `oldStore`
+        // reference must not gain the new quad — in-flight reads against it
+        // see the snapshot they started with (atomic swap contract).
+        await writeFile(
+          ttl,
+          '@prefix ex: <http://example.org/> . ex:a ex:p ex:b . ex:c ex:p ex:d .',
+        );
+        const result = await map.reload('files');
+        expect(result.isOk()).toBe(true);
+
+        // The captured ref keeps its pre-reload identity AND size.
+        expect(oldStore.size).toBe(1);
+        // The same StoreRef object now points at the new store with size 2.
+        expect(ref).toBe(map.getStoreRef('files'));
+        expect(ref.current).not.toBe(oldStore);
+        expect(ref.current.size).toBe(2);
+      } finally {
+        await map.close();
+      }
+    });
+
+    it('reload(id) emits load-start then load-success in that order (#356)', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'files', glob: join(dir, '*.ttl') },
+      ]);
+      const rec = recordingEmitter();
+      const map = await EngineMap.create(registry, {
+        sourceStateEmitter: rec.emitter,
+      });
+      try {
+        (await map.ensure('files'))._unsafeUnwrap();
+        rec.transitions.length = 0;
+        (await map.reload('files'))._unsafeUnwrap();
+        expect(rec.transitions.map((t) => [t.sourceId, t.kind])).toEqual([
+          ['files', 'load-start'],
+          ['files', 'load-success'],
+        ]);
+      } finally {
+        await map.close();
+      }
+    });
+
+    it('reload(id) on a not-loaded entry behaves as a first load (idempotent admin verb, #356)', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'files', glob: join(dir, '*.ttl') },
+      ]);
+      const rec = recordingEmitter();
+      const map = await EngineMap.create(registry, {
+        sourceStateEmitter: rec.emitter,
+      });
+      try {
+        const result = await map.reload('files');
+        expect(result.isOk()).toBe(true);
+        const state = await map.readState('files');
+        expect(state.mode).toBe('in-memory');
+        if (state.mode === 'in-memory') expect(state.state).toBe('loaded');
+        expect(rec.transitions.map((t) => [t.sourceId, t.kind])).toEqual([
+          ['files', 'load-start'],
+          ['files', 'load-success'],
+        ]);
+      } finally {
+        await map.close();
+      }
+    });
+
+    it('unload(id) on a not-loaded entry is a silent no-op (#356)', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'files', glob: join(dir, '*.ttl') },
+      ]);
+      const rec = recordingEmitter();
+      const map = await EngineMap.create(registry, {
+        sourceStateEmitter: rec.emitter,
+      });
+      try {
+        await map.unload('files');
+        expect(rec.transitions).toEqual([]);
+        expect(map.getStoreRef('files')).toBeUndefined();
+      } finally {
+        await map.close();
+      }
+    });
+
+    it('unload(id) clears the loaded entry so readState reports not-loaded again and the StoreRef goes away (#356)', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'files', glob: join(dir, '*.ttl') },
+      ]);
+      const map = await EngineMap.create(registry);
+      try {
+        (await map.ensure('files'))._unsafeUnwrap();
+        expect(map.getStoreRef('files')).toBeDefined();
+        const loadedState = await map.readState('files');
+        if (loadedState.mode !== 'in-memory') throw new Error('narrow');
+        expect(loadedState.state).toBe('loaded');
+
+        await map.unload('files');
+
+        // The entry is back at rest: no live store ref, no metrics, and the
+        // next readState reports not-loaded — the next ensure() must re-load
+        // from scratch rather than reusing the unloaded engine.
+        expect(map.getStoreRef('files')).toBeUndefined();
+        const restState = await map.readState('files');
+        expect(restState).toEqual({ mode: 'in-memory', state: 'not-loaded' });
+
+        const reloaded = (await map.ensure('files'))._unsafeUnwrap();
+        const exec = await reloaded.execute('SELECT ?s WHERE { ?s ?p ?o }', {
+          format: 'json',
+        });
+        const json = JSON.parse(exec.body) as {
+          results: { bindings: Array<{ s: { value: string } }> };
+        };
+        expect(json.results.bindings.map((b) => b.s.value)).toEqual([
+          'http://example.org/a',
+        ]);
+      } finally {
+        await map.close();
+      }
+    });
+
+    it('unload(id) emits an `unload` transition after clearing the in-memory entry (#356)', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'files', glob: join(dir, '*.ttl') },
+      ]);
+      const rec = recordingEmitter();
+      const map = await EngineMap.create(registry, {
+        sourceStateEmitter: rec.emitter,
+      });
+      try {
+        (await map.ensure('files'))._unsafeUnwrap();
+        rec.transitions.length = 0; // ignore the load transitions
+        await map.unload('files');
+        expect(rec.transitions.map((t) => [t.sourceId, t.kind])).toEqual([
+          ['files', 'unload'],
+        ]);
+      } finally {
+        await map.close();
+      }
+    });
+
     it('a failing in-memory ensure() emits load-start then load-failure', async () => {
       // A malformed-turtle file forces resolveSourceResult to err with a
       // `glob-load` SourceError. The self-healing path (#290) clears the

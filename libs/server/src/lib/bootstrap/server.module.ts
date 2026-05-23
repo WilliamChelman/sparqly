@@ -38,7 +38,9 @@ import {
   SPARQL_SERVED_REGISTRY,
   SPARQL_SNIPPET_ALLOW_LIST,
   SPARQL_SOURCE_STATE_BROKER,
+  SPARQL_SOURCES_ADMIN_CONFIG,
   type SavedQueriesServerConfig,
+  type SourcesAdminServerConfig,
   type SparqlContext,
   type SparqlServerConfig,
 } from './tokens';
@@ -70,6 +72,12 @@ export interface ServerModuleOptions {
   describe: DescribeConfig;
   snippetAllowList: SnippetAllowList;
   savedQueries: SavedQueriesServerConfig;
+  /**
+   * Source admin actions capability (ADR-0045, #356). Surfaced on
+   * `GET /api/config` as `sourcesAdmin.allowAdminActions` and consulted by
+   * the mutating routes on {@link SourcesController}.
+   */
+  sourcesAdmin: SourcesAdminServerConfig;
   /**
    * Live state broker for the Sources page (ADR-0044, #354). Wired up
    * in `createServer`, then provided here under
@@ -135,6 +143,10 @@ export class ServerModule {
         {
           provide: SPARQL_SOURCE_STATE_BROKER,
           useValue: options.sourceStateBroker,
+        },
+        {
+          provide: SPARQL_SOURCES_ADMIN_CONFIG,
+          useValue: options.sourcesAdmin,
         },
       ],
     };
