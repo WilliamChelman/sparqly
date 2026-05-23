@@ -1,3 +1,4 @@
+export * from './endpoint-probe';
 export * from './source-row-projector';
 export * from './source-state-broker';
 export * from './source-state-emitter';

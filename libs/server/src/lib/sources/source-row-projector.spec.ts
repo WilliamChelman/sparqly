@@ -142,6 +142,9 @@ describe('projectSourceRow — Layer 1 (identity & state)', () => {
         mode: 'endpoint',
         id: 'wikidata',
         kind: 'endpoint',
+        // Layer 4 (#359) — the endpoint URL is part of every endpoint row;
+        // its presence here keeps the equality assertion exhaustive.
+        endpointUrl: 'https://query.wikidata.org/sparql',
       });
       // The discriminated union forbids `state` on endpoint rows — assert at
       // runtime too so a regression that adds it loudly fails this spec.
@@ -420,5 +423,57 @@ describe('projectSourceRow — Layer 3 (disk-backed extras, #357)', () => {
       expect('manifestSparqlyVersion' in row).toBe(false);
       expect('staleReason' in row).toBe(false);
     });
+  });
+});
+
+/*
+ * Layer 4 (endpoint extras, #359). Surfaces the endpoint URL on **Endpoint
+ * source** rows of the **Sources page** so the operator can identify which
+ * remote a row points at without round-tripping through `/api/config`.
+ *
+ * Layer 4 fields apply only to endpoint rows; in-memory and disk-backed rows
+ * never carry them.
+ */
+describe('projectSourceRow — Layer 4 (endpoint extras, #359)', () => {
+  it('emits endpointUrl on an endpoint row, copied from the source spec', async () => {
+    const row = projectSourceRow(endpoint, { mode: 'endpoint' });
+    expect(row).toEqual<SourceRow>({
+      mode: 'endpoint',
+      id: 'wikidata',
+      kind: 'endpoint',
+      endpointUrl: 'https://query.wikidata.org/sparql',
+    });
+  });
+
+  it('preserves the default flag alongside endpointUrl', async () => {
+    const row = projectSourceRow(
+      { ...endpoint, default: true },
+      { mode: 'endpoint' },
+    );
+    expect(row).toEqual<SourceRow>({
+      mode: 'endpoint',
+      id: 'wikidata',
+      kind: 'endpoint',
+      endpointUrl: 'https://query.wikidata.org/sparql',
+      default: true,
+    });
+  });
+
+  it('never appears on in-memory rows', async () => {
+    const row = projectSourceRow(inMemoryGlob, {
+      mode: 'in-memory',
+      state: 'loaded',
+      metrics: { quads: 1, files: 1, loadedAt: 1, loadMs: 1 },
+    });
+    expect('endpointUrl' in row).toBe(false);
+  });
+
+  it('never appears on disk-backed rows', async () => {
+    const row = projectSourceRow(diskGlob, {
+      mode: 'disk-backed',
+      state: 'ready',
+      metrics: { files: 1, loadedAt: 1, loadMs: 1 },
+    });
+    expect('endpointUrl' in row).toBe(false);
   });
 });

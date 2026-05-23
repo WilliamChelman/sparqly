@@ -531,6 +531,21 @@ export class EngineMap {
     return this.entries.get(id)?.source;
   }
 
+  /**
+   * Returns the pass-through {@link QueryEngine} pre-built at boot for an
+   * **Endpoint source** entry, or `undefined` when `id` is unknown or
+   * resolves to a non-endpoint source (#359, parent #352). The endpoint
+   * branch of {@link create} stamps the engine onto `entry.current` at boot
+   * — no lazy materialization is involved — so the **Test connection**
+   * probe reaches a stable engine instance without racing the materialized
+   * load path.
+   */
+  getEndpointEngine(id: string): QueryEngine | undefined {
+    const entry = this.entries.get(id);
+    if (!entry || entry.source.kind !== 'endpoint') return undefined;
+    return entry.current?.engine;
+  }
+
   getStoreRef(id: string): StoreRef | undefined {
     return this.entries.get(id)?.current?.storeRef;
   }

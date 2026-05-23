@@ -38,7 +38,14 @@ const SNAPSHOT: SourceRow[] = [
     loadedAt: LOADED_AT,
     loadMs: 90,
   },
-  { mode: 'endpoint', id: 'wikidata', kind: 'endpoint' },
+  {
+    mode: 'endpoint',
+    id: 'wikidata',
+    kind: 'endpoint',
+    // Layer 4 (#359): the endpoint URL rides on the row so the page chip
+    // can render which remote the row points at.
+    endpointUrl: 'https://query.wikidata.org/sparql',
+  },
 ];
 
 /**
@@ -952,6 +959,136 @@ describe('SourcesPage (#353)', () => {
         '[data-testid="row-action-rebuild-index"], [data-testid="row-action-cancel-build"]',
       );
       expect(all.length).toBe(0);
+    });
+  });
+
+  describe('endpoint Test connection (#359)', () => {
+    it('renders a Test connection button on endpoint rows when allowAdminActions is true', async () => {
+      // PRD user story 19 + AC: the button rides on every Endpoint source
+      // row when admin actions are allowed. The selector follows the
+      // `row-action-<verb>` convention already established for the other
+      // in-memory and disk-backed verbs.
+      const ctx = await setup();
+      flush(ctx.http, SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const endpointRow = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-wikidata"]',
+      );
+      expect(
+        endpointRow?.querySelector('[data-testid="row-action-test-connection"]'),
+      ).not.toBeNull();
+    });
+
+    it('hides the Test connection button when allowAdminActions is false (prevents endpoint hammering, PRD user story 41)', async () => {
+      const ctx = await setup();
+      flush(ctx.http, SNAPSHOT, { allowAdminActions: false });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const endpointRow = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-wikidata"]',
+      );
+      expect(
+        endpointRow?.querySelector('[data-testid="row-action-test-connection"]'),
+      ).toBeNull();
+    });
+
+    it('never renders Test connection on non-endpoint rows', async () => {
+      const ctx = await setup();
+      flush(ctx.http, SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      for (const id of ['docs', 'projects', 'big']) {
+        const row = ctx.nativeElement().querySelector(
+          `[data-testid="source-row-${id}"]`,
+        );
+        expect(
+          row?.querySelector('[data-testid="row-action-test-connection"]'),
+          `expected no Test connection button on ${id}`,
+        ).toBeNull();
+      }
+    });
+
+    it('clicking Test connection POSTs /api/sources/:id/test-connection and renders an ok chip with the latency', async () => {
+      const ctx = await setup();
+      flush(ctx.http, SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const row = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-wikidata"]',
+      );
+      const btn = row?.querySelector<HTMLButtonElement>(
+        '[data-testid="row-action-test-connection"]',
+      );
+      btn!.click();
+      ctx.detect();
+      await ctx.stable();
+
+      const req = ctx.http.expectOne(
+        '/api/sources/wikidata/test-connection',
+      );
+      expect(req.request.method).toBe('POST');
+      req.flush({ ok: true, latencyMs: 123 });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const chip = row?.querySelector(
+        '[data-testid="row-test-connection-chip"]',
+      );
+      expect(chip).not.toBeNull();
+      expect(chip?.getAttribute('data-state')).toBe('ok');
+      // The latency rides on the chip so the operator can spot a
+      // 30s timeout vs a 2ms refused connection without expanding.
+      expect(chip?.textContent).toContain('123');
+    });
+
+    it('renders an error chip with the kind class and first-line message when the probe reports !ok', async () => {
+      const ctx = await setup();
+      flush(ctx.http, SNAPSHOT, { allowAdminActions: true });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const row = ctx.nativeElement().querySelector(
+        '[data-testid="source-row-wikidata"]',
+      );
+      const btn = row?.querySelector<HTMLButtonElement>(
+        '[data-testid="row-action-test-connection"]',
+      );
+      btn!.click();
+      ctx.detect();
+      await ctx.stable();
+
+      const req = ctx.http.expectOne(
+        '/api/sources/wikidata/test-connection',
+      );
+      req.flush({
+        ok: false,
+        latencyMs: 7,
+        error: { kind: 'endpoint-fetch', message: 'ECONNREFUSED' },
+      });
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const chip = row?.querySelector(
+        '[data-testid="row-test-connection-chip"]',
+      );
+      expect(chip?.getAttribute('data-state')).toBe('error');
+      // The chip exposes the kind as a data attribute so style hooks can
+      // pick the right warning colour, and renders the message for the
+      // operator's diagnostic glance.
+      expect(chip?.getAttribute('data-kind')).toBe('endpoint-fetch');
+      expect(chip?.textContent).toContain('ECONNREFUSED');
     });
   });
 
