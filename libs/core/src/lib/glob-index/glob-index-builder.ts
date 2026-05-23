@@ -1,4 +1,3 @@
-import { stat } from 'node:fs/promises';
 import type { SparqlyLogger } from 'common';
 import { DataFactory, type Quad } from 'n3';
 import { ResultAsync } from 'neverthrow';
@@ -12,10 +11,14 @@ import {
 } from '../sources/graph-name-transform';
 import type { ParsedTransform } from '../sources/transform-spec';
 import { INGEST_BATCH_SIZE, ingestQuadStream } from './batched-ingest';
-import { BuildProgress, type BuildProgressFile } from './build-progress';
+import { BuildProgress } from './build-progress';
 import { createGlobIndexBackend } from './glob-index-backend';
 import { indexDbDir } from './glob-index-layout';
-import { computeGlobIndexManifest, writeGlobIndexManifest } from './index-manifest';
+import {
+  manifestFromFingerprints,
+  snapshotIndexedFiles,
+  writeGlobIndexManifest,
+} from './index-manifest';
 
 /**
  * Glob index builder (ADR-0041). Streams each file matched by a glob into a
@@ -73,10 +76,16 @@ async function buildGlobIndexAsync(
   options: BuildGlobIndexOptions,
 ): Promise<GlobIndexBuildResult> {
   const files = await tinyGlob(options.glob, { absolute: true });
-  // Sizing the matched files upfront gives the heartbeat a real byte-% — its
-  // denominator is known before a single quad is read (#349).
+  // Snapshot fingerprints up front: the manifest must record the size and
+  // mtime of the bytes the build ingests, not whatever the filesystem reports
+  // after a 10-15 min stream. Re-statting at the end would absorb any
+  // concurrent edit's new mtime into the manifest, hiding the staleness
+  // forever (ADR-0041 / glob-index TOCTOU).
+  const fingerprints = await snapshotIndexedFiles(files);
+  // The byte-% heartbeat reuses the same snapshot — its denominator is known
+  // before a single quad is read (#349).
   const progress = new BuildProgress({
-    files: await statFiles(files),
+    files: fingerprints.map((file) => ({ path: file.path, bytes: file.size })),
     logger: options.logger,
   });
   const store = new Quadstore({
@@ -101,8 +110,8 @@ async function buildGlobIndexAsync(
   } finally {
     await store.close();
   }
-  const manifest = await computeGlobIndexManifest({
-    files,
+  const manifest = manifestFromFingerprints({
+    files: fingerprints,
     transforms: options.transforms,
     sparqlyVersion: options.sparqlyVersion,
   });
@@ -135,15 +144,6 @@ async function* streamGlobQuads(
     }
     progress.fileDone(i);
   }
-}
-
-/** Sizes each matched file for the build's byte-% heartbeat (#349). */
-async function statFiles(
-  files: ReadonlyArray<string>,
-): Promise<BuildProgressFile[]> {
-  return Promise.all(
-    files.map(async (path) => ({ path, bytes: (await stat(path)).size })),
-  );
 }
 
 /**

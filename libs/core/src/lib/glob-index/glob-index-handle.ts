@@ -86,11 +86,31 @@ export function openOrBuildGlobIndex(
   return ResultAsync.fromSafePromise(manifestExists(options.indexDir)).andThen(
     (exists) =>
       exists
-        ? ResultAsync.fromSafePromise(reuseGlobIndex(options))
-        : buildGlobIndexAtomic(options).map((built) =>
-            openGlobIndex(built.indexDir),
+        ? // `reuseGlobIndex` reads the manifest (`JSON.parse` can throw on a
+          // corrupt/truncated file) and opens the LevelDB store (can reject if
+          // the store is locked or torn) — neither is a "safe" promise. Wrap
+          // both into the typed `GlobLoadError` channel so a corrupt manifest
+          // is a renderable load failure, not an unhandled rejection.
+          ResultAsync.fromPromise(reuseGlobIndex(options), (err) =>
+            toGlobLoadError(options.glob, err),
+          )
+        : buildGlobIndexAtomic(options).andThen((built) =>
+            ResultAsync.fromPromise(openGlobIndex(built.indexDir), (err) =>
+              toGlobLoadError(options.glob, err),
+            ),
           ),
   );
+}
+
+function toGlobLoadError(
+  glob: string | string[],
+  err: unknown,
+): GlobLoadError {
+  return {
+    kind: 'glob-load',
+    glob: Array.isArray(glob) ? [...glob] : [glob],
+    message: err instanceof Error ? err.message : String(err),
+  };
 }
 
 /**

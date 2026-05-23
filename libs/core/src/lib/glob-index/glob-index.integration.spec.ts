@@ -1,6 +1,8 @@
-import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { utimesSync } from 'node:fs';
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { SparqlyLogFields, SparqlyLogger } from 'common';
 import { DataFactory } from 'n3';
 import { Quadstore } from 'quadstore';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -12,7 +14,7 @@ import { createGlobIndexBackend } from './glob-index-backend';
 import { buildGlobIndex } from './glob-index-builder';
 import { openGlobIndex, openOrBuildGlobIndex } from './glob-index-handle';
 import { indexDbDir } from './glob-index-layout';
-import { readGlobIndexManifest } from './index-manifest';
+import { inspectGlobIndexFreshness, readGlobIndexManifest } from './index-manifest';
 
 /**
  * Integration coverage for the disk-backed glob query path (ADR-0041, #338):
@@ -512,6 +514,83 @@ describe('disk-backed glob index', () => {
       expect(entry.fields?.['bytes']).toBeGreaterThan(0);
     }
     expect(starts.map((e) => e.fields?.['index']).sort()).toEqual([1, 2]);
+  });
+
+  it('surfaces a corrupt manifest as a typed glob-load error, not an unhandled throw', async () => {
+    // ADR-0024 typed-error channel: `readGlobIndexManifest`'s `JSON.parse`
+    // throws a raw `SyntaxError` on a truncated/corrupt manifest, and the
+    // `openOrBuildGlobIndex` reuse branch wrapped its read in
+    // `ResultAsync.fromSafePromise` — which makes no catch. The throw would
+    // escape the `GlobLoadError` channel as an unhandled rejection. The
+    // boundary contract is that *every* failure on the open path lands as a
+    // typed `glob-load` error the surfaces can render.
+    const indexDir = join(dir, 'index');
+    await mkdir(indexDir, { recursive: true });
+    await writeFile(join(indexDir, 'manifest.json'), '{ "files": [');
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const result = await openOrBuildGlobIndex({
+      glob: join(dir, '*.ttl'),
+      transforms: [],
+      indexDir,
+      sparqlyVersion: SPARQLY_VERSION,
+    });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('glob-load');
+  });
+
+  it('marks the index stale when a source file is edited during ingest', async () => {
+    // ADR-0041 staleness vs TOCTOU: the manifest must fingerprint the file
+    // bytes the build actually ingested, not whatever the filesystem reports
+    // after ingest finishes. If the manifest captures a post-ingest mtime
+    // while the index holds pre-edit quads, the next freshness check sees
+    // current == stored and reports `fresh` forever — silently serving stale
+    // content. So an edit landing any time during the build (here: simulated
+    // by bumping the file's mtime once the streamed read for it finishes) must
+    // surface as a `stale` verdict on the next inspect.
+    const source = join(dir, 'a.ttl');
+    await writeFile(
+      source,
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const indexDir = join(dir, 'index');
+
+    let bumped = false;
+    const bumpOnDone = (msg: string, fields?: SparqlyLogFields): void => {
+      if (msg !== 'index-file-done' || bumped) return;
+      if (fields?.['file'] !== source) return;
+      bumped = true;
+      const future = new Date(Date.now() + 60 * 60 * 1000);
+      utimesSync(source, future, future);
+    };
+    const logger: SparqlyLogger = {
+      debug: () => undefined,
+      info: bumpOnDone,
+      warn: () => undefined,
+      error: () => undefined,
+    };
+
+    const built = await buildGlobIndex({
+      glob: join(dir, '*.ttl'),
+      transforms: [],
+      indexDir,
+      sparqlyVersion: SPARQLY_VERSION,
+      logger,
+    });
+    expect(built.isOk()).toBe(true);
+    expect(bumped).toBe(true);
+
+    const freshness = await inspectGlobIndexFreshness({
+      glob: join(dir, '*.ttl'),
+      transforms: [],
+      indexDir,
+      sparqlyVersion: SPARQLY_VERSION,
+    });
+    expect(freshness.verdict).toBe('stale');
   });
 
   it('builds a complete index from a glob whose quad count exceeds the ingest batch size', async () => {

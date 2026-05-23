@@ -56,18 +56,48 @@ export interface ComputeManifestInput {
 
 /**
  * Computes a {@link GlobIndexManifest}, stat-ing each indexed file to capture
- * its size and mtime.
+ * its size and mtime. Used by the freshness-inspect path, which needs the
+ * *current* filesystem state of the matched files. Build-time callers must
+ * instead snapshot stats up front with {@link snapshotIndexedFiles} and pass
+ * the result to {@link manifestFromFingerprints} — re-statting after a long
+ * ingest would bake any concurrent edit's mtime into the manifest, hiding
+ * staleness forever.
  */
 export async function computeGlobIndexManifest(
   input: ComputeManifestInput,
 ): Promise<GlobIndexManifest> {
-  const files: IndexedFileEntry[] = [];
-  for (const path of input.files) {
-    const stats = await stat(path);
-    files.push({ path, size: stats.size, mtimeMs: stats.mtimeMs });
-  }
+  return manifestFromFingerprints({
+    files: await snapshotIndexedFiles(input.files),
+    transforms: input.transforms,
+    sparqlyVersion: input.sparqlyVersion,
+  });
+}
+
+export interface ManifestFromFingerprintsInput {
+  /** Pre-stat'd fingerprints of every indexed file, in index-build order. */
+  files: ReadonlyArray<IndexedFileEntry>;
+  /** Transform pipeline applied during the build. */
+  transforms: ReadonlyArray<ParsedTransform>;
+  /** The sparqly version that built the index. */
+  sparqlyVersion: string;
+}
+
+/**
+ * Builds a {@link GlobIndexManifest} from pre-stat'd file fingerprints —
+ * no I/O. The build path uses this with a snapshot taken *before* the ingest
+ * so the manifest fingerprints the bytes the build actually read, not the
+ * filesystem state after a 10-15 min stream (a TOCTOU that would silently
+ * mask staleness; ADR-0041).
+ */
+export function manifestFromFingerprints(
+  input: ManifestFromFingerprintsInput,
+): GlobIndexManifest {
   return {
-    files,
+    files: input.files.map((file) => ({
+      path: file.path,
+      size: file.size,
+      mtimeMs: file.mtimeMs,
+    })),
     sparqlyVersion: input.sparqlyVersion,
     transforms: input.transforms.map((transform) =>
       transform.config === undefined
@@ -75,6 +105,23 @@ export async function computeGlobIndexManifest(
         : { key: transform.key, config: transform.config },
     ),
   };
+}
+
+/**
+ * Stats each path into an {@link IndexedFileEntry}. The build path calls this
+ * once before the ingest to capture the inputs' fingerprints up front, so a
+ * file edited during the build registers as stale on the next freshness check
+ * instead of being silently absorbed into the manifest (ADR-0041).
+ */
+export async function snapshotIndexedFiles(
+  paths: ReadonlyArray<string>,
+): Promise<IndexedFileEntry[]> {
+  const entries: IndexedFileEntry[] = [];
+  for (const path of paths) {
+    const stats = await stat(path);
+    entries.push({ path, size: stats.size, mtimeMs: stats.mtimeMs });
+  }
+  return entries;
 }
 
 /** Writes `manifest` as JSON alongside the index at `indexDir`. */
