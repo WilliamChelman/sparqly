@@ -27,6 +27,10 @@ import { maybeStartWatcher } from './multi-source-watcher';
 import { RequestLoggingInterceptor } from './request-logging.interceptor';
 import { ServerModule } from './server.module';
 import { SnippetAllowList } from '../snippet';
+import {
+  SourceStateBroker,
+  SourceStateEmitter,
+} from '../sources';
 import { sparqlQueryBodyParser } from './sparql-query-body-parser';
 import type { SparqlContext } from './tokens';
 
@@ -103,6 +107,19 @@ export interface CreateServerOptions {
    * the cap queue for a free slot. Defaults to 2.
    */
   indexConcurrency?: number;
+  /**
+   * Heartbeat cadence for the Sources page SSE stream (ADR-0044, #354)
+   * in milliseconds. Defaults to 15_000 — the proxy-friendly idle window.
+   * Tests pass a small value (e.g. 30) so heartbeat assertions are fast.
+   */
+  sseHeartbeatMs?: number;
+  /**
+   * Capacity of the {@link SourceStateBroker}'s ring buffer of recent
+   * transitions (ADR-0044, #354). Defaults to 256 — the conventional
+   * reconnect window. Tests pass a tiny value (e.g. 1) to drive the
+   * `refetch-snapshot` sentinel branch on unbridgeable reconnects.
+   */
+  sseRingCapacity?: number;
 }
 
 export interface CreatedServer {
@@ -137,6 +154,15 @@ export async function createServer(
   }
 
   const startedAt = Date.now();
+  // Source state emitter feeds the Sources page SSE stream (ADR-0044,
+  // #354). Constructed before EngineMap so transitions emitted during the
+  // very first `ensure()` (e.g. an auto-warmed endpoint) are observed.
+  const sourceStateEmitter = new SourceStateEmitter({
+    onListenerError: (error) =>
+      boundaryLogger.warn('source-state-listener-error', {
+        error: error instanceof Error ? error.message : String(error),
+      }),
+  });
   const engineMap = await EngineMap.create(scope.servedRegistry, {
     resolutionRegistry: scope.resolutionRegistry,
     logger: boundaryLogger,
@@ -146,7 +172,17 @@ export async function createServer(
     indexCacheDir: options.indexCacheDir,
     spawnIndexBuild: options.spawnIndexBuild,
     indexConcurrency: options.indexConcurrency,
+    sourceStateEmitter,
   });
+  const sourceStateBroker = new SourceStateBroker(
+    engineMap,
+    sourceStateEmitter,
+    scope.servedRegistry,
+    {
+      heartbeatMs: options.sseHeartbeatMs,
+      capacity: options.sseRingCapacity,
+    },
+  );
 
   const metaChildrenCache = new MetaChildrenCache(scope.servedRegistry, {
     walkGlob: defaultGlobWalker,
@@ -188,6 +224,7 @@ export async function createServer(
         path: resolveSavedQueriesPath(options),
         writable: options.readOnly !== true,
       },
+      sourceStateBroker,
     }),
     { abortOnError: false },
   );
@@ -249,6 +286,7 @@ export async function createServer(
     port: listeningPort,
     close: async () => {
       if (watcher) await watcher.close();
+      sourceStateBroker.close();
       await app.close();
       await engineMap.close();
     },

@@ -16,6 +16,8 @@ import {
 } from 'core';
 import { EngineMap } from './engine-map';
 import type { BuildChild, SpawnIndexBuild } from './index-build-pool';
+import { SourceStateEmitter } from '../sources/source-state-emitter';
+import type { SourceTransition } from '../sources/source-state-event';
 
 interface RecordedLog {
   level: 'debug' | 'info' | 'warn' | 'error';
@@ -844,6 +846,130 @@ describe('EngineMap', () => {
       try {
         const state = await map.readState('big');
         expect(state).toEqual({ mode: 'disk-backed', state: 'ready' });
+      } finally {
+        await map.close();
+      }
+    });
+  });
+
+  describe('SourceStateEmitter wiring — Source load state transitions (#354)', () => {
+    const SAMPLE = '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .';
+
+    function recordingEmitter(): {
+      emitter: SourceStateEmitter;
+      transitions: SourceTransition[];
+    } {
+      const transitions: SourceTransition[] = [];
+      const emitter = new SourceStateEmitter();
+      emitter.subscribe((t) => transitions.push(t));
+      return { emitter, transitions };
+    }
+
+    it('an in-memory ensure() emits load-start then load-success, in that order, exactly once per first touch', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'files', glob: join(dir, '*.ttl') },
+      ]);
+      const rec = recordingEmitter();
+      const map = await EngineMap.create(registry, {
+        sourceStateEmitter: rec.emitter,
+      });
+      try {
+        (await map.ensure('files'))._unsafeUnwrap();
+        // A second ensure() is a memoized read — must not re-emit.
+        (await map.ensure('files'))._unsafeUnwrap();
+        expect(rec.transitions.map((t) => [t.sourceId, t.kind])).toEqual([
+          ['files', 'load-start'],
+          ['files', 'load-success'],
+        ]);
+      } finally {
+        await map.close();
+      }
+    });
+
+    it('first touch of a disk-backed glob with no manifest emits build-start (and does not emit load-start — load is gated on a built index)', async () => {
+      await writeFile(join(dir, 'data.ttl'), SAMPLE);
+      const registry = parseSourceSpecs([
+        { id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' },
+      ]);
+      // Minimal in-process build stub. We do not need to assert on the
+      // built manifest here, only on the emitted `build-start`, so a child
+      // that settles successfully off the in-process Glob index builder is
+      // enough — and lets `whenIdle()` drain without waiting on a real
+      // subprocess.
+      const spawn: SpawnIndexBuild = (id) => {
+        const listeners: Array<(code: number | null) => void> = [];
+        const source = registry.find(
+          (s): s is ParsedGlobSource | ParsedFileSource =>
+            (s.kind === 'glob' || s.kind === 'file') && s.id === id,
+        );
+        if (source === undefined) {
+          queueMicrotask(() => listeners.forEach((l) => l(1)));
+        } else {
+          const { indexId, pattern } = diskBackedIndexIdentity(source);
+          const indexDir = globIndexDir(dir, indexId);
+          void ensureGlobIndex({
+            glob: pattern,
+            transforms: source.transforms ?? [],
+            indexDir,
+            sparqlyVersion: 'test',
+          }).then((outcome) =>
+            listeners.forEach((l) => l(outcome.isOk() ? 0 : 1)),
+          );
+        }
+        return {
+          on(event: 'exit', listener: (code: number | null) => void) {
+            if (event === 'exit') listeners.push(listener);
+          },
+          kill() {
+            /* tests drain via whenIdle() */
+          },
+        };
+      };
+      const rec = recordingEmitter();
+      const map = await EngineMap.create(registry, {
+        configDir: dir,
+        spawnIndexBuild: spawn,
+        sourceStateEmitter: rec.emitter,
+      });
+      try {
+        // The first touch reports `indexing` (Err(IndexingError)) and kicks
+        // a child-process build (ADR-0042). Synchronously after the touch,
+        // we must have observed exactly one `build-start` for `big` — and
+        // no `load-start` yet, because the load only happens once a
+        // manifest exists.
+        await map.ensure('big');
+        await map.whenIdle();
+        const kindsBeforeNextTouch = rec.transitions
+          .filter((t) => t.sourceId === 'big')
+          .map((t) => t.kind);
+        expect(kindsBeforeNextTouch).toContain('build-start');
+        expect(kindsBeforeNextTouch).not.toContain('load-start');
+      } finally {
+        await map.close();
+      }
+    });
+
+    it('a failing in-memory ensure() emits load-start then load-failure', async () => {
+      // A malformed-turtle file forces resolveSourceResult to err with a
+      // `glob-load` SourceError. The self-healing path (#290) clears the
+      // memoized load so a follow-up ensure() can retry; the page observes
+      // `loading` → `not-loaded` via the failure edge.
+      await writeFile(join(dir, 'broken.ttl'), 'this is not valid turtle .');
+      const registry = parseSourceSpecs([
+        { id: 'files', glob: join(dir, '*.ttl') },
+      ]);
+      const rec = recordingEmitter();
+      const map = await EngineMap.create(registry, {
+        sourceStateEmitter: rec.emitter,
+      });
+      try {
+        const result = await map.ensure('files');
+        expect(result.isErr()).toBe(true);
+        expect(rec.transitions.map((t) => [t.sourceId, t.kind])).toEqual([
+          ['files', 'load-start'],
+          ['files', 'load-failure'],
+        ]);
       } finally {
         await map.close();
       }

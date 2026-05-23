@@ -15,7 +15,7 @@ interface Harness {
 
 async function startHarness(
   sources: ReadonlyArray<Record<string, unknown>>,
-  options: { readOnly?: boolean } = {},
+  options: { readOnly?: boolean; sseHeartbeatMs?: number } = {},
 ): Promise<Harness> {
   Logger.overrideLogger(false);
   const dir = await mkdtemp(join(tmpdir(), 'sparqly-sources-controller-'));
@@ -23,6 +23,7 @@ async function startHarness(
     sources: sources as Parameters<typeof createServer>[0]['sources'],
     port: 0,
     readOnly: options.readOnly,
+    sseHeartbeatMs: options.sseHeartbeatMs,
   });
   return {
     server,
@@ -39,6 +40,64 @@ async function fetchRows(base: string): Promise<SourceRow[]> {
   const resp = await fetch(`${base}/api/sources`);
   expect(resp.status).toBe(200);
   return (await resp.json()) as SourceRow[];
+}
+
+/**
+ * Streaming SSE reader for the in-process Nest harness — pure `fetch()` +
+ * `ReadableStream`, no third-party EventSource. Yields parsed event blocks
+ * (each `id:` + `event:` + `data:` block separated by a blank line) until
+ * the caller closes the iterator or the connection drops. Mirrors only the
+ * fields the Sources page cares about; comment-line heartbeats (`:keep-
+ * alive\n`) surface as `{ comment: true }` so the heartbeat-test can
+ * assert on them.
+ */
+interface ParsedSseEvent {
+  id?: string;
+  event?: string;
+  data?: string;
+  /** True for SSE comment lines (`: ...` keep-alives). */
+  comment?: true;
+}
+
+async function* readSseEvents(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<ParsedSseEvent> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) return;
+      buffer += decoder.decode(value, { stream: true });
+      let blockEnd: number;
+      while ((blockEnd = buffer.indexOf('\n\n')) !== -1) {
+        const block = buffer.slice(0, blockEnd);
+        buffer = buffer.slice(blockEnd + 2);
+        yield parseEventBlock(block);
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function parseEventBlock(block: string): ParsedSseEvent {
+  const out: ParsedSseEvent = {};
+  for (const line of block.split('\n')) {
+    if (line.startsWith(':')) {
+      out.comment = true;
+      continue;
+    }
+    const colon = line.indexOf(':');
+    if (colon === -1) continue;
+    const field = line.slice(0, colon);
+    const value = line.slice(colon + 1).replace(/^ /, '');
+    if (field === 'id') out.id = value;
+    else if (field === 'event') out.event = value;
+    else if (field === 'data') out.data = (out.data ?? '') + value;
+  }
+  return out;
 }
 
 describe('GET /api/sources — Sources page snapshot (#353)', () => {
@@ -164,6 +223,300 @@ describe('GET /api/sources — Sources page snapshot (#353)', () => {
       }
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('GET /api/sources/stream — Sources page SSE (#354)', () => {
+  let harness: Harness | undefined;
+  afterEach(async () => {
+    if (harness) await harness.cleanup();
+    harness = undefined;
+  });
+
+  it('responds with text/event-stream and a 200 status', async () => {
+    harness = await startHarness([{ id: 'blank', empty: true }]);
+    const controller = new AbortController();
+    try {
+      const resp = await fetch(`${harness.base}/api/sources/stream`, {
+        signal: controller.signal,
+        headers: { Accept: 'text/event-stream' },
+      });
+      expect(resp.status).toBe(200);
+      expect(resp.headers.get('content-type')).toMatch(/text\/event-stream/);
+    } finally {
+      controller.abort();
+    }
+  });
+
+  it('publishes a Source load state transition as an SSE event with a monotonic id and the full SourceRow as data', async () => {
+    // A glob source with one ttl file; touching it via /api/sparql kicks
+    // EngineMap.ensure(), which fires `load-start` then `load-success`.
+    // The broker projects each to a SourceRow and the SSE route writes
+    // them as `id: N\ndata: {...row...}\n\n` frames.
+    const dir = await mkdtemp(join(tmpdir(), 'sparqly-sources-sse-'));
+    try {
+      await writeFile(
+        join(dir, 'data.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+      Logger.overrideLogger(false);
+      const server = await createServer({
+        sources: [{ id: 'docs', glob: join(dir, '*.ttl') }],
+        port: 0,
+        sseHeartbeatMs: 5_000, // long enough not to interleave
+      });
+      const controller = new AbortController();
+      try {
+        const base = `http://localhost:${server.port}`;
+        const resp = await fetch(`${base}/api/sources/stream`, {
+          signal: controller.signal,
+          headers: { Accept: 'text/event-stream' },
+        });
+        // Kick the load so transitions flow into the stream. The fetch
+        // happens after the subscription so the live$ subject hands the
+        // event to our reader.
+        void fetch(`${base}/api/sparql/docs?query=${
+          encodeURIComponent('SELECT * WHERE { ?s ?p ?o }')
+        }`);
+        const rows: { id: string; data: SourceRow }[] = [];
+        for await (const ev of readSseEvents(resp.body!)) {
+          if (ev.event === 'heartbeat') continue;
+          if (ev.id === undefined || ev.data === undefined) continue;
+          rows.push({ id: ev.id, data: JSON.parse(ev.data) as SourceRow });
+          if (rows.length >= 2) break;
+        }
+        // Two transitions: load-start (loading) then load-success (loaded).
+        expect(rows).toHaveLength(2);
+        expect(rows.map((r) => r.id)).toEqual(['1', '2']);
+        expect(rows[0].data.id).toBe('docs');
+        if (rows[0].data.mode === 'in-memory') {
+          expect(rows[0].data.state).toBe('loading');
+        } else {
+          throw new Error('expected in-memory row');
+        }
+        if (rows[1].data.mode === 'in-memory') {
+          expect(rows[1].data.state).toBe('loaded');
+        } else {
+          throw new Error('expected in-memory row');
+        }
+      } finally {
+        controller.abort();
+        await server.close();
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('remains available without sources.allowAdminActions (stream is never gated — ADR-0045)', async () => {
+    harness = await startHarness([{ id: 'blank', empty: true }], {
+      readOnly: true,
+      sseHeartbeatMs: 30,
+    });
+    const controller = new AbortController();
+    try {
+      const resp = await fetch(`${harness.base}/api/sources/stream`, {
+        signal: controller.signal,
+        headers: { Accept: 'text/event-stream' },
+      });
+      expect(resp.status).toBe(200);
+      expect(resp.headers.get('content-type')).toMatch(/text\/event-stream/);
+      // Read one heartbeat to prove the stream is alive end-to-end, not
+      // just open-but-rejected.
+      let sawHeartbeat = false;
+      for await (const ev of readSseEvents(resp.body!)) {
+        if (ev.event === 'heartbeat') {
+          sawHeartbeat = true;
+          break;
+        }
+      }
+      expect(sawHeartbeat).toBe(true);
+    } finally {
+      controller.abort();
+    }
+  });
+
+  it('replays buffered transitions on reconnect with Last-Event-ID', async () => {
+    // Connection A reads two transitions (load-start id=1, load-success id=2),
+    // then drops. Connection B reconnects with `Last-Event-ID: 1`; the broker
+    // replays id=2 from the ring buffer before resuming live delivery
+    // (ADR-0044, #354).
+    const dir = await mkdtemp(join(tmpdir(), 'sparqly-sources-sse-'));
+    try {
+      await writeFile(
+        join(dir, 'data.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+      Logger.overrideLogger(false);
+      const server = await createServer({
+        sources: [{ id: 'docs', glob: join(dir, '*.ttl') }],
+        port: 0,
+        sseHeartbeatMs: 5_000,
+      });
+      const base = `http://localhost:${server.port}`;
+      const ctlA = new AbortController();
+      try {
+        const respA = await fetch(`${base}/api/sources/stream`, {
+          signal: ctlA.signal,
+          headers: { Accept: 'text/event-stream' },
+        });
+        void fetch(
+          `${base}/api/sparql/docs?query=${
+            encodeURIComponent('SELECT * WHERE { ?s ?p ?o }')
+          }`,
+        );
+        const seenA: string[] = [];
+        for await (const ev of readSseEvents(respA.body!)) {
+          if (ev.event === 'heartbeat') continue;
+          if (ev.id === undefined) continue;
+          seenA.push(ev.id);
+          if (seenA.length >= 2) break;
+        }
+        expect(seenA).toEqual(['1', '2']);
+      } finally {
+        ctlA.abort();
+      }
+
+      const ctlB = new AbortController();
+      try {
+        const respB = await fetch(`${base}/api/sources/stream`, {
+          signal: ctlB.signal,
+          headers: {
+            Accept: 'text/event-stream',
+            'Last-Event-ID': '1',
+          },
+        });
+        let replayed: { id: string; row: SourceRow } | undefined;
+        for await (const ev of readSseEvents(respB.body!)) {
+          if (ev.event === 'heartbeat') continue;
+          if (ev.id === undefined || ev.data === undefined) continue;
+          replayed = { id: ev.id, row: JSON.parse(ev.data) as SourceRow };
+          break;
+        }
+        expect(replayed?.id).toBe('2');
+        expect(replayed?.row.id).toBe('docs');
+        if (replayed?.row.mode === 'in-memory') {
+          expect(replayed.row.state).toBe('loaded');
+        } else {
+          throw new Error('expected in-memory row');
+        }
+      } finally {
+        ctlB.abort();
+        await server.close();
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('emits a refetch-snapshot sentinel when Last-Event-ID falls below the ring horizon', async () => {
+    // Two glob sources × (load-start + load-success) = 4 transitions. A ring
+    // capacity of 1 evicts ids 1-3, leaving oldestId=4. A reconnect with
+    // `Last-Event-ID: 1` is then unbridgeable, so the broker writes the
+    // `refetch-snapshot` sentinel envelope (ADR-0044) telling the client to
+    // re-fetch `GET /api/sources` before resuming the live stream.
+    const dir = await mkdtemp(join(tmpdir(), 'sparqly-sources-sse-'));
+    try {
+      await writeFile(
+        join(dir, 'a.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+      await writeFile(
+        join(dir, 'b.ttl'),
+        '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .',
+      );
+      Logger.overrideLogger(false);
+      const server = await createServer({
+        sources: [
+          { id: 'a', glob: join(dir, 'a.ttl') },
+          { id: 'b', glob: join(dir, 'b.ttl') },
+        ],
+        port: 0,
+        sseHeartbeatMs: 5_000,
+        sseRingCapacity: 1,
+      });
+      const base = `http://localhost:${server.port}`;
+      const ctlA = new AbortController();
+      try {
+        const respA = await fetch(`${base}/api/sources/stream`, {
+          signal: ctlA.signal,
+          headers: { Accept: 'text/event-stream' },
+        });
+        // Kick both loads — 4 transitions land in the ring.
+        void fetch(
+          `${base}/api/sparql/a?query=${
+            encodeURIComponent('SELECT * WHERE { ?s ?p ?o }')
+          }`,
+        );
+        void fetch(
+          `${base}/api/sparql/b?query=${
+            encodeURIComponent('SELECT * WHERE { ?s ?p ?o }')
+          }`,
+        );
+        const seenA: string[] = [];
+        for await (const ev of readSseEvents(respA.body!)) {
+          if (ev.event === 'heartbeat') continue;
+          if (ev.id === undefined) continue;
+          seenA.push(ev.id);
+          if (seenA.length >= 4) break;
+        }
+        expect(seenA).toHaveLength(4);
+      } finally {
+        ctlA.abort();
+      }
+
+      const ctlB = new AbortController();
+      try {
+        const respB = await fetch(`${base}/api/sources/stream`, {
+          signal: ctlB.signal,
+          headers: {
+            Accept: 'text/event-stream',
+            'Last-Event-ID': '1',
+          },
+        });
+        let firstNonHeartbeat: ParsedSseEvent | undefined;
+        for await (const ev of readSseEvents(respB.body!)) {
+          if (ev.event === 'heartbeat') continue;
+          if (ev.id === undefined && ev.event === undefined && ev.data === undefined) continue;
+          firstNonHeartbeat = ev;
+          break;
+        }
+        expect(firstNonHeartbeat?.event).toBe('refetch-snapshot');
+        expect(firstNonHeartbeat?.data).toBeDefined();
+        expect(JSON.parse(firstNonHeartbeat!.data!)).toEqual({
+          sentinel: 'refetch-snapshot',
+        });
+      } finally {
+        ctlB.abort();
+        await server.close();
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('emits a periodic heartbeat that survives an idle connection (no transitions in flight)', async () => {
+    harness = await startHarness([{ id: 'blank', empty: true }], {
+      // 30ms keeps the test snappy; in production it is 15s.
+      sseHeartbeatMs: 30,
+    });
+    const controller = new AbortController();
+    try {
+      const resp = await fetch(`${harness.base}/api/sources/stream`, {
+        signal: controller.signal,
+        headers: { Accept: 'text/event-stream' },
+      });
+      expect(resp.body).not.toBeNull();
+      const events = readSseEvents(resp.body!);
+      const beats: ParsedSseEvent[] = [];
+      for await (const ev of events) {
+        if (ev.event === 'heartbeat') beats.push(ev);
+        if (beats.length >= 2) break;
+      }
+      expect(beats).toHaveLength(2);
+    } finally {
+      controller.abort();
     }
   });
 });

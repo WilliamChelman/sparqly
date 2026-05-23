@@ -14,6 +14,13 @@ export const SPARQL_SNIPPET_ALLOW_LIST = Symbol('SPARQL_SNIPPET_ALLOW_LIST');
 export const SPARQL_META_CHILDREN_CACHE = Symbol('SPARQL_META_CHILDREN_CACHE');
 export const SPARQL_SAVED_QUERIES_CONFIG = Symbol('SPARQL_SAVED_QUERIES_CONFIG');
 export const SPARQL_SAVED_QUERIES_SERVICE = Symbol('SPARQL_SAVED_QUERIES_SERVICE');
+/**
+ * Source state broker — the bridge between `EngineMap`'s
+ * `SourceStateEmitter` and the `GET /api/sources/stream` SSE wire
+ * (ADR-0044, #354). Owns the ring buffer backing the `Last-Event-ID`
+ * replay path and the live multicast subject. Provided per server lifetime.
+ */
+export const SPARQL_SOURCE_STATE_BROKER = Symbol('SPARQL_SOURCE_STATE_BROKER');
 
 export interface SparqlContext {
   prefixes: Record<string, string>;
