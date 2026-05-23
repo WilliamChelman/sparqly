@@ -1,3 +1,38 @@
+## [0.29.0](https://github.com/WilliamChelman/sparqly/compare/v0.28.2...v0.29.0) (2026-05-23)
+
+### Features
+
+* **cli:** config-overridable index cache location ([#345](https://github.com/WilliamChelman/sparqly/issues/345)) ([6374fdc](https://github.com/WilliamChelman/sparqly/commit/6374fdc7ac1740b5e74166c60acb92f48f4dec06))
+* **cli:** reject disk-backed globs in hash and diff ([#343](https://github.com/WilliamChelman/sparqly/issues/343)) ([f1a2089](https://github.com/WilliamChelman/sparqly/commit/f1a2089d17cf4d7899883a0253d315314a166e80))
+* **cli:** sparqly index command for ahead-of-time disk index builds ([#346](https://github.com/WilliamChelman/sparqly/issues/346)) ([404e5ef](https://github.com/WilliamChelman/sparqly/commit/404e5ef2811dc44c8773c073c7a426cd04311ff5))
+* **core:** add storage field on glob sources ([354c4d4](https://github.com/WilliamChelman/sparqly/commit/354c4d4c11cf83ccaf9754b0e0cfa07599eb9f3b)), closes [#337](https://github.com/WilliamChelman/sparqly/issues/337)
+* **core:** add unionDefaultGraph toggle on glob sources ([143d99a](https://github.com/WilliamChelman/sparqly/commit/143d99a8682848c135ea361829a2034e83a95de6))
+* **core:** apply glob transforms during disk-backed index build ([#341](https://github.com/WilliamChelman/sparqly/issues/341)) ([d2f8fd1](https://github.com/WilliamChelman/sparqly/commit/d2f8fd1853479ef0fd4b3617e09f9770c5c4ff0b))
+* **core:** build progress logging for disk-backed glob index build ([#349](https://github.com/WilliamChelman/sparqly/issues/349)) ([969ed24](https://github.com/WilliamChelman/sparqly/commit/969ed24b2380a53bcb6ef49050056143e08d75f9))
+* **core:** disk-backed glob query path via quadstore ([#338](https://github.com/WilliamChelman/sparqly/issues/338)) ([0ba7baf](https://github.com/WilliamChelman/sparqly/commit/0ba7bafc8dd9d0af80e207de6558c130216e743a))
+* **core:** index reuse and staleness detection ([#339](https://github.com/WilliamChelman/sparqly/issues/339)) ([3b0e429](https://github.com/WilliamChelman/sparqly/commit/3b0e4299690bf5263d4b0a90293a0201a2518467))
+* **core:** inline graphName rewrite during disk-backed index build ([#348](https://github.com/WilliamChelman/sparqly/issues/348)) ([f7a37f6](https://github.com/WilliamChelman/sparqly/commit/f7a37f65821b8135680719449bfb476959f76634))
+* **core:** propagate storage tier to split-glob file children ([#344](https://github.com/WilliamChelman/sparqly/issues/344)) ([d4c5f77](https://github.com/WilliamChelman/sparqly/commit/d4c5f776c86444b41bbc3af41a6916eb28946998))
+* **core:** streamed batched ingest for disk-backed glob index build ([#347](https://github.com/WilliamChelman/sparqly/issues/347)) ([d7301dc](https://github.com/WilliamChelman/sparqly/commit/d7301dc90da6b4f69440695c7c48aa991fa25451))
+* **core:** warn on oversized un-flagged glob ([#342](https://github.com/WilliamChelman/sparqly/issues/342)) ([5af56e5](https://github.com/WilliamChelman/sparqly/commit/5af56e542c569e1ec88835e13beba57cfad177fd))
+* **server:** background index build with 503 indexing state ([#340](https://github.com/WilliamChelman/sparqly/issues/340)) ([8014678](https://github.com/WilliamChelman/sparqly/commit/80146785a42106575f56b528ad22cfa158c5cfa0))
+* **server:** isolated child-process disk-backed index build ([#350](https://github.com/WilliamChelman/sparqly/issues/350)) ([d963f00](https://github.com/WilliamChelman/sparqly/commit/d963f009cd4248dbea3a0eaf855f68c05bf77dc5))
+
+### Bug Fixes
+
+* **cli:** catch shutdown rejection and force-exit on hung close ([9838c58](https://github.com/WilliamChelman/sparqly/commit/9838c58c18ca687b322ac9626b6be3d22c5e8298))
+* **core,server:** reject disk-backed sources at view / describe / diff boundaries instead of silently materializing or leaking the lock ([a4f4fd1](https://github.com/WilliamChelman/sparqly/commit/a4f4fd19ea8b5031abe63ef4b439482cd00e648a))
+* **core,server:** restore pnpm run check by normalizing glob error payload and handling disk-backed-source clone ([24dc3a4](https://github.com/WilliamChelman/sparqly/commit/24dc3a422670f7a4de6e2a7710289447c442cddf))
+* **core:** atomic first-touch build for openOrBuildGlobIndex ([039a353](https://github.com/WilliamChelman/sparqly/commit/039a3536dc5c575ebd3c053b65d53db9935cf9a9)), closes [#346](https://github.com/WilliamChelman/sparqly/issues/346)
+* **core:** atomic rename-swap in glob index promote so a mid-swap failure leaves the prior index in place ([7681e88](https://github.com/WilliamChelman/sparqly/commit/7681e88dcbcbf7691e5b833ae6947b409e3b3990))
+* **core:** preserve nested child indexes when rebuilding meta glob index ([f39e805](https://github.com/WilliamChelman/sparqly/commit/f39e805b8722ca87eb4d3776b5e7518db50a2cca))
+* **core:** reject disk-backed glob with gitRef instead of silently indexing the working tree ([6c9cd59](https://github.com/WilliamChelman/sparqly/commit/6c9cd59aa3a9cbbd52e56a51910ec4be4eaa4320))
+* **core:** skip live-pid temp dirs when sweeping stale glob index builds ([d1b1bf2](https://github.com/WilliamChelman/sparqly/commit/d1b1bf2706fa848e2d277ee2e543528e2dd9ad4e))
+* **core:** snapshot file fingerprints before ingest and route manifest reads through the typed error channel ([5a6266e](https://github.com/WilliamChelman/sparqly/commit/5a6266e1ca1f269ab1a5e19035134d207a677367))
+* **server:** cool down IndexBuildPool re-spawn after a failing build ([649efc1](https://github.com/WilliamChelman/sparqly/commit/649efc1a358448fa6c0fd7a65b1b963e3a00e5ae))
+* **server:** free IndexBuildPool slot on child spawn failure ([6a724f1](https://github.com/WilliamChelman/sparqly/commit/6a724f1f619bd00527f7b17734a93dd41ae708b8))
+* **server:** refuse /refs for disk-backed sources to mirror the resolve-time pin rejection ([385e49a](https://github.com/WilliamChelman/sparqly/commit/385e49ab3454966bef8ed1e52e59dfe00521a019))
+
 ## [0.28.2](https://github.com/WilliamChelman/sparqly/compare/v0.28.1...v0.28.2) (2026-05-21)
 
 ### Bug Fixes
