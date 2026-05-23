@@ -13,10 +13,22 @@ import {
  */
 class FakeChild implements BuildChild {
   private readonly exitListeners: Array<(code: number | null) => void> = [];
+  private readonly errorListeners: Array<(err: Error) => void> = [];
   killed: 'SIGTERM' | undefined;
 
-  on(event: 'exit', listener: (code: number | null) => void): void {
-    if (event === 'exit') this.exitListeners.push(listener);
+  on(event: 'exit', listener: (code: number | null) => void): void;
+  on(event: 'error', listener: (err: Error) => void): void;
+  on(
+    event: 'exit' | 'error',
+    listener:
+      | ((code: number | null) => void)
+      | ((err: Error) => void),
+  ): void {
+    if (event === 'exit') {
+      this.exitListeners.push(listener as (code: number | null) => void);
+    } else {
+      this.errorListeners.push(listener as (err: Error) => void);
+    }
   }
 
   kill(signal: 'SIGTERM'): void {
@@ -26,6 +38,15 @@ class FakeChild implements BuildChild {
   /** Fires the `exit` event — the test stand-in for the child finishing. */
   exit(code: number | null): void {
     for (const listener of this.exitListeners) listener(code);
+  }
+
+  /**
+   * Fires the `error` event — the test stand-in for a spawn failure (ENOENT
+   * bad cliEntry / nodeBin). Per Node's `child_process`, a spawn failure emits
+   * `'error'` and never `'exit'`.
+   */
+  emitError(err: Error): void {
+    for (const listener of this.errorListeners) listener(err);
   }
 }
 
@@ -138,6 +159,79 @@ describe('IndexBuildPool', () => {
 
     // The queued 'c' was dropped — a child that exits during shutdown does not
     // drain the queue, so 'c' is never spawned.
+    expect(spawned).toEqual(['a', 'b']);
+  });
+
+  it('a child that fails to spawn (fires "error" without "exit") frees its slot and drains the queue', () => {
+    const spawned: string[] = [];
+    const children = new Map<string, FakeChild>();
+    const spawn: SpawnIndexBuild = (id) => {
+      spawned.push(id);
+      const child = new FakeChild();
+      children.set(id, child);
+      return child;
+    };
+    const pool = new IndexBuildPool({ concurrency: 1, spawn });
+
+    pool.request('a');
+    pool.request('b');
+    expect(spawned).toEqual(['a']);
+
+    // 'a' fails to spawn (e.g. ENOENT bad cliEntry) — emits 'error' and never
+    // 'exit'. The slot must still free so the queued 'b' takes over.
+    children.get('a')?.emitError(new Error('spawn ENOENT'));
+
+    expect(spawned).toEqual(['a', 'b']);
+  });
+
+  it('shutdown() resolves even when a running child fails to spawn (errors instead of exits)', async () => {
+    const children = new Map<string, FakeChild>();
+    const spawn: SpawnIndexBuild = (id) => {
+      const child = new FakeChild();
+      children.set(id, child);
+      return child;
+    };
+    const pool = new IndexBuildPool({ concurrency: 2, spawn });
+
+    pool.request('a');
+    pool.request('b');
+
+    const shutdown = pool.shutdown();
+    let settled = false;
+    void shutdown.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    // Spawn failure path — 'a' errors, 'b' exits normally. shutdown() must not
+    // hang on the errored child.
+    children.get('a')?.emitError(new Error('spawn ENOENT'));
+    children.get('b')?.exit(null);
+    await shutdown;
+    expect(settled).toBe(true);
+  });
+
+  it('a child that fires both "error" and "exit" only drains the queue once', () => {
+    const spawned: string[] = [];
+    const children = new Map<string, FakeChild>();
+    const spawn: SpawnIndexBuild = (id) => {
+      spawned.push(id);
+      const child = new FakeChild();
+      children.set(id, child);
+      return child;
+    };
+    const pool = new IndexBuildPool({ concurrency: 1, spawn });
+
+    pool.request('a');
+    pool.request('b');
+    pool.request('c');
+
+    // Defensive: on some platforms a spawn failure can fire both events. The
+    // cleanup must be idempotent — 'b' takes 'a's slot, 'c' stays queued.
+    children.get('a')?.emitError(new Error('spawn ENOENT'));
+    children.get('a')?.exit(null);
+
     expect(spawned).toEqual(['a', 'b']);
   });
 

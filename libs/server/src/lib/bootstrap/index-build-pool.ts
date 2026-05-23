@@ -5,6 +5,7 @@
  */
 export interface BuildChild {
   on(event: 'exit', listener: (code: number | null) => void): void;
+  on(event: 'error', listener: (err: Error) => void): void;
   kill(signal: 'SIGTERM'): void;
 }
 
@@ -92,13 +93,22 @@ export class IndexBuildPool {
     });
     const child = this.spawnChild(sourceId);
     this.running.set(sourceId, { child, exited });
-    child.on('exit', () => {
+    // A spawn failure (ENOENT bad cliEntry/nodeBin) emits `'error'` and never
+    // `'exit'` — without an `'error'` handler the slot would never free and
+    // `whenIdle`/`shutdown` would hang. Both handlers funnel into idempotent
+    // cleanup so a child that fires both events only drains the queue once.
+    let settled = false;
+    const settle = (): void => {
+      if (settled) return;
+      settled = true;
       this.running.delete(sourceId);
       markExited();
       if (this.shuttingDown) return;
       const next = this.queue.shift();
       if (next !== undefined) this.start(next);
-    });
+    };
+    child.on('exit', settle);
+    child.on('error', settle);
   }
 }
 
