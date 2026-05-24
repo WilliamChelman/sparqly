@@ -4,7 +4,7 @@ import {
   outerEnd,
   outerStart,
 } from './source-snippet-ranges';
-import type { Hunk, SourceRecord } from '../services/diff.service';
+import type { Hunk, SourceRecord } from '../models/diff-response';
 
 function hunkWith(
   records: { left?: SourceRecord[]; right?: SourceRecord[] } = {},

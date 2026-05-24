@@ -8,7 +8,7 @@ import {
 import { DEFAULT_PREFIXES, shortenNQuadLine } from 'common';
 import type { DisplayContext } from '@app/core';
 import { tokenizeCode, type CodeLine } from '@app/modules/code-highlight';
-import type { Hunk, HunkLine } from '../services/diff.service';
+import type { Hunk, HunkLine } from '../models/diff-response';
 import type { HunkClass } from '../utils/hunk-classifier';
 import {
   collectAnchorSourceRanges,
@@ -33,7 +33,6 @@ import { SourceSnippetComponent } from './source-snippet.component';
       [ngClass]="stateClasses()"
     >
       <header
-        data-testid="hunk-header"
         class="mb-2 flex flex-wrap items-center gap-2.5 font-mono text-xs"
       >
         <span class="break-all font-semibold text-foreground">{{ anchorDisplay() }}</span>
@@ -43,13 +42,11 @@ import { SourceSnippetComponent } from './source-snippet.component';
         <span class="ml-auto text-[11px] text-foreground-faint">{{ countsLabel() }}</span>
       </header>
       <div
-        data-testid="hunk-body"
         class="cm-s-sparqly overflow-x-auto font-mono text-xs leading-[1.45]"
       >
         @for (line of hunk().lines; track $index; let lineIndex = $index) {
           @if (line.side === '-') {
             <span
-              data-testid="removed-line"
               class="block w-max min-w-full rounded-[3px] bg-removed-bg px-1.5 py-px whitespace-pre text-foreground"
             >- @for (token of highlightedLines()[lineIndex]; track $index) {<span
                 [class]="token.className"
@@ -57,7 +54,6 @@ import { SourceSnippetComponent } from './source-snippet.component';
               >}</span>
           } @else {
             <span
-              data-testid="added-line"
               class="block w-max min-w-full rounded-[3px] bg-added-bg px-1.5 py-px whitespace-pre text-foreground"
             >+ @for (token of highlightedLines()[lineIndex]; track $index) {<span
                 [class]="token.className"
@@ -76,7 +72,7 @@ import { SourceSnippetComponent } from './source-snippet.component';
             >left</div>
             @if (leftRecords().length > 0) {
               @for (rec of leftRecords(); track outerStart(rec)) {
-                <div data-testid="hunk-snippet">
+                <div>
                   <app-source-snippet
                     [file]="rec.file"
                     [focalStart]="outerStart(rec)"
@@ -88,11 +84,10 @@ import { SourceSnippetComponent } from './source-snippet.component';
               }
             } @else if (leftDefinedHere().length > 0) {
               <div
-                data-testid="defined-here-left"
                 class="font-mono text-[10px] italic text-foreground-faint"
               >defined here</div>
               @for (rec of leftDefinedHere(); track outerStart(rec)) {
-                <div data-testid="hunk-snippet">
+                <div>
                   <app-source-snippet
                     [file]="rec.file"
                     [focalStart]="outerStart(rec)"
@@ -104,7 +99,6 @@ import { SourceSnippetComponent } from './source-snippet.component';
               }
             } @else {
               <p
-                data-testid="hunk-snippet-placeholder-left"
                 class="m-0 font-serif text-xs italic text-foreground-faint"
               >(absent on left)</p>
             }
@@ -117,7 +111,7 @@ import { SourceSnippetComponent } from './source-snippet.component';
             >right</div>
             @if (rightRecords().length > 0) {
               @for (rec of rightRecords(); track outerStart(rec)) {
-                <div data-testid="hunk-snippet">
+                <div>
                   <app-source-snippet
                     [file]="rec.file"
                     [focalStart]="outerStart(rec)"
@@ -129,11 +123,10 @@ import { SourceSnippetComponent } from './source-snippet.component';
               }
             } @else if (rightDefinedHere().length > 0) {
               <div
-                data-testid="defined-here-right"
                 class="font-mono text-[10px] italic text-foreground-faint"
               >defined here</div>
               @for (rec of rightDefinedHere(); track outerStart(rec)) {
-                <div data-testid="hunk-snippet">
+                <div>
                   <app-source-snippet
                     [file]="rec.file"
                     [focalStart]="outerStart(rec)"
@@ -145,7 +138,6 @@ import { SourceSnippetComponent } from './source-snippet.component';
               }
             } @else {
               <p
-                data-testid="hunk-snippet-placeholder-right"
                 class="m-0 font-serif text-xs italic text-foreground-faint"
               >(absent on right)</p>
             }

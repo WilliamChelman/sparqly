@@ -6,7 +6,7 @@ import type {
   TabularDiffEntry,
   TabularDiffResponse,
   TabularTerm,
-} from '../services/diff.service';
+} from '../models/diff-response';
 import { curieOrIri } from '../utils/term-display';
 
 interface TabularRow {

@@ -1,5 +1,5 @@
 import { classifyHunk } from './hunk-classifier';
-import type { Hunk, HunkLine } from '../services/diff.service';
+import type { Hunk, HunkLine } from '../models/diff-response';
 
 function line(side: '-' | '+'): HunkLine {
   return {

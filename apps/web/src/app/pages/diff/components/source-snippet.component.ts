@@ -18,7 +18,7 @@ import {
   type SnippetPayload,
   type SnippetRangeOutOfBoundsError,
 } from '../services/snippet.service';
-import type { SourceRecord } from '../services/diff.service';
+import type { SourceRecord } from '../models/diff-response';
 
 @Component({
   selector: 'app-source-snippet',
@@ -42,11 +42,10 @@ import type { SourceRecord } from '../services/diff.service';
         <div
           class="flex items-center justify-between gap-2.5 border-b border-border-muted bg-surface-sunken px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-foreground-faint"
         >
-          <span data-testid="snippet-context-label"
+          <span
             >± context · {{ context() }} {{ context() === 1 ? 'line' : 'lines' }}</span
           >
           <span
-            data-testid="snippet-file"
             class="text-[11px] tracking-normal normal-case break-all text-foreground-muted"
             >{{ file() }}:{{ focalLabel(s) }}</span
           >
@@ -54,7 +53,6 @@ import type { SourceRecord } from '../services/diff.service';
         <div class="flex font-mono text-[11.5px] leading-[1.55]">
           <div
             class="flex-none min-w-9 select-none whitespace-pre bg-surface-sunken px-2 py-1.5 text-right text-foreground-faint"
-            data-testid="snippet-gutter"
             >@for (l of s.lines; track $index) {<span
               [class]="
                 isFocal(s, $index)
@@ -67,9 +65,6 @@ import type { SourceRecord } from '../services/diff.service';
           <pre
             class="cm-s-sparqly m-0 flex-1 overflow-x-auto whitespace-pre px-3 py-1.5 font-mono text-foreground"
             >@for (l of s.lines; track $index) {<span
-              data-testid="snippet-line"
-              [attr.data-line-number]="s.startLine + $index"
-              [attr.data-focal]="isFocal(s, $index) ? 'true' : null"
               [class]="
                 isFocal(s, $index)
                   ? 'block w-max min-w-full my-line-focus'
@@ -85,21 +80,18 @@ import type { SourceRecord } from '../services/diff.service';
       </div>
     } @else if (fileRead(); as fr) {
       <p
-        data-testid="snippet-file-read"
         class="px-3 py-2.5 font-serif italic text-[13px] text-foreground-faint break-all"
       >
         (source file unavailable: {{ fr.file }} — {{ fr.reason }})
       </p>
     } @else if (rangeOutOfBounds(); as oob) {
       <p
-        data-testid="snippet-range-out-of-bounds"
         class="px-3 py-2.5 font-serif italic text-[13px] text-foreground-faint"
       >
         (range {{ oob.spec }} is past end of file)
       </p>
     } @else if (unavailable()) {
       <p
-        data-testid="snippet-unavailable"
         class="px-3 py-2.5 font-serif italic text-[13px] text-foreground-faint"
       >
         (source file unavailable)

@@ -21,14 +21,10 @@ import {
   type SavedQuerySummary,
   type SourceListingEntry,
 } from '@app/core';
-import {
-  DiffService,
-  formatDiffError,
-  type DiffError,
-  type DiffErrorResponse,
-  type DiffRequest,
-  type DiffResponse,
-} from './services/diff.service';
+import { DiffService } from './services/diff.service';
+import type { DiffError, DiffErrorResponse } from './models/diff-error';
+import type { DiffRequest, DiffResponse } from './models/diff-response';
+import { formatDiffError } from './utils/format-error';
 import { EditorFrameComponent } from '../query/components/editor-frame.component';
 import { DiffResultRendererComponent } from './components/diff-result-renderer.component';
 import { EditorFrameController } from './editor-frame-controller';
@@ -54,7 +50,7 @@ import { EditorFrameController } from './editor-frame-controller';
     @if (sources() === null) {
       <main class="p-4 text-sm text-foreground-faint">loading…</main>
     } @else if ((sources() ?? []).length <= 1) {
-      <main data-testid="empty-state" class="p-4 text-sm text-foreground-muted">
+      <main class="p-4 text-sm text-foreground-muted">
         <p>
           <code app-code-chip>/diff</code> needs at
           least two registered sources.
@@ -78,7 +74,6 @@ import { EditorFrameController } from './editor-frame-controller';
                 (valueChange)="onLeftIdChange($event)"
               />
               <app-library-combobox
-                data-testid="library-left"
                 [entries]="savedQueries()"
                 [selectedSlug]="leftPinnedSlug()"
                 (load)="leftSide.load($event)"
@@ -94,7 +89,7 @@ import { EditorFrameController } from './editor-frame-controller';
             />
 
             @if (errors()?.left; as left) {
-              <p app-error-banner data-testid="error-left">
+              <p app-error-banner>
                 {{ format(left) }}
               </p>
             }
@@ -104,7 +99,6 @@ import { EditorFrameController } from './editor-frame-controller';
               app-btn
               variant="icon"
               type="button"
-              data-testid="swap-sides"
               title="Swap left and right"
               aria-label="Swap left and right"
               (click)="swapSides()"
@@ -120,7 +114,6 @@ import { EditorFrameController } from './editor-frame-controller';
                 (valueChange)="onRightIdChange($event)"
               />
               <app-library-combobox
-                data-testid="library-right"
                 [entries]="savedQueries()"
                 [selectedSlug]="rightPinnedSlug()"
                 (load)="rightSide.load($event)"
@@ -136,14 +129,14 @@ import { EditorFrameController } from './editor-frame-controller';
             />
 
             @if (errors()?.right; as right) {
-              <p app-error-banner data-testid="error-right">
+              <p app-error-banner>
                 {{ format(right) }}
               </p>
             }
           </div>
         </section>
         @if (errors()?.top; as top) {
-          <p app-error-banner data-testid="error-top">
+          <p app-error-banner>
             {{ format(top) }}
           </p>
         }
@@ -155,7 +148,6 @@ import { EditorFrameController } from './editor-frame-controller';
             <label class="flex items-center gap-2">
               <span>Snippet context lines</span>
               <input
-                data-testid="snippet-context"
                 type="number"
                 min="0"
                 max="100"
@@ -170,7 +162,6 @@ import { EditorFrameController } from './editor-frame-controller';
           <button
             app-btn
             variant="primary"
-            data-testid="run-diff"
             type="button"
             [loading]="running()"
             (click)="run()"

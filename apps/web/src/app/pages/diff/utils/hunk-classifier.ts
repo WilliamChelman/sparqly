@@ -1,4 +1,4 @@
-import type { Hunk } from '../services/diff.service';
+import type { Hunk } from '../models/diff-response';
 
 export type HunkClass = 'added' | 'removed' | 'changed';
 

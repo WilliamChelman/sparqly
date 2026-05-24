@@ -4,7 +4,8 @@ import {
   HttpTestingController,
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
-import { DiffService, type DiffResponse } from './diff.service';
+import { DiffService } from './diff.service';
+import type { DiffResponse } from '../models/diff-response';
 
 function setup() {
   TestBed.configureTestingModule({
