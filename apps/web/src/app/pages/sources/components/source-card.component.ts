@@ -1,7 +1,4 @@
 /* eslint-disable @angular-eslint/component-selector */
-// ADR-0034 precedent: attribute component on the consumer's existing `<li>`,
-// so the card stays a single grid item with no extra wrapper that would break
-// the layout or the test `querySelector` chains.
 import { DatePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -17,8 +14,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { Observable } from 'rxjs';
 import { ButtonComponent } from '@app/modules/button';
 import { IconDisclosureComponent } from '@app/modules/icons';
-import { SourceActionsService } from './source-actions.service';
-import type { EndpointProbeChip, SourceRow } from './source-row';
+import { SourceActionsService } from '../services/source-actions.service';
+import type { EndpointProbeChip, SourceRow } from '../models/source-row';
 
 type CardKind = 'endpoint' | 'in-memory-glob' | 'disk-backed' | 'other';
 
@@ -36,31 +33,37 @@ type CardKind = 'endpoint' | 'in-memory-glob' | 'disk-backed' | 'other';
     '[class.border-l-4]': 'isChild() || hasExpandedChildren()',
     '[class.border-l-accent-muted]': 'isChild() || hasExpandedChildren()',
     '[class.md:ml-6]': 'isChild()',
-    '[attr.data-testid]': '"source-row-" + row().id',
   },
   template: `
     @let r = row();
     <div class="flex flex-wrap items-center gap-2">
-      <span class="text-base" [class]="kindIconClasses()">{{ kindIcon() }}</span>
+      <span class="text-base" [class]="kindIconClasses()">{{
+        kindIcon()
+      }}</span>
       <span class="font-mono text-sm text-foreground">{{ r.id }}</span>
       @if (r.default === true) {
         <span class="text-accent" title="default">★</span>
       }
       <span
         class="rounded bg-surface-muted px-1.5 py-0.5 text-xs text-foreground-muted"
-        data-testid="row-kind"
-      >{{ r.kind }}</span>
+        >{{ r.kind }}</span
+      >
       @if (parentId(); as pid) {
-        <span class="font-mono text-[10px] text-foreground-faint">↳ {{ pid }}</span>
+        <span class="font-mono text-[10px] text-foreground-faint"
+          >↳ {{ pid }}</span
+        >
       }
       @if (r.mode !== 'endpoint') {
         <span
           class="ml-auto rounded px-1.5 py-0.5 font-mono text-[10px] uppercase"
-          data-testid="row-state"
           [class]="stateClasses(r.state)"
-        >{{ r.state }}</span>
+          >{{ r.state }}</span
+        >
       } @else {
-        <span class="ml-auto font-mono text-[10px] uppercase text-foreground-faint">remote</span>
+        <span
+          class="ml-auto font-mono text-[10px] uppercase text-foreground-faint"
+          >remote</span
+        >
       }
       @if (r.mode !== 'endpoint' && r.children) {
         <button
@@ -70,9 +73,13 @@ type CardKind = 'endpoint' | 'in-memory-glob' | 'disk-backed' | 'other';
           type="button"
           class="text-base"
           [attr.aria-expanded]="expanded()"
-          [attr.aria-label]="expanded() ? 'Collapse children' : 'Expand children'"
+          [attr.aria-label]="
+            expanded() ? 'Collapse children' : 'Expand children'
+          "
           (click)="onToggleMeta()"
-        ><app-icon-disclosure [expanded]="expanded()" /></button>
+        >
+          <app-icon-disclosure [expanded]="expanded()" />
+        </button>
       }
     </div>
 
@@ -82,7 +89,8 @@ type CardKind = 'endpoint' | 'in-memory-glob' | 'disk-backed' | 'other';
         [href]="r.endpointUrl"
         target="_blank"
         rel="noreferrer"
-      >{{ r.endpointUrl }}</a>
+        >{{ r.endpointUrl }}</a
+      >
     }
 
     @if (r.mode !== 'endpoint') {
@@ -132,19 +140,16 @@ type CardKind = 'endpoint' | 'in-memory-glob' | 'disk-backed' | 'other';
         </div>
       </dl>
       @if (r.state === 'stale' && r.staleReason) {
-        <p
-          class="rounded bg-warning-muted px-1.5 py-1 text-xs text-warning"
-          data-testid="row-stale-reason"
-        >{{ r.staleReason }}</p>
+        <p class="rounded bg-warning-muted px-1.5 py-1 text-xs text-warning">
+          {{ r.staleReason }}
+        </p>
       }
     }
 
     @if (r.mode !== 'endpoint' && r.state === 'failed' && r.error; as err) {
-      <p
-        class="rounded bg-warning-muted px-1.5 py-1 text-xs text-warning"
-        data-testid="row-error-chip"
-        [attr.data-kind]="err.kind"
-      >{{ err.kind }} · {{ errorMessageFirstLine(err.message) }}</p>
+      <p class="rounded bg-warning-muted px-1.5 py-1 text-xs text-warning">
+        {{ err.kind }} · {{ errorMessageFirstLine(err.message) }}
+      </p>
       @if (err.details) {
         <button
           app-btn
@@ -152,12 +157,14 @@ type CardKind = 'endpoint' | 'in-memory-glob' | 'disk-backed' | 'other';
           size="sm"
           type="button"
           (click)="onToggleErrorDetails()"
-        >{{ isErrorDetailsExpanded() ? 'Hide details' : 'Show details' }}</button>
+        >
+          {{ isErrorDetailsExpanded() ? 'Hide details' : 'Show details' }}
+        </button>
         @if (isErrorDetailsExpanded()) {
           <pre
             class="whitespace-pre-wrap rounded bg-surface-muted px-2 py-1 font-mono text-xs text-foreground"
-            data-testid="row-error-details"
-          >{{ err.details }}</pre>
+            >{{ err.details }}</pre
+          >
         }
       }
     }
@@ -171,14 +178,17 @@ type CardKind = 'endpoint' | 'in-memory-glob' | 'disk-backed' | 'other';
         [class.text-accent]="chip.state === 'ok'"
         [class.bg-warning-muted]="chip.state === 'error'"
         [class.text-warning]="chip.state === 'error'"
-        data-testid="row-test-connection-chip"
-        [attr.data-state]="chip.state"
-        [attr.data-kind]="chip.state === 'error' ? chip.kind : null"
       >
         @switch (chip.state) {
-          @case ('pending') { probing… }
-          @case ('ok') { ok · {{ chip.latencyMs }} ms }
-          @case ('error') { {{ chip.kind }} · {{ chip.message }} }
+          @case ('pending') {
+            probing…
+          }
+          @case ('ok') {
+            ok · {{ chip.latencyMs }} ms
+          }
+          @case ('error') {
+            {{ chip.kind }} · {{ chip.message }}
+          }
         }
       </span>
     }
@@ -192,7 +202,9 @@ type CardKind = 'endpoint' | 'in-memory-glob' | 'disk-backed' | 'other';
             size="sm"
             type="button"
             (click)="a.run()"
-          >{{ a.label }}</button>
+          >
+            {{ a.label }}
+          </button>
         }
       </div>
     }
@@ -260,19 +272,27 @@ export class SourceCardComponent {
 
   kindIcon(): string {
     switch (this.cardKind()) {
-      case 'endpoint': return '◉';
-      case 'in-memory-glob': return '◆';
-      case 'disk-backed': return '▣';
-      case 'other': return '○';
+      case 'endpoint':
+        return '◉';
+      case 'in-memory-glob':
+        return '◆';
+      case 'disk-backed':
+        return '▣';
+      case 'other':
+        return '○';
     }
   }
 
   kindIconClasses(): string {
     switch (this.cardKind()) {
-      case 'endpoint': return 'text-accent';
-      case 'in-memory-glob': return 'text-foreground';
-      case 'disk-backed': return 'text-foreground-muted';
-      case 'other': return 'text-foreground-faint';
+      case 'endpoint':
+        return 'text-accent';
+      case 'in-memory-glob':
+        return 'text-foreground';
+      case 'disk-backed':
+        return 'text-foreground-muted';
+      case 'other':
+        return 'text-foreground-faint';
     }
   }
 

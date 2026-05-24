@@ -5,21 +5,21 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { SourceCardComponent } from './source-card.component';
+import { SourceCardComponent } from './components/source-card.component';
 import {
   SourceFilterBarComponent,
   type SourceFilterCounts,
   type SourceStateFilter,
-} from './source-filter-bar.component';
-import { SourcesRegistryService } from './sources-registry.service';
+} from './components/source-filter-bar.component';
+import type { SourceRow } from './models/source-row';
 export type {
   DiskBackedState,
   EndpointProbeChip,
   InMemoryState,
   SourceRow,
   SourceRowError,
-} from './source-row';
-import type { SourceRow } from './source-row';
+} from './models/source-row';
+import { SourcesRegistryService } from './services/sources-registry.service';
 
 /** Opening the page must not trigger any load/build (lazy-materialization contract). */
 @Component({
@@ -37,11 +37,9 @@ import type { SourceRow } from './source-row';
     </header>
     <main class="flex flex-col gap-4 p-4">
       @if (rows() === null) {
-        <p class="text-sm text-foreground-muted" data-testid="sources-loading">
-          loading…
-        </p>
+        <p class="text-sm text-foreground-muted">loading…</p>
       } @else if (rows()!.length === 0) {
-        <p class="text-sm text-foreground-muted" data-testid="sources-empty">
+        <p class="text-sm text-foreground-muted">
           The served registry is empty.
         </p>
       } @else {
@@ -55,15 +53,11 @@ import type { SourceRow } from './source-row';
         @if (visibleRows().length === 0) {
           <p
             class="rounded-md border border-dashed border-border-muted p-6 text-center text-sm text-foreground-faint"
-            data-testid="sources-filter-empty"
           >
             Nothing matches this filter.
           </p>
         } @else {
-          <ul
-            class="grid gap-3 md:grid-cols-2 xl:grid-cols-3"
-            data-testid="sources-list"
-          >
+          <ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             @for (row of visibleRows(); track row.id) {
               <li
                 app-source-card
