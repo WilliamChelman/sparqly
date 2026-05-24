@@ -1,6 +1,6 @@
 import { DataFactory, Parser, type Store } from 'n3';
 import type { DiffTotals, RdfDiffWithSourcesResult } from './diff';
-import type { SourceRecord } from '../sources';
+import type { SourceRecord, SourceRecordSidecar } from '../sources';
 import { anchorDefinitionSite } from './anchor-definition-site';
 import { resolveAnchors } from './resolve-anchors';
 import { buildSubjectPath, serializeObject } from './subject-path';
@@ -123,8 +123,8 @@ export interface BnodePathStep {
 
 export interface GroupRdfDiffByEntityInput {
   diff: RdfDiffWithSourcesResult;
-  left: { store: Store };
-  right: { store: Store };
+  left: { store: Store; sourceRecords?: SourceRecordSidecar };
+  right: { store: Store; sourceRecords?: SourceRecordSidecar };
 }
 
 export function groupRdfDiffByEntity(
@@ -240,12 +240,12 @@ export function groupRdfDiffByEntity(
         onLeft && !onRight ? 'removed' : !onLeft && onRight ? 'added' : 'changed';
       if (hunk.state === 'changed') {
         const leftDef =
-          hunk.sourceRecords.left.length === 0 && onLeft
-            ? anchorDefinitionSite(left.store, hunk.anchor)
+          hunk.sourceRecords.left.length === 0 && onLeft && left.sourceRecords !== undefined
+            ? anchorDefinitionSite(left.store, hunk.anchor, left.sourceRecords)
             : [];
         const rightDef =
-          hunk.sourceRecords.right.length === 0 && onRight
-            ? anchorDefinitionSite(right.store, hunk.anchor)
+          hunk.sourceRecords.right.length === 0 && onRight && right.sourceRecords !== undefined
+            ? anchorDefinitionSite(right.store, hunk.anchor, right.sourceRecords)
             : [];
         if (leftDef.length > 0 || rightDef.length > 0) {
           hunk.anchorSource = { left: leftDef, right: rightDef };

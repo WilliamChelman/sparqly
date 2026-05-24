@@ -97,8 +97,8 @@ export async function runGraphDiff(args: RunGraphDiffArgs): Promise<void> {
     format === 'html' || format === 'grouped'
       ? groupRdfDiffByEntity({
           diff,
-          left: { store: leftResolved.store },
-          right: { store: rightResolved.store },
+          left: { store: leftResolved.store, sourceRecords: leftResolved.sourceRecords },
+          right: { store: rightResolved.store, sourceRecords: rightResolved.sourceRecords },
         })
       : undefined;
   const snippetsByRecord =
