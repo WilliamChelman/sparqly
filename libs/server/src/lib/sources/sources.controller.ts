@@ -15,7 +15,7 @@ import {
 } from '@nestjs/common';
 import type { ParsedSource } from 'core';
 import { interval, merge, type Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { map, takeUntil } from 'rxjs/operators';
 import {
   SPARQL_ENGINE_MAP,
   SPARQL_SERVED_REGISTRY,
@@ -193,7 +193,10 @@ export class SourcesController {
     const heartbeat$ = interval(this.broker.getHeartbeatMs()).pipe(
       map<number, SourcesSseEnvelope>(() => ({ type: 'heartbeat', data: {} })),
     );
-    return merge(live$, heartbeat$);
+    // Without `takeUntil`, the heartbeat `interval` never completes — and
+    // `merge(...)` only completes once every input has — so on shutdown the
+    // SSE response stays open and `app.close()` hangs until force-exit.
+    return merge(live$, heartbeat$).pipe(takeUntil(this.broker.closing()));
   }
 }
 

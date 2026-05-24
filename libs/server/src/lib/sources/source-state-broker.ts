@@ -1,5 +1,5 @@
 import { Subject, concat, from, of, type Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { map, take } from 'rxjs/operators';
 import type { ParsedSource } from 'core';
 import type { EngineMap } from '../bootstrap/engine-map';
 import {
@@ -32,6 +32,7 @@ export interface SourcesSseEnvelope {
 export class SourceStateBroker {
   private readonly ringBuffer: SourceStateRingBuffer;
   private readonly live$ = new Subject<SourceTransitionEvent>();
+  private readonly closed$ = new Subject<void>();
   private readonly unsubscribeEmitter: () => void;
   private readonly sourcesById: Map<string, ParsedSource>;
   private readonly heartbeatMs: number;
@@ -76,6 +77,13 @@ export class SourceStateBroker {
   close(): void {
     this.unsubscribeEmitter();
     this.live$.complete();
+    this.closed$.next();
+    this.closed$.complete();
+  }
+
+  /** Fires once when the broker is closed — lets SSE handlers tear down side-streams (e.g. heartbeat intervals) that wouldn't otherwise complete. */
+  closing(): Observable<void> {
+    return this.closed$.pipe(take(1));
   }
 
   latestId(): number {
