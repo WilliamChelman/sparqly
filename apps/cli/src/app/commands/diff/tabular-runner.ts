@@ -15,16 +15,7 @@ import { DiffPresentSignal, type DiffConfig } from './diff';
 import { type DiffFormat } from './fields';
 import { anonymousUpstream } from './side';
 
-/**
- * Returns the per-side `SelectShapeReport`s when both inline queries project
- * arbitrary tuples — the trigger for tabular dispatch. Returns `undefined`
- * when either inline query is missing, when both sides are triples-shape
- * (graph-diff path owns it), or when either side fails to parse (the
- * existing graph-diff path will surface a clearer error in those cases).
- *
- * Throws when one side is triples-shape and the other is tuples-shape —
- * neither dispatch path can sensibly compare tuples against triples.
- */
+/** Throws when one side is triples-shape and the other tuples-shape — neither dispatch path can compare them. */
 export function detectTabularDispatch(
   leftInlineQuery: string | undefined,
   rightInlineQuery: string | undefined,

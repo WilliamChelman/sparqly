@@ -10,9 +10,6 @@ import type { ParsedTransform } from './transform-spec';
 /** Manifest version token when a caller resolves a disk-backed glob without one. */
 const UNKNOWN_SPARQLY_VERSION = '0.0.0+unknown';
 
-// Opens (or builds) the Glob index for a `storage: disk` glob and returns
-// a disk-backed QuerySources carrying it as an RDF/JS source. No Source
-// record sidecar — the disk tier exists to escape that in-heap cost.
 export function resolveDiskBackedGlob(
   target: ParsedGlobSource,
   transforms: ReadonlyArray<ParsedTransform>,
@@ -22,9 +19,6 @@ export function resolveDiskBackedGlob(
   return resolveDiskBackedIndex(indexId, pattern, transforms, options);
 }
 
-// Each disk-backed split-glob child indexes under its own id so siblings
-// materialize independent Glob indexes — addressable without loading the
-// file into RAM.
 export function resolveDiskBackedFile(
   target: ParsedFileSource,
   transforms: ReadonlyArray<ParsedTransform>,

@@ -259,12 +259,7 @@ function getFirstRest(
   return first && rest ? { first, rest } : null;
 }
 
-/**
- * Try to collapse the `rdf:first`/`rdf:rest`/`rdf:nil` chain rooted at
- * `headLabel` into a `CollectionBlock`. Returns null when the chain is
- * non-conforming (cycle, missing rest, or a `rdf:rest` to something other than
- * another list link or `rdf:nil`); callers fall back to a plain `BnodeBlock`.
- */
+/** Returns null on non-conforming chains; callers fall back to `BnodeBlock`. */
 function tryBuildListBlock(
   headLabel: string,
   ctx: BuildCtx,

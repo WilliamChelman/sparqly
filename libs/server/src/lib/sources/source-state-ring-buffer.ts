@@ -1,10 +1,5 @@
 import type { SourceTransitionEvent } from './source-state-event';
 
-/**
- * Bounded, monotonic-id ring buffer backing the SSE `Last-Event-ID` replay
- * path. Lifetime is process-bound: a restart drops the buffer and reconnecting
- * clients fall back to a snapshot fetch.
- */
 /** `overflow` tells the caller to re-fetch `GET /api/sources` before resuming live. */
 export type SinceResult =
   | { kind: 'events'; events: SourceTransitionEvent[] }
@@ -14,6 +9,7 @@ export interface SourceStateRingBufferOptions {
   capacity?: number;
 }
 
+/** Process-bound: a restart drops the buffer and reconnecting clients fall back to a snapshot fetch. */
 export class SourceStateRingBuffer {
   private nextId = 1;
   private readonly events: SourceTransitionEvent[] = [];
