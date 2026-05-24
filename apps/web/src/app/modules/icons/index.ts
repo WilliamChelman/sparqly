@@ -1,5 +1,6 @@
 export { IconCheckComponent } from './icon-check.component';
 export { IconCopyComponent } from './icon-copy.component';
+export { IconDisclosureComponent } from './icon-disclosure.component';
 export { IconMoonComponent } from './icon-moon.component';
 export { IconSpinnerComponent } from './icon-spinner.component';
 export { IconSunComponent } from './icon-sun.component';

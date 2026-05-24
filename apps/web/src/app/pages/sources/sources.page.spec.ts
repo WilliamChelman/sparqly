@@ -155,6 +155,43 @@ function flush(
   flushConfig(http, opts);
 }
 
+// Card root carries `data-testid="source-row-<id>"`; the id is derived from
+// that single attribute rather than a parallel `data-source-id`.
+function renderedRowIds(host: HTMLElement): string[] {
+  return Array.from(host.querySelectorAll('[data-testid^="source-row-"]')).map(
+    (el) => el.getAttribute('data-testid')!.slice('source-row-'.length),
+  );
+}
+
+// Find a metric value by its visible <dt> label inside a card.
+function metricValue(row: Element | null | undefined, label: string): string {
+  if (!row) return '';
+  const dt = Array.from(row.querySelectorAll('dt')).find(
+    (el) => el.textContent?.trim() === label,
+  );
+  return dt?.nextElementSibling?.textContent?.trim() ?? '';
+}
+
+// Find a button by its visible label inside a card (action + error-details).
+function buttonByText(
+  row: Element | null | undefined,
+  label: string,
+): HTMLButtonElement | null {
+  if (!row) return null;
+  return (
+    Array.from(row.querySelectorAll('button')).find(
+      (el) => el.textContent?.trim() === label,
+    ) ?? null
+  );
+}
+
+// The disclosure toggle is the row's only `aria-expanded` button.
+function disclosureToggle(
+  row: Element | null | undefined,
+): HTMLButtonElement | null {
+  return row?.querySelector<HTMLButtonElement>('button[aria-expanded]') ?? null;
+}
+
 describe('SourcesPage (#353)', () => {
   it('fetches the GET /api/sources snapshot on init', async () => {
     const ctx = await setup();
@@ -171,10 +208,7 @@ describe('SourcesPage (#353)', () => {
     await ctx.stable();
     ctx.detect();
 
-    const rows = Array.from(
-      ctx.nativeElement().querySelectorAll('[data-testid^="source-row-"]'),
-    );
-    expect(rows.map((r) => r.getAttribute('data-source-id'))).toEqual([
+    expect(renderedRowIds(ctx.nativeElement())).toEqual([
       'docs',
       'projects',
       'big',
@@ -217,11 +251,11 @@ describe('SourcesPage (#353)', () => {
     const defaultRow = ctx.nativeElement().querySelector(
       '[data-testid="source-row-projects"]',
     );
-    expect(defaultRow?.getAttribute('data-default')).toBe('true');
+    expect(defaultRow?.querySelector('[title="default"]')).not.toBeNull();
     const nonDefault = ctx.nativeElement().querySelector(
       '[data-testid="source-row-docs"]',
     );
-    expect(nonDefault?.getAttribute('data-default')).not.toBe('true');
+    expect(nonDefault?.querySelector('[title="default"]')).toBeNull();
   });
 
   it('applies a row event from the live stream by replacing the matching row in-place', async () => {
@@ -329,18 +363,10 @@ describe('SourcesPage (#353)', () => {
     const row = ctx.nativeElement().querySelector(
       '[data-testid="source-row-projects"]',
     );
-    expect(row?.querySelector('[data-testid="row-quads"]')?.textContent).toContain(
-      '42',
-    );
-    expect(row?.querySelector('[data-testid="row-files"]')?.textContent).toContain(
-      '3',
-    );
-    expect(
-      row?.querySelector('[data-testid="row-loaded-at"]')?.textContent,
-    ).toBeTruthy();
-    expect(
-      row?.querySelector('[data-testid="row-load-ms"]')?.textContent,
-    ).toContain('17');
+    expect(metricValue(row, 'quads')).toContain('42');
+    expect(metricValue(row, 'files')).toContain('3');
+    expect(metricValue(row, 'last load')).toBeTruthy();
+    expect(metricValue(row, 'load ms')).toContain('17');
   });
 
   it('renders Layer 2 metric cells on a disk-backed ready row (quads cell blank pending the manifest slice) — #355', async () => {
@@ -353,18 +379,13 @@ describe('SourcesPage (#353)', () => {
     const row = ctx.nativeElement().querySelector(
       '[data-testid="source-row-big"]',
     );
-    expect(row?.querySelector('[data-testid="row-files"]')?.textContent).toContain(
-      '12',
-    );
-    expect(
-      row?.querySelector('[data-testid="row-load-ms"]')?.textContent,
-    ).toContain('90');
+    expect(metricValue(row, 'files')).toContain('12');
+    expect(metricValue(row, 'load ms')).toContain('90');
     // `quads` is undefined for disk-backed `ready` until the manifest's
     // `quadCount` field ships in a later slice of #352 — the cell must render
     // empty rather than e.g. "0", so the operator can tell "unknown" apart
     // from "the index really has zero quads".
-    const quadsCell = row?.querySelector('[data-testid="row-quads"]');
-    expect(quadsCell?.textContent?.trim() ?? '').toBe('');
+    expect(metricValue(row, 'quads')).toBe('');
   });
 
   it('leaves the metric cells blank for non-loaded / non-ready rows — #355', async () => {
@@ -377,14 +398,8 @@ describe('SourcesPage (#353)', () => {
     const row = ctx.nativeElement().querySelector(
       '[data-testid="source-row-docs"]',
     );
-    for (const testid of [
-      'row-quads',
-      'row-files',
-      'row-loaded-at',
-      'row-load-ms',
-    ]) {
-      const cell = row?.querySelector(`[data-testid="${testid}"]`);
-      expect(cell?.textContent?.trim() ?? '').toBe('');
+    for (const label of ['quads', 'files', 'last load', 'load ms']) {
+      expect(metricValue(row, label)).toBe('');
     }
   });
 
@@ -413,15 +428,9 @@ describe('SourcesPage (#353)', () => {
     const row = ctx.nativeElement().querySelector(
       '[data-testid="source-row-docs"]',
     );
-    expect(row?.querySelector('[data-testid="row-quads"]')?.textContent).toContain(
-      '99',
-    );
-    expect(row?.querySelector('[data-testid="row-files"]')?.textContent).toContain(
-      '5',
-    );
-    expect(
-      row?.querySelector('[data-testid="row-load-ms"]')?.textContent,
-    ).toContain('250');
+    expect(metricValue(row, 'quads')).toContain('99');
+    expect(metricValue(row, 'files')).toContain('5');
+    expect(metricValue(row, 'load ms')).toContain('250');
   });
 
   it('a live row event that crosses out of loaded clears the metric cells — #355', async () => {
@@ -449,14 +458,8 @@ describe('SourcesPage (#353)', () => {
     const row = ctx.nativeElement().querySelector(
       '[data-testid="source-row-projects"]',
     );
-    for (const testid of [
-      'row-quads',
-      'row-files',
-      'row-loaded-at',
-      'row-load-ms',
-    ]) {
-      const cell = row?.querySelector(`[data-testid="${testid}"]`);
-      expect(cell?.textContent?.trim() ?? '').toBe('');
+    for (const label of ['quads', 'files', 'last load', 'load ms']) {
+      expect(metricValue(row, label)).toBe('');
     }
   });
 
@@ -504,18 +507,11 @@ describe('SourcesPage (#353)', () => {
       const row = ctx.nativeElement().querySelector(
         '[data-testid="source-row-big"]',
       );
-      expect(
-        row?.querySelector('[data-testid="row-quads"]')?.textContent,
-      ).toContain('4242');
-      expect(
-        row?.querySelector('[data-testid="row-index-dir"]')?.textContent,
-      ).toContain('/cfg/.sparqly/index/big');
+      expect(metricValue(row, 'quads')).toContain('4242');
+      expect(metricValue(row, 'index')).toContain('/cfg/.sparqly/index/big');
       // 8192 bytes → a human-readable size, not the raw byte count.
-      const bytesCell = row?.querySelector('[data-testid="row-index-bytes"]');
-      expect(bytesCell?.textContent ?? '').toMatch(/8(\.0)? ?KB|8192/);
-      expect(
-        row?.querySelector('[data-testid="row-manifest-version"]')?.textContent,
-      ).toContain('0.29.0');
+      expect(metricValue(row, 'size')).toMatch(/8(\.0)? ?KB|8192/);
+      expect(metricValue(row, 'version')).toContain('0.29.0');
     });
 
     it('renders a stale chip with the human-readable reason on a stale disk-backed row', async () => {
@@ -565,16 +561,17 @@ describe('SourcesPage (#353)', () => {
         const row = ctx.nativeElement().querySelector(
           `[data-testid="source-row-${id}"]`,
         );
-        for (const testid of [
-          'row-index-dir',
-          'row-index-bytes',
-          'row-manifest-version',
-          'row-stale-reason',
-        ]) {
-          expect(
-            row?.querySelector(`[data-testid="${testid}"]`),
-          ).toBeNull();
+        // The disk-backed-only metric block (index / size / version) must not
+        // render on non-disk-backed rows; the staleness chip neither.
+        const dtLabels = Array.from(row?.querySelectorAll('dt') ?? []).map(
+          (d) => d.textContent?.trim(),
+        );
+        for (const label of ['index', 'size', 'version']) {
+          expect(dtLabels).not.toContain(label);
         }
+        expect(
+          row?.querySelector('[data-testid="row-stale-reason"]'),
+        ).toBeNull();
       }
     });
   });
@@ -590,9 +587,7 @@ describe('SourcesPage (#353)', () => {
       const docsRow = ctx.nativeElement().querySelector(
         '[data-testid="source-row-docs"]',
       );
-      expect(
-        docsRow?.querySelector('[data-testid="row-action-load"]'),
-      ).not.toBeNull();
+      expect(buttonByText(docsRow, 'Load')).not.toBeNull();
     });
 
     it('renders a Reload button on a loaded in-memory row that POSTs /api/sources/:id/reload on click', async () => {
@@ -605,9 +600,7 @@ describe('SourcesPage (#353)', () => {
       const projectsRow = ctx.nativeElement().querySelector(
         '[data-testid="source-row-projects"]',
       );
-      const reload = projectsRow?.querySelector<HTMLButtonElement>(
-        '[data-testid="row-action-reload"]',
-      );
+      const reload = buttonByText(projectsRow, 'Reload');
       expect(reload).not.toBeNull();
 
       reload!.click();
@@ -630,9 +623,7 @@ describe('SourcesPage (#353)', () => {
       const projectsRow = ctx.nativeElement().querySelector(
         '[data-testid="source-row-projects"]',
       );
-      const unload = projectsRow?.querySelector<HTMLButtonElement>(
-        '[data-testid="row-action-unload"]',
-      );
+      const unload = buttonByText(projectsRow, 'Unload');
       expect(unload).not.toBeNull();
 
       unload!.click();
@@ -656,10 +647,20 @@ describe('SourcesPage (#353)', () => {
       await ctx.stable();
       ctx.detect();
 
-      const buttons = ctx.nativeElement().querySelectorAll(
-        '[data-testid^="row-action-"]',
-      );
-      expect(buttons.length).toBe(0);
+      const adminLabels = new Set([
+        'Load',
+        'Reload',
+        'Unload',
+        'Retry',
+        '(Re)build index',
+        'Cancel',
+        'Test connection',
+        'Reload loaded children',
+      ]);
+      const found = Array.from(
+        ctx.nativeElement().querySelectorAll('button'),
+      ).filter((b) => adminLabels.has(b.textContent?.trim() ?? ''));
+      expect(found).toEqual([]);
     });
 
     it('clicking Load on a not-loaded row POSTs /api/sources/:id/load', async () => {
@@ -672,9 +673,7 @@ describe('SourcesPage (#353)', () => {
       const docsRow = ctx.nativeElement().querySelector(
         '[data-testid="source-row-docs"]',
       );
-      const load = docsRow?.querySelector<HTMLButtonElement>(
-        '[data-testid="row-action-load"]',
-      );
+      const load = buttonByText(docsRow, 'Load');
       load!.click();
       ctx.detect();
       await ctx.stable();
@@ -696,18 +695,13 @@ describe('SourcesPage (#353)', () => {
       await ctx.stable();
       ctx.detect();
 
-      const inMemoryVerbTestIds = [
-        'row-action-load',
-        'row-action-reload',
-        'row-action-unload',
-      ];
+      const inMemoryVerbs = ['Load', 'Reload', 'Unload'];
       for (const id of ['wikidata', 'big']) {
         const row = ctx.nativeElement().querySelector(
           `[data-testid="source-row-${id}"]`,
         );
-        for (const testId of inMemoryVerbTestIds) {
-          const button = row?.querySelector(`[data-testid="${testId}"]`);
-          expect(button).toBeNull();
+        for (const label of inMemoryVerbs) {
+          expect(buttonByText(row, label)).toBeNull();
         }
       }
     });
@@ -785,9 +779,10 @@ describe('SourcesPage (#353)', () => {
         const row = ctx.nativeElement().querySelector(
           `[data-testid="source-row-${id}"]`,
         );
+        const label = id === 'broken' ? 'Retry' : '(Re)build index';
         expect(
-          row?.querySelector('[data-testid="row-action-rebuild-index"]'),
-          `expected (Re)build button on row ${id}`,
+          buttonByText(row, label),
+          `expected ${label} button on row ${id}`,
         ).not.toBeNull();
       }
       // The indexing row hides (Re)build — Cancel is the only verb during
@@ -795,9 +790,7 @@ describe('SourcesPage (#353)', () => {
       const indexing = ctx.nativeElement().querySelector(
         '[data-testid="source-row-building"]',
       );
-      expect(
-        indexing?.querySelector('[data-testid="row-action-rebuild-index"]'),
-      ).toBeNull();
+      expect(buttonByText(indexing, '(Re)build index')).toBeNull();
     });
 
     it('renders a Cancel button on indexing rows only', async () => {
@@ -810,15 +803,13 @@ describe('SourcesPage (#353)', () => {
       const indexing = ctx.nativeElement().querySelector(
         '[data-testid="source-row-building"]',
       );
-      expect(
-        indexing?.querySelector('[data-testid="row-action-cancel-build"]'),
-      ).not.toBeNull();
+      expect(buttonByText(indexing, 'Cancel')).not.toBeNull();
       for (const id of ['ready-big', 'stale-drifted', 'fresh', 'broken']) {
         const row = ctx.nativeElement().querySelector(
           `[data-testid="source-row-${id}"]`,
         );
         expect(
-          row?.querySelector('[data-testid="row-action-cancel-build"]'),
+          buttonByText(row, 'Cancel'),
           `expected no Cancel on row ${id}`,
         ).toBeNull();
       }
@@ -842,9 +833,7 @@ describe('SourcesPage (#353)', () => {
         const row = ctx.nativeElement().querySelector(
           '[data-testid="source-row-fresh"]',
         );
-        const btn = row?.querySelector<HTMLButtonElement>(
-          '[data-testid="row-action-rebuild-index"]',
-        );
+        const btn = buttonByText(row, '(Re)build index');
         btn!.click();
         ctx.detect();
         await ctx.stable();
@@ -871,9 +860,7 @@ describe('SourcesPage (#353)', () => {
         const row = ctx.nativeElement().querySelector(
           '[data-testid="source-row-ready-big"]',
         );
-        const btn = row?.querySelector<HTMLButtonElement>(
-          '[data-testid="row-action-rebuild-index"]',
-        );
+        const btn = buttonByText(row, '(Re)build index');
         btn!.click();
         ctx.detect();
         await ctx.stable();
@@ -910,9 +897,7 @@ describe('SourcesPage (#353)', () => {
         const row = ctx.nativeElement().querySelector(
           '[data-testid="source-row-stale-drifted"]',
         );
-        const btn = row?.querySelector<HTMLButtonElement>(
-          '[data-testid="row-action-rebuild-index"]',
-        );
+        const btn = buttonByText(row, '(Re)build index');
         btn!.click();
         ctx.detect();
         await ctx.stable();
@@ -936,9 +921,7 @@ describe('SourcesPage (#353)', () => {
       const row = ctx.nativeElement().querySelector(
         '[data-testid="source-row-building"]',
       );
-      const btn = row?.querySelector<HTMLButtonElement>(
-        '[data-testid="row-action-cancel-build"]',
-      );
+      const btn = buttonByText(row, 'Cancel');
       btn!.click();
       ctx.detect();
       await ctx.stable();
@@ -955,10 +938,11 @@ describe('SourcesPage (#353)', () => {
       await ctx.stable();
       ctx.detect();
 
-      const all = ctx.nativeElement().querySelectorAll(
-        '[data-testid="row-action-rebuild-index"], [data-testid="row-action-cancel-build"]',
-      );
-      expect(all.length).toBe(0);
+      const labels = new Set(['(Re)build index', 'Retry', 'Cancel']);
+      const found = Array.from(
+        ctx.nativeElement().querySelectorAll('button'),
+      ).filter((b) => labels.has(b.textContent?.trim() ?? ''));
+      expect(found).toEqual([]);
     });
   });
 
@@ -977,9 +961,7 @@ describe('SourcesPage (#353)', () => {
       const endpointRow = ctx.nativeElement().querySelector(
         '[data-testid="source-row-wikidata"]',
       );
-      expect(
-        endpointRow?.querySelector('[data-testid="row-action-test-connection"]'),
-      ).not.toBeNull();
+      expect(buttonByText(endpointRow, 'Test connection')).not.toBeNull();
     });
 
     it('hides the Test connection button when allowAdminActions is false (prevents endpoint hammering, PRD user story 41)', async () => {
@@ -992,9 +974,7 @@ describe('SourcesPage (#353)', () => {
       const endpointRow = ctx.nativeElement().querySelector(
         '[data-testid="source-row-wikidata"]',
       );
-      expect(
-        endpointRow?.querySelector('[data-testid="row-action-test-connection"]'),
-      ).toBeNull();
+      expect(buttonByText(endpointRow, 'Test connection')).toBeNull();
     });
 
     it('never renders Test connection on non-endpoint rows', async () => {
@@ -1009,7 +989,7 @@ describe('SourcesPage (#353)', () => {
           `[data-testid="source-row-${id}"]`,
         );
         expect(
-          row?.querySelector('[data-testid="row-action-test-connection"]'),
+          buttonByText(row, 'Test connection'),
           `expected no Test connection button on ${id}`,
         ).toBeNull();
       }
@@ -1025,9 +1005,7 @@ describe('SourcesPage (#353)', () => {
       const row = ctx.nativeElement().querySelector(
         '[data-testid="source-row-wikidata"]',
       );
-      const btn = row?.querySelector<HTMLButtonElement>(
-        '[data-testid="row-action-test-connection"]',
-      );
+      const btn = buttonByText(row, 'Test connection');
       btn!.click();
       ctx.detect();
       await ctx.stable();
@@ -1061,9 +1039,7 @@ describe('SourcesPage (#353)', () => {
       const row = ctx.nativeElement().querySelector(
         '[data-testid="source-row-wikidata"]',
       );
-      const btn = row?.querySelector<HTMLButtonElement>(
-        '[data-testid="row-action-test-connection"]',
-      );
+      const btn = buttonByText(row, 'Test connection');
       btn!.click();
       ctx.detect();
       await ctx.stable();
@@ -1188,9 +1164,7 @@ describe('SourcesPage (#353)', () => {
       const diskRow = ctx.nativeElement().querySelector(
         '[data-testid="source-row-broken-index"]',
       );
-      expect(
-        diskRow?.querySelector('[data-testid="row-error-details-toggle"]'),
-      ).toBeNull();
+      expect(buttonByText(diskRow, 'Show details')).toBeNull();
       expect(
         diskRow?.querySelector('[data-testid="row-error-details"]'),
       ).toBeNull();
@@ -1200,9 +1174,7 @@ describe('SourcesPage (#353)', () => {
       const memRow = ctx.nativeElement().querySelector(
         '[data-testid="source-row-broken-glob"]',
       );
-      const toggle = memRow?.querySelector<HTMLButtonElement>(
-        '[data-testid="row-error-details-toggle"]',
-      );
+      const toggle = buttonByText(memRow, 'Show details');
       expect(toggle).not.toBeNull();
       expect(
         memRow?.querySelector('[data-testid="row-error-details"]'),
@@ -1230,14 +1202,10 @@ describe('SourcesPage (#353)', () => {
       const row = ctx.nativeElement().querySelector(
         '[data-testid="source-row-broken-glob"]',
       );
-      const btn = row?.querySelector<HTMLButtonElement>(
-        '[data-testid="row-action-load"]',
-      );
+      // Same wire verb (`/load`) — only the surface label flips to "Retry"
+      // so the operator sees the recovery affordance the failure invites.
+      const btn = buttonByText(row, 'Retry');
       expect(btn).not.toBeNull();
-      // Same testid (the wire/HTTP verb hasn't changed — `/load`); only
-      // the surface label flips to "Retry" so the operator sees the recovery
-      // affordance the failure invites.
-      expect(btn?.textContent?.trim()).toBe('Retry');
 
       btn!.click();
       ctx.detect();
@@ -1257,11 +1225,8 @@ describe('SourcesPage (#353)', () => {
       const row = ctx.nativeElement().querySelector(
         '[data-testid="source-row-broken-index"]',
       );
-      const btn = row?.querySelector<HTMLButtonElement>(
-        '[data-testid="row-action-rebuild-index"]',
-      );
+      const btn = buttonByText(row, 'Retry');
       expect(btn).not.toBeNull();
-      expect(btn?.textContent?.trim()).toBe('Retry');
 
       btn!.click();
       ctx.detect();
@@ -1280,16 +1245,15 @@ describe('SourcesPage (#353)', () => {
 
       // The error chip + Show details still surface (read-only operators
       // still need to see why a source is broken) — only the Retry action
-      // disappears. The existing `row-action-*` sweep elsewhere already
-      // covers the latter, but we mirror it here for the failed-row class.
+      // disappears.
       const chips = ctx.nativeElement().querySelectorAll(
         '[data-testid="row-error-chip"]',
       );
       expect(chips.length).toBe(2);
-      const actions = ctx.nativeElement().querySelectorAll(
-        '[data-testid^="row-action-"]',
-      );
-      expect(actions.length).toBe(0);
+      const retries = Array.from(
+        ctx.nativeElement().querySelectorAll('button'),
+      ).filter((b) => b.textContent?.trim() === 'Retry');
+      expect(retries).toEqual([]);
     });
   });
 
@@ -1333,9 +1297,7 @@ describe('SourcesPage (#353)', () => {
       );
       expect(metaRow).not.toBeNull();
       // The disclosure control is on the meta row.
-      expect(
-        metaRow?.querySelector('[data-testid="row-disclosure-toggle"]'),
-      ).not.toBeNull();
+      expect(disclosureToggle(metaRow)).not.toBeNull();
       // No child rows are rendered yet.
       expect(
         ctx.nativeElement().querySelector('[data-testid="source-row-docs/a.ttl"]'),
@@ -1382,18 +1344,12 @@ describe('SourcesPage (#353)', () => {
         metaRow?.querySelector('[data-testid="row-state"]')?.textContent,
       ).toContain('mixed');
 
-      // The child must not appear as a sibling top-level row.
-      const topLevelIds = Array.from(
-        ctx.nativeElement().querySelectorAll('[data-testid^="source-row-"]'),
-      )
-        .filter((el) => el.getAttribute('data-parent-id') === null)
-        .map((el) => el.getAttribute('data-source-id'));
-      expect(topLevelIds).toEqual(['docs']);
+      // The child must not appear as a sibling top-level row. With the meta
+      // collapsed, only the parent renders — no child cards anywhere.
+      expect(renderedRowIds(ctx.nativeElement())).toEqual(['docs']);
 
       // Expanding the meta now reveals the updated child.
-      ctx.nativeElement().querySelector<HTMLButtonElement>(
-        '[data-testid="row-disclosure-toggle"]',
-      )?.click();
+      disclosureToggle(ctx.nativeElement())?.click();
       ctx.detect();
       await ctx.stable();
       ctx.detect();
@@ -1455,9 +1411,7 @@ describe('SourcesPage (#353)', () => {
       await ctx.stable();
       ctx.detect();
 
-      const cascade = ctx.nativeElement().querySelector<HTMLButtonElement>(
-        '[data-testid="row-action-reload-loaded-children"]',
-      );
+      const cascade = buttonByText(ctx.nativeElement(), 'Reload loaded children');
       expect(cascade).not.toBeNull();
       cascade?.click();
       ctx.detect();
@@ -1515,9 +1469,7 @@ describe('SourcesPage (#353)', () => {
       await ctx.stable();
       ctx.detect();
 
-      ctx.nativeElement().querySelector<HTMLButtonElement>(
-        '[data-testid="row-action-reload-loaded-children"]',
-      )?.click();
+      buttonByText(ctx.nativeElement(), 'Reload loaded children')?.click();
       ctx.detect();
       await ctx.stable();
 
@@ -1561,9 +1513,7 @@ describe('SourcesPage (#353)', () => {
       await ctx.stable();
       ctx.detect();
       expect(
-        ctx.nativeElement().querySelector(
-          '[data-testid="row-action-reload-loaded-children"]',
-        ),
+        buttonByText(ctx.nativeElement(), 'Reload loaded children'),
       ).toBeNull();
     });
 
@@ -1591,9 +1541,7 @@ describe('SourcesPage (#353)', () => {
       await ctx.stable();
       ctx.detect();
       expect(
-        ctx.nativeElement().querySelector(
-          '[data-testid="row-action-reload-loaded-children"]',
-        ),
+        buttonByText(ctx.nativeElement(), 'Reload loaded children'),
       ).toBeNull();
     });
 
@@ -1608,9 +1556,7 @@ describe('SourcesPage (#353)', () => {
       await ctx.stable();
       ctx.detect();
 
-      ctx.nativeElement().querySelector<HTMLButtonElement>(
-        '[data-testid="row-disclosure-toggle"]',
-      )?.click();
+      disclosureToggle(ctx.nativeElement())?.click();
       ctx.detect();
       await ctx.stable();
       ctx.detect();
@@ -1618,9 +1564,7 @@ describe('SourcesPage (#353)', () => {
       const childRow = ctx.nativeElement().querySelector(
         '[data-testid="source-row-docs/a.ttl"]',
       );
-      const loadBtn = childRow?.querySelector<HTMLButtonElement>(
-        '[data-testid="row-action-load"]',
-      );
+      const loadBtn = buttonByText(childRow, 'Load');
       expect(loadBtn).not.toBeNull();
       loadBtn?.click();
       ctx.detect();
@@ -1640,9 +1584,7 @@ describe('SourcesPage (#353)', () => {
       await ctx.stable();
       ctx.detect();
 
-      const toggle = ctx.nativeElement().querySelector<HTMLButtonElement>(
-        '[data-testid="row-disclosure-toggle"]',
-      );
+      const toggle = disclosureToggle(ctx.nativeElement());
       toggle?.click();
       ctx.detect();
       await ctx.stable();
@@ -1682,5 +1624,154 @@ describe('SourcesPage (#353)', () => {
     );
     expect(triggers).toEqual([]);
     ctx.http.verify();
+  });
+
+  describe('filter bar (search + state chips)', () => {
+    const visibleRowIds = renderedRowIds;
+
+    it('renders all snapshot rows by default (no filter active)', async () => {
+      const ctx = await setup();
+      flush(ctx.http);
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      expect(visibleRowIds(ctx.nativeElement())).toEqual([
+        'docs',
+        'projects',
+        'big',
+        'wikidata',
+      ]);
+    });
+
+    it('typing into the search input narrows the visible rows by id substring', async () => {
+      const ctx = await setup();
+      flush(ctx.http);
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const input = ctx.nativeElement().querySelector<HTMLInputElement>(
+        '[data-testid="sources-filter-query"]',
+      );
+      expect(input).not.toBeNull();
+      input!.value = 'pro';
+      input!.dispatchEvent(new Event('input'));
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      expect(visibleRowIds(ctx.nativeElement())).toEqual(['projects']);
+    });
+
+    it('clicking a state chip filters to rows in that state and other chips become inactive', async () => {
+      const ctx = await setup();
+      flush(ctx.http);
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const loadedChip = ctx.nativeElement().querySelector<HTMLButtonElement>(
+        '[data-testid="sources-filter-loaded"]',
+      );
+      loadedChip!.click();
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      expect(visibleRowIds(ctx.nativeElement())).toEqual(['projects']);
+      expect(loadedChip!.getAttribute('aria-pressed')).toBe('true');
+      const allChip = ctx.nativeElement().querySelector(
+        '[data-testid="sources-filter-all"]',
+      );
+      expect(allChip?.getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('the endpoint chip narrows to endpoint rows only', async () => {
+      const ctx = await setup();
+      flush(ctx.http);
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      ctx.nativeElement().querySelector<HTMLButtonElement>(
+        '[data-testid="sources-filter-endpoint"]',
+      )!.click();
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      expect(visibleRowIds(ctx.nativeElement())).toEqual(['wikidata']);
+    });
+
+    it('chip count badges reflect the snapshot — including children in split-glob metas', async () => {
+      // The chip counts cover the whole registry, not just what's currently
+      // visible — they're a "what's in here" signal, not a DOM-render one.
+      const SNAPSHOT_WITH_CHILDREN: SourceRow[] = [
+        {
+          mode: 'in-memory',
+          id: 'docs',
+          kind: 'glob',
+          state: 'not-loaded',
+          children: [
+            {
+              mode: 'in-memory',
+              id: 'docs/a.ttl',
+              kind: 'file',
+              parentId: 'docs',
+              state: 'loaded',
+            },
+            {
+              mode: 'in-memory',
+              id: 'docs/b.ttl',
+              kind: 'file',
+              parentId: 'docs',
+              state: 'not-loaded',
+            },
+          ],
+        },
+        { mode: 'endpoint', id: 'wikidata', kind: 'endpoint' },
+      ];
+      const ctx = await setup();
+      flush(ctx.http, SNAPSHOT_WITH_CHILDREN);
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const chipText = (key: string): string =>
+        ctx.nativeElement()
+          .querySelector(`[data-testid="sources-filter-${key}"]`)!
+          .textContent!.trim();
+      // parent meta-row + both children + endpoint = 4 entries
+      expect(chipText('all')).toContain('4');
+      // parent (not-loaded) + b.ttl child (not-loaded) = 2
+      expect(chipText('not-loaded')).toContain('2');
+      expect(chipText('loaded')).toContain('1');
+      expect(chipText('endpoint')).toContain('1');
+    });
+
+    it('when no rows match the active filter, the page shows an empty-state hint instead of the list', async () => {
+      const ctx = await setup();
+      flush(ctx.http);
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      const input = ctx.nativeElement().querySelector<HTMLInputElement>(
+        '[data-testid="sources-filter-query"]',
+      );
+      input!.value = 'nothing-matches-this';
+      input!.dispatchEvent(new Event('input'));
+      ctx.detect();
+      await ctx.stable();
+      ctx.detect();
+
+      expect(
+        ctx.nativeElement().querySelector('[data-testid="sources-list"]'),
+      ).toBeNull();
+      expect(
+        ctx.nativeElement().querySelector('[data-testid="sources-filter-empty"]'),
+      ).not.toBeNull();
+    });
   });
 });
