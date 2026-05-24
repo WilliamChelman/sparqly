@@ -15,7 +15,7 @@ import { InputComponent } from '@app/modules/input';
 import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
 import { SAVED_QUERY_SLUG_REGEX } from 'core/saved-queries/saved-query-entry';
 import type { ParameterDeclaration } from 'common';
-import { ParameterEditorComponent } from '../query/components/parameter-editor.component';
+import { ParameterEditorComponent } from '../../query/components/parameter-editor.component';
 
 export interface CreatePayload {
   slug: string;
@@ -41,16 +41,12 @@ export interface CreatePayload {
         app-input
         class="font-mono"
         type="text"
-        data-testid="queries-create-slug"
         placeholder="my-saved-query"
         [value]="draftSlug()"
         (input)="onSlugInput($event)"
       />
       @if (errorSlug && errorSlug === draftSlug()) {
-        <span
-          data-testid="queries-create-slug-error"
-          class="text-[12px] text-removed"
-        >
+        <span class="text-[12px] text-removed">
           A saved query named <code>{{ draftSlug() }}</code> already exists.
           Pick another slug.
         </span>
@@ -75,7 +71,6 @@ export interface CreatePayload {
         app-btn
         type="button"
         variant="secondary"
-        data-testid="queries-cancel"
         (click)="canceled.emit()"
       >
         Cancel
@@ -84,7 +79,6 @@ export interface CreatePayload {
         app-btn
         type="button"
         variant="accent"
-        data-testid="queries-save"
         [disabled]="!isSlugValid()"
         (click)="emitSave()"
       >
