@@ -198,6 +198,27 @@ _Avoid_: "source status", a unified "idle/busy/ready" taxonomy
 The webapp surface that lists every **served registry** entry with its **Source load state** and exposes per-entry admin triggers — Load, Reload, Unload, (Re)build index, Test connection — each gated by `serve --read-only`. Read-only against the registry itself: the page never declares new sources.
 _Avoid_: "sources dashboard", "registry page"
 
+### Testing
+
+**E2E**:
+The cli end-to-end suite under `apps/cli-e2e`, exercised by `pnpm run e2e`. The unqualified term refers to this lane only.
+_Avoid_: conflating with **Web e2e**
+
+**Web e2e**:
+The webapp end-to-end suite that drives a real browser against a real `serve` booted on a fixture project config. Owns the happy-path of every user-visible feature ("clickable → web e2e"). The only test layer that asserts on rendered HTML.
+_Avoid_: bare "e2e" (means cli-e2e), "webapp integration test", "ui test"
+
+**DOM-free spec**:
+A webapp unit spec that may use `TestBed`, dependency injection, and `HttpTestingController`, and must not call `fixture.detectChanges()`, instantiate a component fixture, query the rendered DOM, or assert on rendered HTML, classes, or attributes. The canonical home for non-trivial derived state — services, signal-only classes, and pure functions extracted out of a page or component. If the assertion needs a rendered template, it belongs in **Web e2e**.
+_Avoid_: "unit test" (too generic), "logic spec", "headless spec"
+
+**Accessible selector**:
+A web-e2e locator chosen by ARIA role, accessible name, label, or visible text — the Playwright / Testing Library default. The required selector style for **Web e2e** and any surviving spec that does touch the DOM.
+
+**Test escape hatch**:
+The `data-testid` attribute, allowed only where no **Accessible selector** can disambiguate the target. Each surviving use is justified in code review; the default is to fix the markup (add an `aria-label`, a real `<label>`, a heading) rather than add the attribute.
+_Avoid_: "test id" as a default selector, "test hook"
+
 ## Relationships
 
 - A **View** has exactly one **Upstream** source via `from:`.
@@ -226,6 +247,9 @@ _Avoid_: "sources dashboard", "registry page"
 - The webapp deep-links **Saved query** loads via a URL slug parameter plus per-parameter binding keys (multi-cardinality values supplied as repeated keys). This is mutually exclusive with the inline-SPARQL URL form — editing a loaded saved-query body on a **Saved-query run surface** transitions the URL to the inline form. Persisting the edit requires opening the slug on the **Saved-query authoring surface**; run surfaces carry no Save, Save-as, or "modified from `<slug>`" affordance.
 - Loading a **Saved query** is source-agnostic: the user's currently-selected source is untouched, and the artifact persists no `lastUsedSource` or `intendedSource` field. A user who wants a query durably bound to a specific source declares a **View** instead — the same axis along which a **Saved query** and a **View** already differ (transient/UI vs. durable/config) extends to source binding.
 - The **Saved-query authoring surface** is the single write surface for the **Saved-query sidecar**; the **Saved-query run surfaces** are read-only against it. `serve --read-only` collapses the authoring surface to browse-and-run without changing the run surfaces (which never write to begin with).
+- Webapp test layers are exclusive and exhaustive: every behavior worth covering lives in exactly one of (1) a pure-function unit spec on extracted logic, (2) a **DOM-free spec** on a service or signal-only class, or (3) **Web e2e** when the assertion needs a rendered template. Component-shaped specs that render a fixture and assert on the DOM are not a layer — they collapse into (3).
+- **Web e2e** runs against a real `serve` booted on a fixture project config; it does not stub HTTP, SSE, or the saved-query sidecar. The **E2E** lane (cli) and **Web e2e** lane are independent processes with independent fixtures and independent CI targets.
+- **Accessible selectors** are the default for **Web e2e**; the **Test escape hatch** (`data-testid`) is allowed only when no accessible selector disambiguates the target, and each surviving use is reviewed against fixing the markup first.
 
 ## Example dialogue
 
