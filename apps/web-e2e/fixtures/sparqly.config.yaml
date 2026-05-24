@@ -1,0 +1,11 @@
+sources:
+  - id: alpha
+    glob: ./data/alpha.ttl
+  - id: beta
+    glob: ./data/beta.ttl
+
+context:
+  prefixes:
+    ex: 'http://example.org/'
+    rdf: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#'
+    rdfs: 'http://www.w3.org/2000/01/rdf-schema#'

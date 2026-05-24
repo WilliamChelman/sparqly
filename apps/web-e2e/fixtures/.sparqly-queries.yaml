@@ -1,0 +1,7 @@
+savedQueries:
+  spo:
+    body: |-
+      SELECT ?s ?p ?o {
+        ?s ?p ?o .
+      }
+      LIMIT 10
