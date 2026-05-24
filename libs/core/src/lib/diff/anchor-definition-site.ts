@@ -5,20 +5,7 @@ import {
   type SourceRecordSidecar,
 } from '../sources';
 
-/**
- * Given an in-memory {@link Store} and a named-entity IRI, return one
- * {@link SourceRecord} per distinct file the anchor's triples are annotated
- * from, each focused on that file's earliest annotated line of the anchor.
- *
- * Reads provenance exclusively from the loader-attached
- * {@link SourceRecordSidecar}: for every asserted triple in the store whose
- * subject is the anchor, the function looks up records under the triple's
- * graph-agnostic pattern key and buckets by file, keeping the smallest line
- * per file.
- *
- * Returns an empty array when the anchor is absent from the store, or when
- * the sidecar has no records for any of its triples.
- */
+/** Earliest annotated line per file where the anchor's triples are asserted. */
 export function anchorDefinitionSite(
   store: Store,
   anchorIri: string,

@@ -30,12 +30,7 @@ export interface RdfDiffResult {
   added: string[];
   /** Canonical N-Quads strings present on the left but not the right, sorted lexicographically. */
   removed: string[];
-  /**
-   * Per-side count of post-strip asserted quads — i.e. the size of each
-   * side's canonical N-Quads set, with RDF-star annotations excluded. By
-   * construction `left - common = removed.length` and
-   * `right - common = added.length`.
-   */
+  /** Per-side count of post-strip asserted quads. */
   totals: DiffTotals;
 }
 
@@ -45,48 +40,20 @@ export interface DiffTotals {
 }
 
 export interface DiffSideStore {
-  /**
-   * The full Store for one side, after `resolveSource`. May contain
-   * RDF-star annotation triples when the source declared an explicit
-   * `annotateSource` transform; the canonicalizer strips them using
-   * {@link annotationPredicates} before diffing.
-   */
   store: Store;
-  /**
-   * Predicate IRIs used by the side's explicit `annotateSource` transform,
-   * threaded from {@link extractAnnotationPredicates}. Tells the
-   * canonicalizer which RDF-star annotation triples to strip before
-   * diffing. Defaults are applied when the source did not declare or
-   * override `annotateSource`.
-   */
+  /** Annotation predicate IRIs to strip before canonicalization. */
   annotationPredicates?: AnnotationPredicateIris;
-  /**
-   * Loader-attached source-record sidecar. When supplied, diff re-keys the
-   * sidecar's `(s, p, o)` map to canonical N-Quads, fanning out across graphs
-   * so each asserted quad gets the records authored under its triple.
-   */
+  /** Loader-attached source-record sidecar, re-keyed onto canonical N-Quads. */
   sourceRecords?: SourceRecordSidecar;
 }
 
 export interface RdfDiffWithSourcesResult extends RdfDiffResult {
-  /**
-   * Per-side `Map<canonicalNQuadsKey, SourceRecord[]>`. The key is the canonical
-   * N-Quads serialization of one asserted quad (matching entries in `added` /
-   * `removed` and the equal-on-both-sides quads); the value is the list of
-   * records authored under that triple in that side. Empty for sides whose
-   * source did not declare `annotate`.
-   */
+  /** Per-side records keyed by canonical N-Quad. Empty when no `annotate` transform. */
   sourceRecords: {
     left: Map<string, SourceRecord[]>;
     right: Map<string, SourceRecord[]>;
   };
-  /**
-   * Per-side `Map<storeBlankNodeLabel, canonicalBlankNodeLabel>` issued by
-   * RDFC-1.0. Populated by {@link diffStores}; absent on results built via
-   * {@link diffCanonicalStatements} (which never sees the underlying Stores).
-   * Consumers that need to walk the parent chain of a canonical bnode in the
-   * raw Store invert this map.
-   */
+  /** Per-side RDFC-1.0 label map; absent from {@link diffCanonicalStatements} results. */
   canonicalIdMap?: {
     left: Map<string, string>;
     right: Map<string, string>;
@@ -105,15 +72,6 @@ export async function diffStores(
       annotationPredicates: right.annotationPredicates,
     }),
   ]);
-  // RDFC-1.0 canonical bnode labels are stable within a dataset but can
-  // drift across two datasets whose overall bnode topology differs, even
-  // when an individual bnode's local subgraph is structurally identical on
-  // both sides. {@link diffWithPairedBnodes} pairs bnodes whose
-  // bisimulation shape hashes match across sides, rewrites their labels to
-  // a shared token, and then runs a multiset diff — so isomorphic subtrees
-  // collapse to zero and only genuine content changes survive. Bnodes with
-  // no cross-side counterpart keep their canonical labels, preserving the
-  // string-set behavior that absorption / parent-link logic relies on.
   const diff = diffWithPairedBnodes(
     leftCanon.canonicalStatements,
     leftCanon.canonicalText,
@@ -180,14 +138,7 @@ function diffWithPairedBnodes(
   };
 }
 
-/**
- * For each bnode shape hash present on both sides, pair the lexicographically
- * smallest canonical-label bnodes from each side (up to the per-side count
- * minimum) and assign them a side-shared token. Bnodes whose shape has no
- * cross-side counterpart — or whose multiplicity exceeds the other side's —
- * are left unmapped, so they keep their canonical labels and existing
- * string-equal-across-sides behavior is preserved.
- */
+/** Pair shape-equal bnodes across sides (up to per-side multiplicity) under shared tokens. */
 function computeBnodePairing(
   leftCanonicalText: string,
   rightCanonicalText: string,
@@ -329,13 +280,7 @@ export interface RdfStatementJson {
   p: RdfTermJson;
   o: RdfTermJson;
   g?: RdfTermJson;
-  /**
-   * Per-entry `SourceRecord[]` populated from the canonical side (right-side
-   * records on `added`, left-side records on `removed`) when
-   * {@link FormatRdfDiffOptions.sourceRecords} is supplied to the `json`
-   * format. Omitted when no records are present, so existing JSON consumers
-   * remain byte-identical for unannotated sources.
-   */
+  /** Side-appropriate records (right on `added`, left on `removed`); omitted when empty. */
   sourceRecords?: SourceRecord[];
 }
 
@@ -362,35 +307,16 @@ export function diffCanonicalStatements(
 }
 
 export interface FormatRdfDiffOptions {
-  /**
-   * Per-side `Map<canonicalNQuadsKey, SourceRecord[]>` returned by
-   * {@link diffStores}. When supplied for the `human` format, each `+` /
-   * `-` hunk is augmented with a trailing inline `# path:line` comment
-   * built from the side that authored the hunk (right for `+`, left for
-   * `-`). Other formats currently ignore this option.
-   */
+  /** Per-side records for the `human` format's trailing `# path:line` comments. */
   sourceRecords?: {
     left: Map<string, SourceRecord[]>;
     right: Map<string, SourceRecord[]>;
   };
-  /**
-   * Working directory for trailing-comment path display. Required when
-   * `sourceRecords` is supplied.
-   */
+  /** Required when `sourceRecords` is set; resolves relative paths for trailing comments. */
   cwd?: string;
-  /**
-   * Prefixes used by the `turtle` format to CURIE-shorten each flat statement
-   * and to emit `@prefix` declarations at the top of every
-   * `# --- removed/added ---` block. Ignored by other formats.
-   */
+  /** CURIE prefixes for the `turtle` format. */
   prefixes?: Record<string, string>;
-  /**
-   * Pre-computed `HunkedRdfDiff` used by the `grouped` format. Required when
-   * `format === 'grouped'`; ignored by other formats. Built by callers via
-   * {@link import('./group-rdf-diff-by-entity').groupRdfDiffByEntity} so the
-   * grouping algorithm sees both Stores while {@link formatRdfDiff} stays
-   * Store-agnostic.
-   */
+  /** Required for the `grouped` format; build via `groupRdfDiffByEntity`. */
   hunked?: HunkedRdfDiff;
 }
 
@@ -450,10 +376,7 @@ export function formatRdfDiff(
   return parts.join('');
 }
 
-/**
- * Canonical one-line `# left=L right=R +x -y` summary, shared between the
- * stderr summary, every text-format body, and the html `<p class="summary">`.
- */
+/** Canonical `left=L right=R +x -y` summary line shared across all surfaces. */
 export function formatDiffSummaryLine(
   totals: DiffTotals,
   added: number,

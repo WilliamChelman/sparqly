@@ -1,16 +1,4 @@
-/**
- * Tagged-union error type owned by the `target` feature folder. Adding a
- * variant is one edit here plus one new case in `formatTargetError`. See
- * ADR-0024 for the surrounding convention.
- *
- * Covers every registry-selection failure surfaced by `selectTargetResult`
- * and `resolveServeScopeResult`:
- *
- *   ref-as-target     a `kind: 'reference'` registry entry was selected as a target
- *   empty-registry    no target argument and the registry is empty
- *   no-default-multi  multi-entry registry with no `default: true` and no target arg
- *   unknown-ref       `@id` does not match any registry entry
- */
+/** Tagged-union error type for registry-target selection (see ADR-0024). */
 export type TargetError =
   | RefAsTargetError
   | EmptyRegistryError

@@ -13,23 +13,12 @@ import { extractAnnotationPredicates } from '../sources';
 
 export interface CanonicalizeOptions {
   sources: string | string[];
-  /**
-   * Optional default `graphName` mode. Synthesized into a `graphName`
-   * transform applied to the loaded store before canonicalization. Sources
-   * expressed via the source-spec should declare their own `transforms`
-   * pipeline (see ADR-0006); this option is reserved for programmatic
-   * callers that want a per-call default.
-   */
+  /** Default `graphName` mode for programmatic callers (see ADR-0006). */
   graphMode?: GraphMode;
 }
 
 export interface CanonicalizeStoreOptions {
-  /**
-   * Predicate IRIs identifying annotation triples to strip before RDFC-1.0
-   * normalization. Defaults to {@link DEFAULT_ANNOTATION_PREDICATE_IRIS};
-   * pass values from {@link extractAnnotationPredicates} when the source's
-   * `annotate` transform overrides any of them.
-   */
+  /** Annotation predicate IRIs to strip; defaults to {@link DEFAULT_ANNOTATION_PREDICATE_IRIS}. */
   annotationPredicates?: AnnotationPredicateIris;
 }
 
@@ -38,12 +27,7 @@ export interface CanonicalizeStoreResult {
   canonicalText: string;
   /** Canonical N-Quads statements, one element per quad, no trailing newline. */
   canonicalStatements: string[];
-  /**
-   * Mapping from each input blank-node label (as it appeared in the asserted
-   * portion of the input store) to the canonical label issued by RDFC-1.0
-   * (e.g. `c14n0`). Populated for every blank node referenced by an asserted
-   * quad; empty when the input contained no blank nodes.
-   */
+  /** Map from input bnode labels to RDFC-1.0 canonical labels; empty if no bnodes. */
   canonicalIdMap: Map<string, string>;
 }
 

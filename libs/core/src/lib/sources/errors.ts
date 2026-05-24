@@ -1,14 +1,4 @@
-/**
- * Tagged-union error type owned by the `sources` feature folder. Adding a
- * variant is one edit here plus one new case in `formatSourceError`. See
- * ADR-0024 for the surrounding convention.
- *
- * The 7-variant taxonomy is the complete set of distinct user-facing failure
- * modes on Surface A (runtime source resolution). Spec/config parse-time
- * throws (`source-spec.ts`, `transform-spec.ts`, `load-sources.ts`,
- * `resolve-source-references.ts`) are explicitly Surface B and remain throws
- * for now (#243).
- */
+/** Tagged-union error type for source resolution; Surface A runtime failures (see ADR-0024). */
 export type SourceError =
   | ReferenceTargetError
   | GlobLoadError
@@ -24,12 +14,7 @@ export interface ReferenceTargetError {
   kind: 'reference-target';
 }
 
-/**
- * Failure loading one or more files matched by a glob source. Carries the
- * glob pattern(s) always, the offending file path when the failure was
- * file-specific (parse error, unsupported extension), and the wrapped
- * underlying message.
- */
+/** Failure loading files matched by a glob source. */
 export interface GlobLoadError {
   kind: 'glob-load';
   glob: ReadonlyArray<string>;
@@ -37,44 +22,28 @@ export interface GlobLoadError {
   message: string;
 }
 
-/**
- * Failure executing a SPARQL query against a materialized store. The query
- * text is carried for log/UI surfaces; the wrapped message is the underlying
- * Comunica / N3 detail.
- */
+/** Failure executing a SPARQL query against a materialized store. */
 export interface QueryExecutionError {
   kind: 'query-execution';
   query: string;
   message: string;
 }
 
-/**
- * Failure fetching from a remote SPARQL endpoint — network error, non-2xx
- * response, malformed body, etc. The endpoint URL is always present.
- */
+/** Failure fetching from a remote SPARQL endpoint. */
 export interface EndpointFetchError {
   kind: 'endpoint-fetch';
   endpoint: string;
   message: string;
 }
 
-/**
- * Failure validating a view query — wrong query type (UPDATE/ASK/DESCRIBE),
- * SELECT projection mismatch, missing `query`/`queryFile`, or a syntactically
- * invalid query body. The view id is carried when known; anonymous-view
- * call sites that have no id may omit it.
- */
+/** Failure validating a view query. */
 export interface ViewValidationError {
   kind: 'view-validation';
   viewId?: string;
   message: string;
 }
 
-/**
- * Failure resolving a view's `from:` reference — the ref doesn't exist in the
- * registry, the chain has a cycle, or the ref points at a `reference` entry
- * (an alias, not data). The view id and the offending ref are always present.
- */
+/** Failure resolving a view's `from:` reference (unknown, cycle, or reference upstream). */
 export interface ViewReferenceError {
   kind: 'view-reference';
   viewId: string;
@@ -83,34 +52,21 @@ export interface ViewReferenceError {
   message: string;
 }
 
-/**
- * Failure reading, writing, parsing, or evicting a view cache entry. The
- * absolute cache path is always present.
- */
+/** Failure reading, writing, parsing, or evicting a view cache entry. */
 export interface CacheIoError {
   kind: 'cache-io';
   cachePath: string;
   message: string;
 }
 
-/**
- * Failure parsing a transform spec at runtime resolution — e.g. an unknown
- * `graphName` mode or an `annotateSource` IRI override that is empty. The
- * transform key (`graphName`, `annotateSource`, …) is always present so
- * surfaces can attribute the failure to a specific transform.
- */
+/** Failure parsing a transform spec at runtime resolution. */
 export interface TransformParseError {
   kind: 'transform-parse';
   transformKey: string;
   message: string;
 }
 
-/**
- * Failure resolving a `gitRef:` declaration (or `--at` invocation) for a glob
- * source (ADR-0029). Covers four user-facing modes: no repo discoverable +
- * gitRef declared, gitRoot pointing at a non-repo, unresolvable ref, and a
- * file present in the working tree that is absent at the resolved revision.
- */
+/** Failure resolving a `gitRef:` declaration for a glob source (see ADR-0029). */
 export interface GitPinError {
   kind: 'git-pin';
   reason:

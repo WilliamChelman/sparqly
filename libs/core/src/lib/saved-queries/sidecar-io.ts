@@ -12,18 +12,6 @@ import type { ParameterDeclaration } from 'common';
 import type { Result } from 'neverthrow';
 import type { SavedQueryEntry } from './saved-query-entry';
 
-/**
- * Sidecar shape:
- *
- *   savedQueries:
- *     <slug>:
- *       description?: string
- *       body: string  (always YAML literal block in writes)
- *       parameters?: [...]   (preserved if present; deferred to a later slice)
- *
- * Unknown sibling fields and user comments are preserved across writes by
- * mutating the `yaml` Document AST in place rather than re-serializing.
- */
 export type SidecarDocument = Document.Parsed;
 
 const ROOT_KEY = 'savedQueries';

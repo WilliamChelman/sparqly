@@ -2,27 +2,10 @@ import { createHash } from 'node:crypto';
 import { Parser, type Quad, type Term } from 'n3';
 
 /**
- * RDFC-1.0 assigns canonical blank-node labels that are stable within a
- * single dataset but can drift across two datasets whose overall bnode
- * topology differs — even when an individual bnode's local subgraph is
- * structurally identical on both sides. A pure string-diff over canonical
- * N-Quads then reports those isomorphic subtrees as added/removed.
- *
- * `computeBnodeShapeMap` derives a side-local "shape hash" per bnode by
- * iterative refinement over the canonical N-Quads' bnode topology: each
- * round, a bnode's hash is SHA-256 of its sorted outgoing-edge
- * `(predicate, object-sig, graph-sig)` tuples concatenated with its sorted
- * incoming-edge `(subject-sig, predicate, graph-sig)` tuples, where
- * bnode-typed subject/object positions are represented by the previous
- * round's hash. The fixpoint is reached in `O(depth)` rounds for trees;
- * cyclic bnode topologies converge to a stable bidirectional bisimulation
- * hash.
- *
- * Including incoming edges is essential: two bnodes with identical
- * outgoing subtrees but different parent contexts (e.g. an
- * `owl:unionOf ( … )` list reached from one property vs the same-shaped
- * list reached from another) would otherwise share a shape bucket and
- * mis-pair across sides, surfacing phantom bnode-rooted diffs.
+ * Side-local bisimulation shape hash per bnode, used for cross-side pairing
+ * since RDFC-1.0 labels can drift across datasets with different overall
+ * topology. Incoming edges are included so bnodes with identical outgoing
+ * subtrees but different parent contexts don't mis-pair.
  */
 export function computeBnodeShapeMap(
   canonicalText: string,
@@ -148,14 +131,8 @@ function sha256(input: string): string {
 }
 
 /**
- * Re-serialize a canonical N-Quad with every blank-node label replaced by
- * the bnode's shape hash from {@link computeBnodeShapeMap}. The output is
- * intended for multiset pairing across sides — two canonical N-Quads with
- * the same shape-normalized form refer to the same triple modulo bnode
- * isomorphism.
- *
- * Unknown bnode labels fall back to their raw label, so a stale shape map
- * still produces a stable (if non-paired) key.
+ * Serialize an N-Quad with bnode labels replaced by their shape hashes for
+ * cross-side multiset pairing. Unknown labels fall back to their raw form.
  */
 export function shapeNormalizeCanonicalNQuad(
   canonicalNQuad: string,

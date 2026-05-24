@@ -6,15 +6,7 @@ import {
   type FakeSparqlEndpoint,
 } from './fake-sparql-endpoint';
 
-/**
- * A fake SPARQL HTTP endpoint that answers `CONSTRUCT` and `SELECT` queries by
- * evaluating them (via Comunica) against an in-memory n3 `Store` — named graphs
- * in the store are visible to `GRAPH ?g { … }`. Blank-node identity is preserved
- * within each response because the whole query runs in-process. `CONSTRUCT`
- * responses use `serializeDescribeWire` output (line-oriented N-Quads with
- * `<<...>>` quoted-triple subjects) so RDF-star annotations round-trip; `SELECT`
- * responses use `application/sparql-results+json`.
- */
+/** Fake SPARQL endpoint that evaluates CONSTRUCT/SELECT in-process against an n3 Store; preserves bnode identity and RDF-star. */
 export async function startStoreBackedSparqlEndpoint(
   store: Store,
 ): Promise<FakeSparqlEndpoint> {
@@ -39,12 +31,7 @@ function isSelectQuery(query: string): boolean {
   return /^\s*select\b/i.test(query);
 }
 
-/**
- * Rewrite SPARQL 1.1-star quoted triples (`<< ?s ?p ?o >>`) to the RDF 1.2
- * triple-term syntax (`<<( ?s ?p ?o )>>`) that Comunica understands. A real
- * RDF-star endpoint accepts the 1.1 form `describeEndpoint` sends; this adapts
- * it to the engine backing the fake.
- */
+/** Rewrite quoted triples from SPARQL 1.1-star to RDF 1.2 form for Comunica. */
 function toComunicaStar(query: string): string {
   return query.replace(/<<\s+(.+?)\s+>>/g, '<<( $1 )>>');
 }
