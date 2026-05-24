@@ -1,7 +1,6 @@
 /* eslint-disable @angular-eslint/component-selector */
 // ADR-0034 precedent: attribute component on the host element. The host's tag
-// is the consumer's choice (span / h2 / h3 / nav / button / div / p), so the
-// selector enumerates every tag the migration actually uses.
+// is the consumer's choice; the attribute selector matches any element.
 import {
   ChangeDetectionStrategy,
   Component,
@@ -15,8 +14,7 @@ export const EYEBROW_CLASSES =
   'font-mono text-[10px] uppercase tracking-[0.14em] text-foreground-faint';
 
 @Component({
-  selector:
-    'span[app-eyebrow], div[app-eyebrow], p[app-eyebrow], h1[app-eyebrow], h2[app-eyebrow], h3[app-eyebrow], h4[app-eyebrow], nav[app-eyebrow], button[app-eyebrow]',
+  selector: '[app-eyebrow]',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {

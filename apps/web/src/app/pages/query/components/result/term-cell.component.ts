@@ -19,9 +19,12 @@ const IRI_KINDS = new Set<TermDisplay['kind']>([
   standalone: true,
   imports: [DescribeLinkComponent, CopyIriComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    class: 'inline-flex max-w-full min-w-0 items-baseline align-baseline',
+  },
   template: `
     @let d = display();
-    <span class="font-mono">
+    <span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono">
       @switch (d?.kind) {
         @case ('prefixed-iri') {
           <span class="text-secondary dark:text-secondary-soft">{{ asPrefixed(d).prefix }}</span
@@ -57,8 +60,8 @@ const IRI_KINDS = new Set<TermDisplay['kind']>([
       }
     </span>
     @if (describableIri(); as iri) {
-      <app-describe-link [iri]="iri" />
-      <app-copy-iri [iri]="iri" />
+      <app-describe-link class="shrink-0" [iri]="iri" />
+      <app-copy-iri class="shrink-0" [iri]="iri" />
     }
   `,
 })
