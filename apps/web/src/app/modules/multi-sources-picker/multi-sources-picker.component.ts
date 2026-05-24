@@ -18,12 +18,13 @@ import {
 } from '@app/core';
 import { ButtonComponent } from '@app/modules/button';
 import { EyebrowComponent } from '@app/modules/eyebrow';
+import { IconDisclosureComponent } from '@app/modules/icons';
 
 @Component({
   selector: 'app-multi-sources-picker',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CdkListboxModule, ButtonComponent, EyebrowComponent],
+  imports: [CdkListboxModule, ButtonComponent, EyebrowComponent, IconDisclosureComponent],
   host: { class: 'relative inline-block' },
   template: `
     @if (sources() === null) {
@@ -91,7 +92,7 @@ import { EyebrowComponent } from '@app/modules/eyebrow';
                   class="ml-auto"
                   (click)="toggleGroup(s.id, $event)"
                   [attr.aria-expanded]="expandedGroups().has(s.id)"
-                >{{ expandedGroups().has(s.id) ? '▾' : '▸' }}</button>
+                ><app-icon-disclosure [expanded]="expandedGroups().has(s.id)" /></button>
               }
             </li>
             @if (expandedGroups().has(s.id)) {
