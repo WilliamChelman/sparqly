@@ -24,17 +24,18 @@ import {
   type ParameterBindings,
   type ParameterDeclaration,
 } from 'common';
-import { ParameterEditorComponent } from '../query/components/parameter-editor.component';
-import { ParameterFormComponent } from '../query/components/parameter-form.component';
+import { ParameterEditorComponent } from '../../query/components/parameter-editor.component';
+import { ParameterFormComponent } from '../../query/components/parameter-form.component';
 import {
   ResultPaneComponent,
   type ResultPaneState,
-} from '../query/components/result/result-pane.component';
-import { parametersEqual, toWriteBody } from './queries-detail-state';
-import { DeleteController } from './queries-delete-controller';
+} from '../../query/components/result/result-pane.component';
+import { DeleteController } from '../services/queries-delete-controller';
+import { isDraftModified } from '../utils/is-draft-modified';
+import { runSparql } from '../utils/run-sparql';
+import { toWriteBody } from '../utils/to-write-body';
 import { QueriesStaleDeleteDialogComponent } from './queries-stale-delete-dialog.component';
 import { QueriesStaleDialogComponent } from './queries-stale-dialog.component';
-import { runSparql } from './utils/run-sparql';
 
 export interface LoadedDetailInput {
   readonly slug: string;
@@ -59,17 +60,11 @@ export interface LoadedDetailInput {
   ],
   template: `
     <div class="flex items-center justify-between">
-      <h2
-        class="font-mono text-sm text-foreground"
-        data-testid="queries-detail-slug"
-      >
+      <h2 class="font-mono text-sm text-foreground">
         {{ loadedSlug() }}
       </h2>
       @if (isModifiedFromLoaded()) {
-        <span
-          data-testid="queries-modified-badge"
-          class="font-mono text-xs text-warning"
-        >
+        <span class="font-mono text-xs text-warning">
           modified from <code>{{ loadedSlug() }}</code>
         </span>
       }
@@ -82,7 +77,7 @@ export interface LoadedDetailInput {
       />
     } @else {
       <pre
-        data-testid="queries-body-readonly"
+        aria-label="Saved query body"
         class="mt-2 block overflow-auto rounded border border-border-muted bg-surface p-2 font-mono text-sm text-foreground"
       >{{ draftBody() }}</pre>
     }
@@ -110,7 +105,6 @@ export interface LoadedDetailInput {
               app-btn
               type="button"
               variant="accent"
-              data-testid="queries-save"
               (click)="onSave()"
             >
               Save
@@ -119,7 +113,6 @@ export interface LoadedDetailInput {
               app-btn
               type="button"
               variant="secondary"
-              data-testid="queries-save-as"
               (click)="onSaveAs()"
             >
               Save as…
@@ -128,7 +121,6 @@ export interface LoadedDetailInput {
               app-btn
               type="button"
               variant="danger"
-              data-testid="queries-delete"
               (click)="onDelete()"
             >
               Delete
@@ -142,7 +134,6 @@ export interface LoadedDetailInput {
             app-btn
             type="button"
             variant="primary"
-            data-testid="queries-run"
             [disabled]="!sourceId"
             (click)="onRun()"
           >
@@ -227,10 +218,12 @@ export class QueriesLoadedDetailComponent {
     onDeleted: () => this.deleted.emit(),
   });
 
-  readonly isModifiedFromLoaded = computed(() => {
-    if (this.draftBody() !== this.currentBody()) return true;
-    return !parametersEqual(this.draftParameters(), this.currentParameters());
-  });
+  readonly isModifiedFromLoaded = computed(() =>
+    isDraftModified(
+      { body: this.currentBody(), parameters: this.currentParameters() },
+      { body: this.draftBody(), parameters: this.draftParameters() },
+    ),
+  );
 
   readonly hasDraftParameters = computed(
     () => this.draftParameters().length > 0,

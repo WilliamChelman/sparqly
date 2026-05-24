@@ -18,12 +18,12 @@ import { InputComponent } from '@app/modules/input';
   template: `
     <aside
       class="flex w-64 shrink-0 flex-col gap-2 border-r border-border-muted pr-4"
-      data-testid="queries-rail"
+      aria-label="Saved queries"
     >
       <input
         app-input
         type="text"
-        data-testid="queries-filter"
+        aria-label="Filter saved queries by slug"
         placeholder="filter by slug…"
         [value]="filter()"
         (input)="onFilter($event)"
@@ -34,7 +34,6 @@ import { InputComponent } from '@app/modules/input';
           type="button"
           variant="secondary"
           size="sm"
-          data-testid="queries-new"
           (click)="newQuery.emit()"
         >
           + New
@@ -48,8 +47,6 @@ import { InputComponent } from '@app/modules/input';
               variant="ghost"
               size="sm"
               type="button"
-              data-testid="queries-entry"
-              [attr.data-slug]="entry.slug"
               [attr.aria-current]="
                 entry.slug === selectedSlug() ? 'true' : null
               "

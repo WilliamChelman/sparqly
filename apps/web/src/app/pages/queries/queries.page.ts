@@ -19,17 +19,15 @@ import {
 import {
   QueriesCreateDetailComponent,
   type CreatePayload,
-} from './queries-create-detail.component';
-import {
-  toWriteBody,
-  type CreateNavState,
-  type DetailState,
-} from './queries-detail-state';
+} from './components/queries-create-detail.component';
 import {
   QueriesLoadedDetailComponent,
   type LoadedDetailInput,
-} from './queries-loaded-detail.component';
-import { QueriesRailComponent } from './queries-rail.component';
+} from './components/queries-loaded-detail.component';
+import { QueriesRailComponent } from './components/queries-rail.component';
+import type { CreateNavState } from './models/create-nav-state';
+import type { DetailState } from './models/detail-state';
+import { toWriteBody } from './utils/to-write-body';
 
 @Component({
   selector: 'app-queries-page',
@@ -55,29 +53,18 @@ import { QueriesRailComponent } from './queries-rail.component';
         (selectEntry)="onSelect($event)"
         (newQuery)="onNew()"
       />
-      <section class="flex-1" data-testid="queries-detail">
+      <section class="flex-1">
         @switch (detail().kind) {
           @case ('empty') {
-            <p
-              class="text-sm text-foreground-faint"
-              data-testid="queries-detail-empty"
-            >
+            <p class="text-sm text-foreground-faint">
               Select an entry to view its body.
             </p>
           }
           @case ('loading') {
-            <p
-              class="text-sm text-foreground-faint"
-              data-testid="queries-detail-loading"
-            >
-              loading…
-            </p>
+            <p class="text-sm text-foreground-faint">loading…</p>
           }
           @case ('not-found') {
-            <p
-              class="text-sm text-foreground-faint"
-              data-testid="queries-detail-not-found"
-            >
+            <p class="text-sm text-foreground-faint">
               No saved query with slug "{{ notFoundSlug() }}".
             </p>
           }

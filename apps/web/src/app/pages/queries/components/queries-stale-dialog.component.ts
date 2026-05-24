@@ -14,8 +14,8 @@ import { ButtonComponent } from '@app/modules/button';
   imports: [ButtonComponent],
   template: `
     <div
-      data-testid="queries-stale-dialog"
       role="dialog"
+      aria-label="Saved query was changed elsewhere"
       class="rounded border border-warning bg-surface p-3 text-sm"
     >
       <p>
@@ -28,7 +28,6 @@ import { ButtonComponent } from '@app/modules/button';
           type="button"
           variant="secondary"
           size="sm"
-          data-testid="queries-stale-reload"
           (click)="reload.emit()"
         >
           Reload
@@ -38,7 +37,6 @@ import { ButtonComponent } from '@app/modules/button';
           type="button"
           variant="primary"
           size="sm"
-          data-testid="queries-stale-overwrite"
           (click)="overwrite.emit()"
         >
           Overwrite
