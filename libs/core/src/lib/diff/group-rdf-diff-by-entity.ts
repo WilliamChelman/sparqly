@@ -10,38 +10,19 @@ import { compareHunkLines } from './compare-hunk-lines';
 const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 
 export interface HunkedRdfDiff {
-  /**
-   * Every entity hunk in one list, sorted purely by anchor: lexicographic on
-   * the anchor string, with `state` as the only tie-break (`removed` <
-   * `changed` < `added`) — the tie-break exists solely to give a deterministic
-   * order to a left-only and a right-only orphan hunk that happen to share a
-   * canonical bnode label. Orphan hunks (anchors rendered `_:label`) sort
-   * naturally by that string; there is no separate region for them.
-   */
+  /** Sorted lexicographically by anchor; `state` is the tie-break (`removed` < `changed` < `added`). */
   hunks: Hunk[];
   totals: DiffTotals;
 }
 
 export interface Hunk {
-  /**
-   * Full IRI of the named entity that owns this hunk, OR — for an orphan
-   * bnode-tree hunk — the orphan root's canonical bnode label rendered with
-   * the `_:` prefix.
-   */
+  /** Entity IRI, or orphan bnode-tree root rendered as `_:label`. */
   anchor: string;
   /** Full IRI of `rdf:type` for the anchor, when present on either side. */
   rdfType?: string;
-  /**
-   * Derived from whether the anchor exists on both sides (`changed`) or only
-   * on the left/right (`removed` / `added`). Drives only the hunk's accent
-   * colour — not its position in the list, which is purely anchor-sorted.
-   */
+  /** Anchor presence: both sides (`changed`), left-only (`removed`), or right-only (`added`). */
   state: 'changed' | 'removed' | 'added';
-  /**
-   * True for synthetic hunks anchored on a bnode tree with no named-entity
-   * parent on either side. The renderer surfaces an `(orphan)` marker so the
-   * hunk is visible rather than silently absorbed.
-   */
+  /** Synthetic hunk anchored on a bnode tree with no named-entity parent. */
   orphan?: boolean;
   /** Count of `-` lines in this hunk. */
   removed: number;
@@ -49,36 +30,15 @@ export interface Hunk {
   added: number;
   /** Ordered diff lines for this hunk. */
   lines: HunkLine[];
-  /**
-   * Per-side `(file, line)`-deduplicated source records gathered from every
-   * changed line in this hunk.
-   */
+  /** Per-side `(file, line)`-deduplicated records from every changed line. */
   sourceRecords: { left: SourceRecord[]; right: SourceRecord[] };
-  /**
-   * The anchor's **definition site** on a side where it exists but contributed
-   * no changed-line source records — one {@link SourceRecord} per file the
-   * anchor's triples are annotated from, focused on the earliest annotated line
-   * of the anchor in that file. For a `changed` hunk, `anchorSource.left` is
-   * filled only when the left contributed zero entries to `sourceRecords.left`
-   * *and* the anchor IRI is present in the left store (symmetric for `right`);
-   * the other side is then `[]`. Absent for `added` / `removed` (and orphan)
-   * hunks, and whenever neither side qualifies — so renderers can show a muted
-   * "defined here" snippet without confusing it for a change.
-   */
+  /** Anchor definition site for a `changed` hunk's side that contributed no changed-line records. */
   anchorSource?: { left: SourceRecord[]; right: SourceRecord[] };
 }
 
 export interface HunkLine {
   side: '-' | '+';
-  /**
-   * Identity path used to sort lines within a hunk and to cluster `-`/`+`
-   * lines about the same logical subject. For lines whose subject IS the
-   * hunk's named anchor this is simply the anchor IRI. For absorbed-bnode
-   * lines this is a stable serialization of the path from the anchor to the
-   * line's subject (parent predicate + bnode identity per hop), so that two
-   * sides that share a `sh:path` value cluster while two sides whose
-   * canonical bnode labels happen to differ stay separate.
-   */
+  /** Sort/cluster key: anchor IRI, or for absorbed bnodes the path from anchor down. */
   subjectPath: string;
   /** Predicate IRI. */
   predicate: string;
@@ -86,36 +46,18 @@ export interface HunkLine {
   object: string;
   /** Canonical N-Quads key for this changed quad (matches diff `added`/`removed`). */
   nquad: string;
-  /**
-   * When the line's subject is an absorbed blank node, the chain of
-   * `(parentPredicate, bnodeIdentity)` hops from the hunk anchor down to the
-   * subject. Empty/absent when the subject equals the hunk anchor.
-   */
+  /** Hops from anchor to subject for absorbed-bnode lines; absent when subject is the anchor. */
   bnodePath?: BnodePathStep[];
-  /**
-   * Present when this line is a compacted RDF list — the object's bnode head
-   * was the start of a complete `rdf:first`/`rdf:rest` chain in the side's
-   * store, and the spine triples have been folded into this single line.
-   * Each entry is the serialized object form of a list item (matches the
-   * shape produced by `serializeObject`).
-   */
+  /** Folded `rdf:first`/`rdf:rest` list items when the object's bnode is a complete list head. */
   listItems?: ReadonlyArray<string>;
 }
 
 export interface BnodePathStep {
   /** Predicate from the parent in this hop to the bnode (e.g. `sh:property`). */
   parentPredicate: string;
-  /**
-   * Predicate whose value identifies this bnode for cross-side pairing
-   * (`sh:path` for SHACL property shapes). Omitted when no such identity
-   * predicate is present and the canonical bnode label is used as fallback.
-   */
+  /** Predicate that identifies this bnode for cross-side pairing (e.g. `sh:path`). */
   identityPredicate?: string;
-  /**
-   * Identity value for this bnode within the parent+predicate cluster:
-   * the object IRI/literal of `identityPredicate` when present, otherwise
-   * the canonical bnode label.
-   */
+  /** Object of `identityPredicate`, or the canonical bnode label when absent. */
   identityValue: string;
   /** True when `identityValue` is a canonical bnode label (the fallback case). */
   identityIsBlank: boolean;
@@ -131,19 +73,13 @@ export function groupRdfDiffByEntity(
   input: GroupRdfDiffByEntityInput,
 ): HunkedRdfDiff {
   const { diff, left, right } = input;
-  // `blankNodePrefix: ''` preserves canonical labels like `c14n0` from the
-  // diff's N-Quads instead of remapping them to `b<n>_c14n0`. Without this,
-  // bnode subjects from the diff would not match the canonical labels in
-  // `diff.canonicalIdMap` and bnode walks would fail.
+  // `blankNodePrefix: ''` preserves canonical labels so they match `diff.canonicalIdMap`.
   const parser = new Parser({ format: 'application/n-quads', blankNodePrefix: '' });
 
   const hunks = new Map<string, Hunk>();
   const seenSourceRecords = new Map<string, Set<string>>(); // hunkKey -> set of "side|file|line"
 
-  // Invert canonical→raw bnode labels per side so we can locate a changed
-  // canonical bnode subject in the side's raw Store and walk up its parent
-  // chain. Absent when the diff was built via `diffCanonicalStatements`,
-  // in which case we keep the MVP behavior (skip bnode-rooted changes).
+  // Invert canonical→raw so we can locate a canonical bnode in the side's raw Store.
   const inverseLeft = invertCanonicalIdMap(diff.canonicalIdMap?.left);
   const inverseRight = invertCanonicalIdMap(diff.canonicalIdMap?.right);
 
@@ -179,8 +115,7 @@ export function groupRdfDiffByEntity(
     const resolved = resolveAnchors(q, sideStore, sideInverse, sideForward);
     if (resolved.length === 0) return;
     for (const { anchor, bnodePath, orphan } of resolved) {
-      // Orphan hunks are scoped per side so left and right orphan trees that
-      // happen to share a canonical bnode label do not merge into one hunk.
+      // Orphan hunks are scoped per side so shared canonical labels don't merge.
       const hunkKey = orphan ? `orphan|${side}|${anchor}` : anchor;
       const hunk = ensureHunk(hunkKey, anchor, orphan);
       hunk.lines.push({
@@ -223,8 +158,7 @@ export function groupRdfDiffByEntity(
     );
     hunk.lines.sort(compareHunkLines);
     if (hunk.orphan === true) {
-      // Orphan hunks have no named anchor in either store — derive state from
-      // which sides contributed lines.
+      // No named anchor — derive state from which sides contributed lines.
       hunk.state =
         hunk.removed > 0 && hunk.added === 0
           ? 'removed'
@@ -255,9 +189,6 @@ export function groupRdfDiffByEntity(
     allHunks.push(hunk);
   }
 
-  // One comparator: lexicographic on the anchor, `state` as the only
-  // tie-break (`removed` < `changed` < `added`) — disambiguates a left-only
-  // and a right-only orphan hunk sharing a canonical bnode label.
   const stateRank: Record<Hunk['state'], number> = {
     removed: 0,
     changed: 1,
@@ -276,8 +207,6 @@ export function groupRdfDiffByEntity(
 
 function anchorPresentInStore(anchorIri: string, store: Store): boolean {
   const subject = DataFactory.namedNode(anchorIri);
-  // `getQuads(s, null, null, null)` is O(1) on the s-indexed map; we only need
-  // existence, not enumeration.
   const quads = store.getQuads(subject, null, null, null);
   return quads.length > 0;
 }

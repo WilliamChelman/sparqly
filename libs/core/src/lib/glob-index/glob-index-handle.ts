@@ -38,7 +38,7 @@ export async function openGlobIndex(indexDir: string): Promise<GlobIndexHandle> 
 
 export type OpenOrBuildGlobIndexOptions = BuildGlobIndexOptions;
 
-/** Opens the Glob index, building if absent. A stale index is reused with a warn — sparqly never rebuilds implicitly. */
+/** Open the Glob index, building if absent. */
 export function openOrBuildGlobIndex(
   options: OpenOrBuildGlobIndexOptions,
 ): ResultAsync<GlobIndexHandle, GlobLoadError> {

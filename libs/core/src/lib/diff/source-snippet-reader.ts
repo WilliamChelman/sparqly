@@ -1,11 +1,7 @@
 import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
 
-/**
- * One **Source-file snippet**: a span of context lines covering a focal
- * range, read from disk at HTML diff render time. The single filesystem
- * boundary in the html rendering pipeline.
- */
+/** A source-file snippet: focal range with context lines, read from disk. */
 export interface SourceSnippet {
   kind: 'snippet';
   /** 1-based line number of the first line in `lines`. */
@@ -44,15 +40,7 @@ function isValidFocal(r: FocalRange): boolean {
   );
 }
 
-/**
- * Consume `linesIter` until the highest requested upper bound
- * (`max(focalEnd) + context`) is reached and stop, buffering only the
- * lines any requested window needs. Returns one {@link SnippetReadResult}
- * per entry of `ranges`, in the same order. Pure over the iterator: the
- * caller is responsible for opening and closing the underlying stream.
- * Exists so the streaming contract — "read up to the union upper bound,
- * then stop" — is verifiable without filesystem I/O.
- */
+/** Read lines up to the highest focal upper bound, one result per requested range. */
 export async function readSnippetsFromLines(
   linesIter: AsyncIterable<string>,
   ranges: ReadonlyArray<FocalRange>,
@@ -133,13 +121,7 @@ export async function readSnippetFromLines(
   return result;
 }
 
-/**
- * Read `absolutePath` once and return one {@link SnippetReadResult} per
- * entry of `ranges`, in order. Streams via `readline` and stops as soon as
- * the highest requested upper bound is reached, so multi-megabyte sources
- * whose focal ranges are near the top are not penalized. The single
- * filesystem boundary in the html rendering and `serve` snippet pipelines.
- */
+/** Read source snippets from disk, streaming and stopping at the highest focal upper bound. */
 export async function readSourceSnippets(
   absolutePath: string,
   ranges: ReadonlyArray<FocalRange>,

@@ -1,16 +1,7 @@
 import { Store } from 'n3';
 import type { AnnotationPredicateIris } from '../sources';
 
-/**
- * Return a new Store containing only asserted triples — annotation triples
- * (whose predicate matches one of the configured IRIs) and any quad whose
- * subject is a quoted triple are dropped.
- *
- * The configured predicate IRIs come from the `annotate` transform; pass
- * {@link DEFAULT_ANNOTATION_PREDICATE_IRIS} when no override is in effect.
- *
- * Does not mutate the input store.
- */
+/** Return a new Store with annotation triples and quoted-triple-subject quads removed. */
 export function stripAnnotations(
   store: Store,
   predicates: AnnotationPredicateIris,

@@ -16,12 +16,7 @@ export interface ServeScope {
   defaultId: string | undefined;
 }
 
-/**
- * Primary `Result`-typed implementation of serve-scope resolution. The legacy
- * `resolveServeScope` is a thin throw-wrapping adapter around this function
- * (ADR-0024). Only the explicit `@id` ref path can fail with a typed
- * `unknown-ref` error; every other shape is total.
- */
+/** Primary Result-typed implementation of serve-scope resolution (see ADR-0024). */
 export function resolveServeScopeResult(
   registry: ReadonlyArray<ParsedSource>,
   source?: string,

@@ -46,7 +46,7 @@ async function prepare(indexDir: string, parent: string): Promise<void> {
   await sweepReplacedOrphans(indexDir);
 }
 
-/** Active sweep for the cancel path; a cancelled rebuild may never be followed by another build. */
+/** Sweep stale temp dirs to prevent cancel-path conflicts. */
 export async function sweepGlobIndexTempDirs(indexDir: string): Promise<void> {
   const parent = dirname(indexDir);
   try {
@@ -73,7 +73,7 @@ async function sweepReplacedOrphans(indexDir: string): Promise<void> {
   }
 }
 
-/** Preserves temp dirs of live pids so overlapping builds aren't clobbered mid-ingest. */
+/** Sweep stale temp dirs, preserving those owned by live processes. */
 async function sweepStaleTempDirs(
   indexDir: string,
   parent: string,
@@ -95,7 +95,7 @@ function parseTempDirPid(suffix: string): number | undefined {
   return Number.isInteger(pid) && pid > 0 ? pid : undefined;
 }
 
-/** `process.kill(pid, 0)` probes without signalling; EPERM means alive but owned by another user. */
+/** Probe whether a process is alive without signalling. EPERM = alive but owned by another user. */
 function isPidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -105,7 +105,7 @@ function isPidAlive(pid: number): boolean {
   }
 }
 
-/** Manifest is renamed last — it's the commit marker that makes the new index visible as fresh. */
+/** Manifest rename is the final commit marker making the index visible. */
 async function promote(
   tempDir: string,
   indexDir: string,
