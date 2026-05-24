@@ -232,8 +232,18 @@ export async function createServer(
     port: listeningPort,
     close: async () => {
       if (watcher) await watcher.close();
+      // Completes SSE observables so in-flight `/api/sources/stream`
+      // responses end (otherwise `app.close()` waits on them forever).
       sourceStateBroker.close();
-      await app.close();
+      const closing = app.close();
+      // Node's `http.Server.close()` waits for all sockets to close,
+      // including idle keep-alive ones held by the browser after the
+      // SSE response ends — force them shut so shutdown can complete.
+      const httpServer = app.getHttpServer() as {
+        closeIdleConnections?: () => void;
+      };
+      httpServer.closeIdleConnections?.();
+      await closing;
       await engineMap.close();
     },
   };
