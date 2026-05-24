@@ -85,6 +85,7 @@ import { EditorFrameController } from './editor-frame-controller';
               [value]="leftSide.query()"
               [loadError]="leftSide.loadError() ?? undefined"
               [parameters]="leftSide.loadedParameters() ?? undefined"
+              [showParameters]="leftPinnedSlug() !== null"
               (valueChange)="leftSide.query.set($event)"
             />
 
@@ -125,6 +126,7 @@ import { EditorFrameController } from './editor-frame-controller';
               [value]="rightSide.query()"
               [loadError]="rightSide.loadError() ?? undefined"
               [parameters]="rightSide.loadedParameters() ?? undefined"
+              [showParameters]="rightPinnedSlug() !== null"
               (valueChange)="rightSide.query.set($event)"
             />
 

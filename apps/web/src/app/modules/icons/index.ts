@@ -1,4 +1,5 @@
 export { IconCheckComponent } from './icon-check.component';
+export { IconChevronDownComponent } from './icon-chevron-down.component';
 export { IconCopyComponent } from './icon-copy.component';
 export { IconDisclosureComponent } from './icon-disclosure.component';
 export { IconMoonComponent } from './icon-moon.component';

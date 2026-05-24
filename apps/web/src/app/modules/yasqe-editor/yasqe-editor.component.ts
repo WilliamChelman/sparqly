@@ -7,18 +7,11 @@ import {
   Input,
   OnDestroy,
   Output,
-  Signal,
   ViewChild,
   ViewEncapsulation,
-  computed,
   signal,
 } from '@angular/core';
 import Yasqe from '@triply/yasqe';
-import {
-  countPrefixes,
-  detectQueryType,
-  type QueryType,
-} from '@app/core';
 
 type YasqeInstance = InstanceType<typeof Yasqe>;
 
@@ -57,13 +50,6 @@ export class YasqeEditorComponent implements AfterViewInit, OnDestroy {
   private instance: YasqeInstance | undefined;
   private resizeObserver: ResizeObserver | undefined;
   private readonly valueSignal = signal('');
-
-  readonly queryType: Signal<QueryType | undefined> = computed(() =>
-    detectQueryType(this.valueSignal()),
-  );
-  readonly prefixCount: Signal<number> = computed(() =>
-    countPrefixes(this.valueSignal()),
-  );
 
   @Input()
   set value(v: string) {

@@ -188,6 +188,12 @@ _Avoid_: "input", "form field", "argument", separate "required" flag
 A YAML file alongside the project config that holds the **Saved query** library; dual-authored by the webapp and by hand, with hand-edits round-tripping cleanly. The only project-file mutation surface exposed by `serve`.
 _Avoid_: "queries file", "saved-query store", "library file"
 
+### Editor presets
+
+**Quick query**:
+A hardcoded SPARQL body the webapp's query editor can swap in on demand from a small closed menu (e.g. `select-spo`, `select-spog`, `construct-spo`). Not a **Source**, not a **Saved query**, never persisted, never deep-linkable, never source-bound. Inserted into the active editor buffer alongside the project-config prefixes; from that moment it is just edited text.
+_Avoid_: "template", "snippet", "preset query", conflating with **Saved query** or **Templated saved query**
+
 ### Serve UI
 
 **Source load state**:

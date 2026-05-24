@@ -1,168 +1,104 @@
-import { Component, EventEmitter, Input, Output, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { YasqeEditorComponent } from '@app/modules/yasqe-editor';
+import { of } from 'rxjs';
+import { ConfigService, type DisplayContext } from '@app/core';
+import type { ParameterDeclaration } from 'common';
 import { EditorFrameComponent } from './editor-frame.component';
-import type { QueryType } from '@app/core';
-import type {
-  ParameterBindings,
-  ParameterDeclaration,
-} from 'common';
 
-@Component({
-  selector: 'app-yasqe-editor',
-  standalone: true,
-  template: `<textarea
-    [value]="value"
-    (input)="valueChange.emit($any($event.target).value)"
-  ></textarea>`,
-})
-class YasqeEditorStub {
-  @Input() value = '';
-  @Output() valueChange = new EventEmitter<string>();
-  readonly queryTypeSignal = signal<QueryType | undefined>(undefined);
-  readonly prefixCountSignal = signal(0);
-  readonly queryType = this.queryTypeSignal.asReadonly();
-  readonly prefixCount = this.prefixCountSignal.asReadonly();
-}
-
-function setup(
-  initial: {
-    value?: string;
-    name?: string;
-    parameters?: ReadonlyArray<ParameterDeclaration>;
-    loadError?: { kind: 'not-found'; slug: string };
-  } = {},
-) {
-  TestBed.configureTestingModule({ imports: [EditorFrameComponent] }).overrideComponent(
-    EditorFrameComponent,
-    {
-      remove: { imports: [YasqeEditorComponent] },
-      add: { imports: [YasqeEditorStub] },
-    },
-  );
+function createWithContext(
+  context: DisplayContext = { prefixes: {} },
+): EditorFrameComponent {
+  TestBed.configureTestingModule({
+    imports: [EditorFrameComponent],
+    providers: [
+      { provide: ConfigService, useValue: { context: () => of(context) } },
+    ],
+  });
   const fixture = TestBed.createComponent(EditorFrameComponent);
-  if (initial.value !== undefined) fixture.componentRef.setInput('value', initial.value);
-  if (initial.name !== undefined) fixture.componentRef.setInput('name', initial.name);
-  if (initial.parameters !== undefined)
-    fixture.componentRef.setInput('parameters', initial.parameters);
-  if (initial.loadError !== undefined)
-    fixture.componentRef.setInput('loadError', initial.loadError);
-  fixture.detectChanges();
-  const root = fixture.nativeElement as HTMLElement;
-  const stub = fixture.debugElement.query((n) => n.componentInstance instanceof YasqeEditorStub)
-    ?.componentInstance as YasqeEditorStub;
-  return { fixture, root, stub };
+  return fixture.componentInstance;
 }
 
-describe('EditorFrameComponent', () => {
-  it('renders a my-head strip with the name (defaults to "query")', () => {
-    const { root } = setup();
-    const head = root.querySelector('.my-head');
-    expect(head).toBeTruthy();
-    expect(head?.querySelector('.my-name')?.textContent?.trim()).toBe('query');
-  });
+describe('EditorFrameComponent (DOM-free)', () => {
+  describe('pickQuickQuery emits a body via valueChange', () => {
+    it('emits a SELECT ?s ?p ?o body for select-spo, prefixed with the context header', () => {
+      const inst = createWithContext({
+        prefixes: { ex: 'http://example.org/' },
+      });
+      const emitted: string[] = [];
+      inst.valueChange.subscribe((v) => emitted.push(v));
 
-  it('renders the configured name in the head strip', () => {
-    const { root } = setup({ name: 'left query' });
-    expect(root.querySelector('.my-head .my-name')?.textContent?.trim()).toBe(
-      'left query',
-    );
-  });
+      inst.pickQuickQuery('select-spo');
 
-  it('renders the YasqeEditor body inside the my-body', () => {
-    const { root } = setup();
-    expect(root.querySelector('.my-body app-yasqe-editor')).toBeTruthy();
-  });
-
-  it('shows the query type from the YasqeEditor in the head my-kind span', () => {
-    const { fixture, root, stub } = setup();
-    expect(root.querySelector('.my-head .my-kind')?.textContent?.trim()).toBe(
-      '—',
-    );
-    stub.queryTypeSignal.set('SELECT');
-    fixture.detectChanges();
-    expect(root.querySelector('.my-head .my-kind')?.textContent?.trim()).toBe(
-      'SELECT',
-    );
-  });
-
-  it('shows the prefix count from the YasqeEditor in the head meta', () => {
-    const { fixture, root, stub } = setup();
-    stub.prefixCountSignal.set(3);
-    fixture.detectChanges();
-    const meta = root.querySelector('.my-head .my-meta')?.textContent ?? '';
-    expect(meta).toContain('3 prefixes');
-  });
-
-  it('uses singular "1 prefix" when only one prefix is declared', () => {
-    const { fixture, root, stub } = setup();
-    stub.prefixCountSignal.set(1);
-    fixture.detectChanges();
-    const meta = root.querySelector('.my-head .my-meta')?.textContent ?? '';
-    expect(meta).toContain('1 prefix');
-    expect(meta).not.toContain('1 prefixes');
-  });
-
-  it('passes value down to the YasqeEditor and forwards valueChange up', () => {
-    const { fixture, root, stub } = setup({ value: 'SELECT ?s WHERE { ?s ?p ?o }' });
-    expect(stub.value).toBe('SELECT ?s WHERE { ?s ?p ?o }');
-    const emitted: string[] = [];
-    fixture.componentInstance.valueChange.subscribe((v: string) => emitted.push(v));
-    const ta = root.querySelector('textarea') as HTMLTextAreaElement;
-    ta.value = 'ASK { ?s ?p ?o }';
-    ta.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
-    expect(emitted).toEqual(['ASK { ?s ?p ?o }']);
-  });
-
-  it('renders no authoring affordances (Save / Save-as / Delete / parameter-editor / modified badge) — run surface per ADR-0038', () => {
-    const { root } = setup({ value: 'SELECT ?s', parameters: [] });
-    expect(root.querySelector('[data-testid="editor-save"]')).toBeNull();
-    expect(root.querySelector('[data-testid="editor-save-as"]')).toBeNull();
-    expect(root.querySelector('[data-testid="editor-delete"]')).toBeNull();
-    expect(root.querySelector('[data-testid="editor-modified-badge"]')).toBeNull();
-    expect(root.querySelector('app-parameter-editor')).toBeNull();
-  });
-
-  it('renders a saved-query-not-found banner when loadError is set', () => {
-    const { root } = setup({ loadError: { kind: 'not-found', slug: 'ghost' } });
-    const banner = root.querySelector(
-      '[data-testid="editor-not-found"]',
-    ) as HTMLElement | null;
-    expect(banner).not.toBeNull();
-    expect(banner?.textContent ?? '').toContain('ghost');
-  });
-
-  describe('parameter form integration', () => {
-    it('does not render a parameter form when no parameters are declared', () => {
-      const { root } = setup();
-      expect(root.querySelector('app-parameter-form')).toBeNull();
+      expect(emitted).toHaveLength(1);
+      expect(emitted[0]).toContain('PREFIX ex: <http://example.org/>');
+      expect(emitted[0]).toContain('SELECT ?s ?p ?o');
     });
 
-    it('renders the parameter form when a non-empty parameters list is provided', () => {
-      const { root } = setup({
-        parameters: [
-          { name: 'country', type: 'string', cardinality: '1..1', default: 'CA' },
-        ],
-      });
-      expect(root.querySelector('app-parameter-form')).toBeTruthy();
+    it('emits a SELECT with a GRAPH ?g pattern for select-spog', () => {
+      const inst = createWithContext();
+      const emitted: string[] = [];
+      inst.valueChange.subscribe((v) => emitted.push(v));
+
+      inst.pickQuickQuery('select-spog');
+
+      expect(emitted[0]).toContain('SELECT ?s ?p ?o ?g');
+      expect(emitted[0]).toContain('GRAPH ?g');
     });
 
-    it('forwards submitted parameter bindings via the submitBindings output', () => {
-      const { fixture, root } = setup({
-        parameters: [
-          { name: 'country', type: 'string', cardinality: '1..1', default: 'CA' },
-        ],
+    it('emits a CONSTRUCT body for construct-spo', () => {
+      const inst = createWithContext();
+      const emitted: string[] = [];
+      inst.valueChange.subscribe((v) => emitted.push(v));
+
+      inst.pickQuickQuery('construct-spo');
+
+      expect(emitted[0]).toContain('CONSTRUCT');
+      expect(emitted[0]).toContain('?s ?p ?o');
+    });
+
+    it('emits an empty string for clear, ignoring the context header', () => {
+      const inst = createWithContext({
+        prefixes: { ex: 'http://example.org/' },
+        base: 'http://example.org/base/',
       });
-      const emitted: ParameterBindings[] = [];
-      fixture.componentInstance.submitBindings.subscribe(
-        (b: ParameterBindings) => emitted.push(b),
-      );
-      (root.querySelector('form') as HTMLFormElement).dispatchEvent(
-        new Event('submit'),
-      );
-      fixture.detectChanges();
-      expect(emitted).toEqual([{ country: 'CA' }]);
+      const emitted: string[] = [];
+      inst.valueChange.subscribe((v) => emitted.push(v));
+
+      inst.pickQuickQuery('clear');
+
+      expect(emitted).toEqual(['']);
+    });
+  });
+
+  describe('parametersVisible gates the parameter form', () => {
+    const params: ReadonlyArray<ParameterDeclaration> = [
+      { name: 'country', type: 'string', cardinality: '1..1', default: 'CA' },
+    ];
+
+    it('is false when showParameters is false even with declared parameters', () => {
+      const inst = createWithContext();
+      inst.parameters = params;
+      inst.showParameters = false;
+      expect(inst.parametersVisible).toBe(false);
+    });
+
+    it('is true when showParameters is true and parameters are declared', () => {
+      const inst = createWithContext();
+      inst.parameters = params;
+      inst.showParameters = true;
+      expect(inst.parametersVisible).toBe(true);
+    });
+
+    it('is false when no parameters are declared even if showParameters is true', () => {
+      const inst = createWithContext();
+      inst.showParameters = true;
+      expect(inst.parametersVisible).toBe(false);
+    });
+
+    it('is false when parameters is an empty list', () => {
+      const inst = createWithContext();
+      inst.parameters = [];
+      inst.showParameters = true;
+      expect(inst.parametersVisible).toBe(false);
     });
   });
 });

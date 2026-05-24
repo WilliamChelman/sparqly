@@ -88,6 +88,7 @@ import {
           [loadError]="loadError() ?? undefined"
           [parameters]="loadedParameters() ?? undefined"
           [initialBindings]="initialBindings() ?? undefined"
+          [showParameters]="pinnedSlug() !== null"
           (valueChange)="query.set($event)"
           (submitBindings)="onSubmitBindings($event)"
         />
@@ -121,7 +122,6 @@ export class QueryPage implements OnInit {
   readonly running = signal<boolean>(false);
   readonly resultState = signal<ResultPaneState>({ kind: 'empty' });
   readonly context = signal<DisplayContext>({ prefixes: {} });
-  readonly queryType = computed(() => detectQueryType(this.query()));
   readonly savedQueries = signal<readonly SavedQuerySummary[]>([]);
   readonly loadedSlug = signal<string | null>(null);
   readonly loadedBody = signal<string | null>(null);
