@@ -48,12 +48,15 @@ worth covering lives in exactly one of three layers, named in
    algorithmic logic: `sparql-result-decoder`, `query-detection`,
    `csv-exporter`, `select-spo-reifier`, etc. No change.
 2. **DOM-free specs.** The canonical home for non-trivial derived
-   state — services, signal-only classes, and pure functions
-   extracted out of a page or component. May use `TestBed`,
-   dependency injection, and `HttpTestingController`. **Must not**
-   call `fixture.detectChanges()`, instantiate a component fixture,
-   query the rendered DOM, or assert on rendered HTML, classes, or
-   attributes.
+   state — services, signal-only classes, page/component classes
+   read through their public surface, and pure helpers. May use
+   `TestBed`, dependency injection, `HttpTestingController`, and
+   may instantiate a component (`TestBed.createComponent` or an
+   equivalent injection-context call) to reach its signals and
+   methods. **Must not** call `fixture.detectChanges()` (or any
+   alternative that flushes the template), query the rendered DOM,
+   or assert on rendered HTML, classes, or attributes. The shape of
+   the rule is: **test the logic, not the rendering.**
 3. **Web e2e.** Playwright, under `apps/web-e2e`, driving a real
    browser against a real `serve` booted on a fixture project config.
    Coverage scope: **happy path per user-visible feature** — load
@@ -65,8 +68,8 @@ worth covering lives in exactly one of three layers, named in
    target, and each surviving use is reviewed against fixing the
    markup first.
 
-Component-shaped specs that render a fixture and assert on the DOM
-are **not a layer**. They collapse into Web e2e.
+Specs that render a fixture (call `detectChanges`) and assert on the
+rendered DOM are **not a layer**. They collapse into Web e2e.
 
 Migration runs in three sequenced PRs to keep coverage from dipping
 below the existing bar:
@@ -78,10 +81,13 @@ below the existing bar:
 - **PR-2**: scaffold `apps/web-e2e` with Playwright, the fixture
   config, and the first happy-path tests (each page loads + primary
   widget visible). Add a CI target.
-- **PR-3 onwards, per page**: extract derived logic from the page
-  into a service or pure function with a DOM-free spec, expand Web
-  e2e for that page's happy path, then delete the page spec. Pages
-  in order: sources → queries → describe → diff → query.
+- **PR-3 onwards, per page**: rewrite the page spec as a DOM-free
+  logic spec (drive the page's signals/methods, never `detectChanges`),
+  expand Web e2e for that page's happy path, and drop any
+  `data-testid`s that only served the deleted DOM assertions. Extract
+  logic to a separate module only when the page class is itself hard
+  to test. Pages in order: sources → queries → describe → diff →
+  query.
 
 ## Considered options
 

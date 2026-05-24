@@ -7,8 +7,8 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ConfigService } from '../../core/services/config.service';
-import type { SourceRow } from './source-row';
+import { ConfigService } from '../../../core/services/config.service';
+import type { SourceRow } from '../models/source-row';
 import {
   SOURCE_STATE_STREAM_FACTORY,
   type SourceStateStream,

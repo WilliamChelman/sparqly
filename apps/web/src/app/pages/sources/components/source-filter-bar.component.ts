@@ -29,7 +29,6 @@ export type SourceFilterCounts = Record<SourceStateFilter, number>;
       type="search"
       class="w-64 rounded-md border border-border-muted bg-surface px-2 py-1 text-sm text-foreground placeholder:text-foreground-faint"
       placeholder="Filter by id…"
-      data-testid="sources-filter-query"
       [value]="query()"
       (input)="query.set($any($event.target).value)"
     />
@@ -37,7 +36,6 @@ export type SourceFilterCounts = Record<SourceStateFilter, number>;
       <button
         type="button"
         class="cursor-pointer rounded-full border border-border-muted px-2 py-0.5 text-xs"
-        [attr.data-testid]="'sources-filter-' + f.key"
         [attr.aria-pressed]="state() === f.key"
         [class.bg-foreground]="state() === f.key"
         [class.text-surface]="state() === f.key"
@@ -48,10 +46,7 @@ export type SourceFilterCounts = Record<SourceStateFilter, number>;
         <span class="ml-1 font-mono text-[10px] opacity-70">{{ counts()[f.key] }}</span>
       </button>
     }
-    <span
-      class="ml-auto font-mono text-xs text-foreground-muted"
-      data-testid="sources-filter-summary"
-    >
+    <span class="ml-auto font-mono text-xs text-foreground-muted">
       {{ visibleCount() }} / {{ counts().all }}
     </span>
   `,

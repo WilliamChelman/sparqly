@@ -1,5 +1,5 @@
 import { InjectionToken } from '@angular/core';
-import type { SourceRow } from './sources.page';
+import type { SourceRow } from '../models/source-row';
 
 export interface SourceStateStreamHandlers {
   onRow: (row: SourceRow) => void;
