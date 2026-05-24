@@ -20,7 +20,8 @@
     "test": "nx run-many -t test",
     "lint": "nx run-many -t lint",
     "tdd": "nx run-many -t lint test --no-tui",
-    "e2e": "nx run-many -t build e2e",
+    "e2e": "nx run-many -t build e2e -p cli-e2e",
+    "e2e:web": "nx run web-e2e:e2e",
     "check": "nx run-many -t build lint test e2e",
     "sparqly": "nx build cli --no-tui && node dist/apps/cli/main.js serve --config=test/sparqly.config.yaml"
   },
@@ -46,6 +47,7 @@
     "@nx/webpack": "22.6.5",
     "@nx/workspace": "^22.6.5",
     "@oxc-project/runtime": "^0.115.0",
+    "@playwright/test": "^1.60.0",
     "@schematics/angular": "~21.2.0",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/exec": "^7.1.0",

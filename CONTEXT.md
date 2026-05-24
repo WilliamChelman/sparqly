@@ -205,7 +205,7 @@ The cli end-to-end suite under `apps/cli-e2e`, exercised by `pnpm run e2e`. The 
 _Avoid_: conflating with **Web e2e**
 
 **Web e2e**:
-The webapp end-to-end suite that drives a real browser against a real `serve` booted on a fixture project config. Owns the happy-path of every user-visible feature ("clickable → web e2e"). The only test layer that asserts on rendered HTML.
+The webapp end-to-end suite under `apps/web-e2e`, exercised by `pnpm run e2e:web`. Drives a real browser (Playwright) against a real `serve` booted on a fixture project config. Owns the happy-path of every user-visible feature ("clickable → web e2e"). The only test layer that asserts on rendered HTML.
 _Avoid_: bare "e2e" (means cli-e2e), "webapp integration test", "ui test"
 
 **DOM-free spec**:

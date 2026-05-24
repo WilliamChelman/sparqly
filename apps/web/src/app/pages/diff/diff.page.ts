@@ -48,6 +48,9 @@ import { EditorFrameController } from './editor-frame-controller';
     LibraryComboboxComponent,
   ],
   template: `
+    <header class="border-b border-border-muted bg-surface px-4 py-3">
+      <h1 class="font-serif text-2xl italic text-foreground">diff</h1>
+    </header>
     @if (sources() === null) {
       <main class="p-4 text-sm text-foreground-faint">loading…</main>
     } @else if ((sources() ?? []).length <= 1) {
