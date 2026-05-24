@@ -17,26 +17,20 @@ import {
   resultToFormatted,
   type FormattedResult,
 } from '@app/pages/query/utils/result-to-formatted';
-import {
-  describeProvenance,
-  parseDescribeWire,
-  serializeDescribeWire,
-  type FormatSerialization,
-  type PathStep,
-} from 'common';
-import type { Quad, Term } from 'n3';
+import type { FormatSerialization, PathStep } from 'common';
+import type { Quad } from 'n3';
 import { DescribeSectionsComponent } from './components/describe-sections.component';
 import { SourceErrorsComponent } from './components/source-errors.component';
 import { describeIriExpand } from './utils/describe-iri-expand';
 import type { DescribeBnodePathResult } from './utils/describe-bnode-path';
+import { mergeDescribeSourceSlice } from './utils/merge-describe-source-slice';
+import { stripDescribeResponse } from './utils/strip-describe-response';
 import {
   DescribeService,
   type DescribeResponse,
 } from './services/describe.service';
 
 type DescribeTab = 'table' | 'turtle';
-
-const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
 
 @Component({
   selector: 'app-describe-page',
@@ -61,8 +55,8 @@ const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
     <main class="flex flex-col gap-3 p-4">
       <div class="flex flex-wrap items-center gap-2">
         <input
-          data-testid="seed-input"
           type="text"
+          aria-label="seed IRI"
           class="flex-1 rounded border border-border bg-surface px-2 py-1 font-mono text-sm text-foreground"
           placeholder="http://example.org/alice — or ex:alice"
           [value]="seed()"
@@ -79,7 +73,6 @@ const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
         <button
           app-btn
           variant="primary"
-          data-testid="run-describe"
           type="button"
           [loading]="running()"
           [disabled]="seed().trim().length === 0"
@@ -89,20 +82,16 @@ const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
         </button>
       </div>
       @if (iriError(); as msg) {
-        <p app-error-banner data-testid="iri-error">
-          {{ msg }}
-        </p>
+        <p app-error-banner>{{ msg }}</p>
       }
       @if (running()) {
-        <div data-testid="spinner" class="text-sm text-foreground-faint">
-          loading…
-        </div>
+        <div class="text-sm text-foreground-faint">loading…</div>
       }
       @if (response(); as resp) {
         <app-source-errors [perSource]="resp.perSource" />
         <section class="flex flex-col gap-2">
           <p class="text-sm text-foreground-muted">
-            <span data-testid="describe-total">{{ resp.total }}</span> quad(s).
+            {{ resp.total }} quad(s).
           </p>
           <nav
             app-eyebrow
@@ -110,7 +99,6 @@ const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
             class="flex gap-3.5 border-b border-border-muted"
           >
             <button
-              data-testid="tab-table"
               role="tab"
               type="button"
               [attr.aria-selected]="activeTab() === 'table'"
@@ -119,7 +107,6 @@ const FROM_SOURCE_PREDICATE = 'urn:sparqly:fromSource';
             >table</button>
             @if (serialization(); as ser) {
               <button
-                [attr.data-testid]="'tab-' + ser"
                 role="tab"
                 type="button"
                 [attr.aria-selected]="activeTab() === 'turtle'"
@@ -174,11 +161,10 @@ export class DescribePage implements OnInit {
   /** Ids of every `endpoint` source in the served registry. */
   private readonly allEndpointSourceIds = signal<string[]>([]);
   /**
-   * Endpoint-source ids that can be expanded *right now*. Under ADR-0033's
-   * single-or-all contract, `expandedPaths` is scoped to the currently
-   * selected source — so the expand affordance is gated on that source
-   * being set *and* being an endpoint. When no source (or a non-endpoint
-   * source) is selected, the affordance is hidden everywhere.
+   * Endpoint-source ids that can be expanded right now. Under ADR-0033's
+   * single-or-cleared contract, expansion is scoped to the picker's selection
+   * — so the affordance is hidden when the picker is cleared or when the
+   * selected source isn't an endpoint.
    */
   readonly endpointSourceIds = computed<readonly string[]>(() => {
     const selected = this.selectedSource();
@@ -198,21 +184,9 @@ export class DescribePage implements OnInit {
 
   /** Stripped describe quads + origins map, shared by the table tab and the
    *  turtle/trig tab so wire parsing happens once per response. */
-  private readonly strippedResponse = computed<{
-    quads: readonly Quad[];
-    originsByQuad: ReadonlyMap<string, readonly string[]>;
-  }>(() => {
-    const resp = this.response();
-    if (!resp || resp.quads.trim().length === 0) {
-      return { quads: [], originsByQuad: new Map() };
-    }
-    const all = parseDescribeWire(resp.quads);
-    const { quads, originsByQuad } = describeProvenance.strip(
-      all,
-      FROM_SOURCE_PREDICATE,
-    );
-    return { quads, originsByQuad };
-  });
+  private readonly strippedResponse = computed(() =>
+    stripDescribeResponse(this.response()),
+  );
 
   readonly strippedQuads = computed<readonly Quad[]>(
     () => this.strippedResponse().quads,
@@ -341,7 +315,7 @@ export class DescribePage implements OnInit {
       .subscribe({
         next: (fresh) => {
           this.running.set(false);
-          this.response.set(this.mergeSourceSlice(current, sourceId, fresh));
+          this.response.set(mergeDescribeSourceSlice(current, sourceId, fresh));
         },
         error: () => {
           this.running.set(false);
@@ -349,83 +323,4 @@ export class DescribePage implements OnInit {
       });
   }
 
-  /**
-   * Rebuild the merged describe view with `sourceId`'s quads taken wholesale
-   * from `fresh` and every other source's quads kept from `current`. The wire
-   * carries one `fromSource` annotation per (quad, origin), so per-source slices
-   * are recoverable from `current` by inspecting those annotations.
-   */
-  private mergeSourceSlice(
-    current: DescribeResponse,
-    sourceId: string,
-    fresh: DescribeResponse,
-  ): DescribeResponse {
-    const predicate = FROM_SOURCE_PREDICATE;
-    const slices = new Map<string, Map<string, Quad>>();
-    const currentAll =
-      current.quads.trim().length === 0 ? [] : parseDescribeWire(current.quads);
-    const stripped = describeProvenance.strip(currentAll, predicate);
-    for (const q of stripped.quads) {
-      const key = quadKey(q);
-      for (const origin of stripped.originsByQuad.get(key) ?? []) {
-        if (origin === sourceId) continue; // replaced wholesale below
-        let m = slices.get(origin);
-        if (!m) {
-          m = new Map();
-          slices.set(origin, m);
-        }
-        if (!m.has(key)) m.set(key, q);
-      }
-    }
-    const freshAll =
-      fresh.quads.trim().length === 0 ? [] : parseDescribeWire(fresh.quads);
-    const freshSlice = new Map<string, Quad>();
-    for (const q of describeProvenance.strip(freshAll, predicate).quads) {
-      const key = quadKey(q);
-      if (!freshSlice.has(key)) freshSlice.set(key, q);
-    }
-    slices.set(sourceId, freshSlice);
-
-    const orderedSources = Object.keys(current.perSource);
-    if (!orderedSources.includes(sourceId)) orderedSources.push(sourceId);
-    const merged = new Map<string, Quad>();
-    const originsByQuad = new Map<string, string[]>();
-    for (const src of orderedSources) {
-      const m = slices.get(src);
-      if (!m) continue;
-      for (const [key, q] of m) {
-        if (!merged.has(key)) merged.set(key, q);
-        const list = originsByQuad.get(key);
-        if (list) {
-          if (!list.includes(src)) list.push(src);
-        } else {
-          originsByQuad.set(key, [src]);
-        }
-      }
-    }
-    const annotations: Quad[] = [];
-    for (const [key, q] of merged) {
-      for (const origin of originsByQuad.get(key) ?? []) {
-        annotations.push(
-          ...describeProvenance.inject([q], origin, predicate).slice(1),
-        );
-      }
-    }
-    const quads = serializeDescribeWire([...merged.values(), ...annotations]);
-    const perSource = { ...current.perSource };
-    const freshEntry = fresh.perSource[sourceId];
-    if (freshEntry) perSource[sourceId] = freshEntry;
-    return { iri: current.iri, quads, total: merged.size, perSource };
-  }
-}
-
-function quadKey(q: Quad): string {
-  return `${termKey(q.subject)} ${termKey(q.predicate)} ${termKey(q.object)} ${termKey(q.graph)}`;
-}
-
-function termKey(t: Term): string {
-  if ((t.termType as string) === 'Quad') {
-    return `<<${quadKey(t as unknown as Quad)}>>`;
-  }
-  return `${t.termType}:${t.value}`;
 }

@@ -26,19 +26,12 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
   template: `
     @let view = sections();
     @if (view.outbound.count === 0 && view.inbound.count === 0) {
-      <p data-testid="empty-quad-table" class="p-4 text-sm text-foreground-faint">
-        No quads.
-      </p>
+      <p class="p-4 text-sm text-foreground-faint">No quads.</p>
     } @else {
       @if (view.outbound.count > 0) {
-        <section
-          data-testid="describe-section"
-          data-direction="outbound"
-          class="flex flex-col gap-2 border-b border-border-muted py-3"
-        >
+        <section class="flex flex-col gap-2 border-b border-border-muted py-3">
           <h2 app-eyebrow class="text-xs">
-            outbound ·
-            <span data-testid="describe-section-count">{{ view.outbound.count }}</span>
+            outbound · {{ view.outbound.count }}
           </h2>
           @for (g of view.outbound.predicateGroups; track g.predicate) {
             <ng-container
@@ -51,14 +44,9 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
         </section>
       }
       @if (view.inbound.count > 0) {
-        <section
-          data-testid="describe-section"
-          data-direction="inbound"
-          class="flex flex-col gap-2 py-3"
-        >
+        <section class="flex flex-col gap-2 py-3">
           <h2 app-eyebrow class="text-xs">
-            inbound ·
-            <span data-testid="describe-section-count">{{ view.inbound.count }}</span>
+            inbound · {{ view.inbound.count }}
           </h2>
           @for (g of view.inbound.predicateGroups; track g.predicate) {
             <ng-container
@@ -73,11 +61,7 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
     }
 
     <ng-template #predicateGroupTpl let-g let-direction="direction">
-      <div
-        data-testid="predicate-group"
-        [attr.data-predicate]="g.predicate"
-        class="ml-2 flex flex-col gap-1"
-      >
+      <div class="ml-2 flex flex-col gap-1">
         <div class="font-mono text-sm">
           @if (direction === 'outbound' && g.predicate === rdfType) {
             <span class="text-secondary dark:text-secondary-soft">a</span>
@@ -99,10 +83,7 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
     </ng-template>
 
     <ng-template #memberRowTpl let-m>
-      <li
-        data-testid="describe-row"
-        class="flex flex-wrap items-baseline gap-1 font-mono text-sm"
-      >
+      <li class="flex flex-wrap items-baseline gap-1 font-mono text-sm">
         @if (m.nested) {
           <ng-container
             *ngTemplateOutlet="nestedBlockTpl; context: { $implicit: m.nested, term: m.term }"
@@ -114,7 +95,6 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
         }
         @if (m.expand) {
           <button
-            data-testid="expand-bnode"
             type="button"
             class="ml-1 cursor-pointer rounded border border-border bg-surface-sunken px-1 py-0 text-[11px] text-foreground-muted transition-colors hover:bg-surface hover:text-foreground"
             (click)="expand.emit(m.expand)"
@@ -127,7 +107,6 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
         }
         @for (origin of m.origins; track origin) {
           <span
-            data-testid="source-badge"
             class="ml-0.5 inline-block rounded-md border border-border bg-surface-sunken px-1.5 py-0.5 text-[11px] font-medium text-foreground-muted"
           >{{ origin }}</span>
         }
@@ -140,10 +119,7 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
     </ng-template>
 
     <ng-template #annotationBlockTpl let-block>
-      <span
-        data-testid="annotation-block"
-        class="ml-1 flex flex-wrap items-baseline gap-1"
-      >
+      <span class="ml-1 flex flex-wrap items-baseline gap-1">
         <span class="text-foreground-faint">{{ '{|' }}</span>
         <span class="ml-2 flex flex-col gap-1">
           @for (g of block.predicateGroups; track g.predicate) {
@@ -161,7 +137,7 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 
     <ng-template #nestedBlockTpl let-block let-term="term">
       @if (block.kind === 'bnode') {
-        <span data-testid="nested-bnode" class="flex flex-wrap items-baseline gap-1">
+        <span class="flex flex-wrap items-baseline gap-1">
           @if (block.label) {
             <span class="italic text-foreground-muted">_:{{ block.label }}</span>
           }
@@ -181,10 +157,7 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
           }
         </span>
       } @else {
-        <span
-          data-testid="nested-collection"
-          class="flex flex-wrap items-baseline gap-1"
-        >
+        <span class="flex flex-wrap items-baseline gap-1">
           <span class="text-foreground-faint">(</span>
           @for (item of block.items; track $index) {
             @if (item.nested) {
