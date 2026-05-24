@@ -1,3 +1,18 @@
+## [0.30.0](https://github.com/WilliamChelman/sparqly/compare/v0.29.0...v0.30.0) (2026-05-24)
+
+### Features
+
+* **cli,server,web:** failure surfaces — inline error chip, details expander, Retry ([#360](https://github.com/WilliamChelman/sparqly/issues/360)) ([5e9f901](https://github.com/WilliamChelman/sparqly/commit/5e9f901b52ed9d47c6a4fdff04be51b306662291))
+* **core,server,web:** disk-backed Glob index Layer 3 extras + stale surface ([#357](https://github.com/WilliamChelman/sparqly/issues/357)) ([1a94a8f](https://github.com/WilliamChelman/sparqly/commit/1a94a8fe1ee82d84d8073aa136c4a9cc91ef8b9d))
+* **core,server,web:** user-triggered index rebuild + Cancel for Disk-backed glob ([#358](https://github.com/WilliamChelman/sparqly/issues/358)) ([8f032ae](https://github.com/WilliamChelman/sparqly/commit/8f032ae35ad621786735d265b9029a13bf41f382))
+* **serve,e2e:** read-only Sources E2E + force user-triggered rebuild ([#362](https://github.com/WilliamChelman/sparqly/issues/362)) ([e7023aa](https://github.com/WilliamChelman/sparqly/commit/e7023aa7e7d3a0fc2549c9b5cbe7d031601c5790))
+* **server,web:** endpoint Test connection probe ([#359](https://github.com/WilliamChelman/sparqly/issues/359)) ([7dcdbb8](https://github.com/WilliamChelman/sparqly/commit/7dcdbb876c6d06bf8c4228fcdf96b37a3b92f6cf))
+* **server,web:** in-memory Sources admin actions with capability gate ([#356](https://github.com/WilliamChelman/sparqly/issues/356)) ([0124aa4](https://github.com/WilliamChelman/sparqly/commit/0124aa4a0f85c1c8263a1d7fb9af54c49ebdc0cc)), closes [#352](https://github.com/WilliamChelman/sparqly/issues/352)
+* **server,web:** live Sources page state updates over SSE ([#354](https://github.com/WilliamChelman/sparqly/issues/354)) ([567c312](https://github.com/WilliamChelman/sparqly/commit/567c312d5a7cac31936c1b3cc5402dde8f06b136))
+* **server,web:** materialization metrics on loaded Sources rows ([#355](https://github.com/WilliamChelman/sparqly/issues/355)) ([7151c3c](https://github.com/WilliamChelman/sparqly/commit/7151c3c233c3e407e0879c27b644e7336a0028bc)), closes [#352](https://github.com/WilliamChelman/sparqly/issues/352)
+* **server,web:** Sources page snapshot foundation ([#353](https://github.com/WilliamChelman/sparqly/issues/353)) ([eaf457f](https://github.com/WilliamChelman/sparqly/commit/eaf457fdf5b695b08a0233fdd7f944999b1c9896))
+* **server,web:** split-glob disclosure with client-side action cascade ([#361](https://github.com/WilliamChelman/sparqly/issues/361)) ([1b8aa4c](https://github.com/WilliamChelman/sparqly/commit/1b8aa4c34b13f75ede98f7be9375063e5997cec1))
+
 ## [0.29.0](https://github.com/WilliamChelman/sparqly/compare/v0.28.2...v0.29.0) (2026-05-23)
 
 ### Features
