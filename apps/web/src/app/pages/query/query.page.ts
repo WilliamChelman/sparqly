@@ -83,7 +83,6 @@ import {
         </div>
         <app-editor-frame
           #frame
-          data-testid="editor"
           name="query"
           [value]="query()"
           [loadError]="loadError() ?? undefined"
@@ -96,7 +95,6 @@ import {
           <button
             app-btn
             variant="primary"
-            data-testid="run-query"
             type="button"
             [loading]="running()"
             [disabled]="!sourceId()"

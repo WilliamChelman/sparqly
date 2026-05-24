@@ -36,8 +36,6 @@ function useReducedMotion(): () => boolean {
       xmlns="http://www.w3.org/2000/svg"
     >
       <g
-        data-testid="loading-constellation"
-        [attr.data-motion]="motion()"
         [class.spin]="motion() === 'spin'"
         class="loading-stars"
       >

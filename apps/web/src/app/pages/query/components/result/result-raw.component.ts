@@ -7,9 +7,7 @@ import { CodeBlockComponent, type CodeLine } from '@app/modules/code-highlight';
   imports: [CodeBlockComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div data-testid="result-raw" [attr.data-content-type]="contentType()">
-      <app-code-block [text]="text()" [lines]="lines()" />
-    </div>
+    <app-code-block [text]="text()" [lines]="lines()" />
   `,
 })
 export class ResultRawComponent {

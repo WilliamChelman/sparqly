@@ -15,26 +15,20 @@ import { TermCellComponent } from './term-cell.component';
   imports: [EyebrowComponent, ScrollingModule, TermCellComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div
-      data-testid="result-table-triples"
-      [attr.data-row-count]="rowCount()"
-      class="w-full font-mono text-xs"
-    >
+    <div class="w-full font-mono text-xs">
       <div
         app-eyebrow
-        data-testid="triples-header"
         data-sticky="true"
         class="sticky top-0 z-[1] grid border-b border-border bg-surface-sunken font-sans [&>div]:px-3.5 [&>div]:py-2"
         style="grid-template-columns: 48px minmax(140px, 1fr) minmax(140px, 1fr) minmax(140px, 1fr)"
       >
-        <div data-testid="triples-header-cell" class="select-none text-right text-foreground-faint">#</div>
-        <div data-testid="triples-header-cell">subject</div>
-        <div data-testid="triples-header-cell">predicate</div>
-        <div data-testid="triples-header-cell">object</div>
+        <div class="select-none text-right text-foreground-faint">#</div>
+        <div>subject</div>
+        <div>predicate</div>
+        <div>object</div>
       </div>
       @if (rowCount() === 0) {
         <p
-          data-testid="triples-empty"
           class="px-3.5 py-3 font-mono text-xs italic text-foreground-faint"
         >no triples</p>
       } @else {
@@ -45,7 +39,6 @@ import { TermCellComponent } from './term-cell.component';
         >
           <div
             *cdkVirtualFor="let t of triples(); trackBy: trackByIndex; let i = index"
-            data-testid="triples-row"
             class="grid border-b border-border-muted transition-colors duration-[120ms] hover:bg-row-hover [&>div]:overflow-hidden [&>div]:text-ellipsis [&>div]:whitespace-nowrap [&>div]:px-3.5 [&>div]:py-2"
             style="grid-template-columns: 48px minmax(140px, 1fr) minmax(140px, 1fr) minmax(140px, 1fr)"
           >

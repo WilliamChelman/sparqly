@@ -8,12 +8,7 @@ import type { FormatSerialization } from 'common';
   imports: [CodeBlockComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div
-      data-testid="result-formatted"
-      [attr.data-serialization]="serialization()"
-    >
-      <app-code-block [text]="body()" [lines]="lines()" />
-    </div>
+    <app-code-block [text]="body()" [lines]="lines()" />
   `,
 })
 export class FormattedResultComponent {

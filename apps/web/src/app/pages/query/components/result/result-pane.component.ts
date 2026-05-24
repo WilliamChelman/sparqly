@@ -14,12 +14,7 @@ import type {
   TripleResult,
 } from '@app/core';
 import { CardComponent } from '@app/modules/card';
-import {
-  exceedsHighlightThreshold,
-  resolveHighlightMode,
-  tokenizeCode,
-  type CodeLine,
-} from '@app/modules/code-highlight';
+import { type CodeLine } from '@app/modules/code-highlight';
 import { EyebrowComponent } from '@app/modules/eyebrow';
 import { parseRdfString, type FormatSerialization } from 'common';
 import { DataFactory, type Quad } from 'n3';
@@ -35,6 +30,7 @@ import {
   tripleDownloads,
   type DownloadOption,
 } from '../../utils/result-downloads';
+import { highlightFormatted, highlightRaw } from '../../utils/highlight-result';
 import { ErrorConstellationComponent } from './error-constellation.component';
 import { FormattedResultComponent } from './formatted-result.component';
 import { HeroIllustrationComponent } from './hero-illustration.component';
@@ -73,33 +69,27 @@ type Tab = 'table' | 'turtle' | 'raw' | 'download';
   template: `
     @switch (state().kind) {
       @case ('empty') {
-        <div data-testid="result-empty">
-          <app-state-card>
-            <div illustration><app-hero-illustration /></div>
-            <div title>Run a query</div>
-            <div copy>
-              Edit the query above and press <strong>Run</strong> to see results here.
-            </div>
-          </app-state-card>
-        </div>
+        <app-state-card>
+          <div illustration><app-hero-illustration /></div>
+          <div title>Run a query</div>
+          <div copy>
+            Edit the query above and press <strong>Run</strong> to see results here.
+          </div>
+        </app-state-card>
       }
       @case ('loading') {
-        <div data-testid="result-loading">
-          <app-state-card>
-            <div illustration><app-loading-constellation /></div>
-            <div title>Running…</div>
-            <div copy>Awaiting response from the SPARQL endpoint.</div>
-          </app-state-card>
-        </div>
+        <app-state-card>
+          <div illustration><app-loading-constellation /></div>
+          <div title>Running…</div>
+          <div copy>Awaiting response from the SPARQL endpoint.</div>
+        </app-state-card>
       }
       @case ('error') {
-        <div data-testid="result-error">
-          <app-state-card>
-            <div illustration><app-error-constellation /></div>
-            <div title>Query failed</div>
-            <div copy>{{ errorMessage() }}</div>
-          </app-state-card>
-        </div>
+        <app-state-card>
+          <div illustration><app-error-constellation /></div>
+          <div title>Query failed</div>
+          <div copy>{{ errorMessage() }}</div>
+        </app-state-card>
       }
       @case ('result') {
         <div app-card>
@@ -111,7 +101,6 @@ type Tab = 'table' | 'turtle' | 'raw' | 'download';
               @for (t of tabs(); track t.id) {
                 <button
                   app-eyebrow
-                  [attr.data-testid]="'tab-' + t.testId"
                   role="tab"
                   type="button"
                   [attr.aria-selected]="activeTab() === t.id"
@@ -174,7 +163,6 @@ type Tab = 'table' | 'turtle' | 'raw' | 'download';
                   @for (opt of downloadOptions(); track opt.id) {
                     <li>
                       <a
-                        [attr.data-testid]="'download-' + opt.id"
                         [attr.href]="dataUrlFor(opt)"
                         [attr.download]="opt.filename"
                         class="inline-block rounded border border-border-muted px-3 py-1.5 font-mono text-xs text-foreground-muted hover:border-accent hover:text-accent"
@@ -373,28 +361,6 @@ export class ResultPaneComponent {
   dataUrlFor(opt: DownloadOption): string {
     return `data:${opt.mediaType};charset=utf-8,${encodeURIComponent(opt.body)}`;
   }
-}
-
-/**
- * Build the `raw`-tab highlight model for a wire body: resolve the mode from
- * its content type, then tokenize — unless the mode is unrecognized or the
- * body is over the size threshold, in which case `null` signals plain text.
- */
-function highlightRaw(raw: string, contentType: string): CodeLine[] | null {
-  const mode = resolveHighlightMode(contentType);
-  if (!mode || exceedsHighlightThreshold(raw)) return null;
-  return tokenizeCode(raw, mode);
-}
-
-/**
- * Build the `turtle`/`trig`-tab highlight model for a formatted body. The mode
- * is fixed to `turtle` — CodeMirror's turtle mode tokenizes TriG too — so only
- * the size threshold can veto highlighting: an over-threshold body yields
- * `null`, signalling the plain `<pre>` fallback.
- */
-function highlightFormatted(body: string): CodeLine[] | null {
-  if (exceedsHighlightThreshold(body)) return null;
-  return tokenizeCode(body, 'turtle');
 }
 
 function tripleToQuad(t: Triple): Quad {
