@@ -780,8 +780,8 @@ describe('groupRdfDiffByEntity — anchorSource (anchor definition site)', () =>
     const diff = await diffStores(left, right);
     const hunked = groupRdfDiffByEntity({
       diff,
-      left: { store: left.store },
-      right: { store: right.store },
+      left: { store: left.store, sourceRecords: left.sourceRecords },
+      right: { store: right.store, sourceRecords: right.sourceRecords },
     });
 
     expect(hunked.hunks).toHaveLength(1);
@@ -807,8 +807,8 @@ describe('groupRdfDiffByEntity — anchorSource (anchor definition site)', () =>
     const diff = await diffStores(left, right);
     const hunked = groupRdfDiffByEntity({
       diff,
-      left: { store: left.store },
-      right: { store: right.store },
+      left: { store: left.store, sourceRecords: left.sourceRecords },
+      right: { store: right.store, sourceRecords: right.sourceRecords },
     });
 
     expect(hunked.hunks).toHaveLength(1);
@@ -831,8 +831,8 @@ describe('groupRdfDiffByEntity — anchorSource (anchor definition site)', () =>
     const diff = await diffStores(left, right);
     const hunked = groupRdfDiffByEntity({
       diff,
-      left: { store: left.store },
-      right: { store: right.store },
+      left: { store: left.store, sourceRecords: left.sourceRecords },
+      right: { store: right.store, sourceRecords: right.sourceRecords },
     });
 
     expect(hunked.hunks.map((h) => [h.anchor, h.state])).toEqual([
@@ -854,8 +854,8 @@ describe('groupRdfDiffByEntity — anchorSource (anchor definition site)', () =>
     const diff = await diffStores(left, right);
     const hunked = groupRdfDiffByEntity({
       diff,
-      left: { store: left.store },
-      right: { store: right.store },
+      left: { store: left.store, sourceRecords: left.sourceRecords },
+      right: { store: right.store, sourceRecords: right.sourceRecords },
     });
 
     expect(hunked.hunks).toHaveLength(1);
@@ -864,6 +864,57 @@ describe('groupRdfDiffByEntity — anchorSource (anchor definition site)', () =>
     expect(hunk.sourceRecords.left.length).toBeGreaterThan(0);
     expect(hunk.sourceRecords.right.length).toBeGreaterThan(0);
     expect(hunk.anchorSource).toBeUndefined();
+  });
+
+  it('resolves anchorSource from the loader sidecar when the store carries no RDF-star annotations (production path)', async () => {
+    // Production loader path: store contains only the asserted triples, and
+    // provenance is carried in a graph-agnostic SourceRecordSidecar. No
+    // RDF-star annotations are added to the store.
+    function plainSide(entries: ReadonlyArray<AnnEntry>): {
+      store: Store;
+      sourceRecords: SourceRecordSidecar;
+    } {
+      const store = new Store();
+      const perFile = new Map<string, SidecarLoaderRecord[]>();
+      for (const e of entries) {
+        const asserted = quad(namedNode(ex(e.s)), namedNode(ex(e.p)), namedNode(ex(e.o)));
+        store.addQuad(asserted);
+        let bucket = perFile.get(e.file);
+        if (bucket === undefined) {
+          bucket = [];
+          perFile.set(e.file, bucket);
+        }
+        const rec: SidecarLoaderRecord = { quad: asserted };
+        if (e.line !== undefined) rec.line = e.line;
+        bucket.push(rec);
+      }
+      return { store, sourceRecords: buildSourceRecordSidecar(perFile) };
+    }
+
+    const left = plainSide([
+      { s: 'Alice', p: 'name', o: 'A', file: '/x/a.ttl', line: 5 },
+    ]);
+    const right = plainSide([
+      { s: 'Alice', p: 'name', o: 'A', file: '/x/a.ttl', line: 5 },
+      { s: 'Alice', p: 'nick', o: 'Al', file: '/x/b.ttl', line: 9 },
+    ]);
+    const diff = await diffStores(left, right);
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: left.store, sourceRecords: left.sourceRecords },
+      right: { store: right.store, sourceRecords: right.sourceRecords },
+    });
+
+    expect(hunked.hunks).toHaveLength(1);
+    const hunk = hunked.hunks[0];
+    expect(hunk.anchor).toBe(ex('Alice'));
+    expect(hunk.state).toBe('changed');
+    expect(hunk.sourceRecords.left).toEqual([]);
+    expect(hunk.sourceRecords.right).toEqual([{ file: 'file:///x/b.ttl', line: 9 }]);
+    expect(hunk.anchorSource).toEqual({
+      left: [{ file: 'file:///x/a.ttl', line: 5 }],
+      right: [],
+    });
   });
 });
 

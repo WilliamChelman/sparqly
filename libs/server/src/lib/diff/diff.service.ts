@@ -206,8 +206,8 @@ async function runGraph(args: RunGraphArgs): Promise<DiffResponse> {
 
   const hunked = groupRdfDiffByEntity({
     diff: result,
-    left: { store: left.value.store },
-    right: { store: right.value.store },
+    left: { store: left.value.store, sourceRecords: left.value.sourceRecords },
+    right: { store: right.value.store, sourceRecords: right.value.sourceRecords },
   });
 
   return { kind: 'grouped', hunked };
