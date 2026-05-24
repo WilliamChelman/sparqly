@@ -21,11 +21,7 @@ const IRI_KINDS = new Set<TermDisplay['kind']>([
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let d = display();
-    <span
-      data-testid="term-cell"
-      [attr.data-kind]="d?.kind ?? 'unbound'"
-      class="font-mono"
-    >
+    <span class="font-mono">
       @switch (d?.kind) {
         @case ('prefixed-iri') {
           <span class="text-secondary dark:text-secondary-soft">{{ asPrefixed(d).prefix }}</span

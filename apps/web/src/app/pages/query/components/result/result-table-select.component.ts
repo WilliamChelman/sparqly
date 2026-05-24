@@ -15,29 +15,20 @@ import { TermCellComponent } from './term-cell.component';
   imports: [EyebrowComponent, ScrollingModule, TermCellComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div
-      data-testid="result-table-select"
-      [attr.data-row-count]="rowCount()"
-      class="w-full font-mono text-xs"
-    >
+    <div class="w-full font-mono text-xs">
       <div
         app-eyebrow
-        data-testid="select-header"
         data-sticky="true"
         class="sticky top-0 z-[1] grid border-b border-border bg-surface-sunken font-sans [&>div]:px-3.5 [&>div]:py-2"
         [style.gridTemplateColumns]="gridTemplateColumns()"
       >
-        <div
-          data-testid="select-header-cell"
-          class="select-none text-right text-foreground-faint"
-        >#</div>
+        <div class="select-none text-right text-foreground-faint">#</div>
         @for (v of variables(); track v) {
-          <div data-testid="select-header-cell">?{{ v }}</div>
+          <div>?{{ v }}</div>
         }
       </div>
       @if (rowCount() === 0) {
         <p
-          data-testid="select-empty"
           class="px-3.5 py-3 font-mono text-xs italic text-foreground-faint"
         >no results</p>
       } @else {
@@ -48,7 +39,6 @@ import { TermCellComponent } from './term-cell.component';
         >
           <div
             *cdkVirtualFor="let row of bindings(); trackBy: trackByIndex; let i = index"
-            data-testid="select-row"
             class="grid border-b border-border-muted transition-colors duration-[120ms] hover:bg-row-hover [&>div]:overflow-hidden [&>div]:text-ellipsis [&>div]:whitespace-nowrap [&>div]:px-3.5 [&>div]:py-2"
             [style.gridTemplateColumns]="gridTemplateColumns()"
           >
