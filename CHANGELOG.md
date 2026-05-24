@@ -1,3 +1,14 @@
+## [0.31.0](https://github.com/WilliamChelman/sparqly/compare/v0.30.0...v0.31.0) (2026-05-24)
+
+### Features
+
+* **web-e2e:** scaffold Playwright lane with per-page smoke ([#365](https://github.com/WilliamChelman/sparqly/issues/365)) ([b2db6ce](https://github.com/WilliamChelman/sparqly/commit/b2db6ce5fede46e60e96437e5ec2ace050c85431))
+
+### Bug Fixes
+
+* **diff:** resolve anchorSource from loader sidecar, not RDF-star ([5307ade](https://github.com/WilliamChelman/sparqly/commit/5307adea045b3506cae9439b448339b29a152a0c))
+* **server:** unblock graceful shutdown of Sources SSE stream ([d93a2bc](https://github.com/WilliamChelman/sparqly/commit/d93a2bc805f84d9618de866be0c4347adb9e2493))
+
 ## [0.30.0](https://github.com/WilliamChelman/sparqly/compare/v0.29.0...v0.30.0) (2026-05-24)
 
 ### Features
