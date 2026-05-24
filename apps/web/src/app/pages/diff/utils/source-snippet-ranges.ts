@@ -1,4 +1,4 @@
-import type { Hunk, SourceRecord } from '../services/diff.service';
+import type { Hunk, SourceRecord } from '../models/diff-response';
 
 export interface SnippetRange {
   file: string;

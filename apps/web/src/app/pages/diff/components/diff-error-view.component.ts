@@ -1,9 +1,7 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { ErrorBannerComponent } from '@app/modules/error-banner';
-import {
-  formatDiffError,
-  type DiffError,
-} from '../services/diff.service';
+import type { DiffError } from '../models/diff-error';
+import { formatDiffError } from '../utils/format-error';
 
 export interface DiffErrors {
   readonly top?: DiffError;
@@ -19,14 +17,14 @@ export interface DiffErrors {
   template: `
     @let errs = errors();
     @if (errs.top; as top) {
-      <p app-error-banner size="md" data-testid="error-top">{{ format(top) }}</p>
+      <p app-error-banner size="md">{{ format(top) }}</p>
     }
     <div class="grid grid-cols-2 gap-4">
       @if (errs.left; as left) {
-        <p app-error-banner size="md" data-testid="error-left">{{ format(left) }}</p>
+        <p app-error-banner size="md">{{ format(left) }}</p>
       }
       @if (errs.right; as right) {
-        <p app-error-banner size="md" data-testid="error-right">{{ format(right) }}</p>
+        <p app-error-banner size="md">{{ format(right) }}</p>
       }
     </div>
   `,

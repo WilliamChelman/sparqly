@@ -5,8 +5,9 @@ import type {
   GroupedDiffResponse,
   Hunk,
   TabularDiffResponse,
-} from '../services/diff.service';
+} from '../models/diff-response';
 import { classifyHunk, type HunkClass } from '../utils/hunk-classifier';
+import { computeTotalsLine } from '../utils/totals-line';
 import { DiffErrorViewComponent } from './diff-error-view.component';
 import { DiffHunkComponent } from './diff-hunk.component';
 import { DiffTabularTableComponent } from './diff-tabular-table.component';
@@ -35,10 +36,9 @@ interface ClassifiedHunk {
       <app-diff-tabular-table [result]="t" [displayContext]="displayContext()" />
     }
     @if (groupedView()) {
-      <div data-testid="hunk-list" class="mt-2 flex flex-col">
+      <div class="mt-2 flex flex-col">
         @if (classifiedHunks().length === 0) {
           <p
-            data-testid="hunk-list-empty"
             class="my-2 font-serif text-sm italic text-foreground-faint"
           >(no changes)</p>
         }
@@ -83,29 +83,5 @@ export class DiffResultRendererComponent {
     return g.hunked.hunks.map((hunk) => ({ hunk, cls: classifyHunk(hunk) }));
   });
 
-  readonly totalsLine = computed<string | null>(() => {
-    const r = this.result();
-    if (r.kind === 'grouped') {
-      const totals = r.hunked.totals;
-      let added = 0;
-      let removed = 0;
-      for (const h of r.hunked.hunks) {
-        added += h.added;
-        removed += h.removed;
-      }
-      return summaryLine(totals, added, removed);
-    }
-    if (r.kind === 'tabular') {
-      return summaryLine(r.totals, r.diff.added.length, r.diff.removed.length);
-    }
-    return null;
-  });
-}
-
-function summaryLine(
-  totals: { left: number; right: number },
-  added: number,
-  removed: number,
-): string {
-  return `left=${totals.left} right=${totals.right} +${added} -${removed}`;
+  readonly totalsLine = computed<string | null>(() => computeTotalsLine(this.result()));
 }
