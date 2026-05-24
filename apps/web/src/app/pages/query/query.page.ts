@@ -69,7 +69,7 @@ import {
       <main class="p-4 text-sm text-foreground-faint">loading…</main>
     } @else {
       <main class="flex flex-col gap-3 p-4">
-        <div class="flex flex-wrap items-center gap-2">
+        <div class="flex flex-wrap items-start gap-2">
           <app-sources-picker
             label="source"
             [value]="sourceId()"

@@ -67,7 +67,7 @@ import { EditorFrameController } from './editor-frame-controller';
       <main class="flex flex-col gap-4 p-4">
         <section class="flex items-start gap-2">
           <div class="flex flex-1 flex-col gap-2">
-            <div class="flex flex-wrap items-center gap-2">
+            <div class="flex flex-wrap items-start gap-2">
               <app-sources-picker
                 label="left"
                 [value]="leftId()"
@@ -108,7 +108,7 @@ import { EditorFrameController } from './editor-frame-controller';
             </button>
           </div>
           <div class="flex flex-1 flex-col gap-2">
-            <div class="flex flex-wrap items-center gap-2">
+            <div class="flex flex-wrap items-start gap-2">
               <app-sources-picker
                 label="right"
                 [value]="rightId()"

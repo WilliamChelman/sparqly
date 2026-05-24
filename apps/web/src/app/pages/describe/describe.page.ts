@@ -53,7 +53,7 @@ type DescribeTab = 'table' | 'turtle';
       </p>
     </header>
     <main class="flex flex-col gap-3 p-4">
-      <div class="flex flex-wrap items-center gap-2">
+      <div class="flex flex-wrap items-start gap-2">
         <input
           type="text"
           aria-label="seed IRI"

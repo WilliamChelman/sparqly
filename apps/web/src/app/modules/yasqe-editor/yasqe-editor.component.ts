@@ -57,6 +57,7 @@ export class YasqeEditorComponent implements AfterViewInit, OnDestroy {
     this.valueSignal.set(next);
     if (this.instance && this.instance['getValue']() !== next) {
       this.instance['setValue'](next);
+      this.instance.collapsePrefixes(true);
     }
   }
   get value(): string {
@@ -77,6 +78,7 @@ export class YasqeEditorComponent implements AfterViewInit, OnDestroy {
     };
     cm.setOption?.('theme', 'sparqly');
     this.instance['setValue'](this.valueSignal());
+    this.instance.collapsePrefixes(true);
     this.instance.on('change', () => {
       const v = (this.instance?.['getValue']() as string) ?? '';
       if (v !== this.valueSignal()) {
