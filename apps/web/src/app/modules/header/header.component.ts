@@ -62,6 +62,13 @@ import { ThemeToggleComponent } from './components/theme-toggle.component';
           routerLinkActive="bg-bg text-foreground shadow-sm"
           >Queries</a
         >
+        <a
+          app-btn
+          variant="pill"
+          routerLink="/sources"
+          routerLinkActive="bg-bg text-foreground shadow-sm"
+          >Sources</a
+        >
       </nav>
       <div class="relative z-[1] ml-auto">
         <app-theme-toggle />
