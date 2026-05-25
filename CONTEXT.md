@@ -155,7 +155,7 @@ One of the two halves the **Describe page** splits the merged quads into — **o
 _Avoid_: "outgoing"/"incoming", a separate "blank nodes" section
 
 **Describe-this affordance**:
-A click-through control rendered next to every named IRI in the webapp's structured RDF renderers that opens a new **Describe page** on the fully-expanded IRI. Attaches to named IRIs only.
+A click-through control rendered next to every named IRI in the webapp's structured RDF renderers that opens a new **Describe page** on the fully-expanded IRI, scoped to the calling surface's current source when one is set (cleared → merged view). The **tabular diff** surface carries two current sources and renders one affordance per side, collapsed to one when both sides resolve to the same source id. Attaches to named IRIs only.
 _Avoid_: "auto-expand"
 
 **Describe provenance**:
