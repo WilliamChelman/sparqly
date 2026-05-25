@@ -114,6 +114,12 @@ export function mapDiffHttpError(error: TransportError): HttpException {
         reason: error.reason,
         message: error.message,
       });
+    case 'raw-pass-through-target':
+      return new BadRequestException({
+        kind: 'raw-pass-through-target',
+        source: { ...error.source },
+        message: error.message,
+      });
   }
 }
 

@@ -37,5 +37,8 @@ export function sourceErrorToStatus(error: SourceError): HttpStatus {
       return HttpStatus.BAD_REQUEST;
     case 'git-pin':
       return HttpStatus.BAD_REQUEST;
+    case 'raw-pass-through-target':
+      // hash/diff reject a raw pass-through target — user-input fault.
+      return HttpStatus.BAD_REQUEST;
   }
 }

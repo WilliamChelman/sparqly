@@ -13,9 +13,11 @@ import {
 } from '../sources';
 import {
   type ParsedEndpointSource,
+  type ParsedGlobSource,
   type ParsedSource,
   type ParsedViewSource,
 } from '../sources';
+import { resolveDiskBackedIndexHandleResult } from './view-disk-backed';
 import { GitCliPort } from '../sources/git/git-cli-port';
 import type { GitPort } from '../sources/git/git-port';
 import { defaultRepoDiscovery } from '../sources/git/pin-glob-source';
@@ -26,6 +28,7 @@ import type {
   GitPinError,
   GlobLoadError,
   QueryExecutionError,
+  TransformParseError,
   ViewReferenceError,
   ViewValidationError,
 } from '../sources/errors';
@@ -65,6 +68,7 @@ export type ResolveViewError =
   | EndpointFetchError
   | QueryExecutionError
   | GlobLoadError
+  | TransformParseError
   | GitPinError;
 
 export function resolveViewResult(
@@ -181,10 +185,21 @@ function resolveViewInternal(
         const singleEndpoint = singleEndpointUpstream(view, registry);
         if (singleEndpoint) {
           return resolveViewPassThroughResult({
-            endpoint: singleEndpoint,
+            source: { kind: 'endpoint', endpoint: singleEndpoint },
             viewQuery: validQuery,
             engine,
             meta,
+          });
+        }
+        const diskBacked = singleDiskBackedGlobUpstream(view, registry);
+        if (diskBacked) {
+          return resolveViewOverDiskBackedGlobResult({
+            view,
+            upstream: diskBacked,
+            viewQuery: validQuery,
+            engine,
+            meta,
+            configDir: pinDeps.configDir,
           });
         }
         return loadUpstreamResult(
@@ -217,6 +232,49 @@ function singleEndpointUpstream(
   const upstream = byId.get(view.from);
   if (!upstream || upstream.kind !== 'endpoint') return undefined;
   return upstream;
+}
+
+function singleDiskBackedGlobUpstream(
+  view: ParsedViewSource,
+  registry: ReadonlyArray<ParsedSource>,
+): ParsedGlobSource | undefined {
+  const byId = buildRegistryById(registry);
+  const upstream = byId.get(view.from);
+  if (!upstream || upstream.kind !== 'glob') return undefined;
+  if (storageTier(upstream) !== 'disk') return undefined;
+  return upstream;
+}
+
+function resolveViewOverDiskBackedGlobResult(args: {
+  view: ParsedViewSource;
+  upstream: ParsedGlobSource;
+  viewQuery: string;
+  engine: ComunicaQueryEngine | undefined;
+  meta: ViewQueryLogMeta;
+  configDir: string;
+}): ResultAsync<Store, ResolveViewError> {
+  const label = `@${args.upstream.id ?? args.upstream.glob}`;
+  return resolveDiskBackedIndexHandleResult(args.upstream, {
+    configDir: args.configDir,
+  }).andThen<Store, ResolveViewError>((handle) => {
+    const settled = resolveViewPassThroughResult({
+      source: {
+        kind: 'disk-backed',
+        indexSource: handle.source,
+        label,
+      },
+      viewQuery: args.viewQuery,
+      engine: args.engine,
+      meta: args.meta,
+    });
+    // Release the LevelDB lock whether the query succeeds or fails.
+    return ResultAsync.fromSafePromise(
+      Promise.resolve(settled).then(async (r) => {
+        await handle.close();
+        return r;
+      }),
+    ).andThen((r) => r);
+  });
 }
 
 function loadViewQueryResult(
@@ -302,17 +360,17 @@ function loadUpstreamResult(
   if (upstream.kind === 'empty') {
     return okAsync(new Store());
   }
-  if (upstream.kind === 'file' || upstream.kind === 'glob') {
-    // A view materializes its `from:` into heap — refuse a disk-backed upstream.
-    if (storageTier(upstream) === 'disk') {
-      return errAsync({
-        kind: 'glob-load',
-        glob: upstream.kind === 'glob' ? [upstream.glob] : [upstream.path],
-        message:
-          `view "${view.id}" cannot resolve from a disk-backed upstream @${refId} ` +
-          '(`storage: disk`): a view materializes its `from:` into the V8 heap',
-      });
-    }
+  if (upstream.kind === 'file' && storageTier(upstream) === 'disk') {
+    // A `file` upstream with `storage: disk` is still materialized into
+    // the heap here (the view-resolver disk-backed dispatch only covers
+    // glob upstreams; file-source pass-through is out of scope for ADR-0047).
+    return errAsync({
+      kind: 'glob-load',
+      glob: [upstream.path],
+      message:
+        `view "${view.id}" cannot resolve from a disk-backed file upstream @${refId} ` +
+        '(`storage: disk`): a view materializes its `from:` into the V8 heap',
+    });
   }
   if (upstream.kind === 'file') {
     return loadRdfResult({ sources: upstream.path, logger }).map((sub) =>

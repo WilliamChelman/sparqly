@@ -13,6 +13,7 @@ import type {
   GitPinError,
   GlobLoadError,
   QueryExecutionError,
+  TransformParseError,
   ViewReferenceError,
   ViewValidationError,
 } from '../sources/errors';
@@ -33,6 +34,7 @@ export type ResolveAnonymousViewError =
   | EndpointFetchError
   | QueryExecutionError
   | GlobLoadError
+  | TransformParseError
   | GitPinError;
 
 const ANON_UPSTREAM_ID = '__sparqly_anon_upstream__';

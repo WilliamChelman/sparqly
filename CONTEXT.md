@@ -21,7 +21,7 @@ A **Glob source** that additionally exposes one **File source** per matched file
 _Avoid_: "exploded glob", "fan-out glob"
 
 **Disk-backed glob**:
-A **Glob source** whose **Materialized resolution** loads its matched files into a persistent on-disk **Glob index** rather than an in-memory store, so a glob whose triples exceed RAM stays queryable.
+A **Glob source** whose matched files are loaded into a persistent on-disk **Glob index** rather than an in-memory store, so a glob whose triples exceed RAM stays queryable. Resolves via **pass-through** — queries run against the **Glob index** directly and only the result is materialized, mirroring the **Endpoint source** contract.
 _Avoid_: "indexed glob", "big glob", "external source", conflating with **Endpoint source**
 
 **Endpoint source**:
@@ -58,11 +58,11 @@ _Avoid_: "registry mode", "single-source mode"
 ### Resolution
 
 **Materialized resolution**:
-The resolution path that loads a **Source**'s upstream into a local store and runs the view query against that store; the default for glob, empty, and view upstreams.
+The resolution path that loads a **Source**'s upstream into a local in-memory store and runs the view query against that store; the default for in-memory glob, empty, and view upstreams.
 _Avoid_: "in-memory mode", "fetch-then-query"
 
 **Pass-through resolution**:
-The resolution path that forwards the user's query to a remote endpoint so the endpoint executes it and returns only the result; the only path used when the target is an **Endpoint source**.
+The resolution path that runs the user's query against the source's own store — a remote SPARQL endpoint or a local **Glob index** — and materializes only the result. Used for **Endpoint sources** and **Disk-backed globs**.
 _Avoid_: "pushdown", "federation"
 
 **Lazy materialization** (`serve`):
@@ -229,13 +229,13 @@ _Avoid_: "test id" as a default selector, "test hook"
 
 - A **View** has exactly one **Upstream** source via `from:`.
 - An **Upstream** is itself a **Source** (glob, endpoint, empty, or view; reference is rejected).
-- A **View** whose `from:` is an **Endpoint source** resolves via **pass-through**; glob, empty, and view upstreams resolve via **materialized**.
+- A **View** whose `from:` is an **Endpoint source** or a **Disk-backed glob** resolves via **pass-through**; in-memory glob, empty, and view upstreams resolve via **materialized**.
 - A **View** with `cache:` declared writes to the **Result cache** after resolution.
-- **`query`** picks one **target source** from the **source registry** and resolves it: **pass-through** when the target is an endpoint, **materialized** otherwise.
+- **`query`** picks one **target source** from the **source registry** and resolves it: **pass-through** when the target is an endpoint or a **Disk-backed glob**, **materialized** otherwise.
 - **`serve`** exposes the **served registry**; resolution per source follows the same rules as `query`.
-- **`hash`** picks one **target source** and always **canonicalizes** the resolved Store; it refuses raw endpoints (must be wrapped in a view) and refuses arbitrary-SELECT views.
-- **`diff`** picks one **target source** per side and dispatches by query shape: **graph diff** when both sides produce triples; **tabular diff** when both sides project arbitrary SELECT tuples with matching variable names. Mixed-shape pairs are rejected. Both modes refuse a raw endpoint as target.
-- A **Disk-backed glob** rejects the **Annotate-source transformation** (the **Glob index** cannot persist RDF-star quoted triples), carries no **Source record sidecar**, and is rejected by `hash` and `diff` (canonicalization needs every quad in memory). A declared **Graph-name transformation** mode is baked into the **Glob index** at build time.
+- **`hash`** picks one **target source** and always **canonicalizes** the resolved Store; it refuses any raw **pass-through** target (endpoint or **Disk-backed glob** — must be wrapped in a view or scoped with an inline query) and refuses arbitrary-SELECT views.
+- **`diff`** picks one **target source** per side and dispatches by query shape: **graph diff** when both sides produce triples; **tabular diff** when both sides project arbitrary SELECT tuples with matching variable names. Mixed-shape pairs are rejected. Both modes refuse a raw **pass-through** target (endpoint or **Disk-backed glob**) on either side.
+- A **Disk-backed glob** rejects the **Annotate-source transformation** (the **Glob index** cannot persist RDF-star quoted triples) and carries no **Source record sidecar**; `hash` and `diff` accept it only via the **pass-through** path (the user supplies a scoping query — inline or via a wrapping view — and the query runs against the **Glob index**). A declared **Graph-name transformation** mode is baked into the **Glob index** at build time.
 - The disk-backed storage selector is valid only on glob and file sources; a **Split glob**'s synthesized **File source** children inherit it and are indexed independently of the meta and of each other.
 - A **Pinned source** is a **Glob source** resolved against a git revision; the glob's transform pipeline applies unchanged, and when the glob is also a **Split glob**, the meta enumerates files from the git tree at the resolved SHA (not the working tree). Synthesized **File source** children inherit the pin alongside the transform pipeline.
 - A **Pinned source**'s **Result cache** keys on the resolved SHA, never the user-facing ref string. A **Pinned ref** is reproducible across fetches; a **Floating ref** is not, and the resolved SHA is what surfaces in any source records or diff reports.
@@ -244,7 +244,7 @@ _Avoid_: "test id" as a default selector, "test hook"
 - A **Glob source**'s **Union default graph** setting is applied as a query-context option at every SPARQL execution against its materialized Store — including a **View**'s own query when `from:` resolves to that glob — but never propagated to a view's output Store. It is orthogonal to the **Graph-name transformation**: `flatten` destructively drops graph names, whereas **Union default graph** is a non-destructive query-time option that leaves named graphs addressable.
 - A **Split glob** is targetable as the union (`@meta`) and as any of its children (`@meta/<relative-path>`); a child may serve as a CLI target, an `@id` in `view.from:`, or a selection in the webapp picker. The single-target rule is preserved — both the meta and any one child are single targets; the picker remains single-select on `query`/`hash`/`diff`.
 - The **Annotate-source transformation** projects **Source records** as RDF-star into the glob's loaded Store for SPARQL queryability; the projection does not propagate through a downstream **View** unless that view's query explicitly references it, and it is stripped by **Canonicalization**. The projection is independent of the **Source record sidecar** that `diff` consumes.
-- `diff` (in **graph-diff** mode) consumes the per-side **Source record sidecar** carried by every glob/file target; explicit **Annotate-source transformations** in the user's config emit RDF-star into the Store independently and do not feed diff. Source records are surfaced across every graph output format; the `html` format additionally renders a **Source-file snippet** per record.
+- `diff` (in **graph-diff** mode) consumes the per-side **Source record sidecar** carried by every in-memory glob/file target; a side resolved via **pass-through** (endpoint or a view whose `from:` chain reaches a **Disk-backed glob**) carries no sidecar, so diff runs but emits one boundary-log `warn` per such side and the `html` format's **Source-file snippet** sections render empty. Explicit **Annotate-source transformations** in the user's config emit RDF-star into the Store independently and do not feed diff. Source records are surfaced across every graph output format.
 - Every command that renders IRIs reads the project-config `context:` block under one rule: prefix map = built-in defaults ∪ `context.prefixes` (config wins); base = `context.base` as strict fallback after prefix match.
 - The **Describe page** runs **describe** against the registry, which dispatches per source kind: `glob`/`view` targets materialize and run the full describe fixpoint; `endpoint` targets fetch depth-0 only, with deeper expansion driven by **describe expansion paths**; `empty` is rejected as a top-level describe target; `reference` is rejected.
 - A describe request is best-effort multi-origin: one source failing does not fail the request. **Describe provenance** annotations are stripped by the webapp renderer and surfaced as UI badges; they never conflate with user-authored RDF-star or with **Source records**.

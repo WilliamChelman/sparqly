@@ -42,10 +42,12 @@ import {
 } from './source-record-sidecar';
 
 export {
+  formatRawPassThroughRejection,
   formatSourceError,
   type EndpointFetchError,
   type GlobLoadError,
   type QueryExecutionError,
+  type RawPassThroughTargetError,
   type ReferenceTargetError,
   type SourceError,
   type TransformParseError,

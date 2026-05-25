@@ -21,6 +21,7 @@ import {
  *  37   source: cache-io                 (view cache read/write/parse failure)
  *  38   source: transform-parse          (transform spec parse failure)
  *  39   source: git-pin                  (gitRef/--at resolution failure, ADR-0029)
+ *  40   source: raw-pass-through-target  (raw endpoint/disk-backed glob; ADR-0047)
  *  50   target: ref-as-target            (reference alias picked as data)
  *  51   target: empty-registry           (registry has no entries)
  *  52   target: no-default-multi         (ambiguous registry, no default)
@@ -46,6 +47,8 @@ export function hashErrorExitCode(error: SourceError | TargetError): number {
       return 38;
     case 'git-pin':
       return 39;
+    case 'raw-pass-through-target':
+      return 40;
     case 'ref-as-target':
       return 50;
     case 'empty-registry':

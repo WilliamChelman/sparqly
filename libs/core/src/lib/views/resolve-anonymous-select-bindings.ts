@@ -242,7 +242,8 @@ export async function resolveAnonymousSelectBindings(
   return result.value;
 }
 
-/** Defensively narrows `reference-target` (filtered upstream) into `view-validation`. */
+// Variants the upstream resolver never actually produces here; collapse to
+// view-validation so the caller's narrower union stays exhaustive.
 function narrowUpstreamError(
   err: SourceError,
 ): ResolveAnonymousSelectBindingsError {
@@ -252,6 +253,9 @@ function narrowUpstreamError(
       message:
         "anonymous select-bindings: `kind: 'reference'` entries cannot be resolved as a target",
     };
+  }
+  if (err.kind === 'raw-pass-through-target') {
+    return { kind: 'view-validation', message: err.message };
   }
   return err;
 }

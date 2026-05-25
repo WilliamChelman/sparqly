@@ -35,9 +35,59 @@ describe('formatSourceError', () => {
       { kind: 'cache-io', cachePath: '/c', message: 'm' },
       { kind: 'transform-parse', transformKey: 'graphName', message: 'm' },
       { kind: 'transform-parse', transformKey: 'annotateSource', message: 'm' },
+      {
+        kind: 'raw-pass-through-target',
+        source: { kind: 'endpoint', url: 'http://e' },
+        message: 'm',
+      },
+      {
+        kind: 'raw-pass-through-target',
+        source: { kind: 'disk-backed-glob', label: '@data' },
+        message: 'm',
+      },
     ];
     for (const v of variants) {
       expect(formatSourceError(v).length).toBeGreaterThan(0);
     }
+  });
+
+  it('formats the raw-pass-through-target variant verbatim from its `message` field', () => {
+    expect(
+      formatSourceError({
+        kind: 'raw-pass-through-target',
+        source: { kind: 'endpoint', url: 'http://e' },
+        message: 'precomposed message',
+      }),
+    ).toBe('precomposed message');
+  });
+});
+
+describe('formatRawPassThroughRejection', () => {
+  it('names the endpoint URL and lists the three affordances (wrap-in-view, --query/--query-file, pipe sparqly query --format=turtle)', async () => {
+    const { formatRawPassThroughRejection } = await import('./errors');
+    const text = formatRawPassThroughRejection({
+      kind: 'endpoint',
+      url: 'https://example.org/sparql',
+    });
+    expect(text).toContain('https://example.org/sparql');
+    expect(text).toMatch(/endpoint/i);
+    expect(text).toMatch(/wrap.*view/i);
+    expect(text).toMatch(/--query/);
+    expect(text).toMatch(/--query-file/);
+    expect(text).toMatch(/sparqly query --format=turtle/);
+  });
+
+  it('names the disk-backed glob label and lists the same three affordances', async () => {
+    const { formatRawPassThroughRejection } = await import('./errors');
+    const text = formatRawPassThroughRejection({
+      kind: 'disk-backed-glob',
+      label: '@data',
+    });
+    expect(text).toContain('@data');
+    expect(text).toMatch(/disk-backed glob/i);
+    expect(text).toMatch(/wrap.*view/i);
+    expect(text).toMatch(/--query/);
+    expect(text).toMatch(/--query-file/);
+    expect(text).toMatch(/sparqly query --format=turtle/);
   });
 });

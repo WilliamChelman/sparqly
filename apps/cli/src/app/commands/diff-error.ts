@@ -91,6 +91,12 @@ function sourceErrorExitCode(error: SourceError): number {
       return 37;
     case 'transform-parse':
       return 38;
+    case 'git-pin':
+      return 39;
+    case 'raw-pass-through-target':
+      // Wired in by the follow-up slice that extends diff's raw-target
+      // pre-check to disk-backed globs (ADR-0047). Placeholder code today.
+      return 41;
   }
 }
 

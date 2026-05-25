@@ -1,4 +1,5 @@
 import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
+import type * as RDF from '@rdfjs/types';
 import { DataFactory, Store, type Quad } from 'n3';
 import { ResultAsync } from 'neverthrow';
 import type { SparqlyLogger } from 'common';
@@ -9,36 +10,47 @@ import {
 } from '../engine';
 import { detectQueryType } from '../canonical/immutability';
 import type { ParsedEndpointSource } from '../sources';
-import type { EndpointFetchError } from '../sources/errors';
+import type {
+  EndpointFetchError,
+  QueryExecutionError,
+} from '../sources/errors';
 
-/** Identifies a view's SPARQL execution for the `query` log event (ADR-0020). */
 export interface ViewQueryLogMeta {
-  /** Source `@id` recorded on the `query` event (the view's id). */
   source: string;
   logger?: SparqlyLogger;
 }
 
+export type PassThroughSource =
+  | { kind: 'endpoint'; endpoint: ParsedEndpointSource }
+  | { kind: 'disk-backed'; indexSource: RDF.Source; label: string };
+
 export interface ResolveViewPassThroughOptions {
-  endpoint: ParsedEndpointSource;
+  source: PassThroughSource;
   viewQuery: string;
   engine?: ComunicaQueryEngine;
   meta?: ViewQueryLogMeta;
 }
 
-/**
- * Primary `Result`-typed pass-through resolver. Wraps the bindings/quads
- * streamed back from the endpoint into a Store on success and collapses any
- * transport / non-bindings failure into an {@link EndpointFetchError} carrying
- * the endpoint URL (ADR-0024).
- */
+export type ResolveViewPassThroughError =
+  | EndpointFetchError
+  | QueryExecutionError;
+
 export function resolveViewPassThroughResult(
   options: ResolveViewPassThroughOptions,
-): ResultAsync<Store, EndpointFetchError> {
-  return ResultAsync.fromPromise(executePassThrough(options), (err) => ({
-    kind: 'endpoint-fetch' as const,
-    endpoint: options.endpoint.endpoint,
-    message: describeEndpointError(err),
-  }));
+): ResultAsync<Store, ResolveViewPassThroughError> {
+  return ResultAsync.fromPromise(executePassThrough(options), (err) =>
+    options.source.kind === 'endpoint'
+      ? {
+          kind: 'endpoint-fetch' as const,
+          endpoint: options.source.endpoint.endpoint,
+          message: describeEndpointError(err),
+        }
+      : {
+          kind: 'query-execution' as const,
+          query: options.viewQuery,
+          message: err instanceof Error ? err.message : String(err),
+        },
+  );
 }
 
 /**
@@ -50,9 +62,11 @@ export async function resolveViewPassThrough(
 ): Promise<Store> {
   const result = await resolveViewPassThroughResult(options);
   if (result.isErr()) {
-    throw new Error(
-      `endpoint ${options.endpoint.endpoint}: ${result.error.message}`,
-    );
+    const prefix =
+      options.source.kind === 'endpoint'
+        ? `endpoint ${options.source.endpoint.endpoint}`
+        : `disk-backed glob ${options.source.label}`;
+    throw new Error(`${prefix}: ${result.error.message}`);
   }
   return result.value;
 }
@@ -65,12 +79,15 @@ async function executePassThrough(
   const started = Date.now();
   const type = detectQueryType(options.viewQuery);
   try {
-    const result = await engine.query(
-      options.viewQuery,
-      buildEndpointContext(options.endpoint) as Parameters<
-        ComunicaQueryEngine['query']
-      >[1],
-    );
+    const context =
+      options.source.kind === 'endpoint'
+        ? (buildEndpointContext(options.source.endpoint) as Parameters<
+            ComunicaQueryEngine['query']
+          >[1])
+        : ({ sources: [options.source.indexSource] } as Parameters<
+            ComunicaQueryEngine['query']
+          >[1]);
+    const result = await engine.query(options.viewQuery, context);
     if (result.resultType === 'bindings') {
       const bindings = await result.execute();
       for await (const b of bindings as AsyncIterable<{
@@ -118,15 +135,23 @@ async function executePassThrough(
     return out;
   } catch (err) {
     if (options.meta) {
+      const prefix =
+        options.source.kind === 'endpoint'
+          ? `endpoint ${options.source.endpoint.endpoint}`
+          : `disk-backed glob ${options.source.label}`;
+      const detail =
+        options.source.kind === 'endpoint'
+          ? describeEndpointError(err)
+          : err instanceof Error
+            ? err.message
+            : String(err);
       emitQueryEvent(options.meta.logger, {
         source: options.meta.source,
         mode: 'view',
         query: options.viewQuery,
         type,
         ms: Date.now() - started,
-        err: new Error(
-          `endpoint ${options.endpoint.endpoint}: ${describeEndpointError(err)}`,
-        ),
+        err: new Error(`${prefix}: ${detail}`),
       });
     }
     throw err;

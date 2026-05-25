@@ -45,6 +45,10 @@ export function queryErrorExitCode(error: SourceError | TargetError): number {
       return 38;
     case 'git-pin':
       return 39;
+    case 'raw-pass-through-target':
+      // Never produced by `query` — it accepts both raw endpoints and raw
+      // disk-backed globs. Listed for SourceError exhaustiveness only.
+      return 1;
     case 'ref-as-target':
       return 50;
     case 'empty-registry':

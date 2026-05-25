@@ -8,7 +8,8 @@ export type SourceError =
   | ViewReferenceError
   | CacheIoError
   | TransformParseError
-  | GitPinError;
+  | GitPinError
+  | RawPassThroughTargetError;
 
 export interface ReferenceTargetError {
   kind: 'reference-target';
@@ -77,6 +78,14 @@ export interface GitPinError {
   message: string;
 }
 
+export interface RawPassThroughTargetError {
+  kind: 'raw-pass-through-target';
+  source:
+    | { kind: 'endpoint'; url: string }
+    | { kind: 'disk-backed-glob'; label: string };
+  message: string;
+}
+
 export function formatSourceError(error: SourceError): string {
   switch (error.kind) {
     case 'reference-target':
@@ -102,5 +111,22 @@ export function formatSourceError(error: SourceError): string {
       return `\`${error.transformKey}\`: ${error.message}`;
     case 'git-pin':
       return error.message;
+    case 'raw-pass-through-target':
+      return error.message;
   }
+}
+
+export function formatRawPassThroughRejection(
+  source: RawPassThroughTargetError['source'],
+): string {
+  const named =
+    source.kind === 'endpoint'
+      ? `endpoint ${source.url}`
+      : `disk-backed glob ${source.label}`;
+  return (
+    `${named} cannot be hashed or diffed directly: ` +
+    `the canonicalization step has no scoping query and would materialise the whole upstream. ` +
+    'Wrap it in a `view` source kind, pass `--query`/`--query-file` to scope it inline, ' +
+    'or pipe `sparqly query --format=turtle` into the command.'
+  );
 }

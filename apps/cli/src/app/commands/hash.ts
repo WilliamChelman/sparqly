@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve as resolvePath } from 'node:path';
-import { ResultAsync, ok, type Result } from 'neverthrow';
+import { ResultAsync, errAsync, ok, type Result } from 'neverthrow';
 import { z } from 'zod';
 import type { SparqlyLogger } from 'common';
 import {
@@ -10,10 +10,12 @@ import {
   defaultGlobWalker,
   expandSplitGlobs,
   extractAnnotationPredicates,
+  formatRawPassThroughRejection,
   parseSourceSpecs,
   resolveAnonymousViewResult,
   resolveSourceResult,
   selectTargetResult,
+  storageTier,
   type ParsedSource,
   type SourceError,
   type SourceSpecInput,
@@ -387,27 +389,17 @@ function hashTargetResult(
       );
   }
 
-  if (target.kind === 'endpoint') {
-    throw new Error(
-      `SPARQL endpoint ${target.endpoint} cannot be hashed directly (hash materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
-    );
-  }
+  const rawRejection = rawPassThroughRejection(target);
+  if (rawRejection) return errAsync(rawRejection);
 
   return resolveSourceResult(target, {
     registry,
     logger,
     configDir: process.cwd(),
   }).andThen<{ source: string; hash: string }, SourceError>((sources) => {
-    if (sources.mode === 'pass-through') {
+    if (sources.mode !== 'materialized') {
       throw new Error(
-        `SPARQL endpoint ${sources.endpoint.endpoint} cannot be hashed directly (hash materializes the result, but a raw endpoint has no scoping query; wrap the endpoint in a \`view\` source kind to scope it, pass \`--query\`/\`--query-file\` to scope it inline, or pipe \`sparqly query --format=turtle\` into \`sparqly hash\`)`,
-      );
-    }
-    if (sources.mode === 'disk-backed') {
-      // RDFC-1.0 needs every quad in memory — defeats `storage: disk`.
-      void sources.close();
-      throw new Error(
-        `disk-backed glob ${label} cannot be hashed: RDFC-1.0 canonicalization needs every quad in memory, the very cost \`storage: disk\` avoids`,
+        `hashTargetResult: unexpected resolution mode "${sources.mode}" for target ${label}`,
       );
     }
     return ResultAsync.fromSafePromise(
@@ -430,6 +422,42 @@ function hashTargetResult(
       return { source: label, hash };
     });
   });
+}
+
+function rawPassThroughRejection(
+  target: ParsedSource,
+): SourceError | undefined {
+  if (target.kind === 'endpoint') {
+    const source = { kind: 'endpoint' as const, url: target.endpoint };
+    return {
+      kind: 'raw-pass-through-target',
+      source,
+      message: formatRawPassThroughRejection(source),
+    };
+  }
+  if (target.kind === 'glob' && storageTier(target) === 'disk') {
+    const source = {
+      kind: 'disk-backed-glob' as const,
+      label: target.id !== undefined ? `@${target.id}` : target.glob,
+    };
+    return {
+      kind: 'raw-pass-through-target',
+      source,
+      message: formatRawPassThroughRejection(source),
+    };
+  }
+  if (target.kind === 'file' && storageTier(target) === 'disk') {
+    const source = {
+      kind: 'disk-backed-glob' as const,
+      label: target.id !== undefined ? `@${target.id}` : target.path,
+    };
+    return {
+      kind: 'raw-pass-through-target',
+      source,
+      message: formatRawPassThroughRejection(source),
+    };
+  }
+  return undefined;
 }
 
 function anonymousUpstream(target: ParsedSource): SourceSpecInput {

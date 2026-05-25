@@ -68,7 +68,7 @@ describe('resolveViewPassThrough', () => {
       'PREFIX ex: <http://example.org/> SELECT ?s ?p ?o WHERE { ?s ?p ?o FILTER(?s = ex:keep) }';
 
     const store = await resolveViewPassThrough({
-      endpoint: endpointSource(endpoint.url),
+      source: { kind: 'endpoint', endpoint: endpointSource(endpoint.url) },
       viewQuery: VIEW_QUERY,
     });
 
@@ -101,7 +101,7 @@ describe('resolveViewPassThrough', () => {
     ])[0] as ParsedEndpointSource;
 
     await resolveViewPassThrough({
-      endpoint: source,
+      source: { kind: 'endpoint', endpoint: source },
       viewQuery: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
     });
 
@@ -123,7 +123,7 @@ describe('resolveViewPassThrough', () => {
     ])[0] as ParsedEndpointSource;
 
     await resolveViewPassThrough({
-      endpoint: source,
+      source: { kind: 'endpoint', endpoint: source },
       viewQuery: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
     });
 
@@ -146,7 +146,7 @@ describe('resolveViewPassThrough', () => {
 
     await expect(
       resolveViewPassThrough({
-        endpoint: source,
+        source: { kind: 'endpoint', endpoint: source },
         viewQuery: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
       }),
     ).rejects.toThrow(/endpoint .*:/);
@@ -161,7 +161,10 @@ describe('resolveViewPassThrough', () => {
     }));
 
     const store = await resolveViewPassThrough({
-      endpoint: endpointSource(endpoint.url),
+      source: {
+        kind: 'endpoint',
+        endpoint: endpointSource(endpoint.url),
+      },
       viewQuery:
         'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
     });
@@ -183,7 +186,7 @@ describe('resolveViewPassThrough', () => {
 
     await expect(
       resolveViewPassThrough({
-        endpoint: source,
+        source: { kind: 'endpoint', endpoint: source },
         viewQuery: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
       }),
     ).rejects.toThrow(new RegExp(`^endpoint ${escapeRegExp(source.endpoint)}:`));
@@ -209,7 +212,7 @@ describe('resolveViewPassThroughResult', () => {
     const source = endpointSource(endpoint.url);
 
     const result = await resolveViewPassThroughResult({
-      endpoint: source,
+      source: { kind: 'endpoint', endpoint: source },
       viewQuery: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
     });
 
@@ -229,7 +232,7 @@ describe('resolveViewPassThroughResult', () => {
     const source = endpointSource(endpoint.url);
 
     const result = await resolveViewPassThroughResult({
-      endpoint: source,
+      source: { kind: 'endpoint', endpoint: source },
       viewQuery: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
     });
 
