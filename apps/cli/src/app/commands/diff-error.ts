@@ -14,9 +14,7 @@ import {
  *  10   tabular-blank-node               (shape)
  *  12   mixed-shape                      (shape)
  *  13   set-mismatch                     (shape)
- *  14   endpoint-as-diff-target          (shape)
  *  15   inline-upstream-kind             (shape)
- *  16   disk-backed-diff-target          (shape)
  *  20   anonymous-view-execution         (transport / upstream)
  *  21   anonymous-select-execution       (transport / upstream)
  *  30   source: reference-target         (config invariant — bug)
@@ -27,7 +25,9 @@ import {
  *  36   source: view-reference           (view from: ref / cycle / unsupported upstream)
  *  37   source: cache-io                 (view cache read/write/parse failure)
  *  38   source: transform-parse          (transform spec parse failure)
+ *  39   source: git-pin                  (git-ref pin failure)
  *  40   legacy-message                   (top-level unconverted throw)
+ *  41   source: raw-pass-through-target  (raw endpoint / disk-backed glob)
  *  50   target: ref-as-target            (reference alias picked as data)
  *  51   target: empty-registry           (registry has no entries)
  *  52   target: no-default-multi         (ambiguous registry, no default)
@@ -43,12 +43,8 @@ export function diffErrorExitCode(error: DiffError): number {
       return 12;
     case 'set-mismatch':
       return 13;
-    case 'endpoint-as-diff-target':
-      return 14;
     case 'inline-upstream-kind':
       return 15;
-    case 'disk-backed-diff-target':
-      return 16;
     case 'anonymous-view-execution':
       return 20;
     case 'anonymous-select-execution':
@@ -94,8 +90,6 @@ function sourceErrorExitCode(error: SourceError): number {
     case 'git-pin':
       return 39;
     case 'raw-pass-through-target':
-      // Wired in by the follow-up slice that extends diff's raw-target
-      // pre-check to disk-backed globs (ADR-0047). Placeholder code today.
       return 41;
   }
 }

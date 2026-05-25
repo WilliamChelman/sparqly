@@ -118,13 +118,16 @@ export function formatSourceError(error: SourceError): string {
 
 export function formatRawPassThroughRejection(
   source: RawPassThroughTargetError['source'],
+  options: { side?: 'left' | 'right' } = {},
 ): string {
   const named =
     source.kind === 'endpoint'
       ? `endpoint ${source.url}`
       : `disk-backed glob ${source.label}`;
+  const where =
+    options.side === undefined ? '' : ` on the ${options.side} side`;
   return (
-    `${named} cannot be hashed or diffed directly: ` +
+    `${named} cannot be hashed or diffed directly${where}: ` +
     `the canonicalization step has no scoping query and would materialise the whole upstream. ` +
     'Wrap it in a `view` source kind, pass `--query`/`--query-file` to scope it inline, ' +
     'or pipe `sparqly query --format=turtle` into the command.'

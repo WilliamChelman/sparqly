@@ -90,4 +90,21 @@ describe('formatRawPassThroughRejection', () => {
     expect(text).toMatch(/--query-file/);
     expect(text).toMatch(/sparqly query --format=turtle/);
   });
+
+  it('embeds the per-side wording when a `side` option is supplied (diff usage)', async () => {
+    const { formatRawPassThroughRejection } = await import('./errors');
+    const leftText = formatRawPassThroughRejection(
+      { kind: 'disk-backed-glob', label: '@data' },
+      { side: 'left' },
+    );
+    expect(leftText).toContain('disk-backed glob @data');
+    expect(leftText).toContain('on the left side');
+
+    const rightText = formatRawPassThroughRejection(
+      { kind: 'endpoint', url: 'https://example.org/sparql' },
+      { side: 'right' },
+    );
+    expect(rightText).toContain('endpoint https://example.org/sparql');
+    expect(rightText).toContain('on the right side');
+  });
 });

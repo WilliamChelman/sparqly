@@ -15,12 +15,12 @@ const TURTLE =
   '@prefix ex: <http://example.org/> .\nex:alice ex:knows ex:bob .\n';
 
 /**
- * End-to-end coverage for issue #343: `hash` and `diff` reject a disk-backed
- * (`storage: disk`) glob target. Both depend on RDFC-1.0 canonicalization,
- * which needs every quad in memory at once — the exact cost the disk tier
- * exists to escape (ADR-0041). An in-memory glob is unaffected.
+ * End-to-end coverage for the residual rejection surface left after ADR-0047:
+ * `hash` (CLI-only) and an in-memory glob fall-through. Diff's disk-backed
+ * surface is covered in `diff-pass-through-view.e2e.spec.ts`; this file keeps
+ * the `hash` rejection and the in-memory unaffected paths.
  */
-describe('sparqly hash/diff — disk-backed glob rejection (#343, ADR-0041)', () => {
+describe('sparqly hash — disk-backed glob rejection (#343, ADR-0041 / ADR-0047)', () => {
   let projectRoot: string;
 
   beforeEach(async () => {
@@ -48,33 +48,6 @@ describe('sparqly hash/diff — disk-backed glob rejection (#343, ADR-0041)', ()
 
   afterEach(async () => {
     await rm(projectRoot, { recursive: true, force: true });
-  });
-
-  it('diff rejects a disk-backed glob on the left side with exit code 16', async () => {
-    const result = await runCli(['diff', '@data', '@mem'], {
-      cwd: projectRoot,
-      env: CLEARED_ENV,
-    });
-
-    expect(result.exitCode).toBe(16);
-    // The error names the rejected target and the side it was supplied on,
-    // and explains *why* (canonicalization needs every quad in memory).
-    expect(result.stderr).toContain('@data');
-    expect(result.stderr).toContain('left side');
-    expect(result.stderr).toMatch(/canonicaliz/i);
-    expect(result.stderr).toMatch(/every quad in memory/i);
-  });
-
-  it('diff rejects a disk-backed glob on the right side with exit code 16', async () => {
-    const result = await runCli(['diff', '@mem', '@data'], {
-      cwd: projectRoot,
-      env: CLEARED_ENV,
-    });
-
-    expect(result.exitCode).toBe(16);
-    expect(result.stderr).toContain('@data');
-    expect(result.stderr).toContain('right side');
-    expect(result.stderr).toMatch(/canonicaliz/i);
   });
 
   it('hash rejects a disk-backed glob with a clear, explanatory error', async () => {

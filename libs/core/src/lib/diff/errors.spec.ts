@@ -28,11 +28,6 @@ describe('formatDiffError', () => {
       },
       { kind: 'mixed-shape', triplesSide: 'left', tuplesSide: 'right' },
       { kind: 'set-mismatch', left: ['o'], right: ['subject', 'o'] },
-      {
-        kind: 'endpoint-as-diff-target',
-        side: 'left',
-        endpoint: 'https://example.org/sparql',
-      },
       { kind: 'inline-upstream-kind', side: 'right', targetKind: 'view' },
       { kind: 'anonymous-view-execution', side: 'left', message: 'm' },
       { kind: 'anonymous-select-execution', side: 'right', message: 'm' },

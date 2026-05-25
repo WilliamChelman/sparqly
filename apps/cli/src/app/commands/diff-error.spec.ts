@@ -67,15 +67,6 @@ describe('diffErrorExitCode — per-variant stable exit code map', () => {
       code: 13,
     },
     {
-      name: 'endpoint-as-diff-target',
-      error: {
-        kind: 'endpoint-as-diff-target',
-        side: 'right',
-        endpoint: 'https://example.org/sparql',
-      },
-      code: 14,
-    },
-    {
       name: 'inline-upstream-kind',
       error: {
         kind: 'inline-upstream-kind',
@@ -85,13 +76,30 @@ describe('diffErrorExitCode — per-variant stable exit code map', () => {
       code: 15,
     },
     {
-      name: 'disk-backed-diff-target',
+      name: 'source/raw-pass-through-target (endpoint)',
       error: {
-        kind: 'disk-backed-diff-target',
-        side: 'left',
-        label: '@data',
+        kind: 'source',
+        side: 'right',
+        source: {
+          kind: 'raw-pass-through-target',
+          source: { kind: 'endpoint', url: 'https://example.org/sparql' },
+          message: 'precomposed',
+        },
       },
-      code: 16,
+      code: 41,
+    },
+    {
+      name: 'source/raw-pass-through-target (disk-backed)',
+      error: {
+        kind: 'source',
+        side: 'left',
+        source: {
+          kind: 'raw-pass-through-target',
+          source: { kind: 'disk-backed-glob', label: '@data' },
+          message: 'precomposed',
+        },
+      },
+      code: 41,
     },
     {
       name: 'anonymous-view-execution',
@@ -211,21 +219,26 @@ describe('golden surface — shape error + transport error (wording + exit code)
     expect(diffErrorExitCode(error)).toBe(10);
   });
 
-  it('disk-backed-diff-target (shape): explains canonicalization + exit code 16', () => {
+  it('source/raw-pass-through-target (disk-backed) names the source, the side, and the affordances + exit code 41', () => {
     const error: DiffError = {
-      kind: 'disk-backed-diff-target',
+      kind: 'source',
       side: 'right',
-      label: '@bigdata',
+      source: {
+        kind: 'raw-pass-through-target',
+        source: { kind: 'disk-backed-glob', label: '@bigdata' },
+        message:
+          'disk-backed glob @bigdata cannot be hashed or diffed directly on the right side: ' +
+          'the canonicalization step has no scoping query and would materialise the whole upstream. ' +
+          'Wrap it in a `view` source kind, pass `--query`/`--query-file` to scope it inline, ' +
+          'or pipe `sparqly query --format=turtle` into the command.',
+      },
     };
     const body = decorateDiffError(error, { color: false });
-    // The message must explain *why* (canonicalization needs every quad in
-    // memory), not merely that the target was rejected.
-    expect(body).toContain('@bigdata');
+    expect(body).toContain('disk-backed glob @bigdata');
     expect(body).toContain('right side');
-    expect(body).toMatch(/canonicaliz/i);
-    expect(body).toMatch(/every quad in memory/i);
-    expect(body).toContain('storage: disk');
-    expect(diffErrorExitCode(error)).toBe(16);
+    expect(body).toMatch(/wrap it in a `view`/i);
+    expect(body).toMatch(/--query/);
+    expect(diffErrorExitCode(error)).toBe(41);
   });
 
   it('anonymous-view-execution (transport): plain wording + decorated wording + exit code 20', () => {
@@ -255,9 +268,13 @@ describe('DiffErrorSignal — silent wrapper carrying a DiffError', () => {
 
   it('exposes the wrapped DiffError so diffSpec.exitCode can read its variant', () => {
     const error: DiffError = {
-      kind: 'endpoint-as-diff-target',
+      kind: 'source',
       side: 'left',
-      endpoint: 'https://example.org/sparql',
+      source: {
+        kind: 'raw-pass-through-target',
+        source: { kind: 'endpoint', url: 'https://example.org/sparql' },
+        message: 'precomposed',
+      },
     };
     const signal = new DiffErrorSignal(error);
     expect(signal.diffError).toBe(error);

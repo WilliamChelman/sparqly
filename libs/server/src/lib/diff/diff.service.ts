@@ -3,13 +3,16 @@ import {
   detectSelectShape,
   diffStores,
   extractAnnotationPredicates,
+  formatRawPassThroughRejection,
   groupRdfDiffByEntity,
   resolveAnonymousSelectBindings,
   resolveAnonymousView,
+  storageTier,
   tabularDiff,
   type DiffError,
   type HunkedRdfDiff,
   type ParsedSource,
+  type RawPassThroughTargetError,
   type SelectShapeReport,
   type SourceError,
   type SourceRecordSidecar,
@@ -230,11 +233,12 @@ function resolveGraphSide(
       });
     }
 
-    if (target.kind === 'endpoint') {
+    const rawRejection = rawPassThroughRejection(target, side);
+    if (rawRejection !== undefined) {
       return err<GraphSideOk, DiffError>({
-        kind: 'endpoint-as-diff-target',
+        kind: 'source',
         side,
-        endpoint: target.endpoint,
+        source: rawRejection,
       });
     }
 
@@ -254,11 +258,12 @@ function resolveGraphSide(
       .mapErr((source: SourceError): DiffError => ({ kind: 'source', side, source }))
       .safeUnwrap();
     if (sources.mode === 'pass-through') {
-      return err<GraphSideOk, DiffError>({
-        kind: 'endpoint-as-diff-target',
-        side,
-        endpoint: sources.endpoint.endpoint,
-      });
+      // Unreachable: the raw-pass-through pre-check above rejects raw
+      // endpoint targets before this branch; view-over-endpoint resolves
+      // to a materialized store, not pass-through.
+      throw new Error(
+        'resolveGraphSide: unexpected pass-through resolution after raw-target pre-check',
+      );
     }
     return ok<GraphSideOk, DiffError>({
       store: sources.store,
@@ -380,6 +385,40 @@ function anonymousUpstream(
   if (target.kind === 'file') return ok(target.path);
   if (target.kind === 'endpoint') return ok(target.endpoint);
   return err({ kind: 'inline-upstream-kind', side, targetKind: target.kind });
+}
+
+function rawPassThroughRejection(
+  target: ParsedSource,
+  side: 'left' | 'right',
+): RawPassThroughTargetError | undefined {
+  const source = rawPassThroughSource(target);
+  if (source === undefined) return undefined;
+  return {
+    kind: 'raw-pass-through-target',
+    source,
+    message: formatRawPassThroughRejection(source, { side }),
+  };
+}
+
+function rawPassThroughSource(
+  target: ParsedSource,
+): RawPassThroughTargetError['source'] | undefined {
+  if (target.kind === 'endpoint') {
+    return { kind: 'endpoint', url: target.endpoint };
+  }
+  if (target.kind === 'glob' && storageTier(target) === 'disk') {
+    return {
+      kind: 'disk-backed-glob',
+      label: target.id !== undefined ? `@${target.id}` : target.glob,
+    };
+  }
+  if (target.kind === 'file' && storageTier(target) === 'disk') {
+    return {
+      kind: 'disk-backed-glob',
+      label: target.id !== undefined ? `@${target.id}` : target.path,
+    };
+  }
+  return undefined;
 }
 
 function resolveTabularSide(

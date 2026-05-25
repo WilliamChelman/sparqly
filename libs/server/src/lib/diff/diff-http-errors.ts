@@ -56,6 +56,16 @@ export function mapDiffHttpError(error: TransportError): HttpException {
         message: error.message,
       });
     case 'source':
+      // raw-pass-through-target is a client error (caller picked a target
+      // that can't be diffed without scoping) — unwrap so it returns 400
+      // with the canonical body shape, matching hash's HTTP surface.
+      if (error.source.kind === 'raw-pass-through-target') {
+        return new BadRequestException({
+          kind: 'raw-pass-through-target',
+          source: { ...error.source.source },
+          message: error.source.message,
+        });
+      }
       return new InternalServerErrorException({
         kind: 'source',
         side: error.side,

@@ -6,12 +6,7 @@ import {
   type SourceError,
   type SourceRecordSidecar,
 } from 'core';
-import {
-  err,
-  ok,
-  type Result,
-  type ResultAsync as ResultAsyncT,
-} from 'neverthrow';
+import { type ResultAsync as ResultAsyncT } from 'neverthrow';
 import type { Store } from 'n3';
 import {
   isIndexingError,
@@ -57,14 +52,13 @@ export function loadSideSources(
     return engineMap
       .ensureSources(target.id)
       .mapErr(indexingToSourceError)
-      .andThen(rejectDiskBackedSources);
+      .map(narrowLoadedSources);
   }
-  return resolveSourceResult(target, { registry: resolutionRegistry }).andThen(
-    rejectDiskBackedQuerySources,
+  return resolveSourceResult(target, { registry: resolutionRegistry }).map(
+    narrowQuerySources,
   );
 }
 
-/** diff cannot run against a disk-backed glob — RDFC-1.0 needs every quad in memory. */
 function indexingToSourceError(
   error: SourceError | IndexingError,
 ): SourceError {
@@ -78,44 +72,36 @@ function indexingToSourceError(
   return error;
 }
 
-function rejectDiskBackedSources(
-  sources: LoadedSources,
-): Result<LoadedLikeSources, SourceError> {
+// The raw-pass-through pre-check in `diff.service.ts` blocks every target
+// that could resolve into a `pass-through` or `disk-backed` mode here, so
+// these branches stay defensive-only.
+function narrowLoadedSources(sources: LoadedSources): LoadedLikeSources {
   if (sources.mode === 'disk-backed') {
-    return err({
-      kind: 'glob-load',
-      glob: [],
-      message:
-        'diff does not support disk-backed glob sources (`storage: disk`); RDFC-1.0 canonicalization cannot scale to a disk-backed glob',
-    });
+    throw new Error(
+      'loadSideSources: unexpected disk-backed mode after raw-target pre-check',
+    );
   }
-  return ok(sources);
+  return sources;
+}
+
+function narrowQuerySources(sources: QuerySources): LoadedLikeSources {
+  if (sources.mode === 'disk-backed') {
+    void sources.close();
+    throw new Error(
+      'loadSideSources: unexpected disk-backed mode after raw-target pre-check',
+    );
+  }
+  if (sources.mode === 'pass-through') return sources;
+  return {
+    mode: 'materialized',
+    store: sources.store,
+    sourceRecords: sources.sourceRecords,
+  };
 }
 
 export type LoadedLikeSources =
   | { mode: 'pass-through'; endpoint: { endpoint: string } }
   | { mode: 'materialized'; store: Store; sourceRecords?: SourceRecordSidecar };
-
-/** Releases the LevelDB lock before erroring. */
-export function rejectDiskBackedQuerySources(
-  sources: QuerySources,
-): Result<LoadedLikeSources, SourceError> {
-  if (sources.mode === 'disk-backed') {
-    void sources.close();
-    return err({
-      kind: 'glob-load',
-      glob: [],
-      message:
-        'diff does not support disk-backed glob sources (`storage: disk`); RDFC-1.0 canonicalization cannot scale to a disk-backed glob',
-    });
-  }
-  if (sources.mode === 'pass-through') return ok(sources);
-  return ok({
-    mode: 'materialized',
-    store: sources.store,
-    sourceRecords: sources.sourceRecords,
-  });
-}
 
 function hasRuntimePinOverride(
   engineMap: EngineMap,

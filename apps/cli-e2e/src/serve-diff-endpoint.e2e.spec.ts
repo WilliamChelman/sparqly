@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import dedent from 'dedent';
@@ -153,5 +153,65 @@ describe('sparqly serve — POST /api/diff (issue #144)', () => {
     expect(resp.status).toBe(400);
     const text = await resp.text();
     expect(text).not.toMatch(/at .* \(.*:\d+:\d+\)/);
+  });
+});
+
+describe('sparqly serve — POST /api/diff raw pass-through rejection (#374, ADR-0047)', () => {
+  let dir: string;
+  let handle: ServeHandle | undefined;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-diff-pt-e2e-'));
+    await mkdir(join(dir, 'disk'));
+    await mkdir(join(dir, 'mem'));
+    await writeFile(
+      join(dir, 'disk', 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n',
+    );
+    await writeFile(
+      join(dir, 'mem', 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:c .\n',
+    );
+    const configPath = join(dir, 'sparqly.config.yaml');
+    await writeFile(
+      configPath,
+      dedent`
+        sources:
+          - id: disk-data
+            glob: disk/*.ttl
+            storage: disk
+          - id: mem
+            glob: mem/*.ttl
+      ` + '\n',
+    );
+    handle = await startServe(['--config', configPath]);
+  });
+
+  afterEach(async () => {
+    if (handle) await handle.close();
+    handle = undefined;
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('POST /api/diff with raw disk-backed glob on a side returns the unified raw-pass-through-target error shape', async () => {
+    const resp = await fetch(`${handle!.baseUrl}/api/diff`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ left: '@disk-data', right: '@mem' }),
+    });
+    // Source-class diff errors flow through the HTTP mapper (per ADR-0024)
+    // rather than the in-band envelope; raw-pass-through-target maps to 400.
+    expect(resp.status).toBe(400);
+    const json = (await resp.json()) as {
+      kind?: string;
+      source?: { kind?: string; label?: string };
+      message?: string;
+    };
+    expect(json.kind).toBe('raw-pass-through-target');
+    expect(json.source?.kind).toBe('disk-backed-glob');
+    expect(json.source?.label).toBe('@disk-data');
+    expect(json.message).toMatch(/disk-backed glob @disk-data/);
+    expect(json.message).toMatch(/on the left side/);
+    expect(json.message).toMatch(/wrap it in a `view`/i);
   });
 });

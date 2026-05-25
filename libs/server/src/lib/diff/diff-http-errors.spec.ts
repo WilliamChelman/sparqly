@@ -81,6 +81,24 @@ describe('mapDiffHttpError', () => {
     });
   });
 
+  it('unwraps source/raw-pass-through-target to a 400 raw-pass-through-target body (matches hash HTTP surface)', () => {
+    const ex = mapDiffHttpError({
+      kind: 'source',
+      side: 'left',
+      source: {
+        kind: 'raw-pass-through-target',
+        source: { kind: 'disk-backed-glob', label: '@data' },
+        message: 'precomposed message',
+      },
+    });
+    expect(ex.getStatus()).toBe(HttpStatus.BAD_REQUEST);
+    expect(ex.getResponse()).toEqual({
+      kind: 'raw-pass-through-target',
+      source: { kind: 'disk-backed-glob', label: '@data' },
+      message: 'precomposed message',
+    });
+  });
+
   it('maps source-wrapped transform-parse to 500 carrying transform-key + message', () => {
     const ex = mapDiffHttpError({
       kind: 'source',

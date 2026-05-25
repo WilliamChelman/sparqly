@@ -154,21 +154,29 @@ describe('diffSpec', () => {
     expect(
       diffSpec.exitCode(
         new DiffErrorSignal({
-          kind: 'endpoint-as-diff-target',
+          kind: 'source',
           side: 'right',
-          endpoint: 'https://example.org/sparql',
+          source: {
+            kind: 'raw-pass-through-target',
+            source: { kind: 'endpoint', url: 'https://example.org/sparql' },
+            message: 'm',
+          },
         }),
       ),
-    ).toBe(14);
+    ).toBe(41);
     expect(
       diffSpec.exitCode(
         new DiffErrorSignal({
-          kind: 'disk-backed-diff-target',
+          kind: 'source',
           side: 'left',
-          label: '@data',
+          source: {
+            kind: 'raw-pass-through-target',
+            source: { kind: 'disk-backed-glob', label: '@data' },
+            message: 'm',
+          },
         }),
       ),
-    ).toBe(16);
+    ).toBe(41);
   });
 });
 

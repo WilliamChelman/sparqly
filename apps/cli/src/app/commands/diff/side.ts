@@ -4,12 +4,15 @@ import { type Store } from 'n3';
 import type { SparqlyLogger } from 'common';
 import {
   extractAnnotationPredicates,
+  formatRawPassThroughRejection,
   parseSourceSpecs,
   resolveAnonymousView,
   resolveSource,
   selectTarget,
+  storageTier,
   type AnnotationPredicateIris,
   type ParsedSource,
+  type RawPassThroughTargetError,
   type SourceRecordSidecar,
   type SourceSpecInput,
 } from 'core';
@@ -82,12 +85,9 @@ export async function resolveSide(
     };
   }
 
-  if (target.kind === 'endpoint') {
-    throw new DiffErrorSignal({
-      kind: 'endpoint-as-diff-target',
-      side,
-      endpoint: target.endpoint,
-    });
+  const rawRejection = rawPassThroughRejection(target, side);
+  if (rawRejection !== undefined) {
+    throw new DiffErrorSignal({ kind: 'source', side, source: rawRejection });
   }
 
   const effectiveRegistry = registry ?? parseSourceSpecs(config.sources ?? []);
@@ -95,21 +95,14 @@ export async function resolveSide(
     registry: effectiveRegistry,
     logger,
   });
-  if (sources.mode === 'pass-through') {
-    throw new DiffErrorSignal({
-      kind: 'endpoint-as-diff-target',
-      side,
-      endpoint: sources.endpoint.endpoint,
-    });
-  }
-  if (sources.mode === 'disk-backed') {
-    // diff canonicalization needs every quad in memory — defeats `storage: disk`.
-    await sources.close();
-    throw new DiffErrorSignal({
-      kind: 'disk-backed-diff-target',
-      side,
-      label: diskBackedLabel(target),
-    });
+  if (sources.mode === 'pass-through' || sources.mode === 'disk-backed') {
+    // Unreachable in practice — the pre-check above blocks the only targets
+    // that reach these resolution modes. Guard kept so the type narrowing
+    // below (sources.mode === 'materialized') stays exhaustive.
+    if (sources.mode === 'disk-backed') await sources.close();
+    throw new Error(
+      `resolveSide: unexpected resolution mode "${sources.mode}" reached after raw-target pre-check`,
+    );
   }
   const transforms =
     target.kind === 'glob' || target.kind === 'file'
@@ -125,12 +118,38 @@ export async function resolveSide(
   };
 }
 
-/** A human-readable label for a rejected target: its `@id`, else its spec. */
-function diskBackedLabel(target: ParsedSource): string {
-  if (target.id !== undefined) return `@${target.id}`;
-  if (target.kind === 'glob') return target.glob;
-  if (target.kind === 'file') return target.path;
-  return target.kind;
+function rawPassThroughRejection(
+  target: ParsedSource,
+  side: 'left' | 'right',
+): RawPassThroughTargetError | undefined {
+  const source = rawPassThroughSource(target);
+  if (source === undefined) return undefined;
+  return {
+    kind: 'raw-pass-through-target',
+    source,
+    message: formatRawPassThroughRejection(source, { side }),
+  };
+}
+
+function rawPassThroughSource(
+  target: ParsedSource,
+): RawPassThroughTargetError['source'] | undefined {
+  if (target.kind === 'endpoint') {
+    return { kind: 'endpoint', url: target.endpoint };
+  }
+  if (target.kind === 'glob' && storageTier(target) === 'disk') {
+    return {
+      kind: 'disk-backed-glob',
+      label: target.id !== undefined ? `@${target.id}` : target.glob,
+    };
+  }
+  if (target.kind === 'file' && storageTier(target) === 'disk') {
+    return {
+      kind: 'disk-backed-glob',
+      label: target.id !== undefined ? `@${target.id}` : target.path,
+    };
+  }
+  return undefined;
 }
 
 export async function loadSymmetricInlineScopeQuery(
