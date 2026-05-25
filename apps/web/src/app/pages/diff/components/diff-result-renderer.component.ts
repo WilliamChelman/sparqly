@@ -33,7 +33,12 @@ interface ClassifiedHunk {
       <app-diff-totals [line]="line" />
     }
     @if (tabularView(); as t) {
-      <app-diff-tabular-table [result]="t" [displayContext]="displayContext()" />
+      <app-diff-tabular-table
+        [result]="t"
+        [displayContext]="displayContext()"
+        [leftSourceId]="leftSourceId()"
+        [rightSourceId]="rightSourceId()"
+      />
     }
     @if (groupedView()) {
       <div class="mt-2 flex flex-col">
@@ -61,6 +66,8 @@ export class DiffResultRendererComponent {
   readonly result = input.required<DiffResponse>();
   readonly context = input<number>(3);
   readonly displayContext = input<DisplayContext>({ prefixes: {} });
+  readonly leftSourceId = input<string>('');
+  readonly rightSourceId = input<string>('');
 
   readonly errorView = computed(() => {
     const r = this.result();

@@ -176,6 +176,8 @@ import { EditorFrameController } from './editor-frame-controller';
             [result]="r"
             [context]="context()"
             [displayContext]="displayContext()"
+            [leftSourceId]="leftId()"
+            [rightSourceId]="rightId()"
           />
         }
       </main>

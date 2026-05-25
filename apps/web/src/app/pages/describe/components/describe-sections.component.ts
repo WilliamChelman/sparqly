@@ -69,7 +69,7 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
             @if (direction === 'inbound') {
               <span class="text-foreground-faint">←</span>
             }
-            <app-term-cell [term]="g.predicateTerm" [context]="context()" />
+            <app-term-cell [term]="g.predicateTerm" [context]="context()" [source]="source() || undefined" />
           }
         </div>
         <ul class="ml-4 flex flex-col gap-0.5">
@@ -91,7 +91,7 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
         } @else if (m.term.termType === 'BlankNode') {
           <span class="italic text-foreground-muted">_:{{ m.term.value }}</span>
         } @else {
-          <app-term-cell [term]="m.term" [context]="context()" />
+          <app-term-cell [term]="m.term" [context]="context()" [source]="source() || undefined" />
         }
         @if (m.expand) {
           <button
@@ -170,7 +170,7 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
             } @else if (item.term.termType === 'BlankNode') {
               <span class="italic text-foreground-muted">_:{{ item.term.value }}</span>
             } @else {
-              <app-term-cell [term]="item.term" [context]="context()" />
+              <app-term-cell [term]="item.term" [context]="context()" [source]="source() || undefined" />
             }
           }
           <span class="text-foreground-faint">)</span>
@@ -184,6 +184,7 @@ export class DescribeSectionsComponent {
   readonly originsByQuad = input<ReadonlyMap<string, readonly string[]>>(new Map());
   readonly seed = input<string>('');
   readonly context = input<DisplayContext>({ prefixes: {} });
+  readonly source = input<string>('');
   /** Ids of `endpoint` sources — only their dangling bnodes get an expand affordance. */
   readonly endpointSourceIds = input<readonly string[]>([]);
   /** Emitted when the user clicks `⤵ expand` on a dangling endpoint-origin bnode. */

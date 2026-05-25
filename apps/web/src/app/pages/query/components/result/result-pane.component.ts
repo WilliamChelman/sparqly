@@ -119,12 +119,14 @@ type Tab = 'table' | 'turtle' | 'raw' | 'download';
                   <app-result-table-select
                     [result]="asSelect(r)"
                     [context]="context()"
+                    [source]="source()"
                   />
                 }
                 @if (r?.kind === 'triples') {
                   <app-result-table-triples
                     [result]="asTriples(r)"
                     [context]="context()"
+                    [source]="source()"
                   />
                 }
                 @if (r?.kind === 'ask') {
@@ -186,6 +188,7 @@ type Tab = 'table' | 'turtle' | 'raw' | 'download';
 export class ResultPaneComponent {
   readonly state = input.required<ResultPaneState>();
   readonly context = input<DisplayContext>({ prefixes: {} });
+  readonly source = input<string | undefined>(undefined);
 
   private readonly _activeTab = signal<Tab>('table');
   readonly activeTab = this._activeTab.asReadonly();

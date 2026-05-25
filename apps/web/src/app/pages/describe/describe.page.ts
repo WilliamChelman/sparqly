@@ -122,6 +122,7 @@ type DescribeTab = 'table' | 'turtle';
                 [originsByQuad]="originsByQuad()"
                 [seed]="submittedSeed()"
                 [context]="displayContext()"
+                [source]="selectedSource()"
                 [endpointSourceIds]="endpointSourceIds()"
                 (expand)="onExpand($event)"
               />

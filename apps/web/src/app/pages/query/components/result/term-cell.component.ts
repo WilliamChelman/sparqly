@@ -60,7 +60,7 @@ const IRI_KINDS = new Set<TermDisplay['kind']>([
       }
     </span>
     @if (describableIri(); as iri) {
-      <app-describe-link class="shrink-0" [iri]="iri" />
+      <app-describe-link class="shrink-0" [iri]="iri" [source]="source()" />
       <app-copy-iri class="shrink-0" [iri]="iri" />
     }
   `,
@@ -69,6 +69,7 @@ export class TermCellComponent {
   readonly term = input<Term | null>(null);
   readonly context = input<DisplayContext>({ prefixes: {} });
   readonly linkable = input<boolean>(true);
+  readonly source = input<string | undefined>(undefined);
 
   readonly display = computed<TermDisplay | null>(() => {
     const t = this.term();

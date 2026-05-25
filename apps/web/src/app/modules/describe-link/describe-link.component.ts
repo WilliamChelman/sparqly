@@ -20,8 +20,8 @@ import { IconTargetComponent } from '@app/modules/icons';
       [href]="href()"
       target="_blank"
       rel="noopener noreferrer"
-      title="Describe this IRI"
-      aria-label="Describe this IRI"
+      [attr.title]="ariaLabel()"
+      [attr.aria-label]="ariaLabel()"
       class="ml-1 align-middle font-[inherit] text-[1.05em] no-underline"
     >
       <app-icon-target />
@@ -30,8 +30,12 @@ import { IconTargetComponent } from '@app/modules/icons';
 })
 export class DescribeLinkComponent {
   readonly iri = input.required<string>();
+  readonly source = input<string | undefined>(undefined);
+  readonly ariaLabel = input<string>('Describe this IRI');
 
-  readonly href = computed(
-    () => `/describe?iri=${encodeURIComponent(this.iri())}`,
-  );
+  readonly href = computed(() => {
+    const base = `/describe?iri=${encodeURIComponent(this.iri())}`;
+    const src = this.source();
+    return src ? `${base}&source=${encodeURIComponent(src)}` : base;
+  });
 }

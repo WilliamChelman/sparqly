@@ -104,7 +104,11 @@ import {
             {{ running() ? 'running…' : 'Run' }}
           </button>
         </div>
-        <app-result-pane [state]="resultState()" [context]="context()" />
+        <app-result-pane
+          [state]="resultState()"
+          [context]="context()"
+          [source]="sourceId() || undefined"
+        />
       </main>
     }
   `,

@@ -114,6 +114,20 @@ function createPane(
   return ref.componentInstance;
 }
 
+function createPaneFixture(
+  state: ResultPaneState,
+  opts: { context?: DisplayContext; source?: string } = {},
+) {
+  const ref = TestBed.createComponent(ResultPaneComponent);
+  ref.componentRef.setInput('state', state);
+  ref.componentRef.setInput('context', opts.context ?? { prefixes: {} });
+  if (opts.source !== undefined) {
+    ref.componentRef.setInput('source', opts.source);
+  }
+  ref.detectChanges();
+  return ref;
+}
+
 describe('ResultPaneComponent state surface', () => {
   it('exposes the error message for the error state', () => {
     const pane = createPane({ kind: 'error', message: 'boom' });
@@ -407,5 +421,41 @@ describe('ResultPaneComponent highlight lines', () => {
     const pane = createPane({ kind: 'result', result: TRIPLE_RESULT });
     pane.setTab('turtle');
     expect(pane.formattedHighlightLines()).not.toBeNull();
+  });
+});
+
+describe('ResultPaneComponent describe-link source threading', () => {
+  function firstDescribeHref(el: HTMLElement): string | null {
+    return el
+      .querySelector<HTMLAnchorElement>('a[data-testid="describe-this"]')
+      ?.getAttribute('href') ?? null;
+  }
+
+  it('forwards source through the SELECT table to every describe-link', () => {
+    const ref = createPaneFixture(
+      { kind: 'result', result: SELECT_RESULT },
+      { source: 'people' },
+    );
+    const href = firstDescribeHref(ref.nativeElement as HTMLElement);
+    expect(href).toBe(
+      '/describe?iri=http%3A%2F%2Fexample.org%2Fa&source=people',
+    );
+  });
+
+  it('forwards source through the triples table to every describe-link', () => {
+    const ref = createPaneFixture(
+      { kind: 'result', result: TRIPLE_RESULT },
+      { source: 'people' },
+    );
+    const href = firstDescribeHref(ref.nativeElement as HTMLElement);
+    expect(href).toBe(
+      '/describe?iri=http%3A%2F%2Fexample.org%2Fa&source=people',
+    );
+  });
+
+  it('omits the source param when no source is supplied (merged-view default)', () => {
+    const ref = createPaneFixture({ kind: 'result', result: SELECT_RESULT });
+    const href = firstDescribeHref(ref.nativeElement as HTMLElement);
+    expect(href).toBe('/describe?iri=http%3A%2F%2Fexample.org%2Fa');
   });
 });

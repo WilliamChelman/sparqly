@@ -70,7 +70,7 @@ const ROW_NUM_COLUMN = '__rowNum';
                 *cdkCellDef="let row"
                 class="overflow-hidden px-3.5 py-2"
               >
-                <app-term-cell [term]="cellTerm(row, v)" [context]="context()" />
+                <app-term-cell [term]="cellTerm(row, v)" [context]="context()" [source]="source()" />
               </td>
             </ng-container>
           }
@@ -89,6 +89,7 @@ const ROW_NUM_COLUMN = '__rowNum';
 export class ResultTableSelectComponent {
   readonly result = input.required<SelectResult>();
   readonly context = input<DisplayContext>({ prefixes: {} });
+  readonly source = input<string | undefined>(undefined);
 
   readonly variables = computed(() => this.result().variables);
   readonly bindings = computed(() => this.result().bindings);

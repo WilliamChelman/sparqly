@@ -5,15 +5,17 @@ import { DescribeLinkComponent } from './describe-link.component';
 @Component({
   standalone: true,
   imports: [DescribeLinkComponent],
-  template: `<app-describe-link [iri]="iri" />`,
+  template: `<app-describe-link [iri]="iri" [source]="source" />`,
 })
 class Host {
   iri = 'http://example.org/alice';
+  source: string | undefined = undefined;
 }
 
-function setup(iri: string) {
+function setup(iri: string, source?: string) {
   const fixture = TestBed.createComponent(Host);
   fixture.componentInstance.iri = iri;
+  fixture.componentInstance.source = source;
   fixture.detectChanges();
   return fixture.nativeElement as HTMLElement;
 }
@@ -47,6 +49,38 @@ describe('DescribeLinkComponent', () => {
     const a = el.querySelector<HTMLAnchorElement>('a[data-testid="describe-this"]');
     expect(a?.getAttribute('href')).toBe(
       `/describe?iri=${encodeURIComponent('http://example.org/path?x=1&y=2#frag')}`,
+    );
+  });
+
+  it('appends a URL-encoded source param when set', () => {
+    const el = setup('http://example.org/alice', 'people');
+    const a = el.querySelector<HTMLAnchorElement>('a[data-testid="describe-this"]');
+    expect(a?.getAttribute('href')).toBe(
+      '/describe?iri=http%3A%2F%2Fexample.org%2Falice&source=people',
+    );
+  });
+
+  it('encodes source ids carrying @id:ref git-pin syntax', () => {
+    const el = setup('http://example.org/alice', 'people@id:abc123');
+    const a = el.querySelector<HTMLAnchorElement>('a[data-testid="describe-this"]');
+    expect(a?.getAttribute('href')).toBe(
+      `/describe?iri=http%3A%2F%2Fexample.org%2Falice&source=${encodeURIComponent('people@id:abc123')}`,
+    );
+  });
+
+  it('omits the source param when source is undefined', () => {
+    const el = setup('http://example.org/alice');
+    const a = el.querySelector<HTMLAnchorElement>('a[data-testid="describe-this"]');
+    expect(a?.getAttribute('href')).toBe(
+      '/describe?iri=http%3A%2F%2Fexample.org%2Falice',
+    );
+  });
+
+  it('omits the source param when source is the empty string', () => {
+    const el = setup('http://example.org/alice', '');
+    const a = el.querySelector<HTMLAnchorElement>('a[data-testid="describe-this"]');
+    expect(a?.getAttribute('href')).toBe(
+      '/describe?iri=http%3A%2F%2Fexample.org%2Falice',
     );
   });
 });

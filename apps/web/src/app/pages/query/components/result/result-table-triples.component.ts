@@ -71,7 +71,7 @@ const DATA_COLUMNS = ['subject', 'predicate', 'object'] as const;
                 *cdkCellDef="let row"
                 class="overflow-hidden px-3.5 py-2"
               >
-                <app-term-cell [term]="row[col]" [context]="context()" />
+                <app-term-cell [term]="row[col]" [context]="context()" [source]="source()" />
               </td>
             </ng-container>
           }
@@ -90,6 +90,7 @@ const DATA_COLUMNS = ['subject', 'predicate', 'object'] as const;
 export class ResultTableTriplesComponent {
   readonly result = input.required<TripleResult>();
   readonly context = input<DisplayContext>({ prefixes: {} });
+  readonly source = input<string | undefined>(undefined);
 
   readonly dataColumns = DATA_COLUMNS;
   readonly displayedColumns = [ROW_NUM_COLUMN, ...DATA_COLUMNS];

@@ -54,7 +54,18 @@ interface TabularRow {
               @for (v of result().variables; track v) {
                 @let term = e.entry.row[v];
                 <td
-                  >{{ termText(term) }}@if (iriOf(term); as iri) {<app-describe-link [iri]="iri" />}</td>
+                  >{{ termText(term) }}@if (iriOf(term); as iri) {@if (collapseSides()) {<app-describe-link
+                      [iri]="iri"
+                      [source]="leftSourceId() || undefined"
+                    />} @else {<app-describe-link
+                      [iri]="iri"
+                      [source]="leftSourceId() || undefined"
+                      ariaLabel="Describe this IRI in left source"
+                    /><app-describe-link
+                      [iri]="iri"
+                      [source]="rightSourceId() || undefined"
+                      ariaLabel="Describe this IRI in right source"
+                    />}}</td>
               }
             </tr>
           }
@@ -66,6 +77,12 @@ interface TabularRow {
 export class DiffTabularTableComponent {
   readonly result = input.required<TabularDiffResponse>();
   readonly displayContext = input<DisplayContext>({ prefixes: {} });
+  readonly leftSourceId = input<string>('');
+  readonly rightSourceId = input<string>('');
+
+  readonly collapseSides = computed(
+    () => this.leftSourceId() === this.rightSourceId(),
+  );
 
   readonly rows = computed<ReadonlyArray<TabularRow>>(() => {
     const r = this.result();
