@@ -1,3 +1,20 @@
+## [0.32.0](https://github.com/WilliamChelman/sparqly/compare/v0.31.0...v0.32.0) (2026-05-26)
+
+### Features
+
+* **core:** pass-through resolver for view-over-disk-backed-glob ([#373](https://github.com/WilliamChelman/sparqly/issues/373), ADR-0047) ([6cfa578](https://github.com/WilliamChelman/sparqly/commit/6cfa57820b9f94f37a958b24f911ac7dca4420ed))
+* **diff:** pass-through resolution + unified raw-target rejection ([#374](https://github.com/WilliamChelman/sparqly/issues/374), ADR-0047) ([8f76abd](https://github.com/WilliamChelman/sparqly/commit/8f76abd9c5ae11b7dbd161966f1c62e10093222e))
+* **diff:** warn once per pass-through-resolved diff side ([#376](https://github.com/WilliamChelman/sparqly/issues/376), ADR-0047) ([743bb56](https://github.com/WilliamChelman/sparqly/commit/743bb5653bee347411fa92338c01b4389bf3b22b))
+* **web:** add Quick query menu to editor frame ([0a60f1b](https://github.com/WilliamChelman/sparqly/commit/0a60f1b7f581abe389f8b96f8e003138dd6da311))
+* **web:** diff page pre-flight gate for raw pass-through sources ([#375](https://github.com/WilliamChelman/sparqly/issues/375), ADR-0047) ([6665d3d](https://github.com/WilliamChelman/sparqly/commit/6665d3d4c3947de6010d6af3469baeafcccf24e9)), closes [#374](https://github.com/WilliamChelman/sparqly/issues/374)
+* **web:** inherit current source on describe-this links ([0246963](https://github.com/WilliamChelman/sparqly/commit/0246963c6558b43f807ce07b17e8b425755db67d))
+* **web:** migrate query results to cdk-table with resizable columns ([a773bbe](https://github.com/WilliamChelman/sparqly/commit/a773bbe9e3509772436a7488ce48823241646f2b))
+
+### Bug Fixes
+
+* **cli:** align exit-code tests with unified raw-pass-through-target variant ([8f0304c](https://github.com/WilliamChelman/sparqly/commit/8f0304c5eddb14b04b48130d1715b3de3cf5c3e8))
+* **web:** collapse PREFIX block by default and stop picker rows from drifting ([a44e66d](https://github.com/WilliamChelman/sparqly/commit/a44e66df583d33130c9f27ed28cb0e6afc80f59e))
+
 ## [0.31.0](https://github.com/WilliamChelman/sparqly/compare/v0.30.0...v0.31.0) (2026-05-24)
 
 ### Features
