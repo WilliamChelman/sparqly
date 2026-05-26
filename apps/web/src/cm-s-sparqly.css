@@ -29,7 +29,10 @@
 }
 
 .cm-s-sparqly .CodeMirror-cursor {
-  border-left: 1px solid var(--gold);
+  border-left: 2px solid var(--gold);
+}
+.cm-s-sparqly .CodeMirror-cursors {
+  z-index: 5;
 }
 
 .cm-s-sparqly .CodeMirror-selected {
@@ -48,7 +51,11 @@
 }
 .cm-s-sparqly .CodeMirror-matchingbracket {
   color: var(--teal) !important;
-  outline: 1px solid var(--teal-soft);
+  background: color-mix(in oklab, var(--teal-soft) 35%, transparent);
+  border-radius: 2px;
+}
+:root[data-theme='dark'] .cm-s-sparqly .CodeMirror-matchingbracket {
+  background: color-mix(in oklab, var(--teal-deep) 55%, transparent);
 }
 .cm-s-sparqly .CodeMirror-nonmatchingbracket {
   color: var(--error-line) !important;
