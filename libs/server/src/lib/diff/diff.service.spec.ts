@@ -455,3 +455,62 @@ describe('DiffService — pinned `@id:ref` address (ADR-0029)', () => {
     );
   });
 });
+
+describe('DiffService — pass-through boundary warn (ADR-0047, #376)', () => {
+  function captureLogger() {
+    return {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+  }
+
+  it('emits one warn per pass-through-resolved side per runDiff invocation, naming the source and the suppressed Source-file snippet consequence', async () => {
+    const registry = parseSourceSpecs([
+      { id: 'live', endpoint: 'https://unreachable.invalid/sparql' },
+      {
+        id: 'v',
+        from: '@live',
+        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      },
+    ]);
+    const engineMap = await EngineMap.create(registry);
+    const logger = captureLogger();
+    const svc = new DiffService(engineMap, registry, logger);
+
+    await svc.runDiff({ left: '@v', right: '@v' });
+
+    expect(logger.warn).toHaveBeenCalledTimes(2);
+    const sides = logger.warn.mock.calls
+      .map(([, fields]) => (fields as { side: string }).side)
+      .sort();
+    expect(sides).toEqual(['left', 'right']);
+    for (const [msg] of logger.warn.mock.calls) {
+      expect(msg).toContain('https://unreachable.invalid/sparql');
+      expect(String(msg)).toMatch(/source.?file snippet/i);
+    }
+  });
+
+  it('emits zero pass-through warns when neither side is pass-through-resolved', async () => {
+    const paths = await makeRegistryDirs();
+    try {
+      const registry = parseSourceSpecs([
+        { id: 'alpha', glob: paths.alphaTtl },
+        { id: 'beta', glob: paths.betaTtl },
+      ]);
+      const engineMap = await EngineMap.create(registry);
+      const logger = captureLogger();
+      const svc = new DiffService(engineMap, registry, logger);
+
+      await svc.runDiff({ left: '@alpha', right: '@beta' });
+
+      const boundaryWarns = logger.warn.mock.calls.filter(([msg]) =>
+        /source.?file snippet/i.test(String(msg)),
+      );
+      expect(boundaryWarns).toEqual([]);
+    } finally {
+      await rm(paths.dir, { recursive: true, force: true });
+    }
+  });
+});

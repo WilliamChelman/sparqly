@@ -171,6 +171,7 @@ export async function createServer(
         allowAdminActions: options.readOnly !== true,
       },
       sourceStateBroker,
+      logger: boundaryLogger,
     }),
     { abortOnError: false },
   );

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { SparqlyLogger } from 'common';
 import {
   detectSelectShape,
   diffStores,
@@ -9,9 +10,11 @@ import {
   resolveAnonymousView,
   storageTier,
   tabularDiff,
+  viewChainPassThroughSource,
   type DiffError,
   type HunkedRdfDiff,
   type ParsedSource,
+  type PassThroughChainSource,
   type RawPassThroughTargetError,
   type SelectShapeReport,
   type SourceError,
@@ -67,6 +70,7 @@ export class DiffService {
     private readonly engineMap: EngineMap,
     // Walked for `from:` chains while resolving anonymous SELECTs.
     private readonly resolutionRegistry: ReadonlyArray<ParsedSource> = [],
+    private readonly logger?: SparqlyLogger,
   ) {}
 
   async runDiff(req: DiffRequest): Promise<DiffResponse> {
@@ -100,6 +104,7 @@ export class DiffService {
       rightTarget: rightSel.value,
       leftQuery: req.leftQuery,
       rightQuery: req.rightQuery,
+      logger: this.logger,
     });
   }
 
@@ -174,6 +179,7 @@ interface RunGraphArgs {
   rightTarget: ParsedSource;
   leftQuery: string | undefined;
   rightQuery: string | undefined;
+  logger: SparqlyLogger | undefined;
 }
 
 interface GraphSideOk {
@@ -184,8 +190,22 @@ interface GraphSideOk {
 
 async function runGraph(args: RunGraphArgs): Promise<DiffResponse> {
   const [left, right] = await Promise.all([
-    resolveGraphSide(args.engineMap, args.resolutionRegistry, args.leftTarget, args.leftQuery, 'left'),
-    resolveGraphSide(args.engineMap, args.resolutionRegistry, args.rightTarget, args.rightQuery, 'right'),
+    resolveGraphSide(
+      args.engineMap,
+      args.resolutionRegistry,
+      args.leftTarget,
+      args.leftQuery,
+      'left',
+      args.logger,
+    ),
+    resolveGraphSide(
+      args.engineMap,
+      args.resolutionRegistry,
+      args.rightTarget,
+      args.rightQuery,
+      'right',
+      args.logger,
+    ),
   ]);
   if (left.isErr() || right.isErr()) {
     const errors: DiffErrorResponse['errors'] = {};
@@ -222,6 +242,7 @@ function resolveGraphSide(
   target: ParsedSource,
   inlineQuery: string | undefined,
   side: 'left' | 'right',
+  logger: SparqlyLogger | undefined,
 ): ResultAsyncT<GraphSideOk, DiffError> {
   return safeTry(async function* () {
     if (inlineQuery !== undefined) {
@@ -249,6 +270,8 @@ function resolveGraphSide(
         targetKind: target.kind,
       });
     }
+
+    warnIfPassThroughResolved(target, resolutionRegistry, side, logger);
 
     const sources = yield* loadSideSources(
       engineMap,
@@ -385,6 +408,35 @@ function anonymousUpstream(
   if (target.kind === 'file') return ok(target.path);
   if (target.kind === 'endpoint') return ok(target.endpoint);
   return err({ kind: 'inline-upstream-kind', side, targetKind: target.kind });
+}
+
+function warnIfPassThroughResolved(
+  target: ParsedSource,
+  registry: ReadonlyArray<ParsedSource>,
+  side: 'left' | 'right',
+  logger: SparqlyLogger | undefined,
+): void {
+  if (logger === undefined) return;
+  const source = viewChainPassThroughSource(target, registry);
+  if (source === undefined) return;
+  logger.warn(formatPassThroughBoundaryWarning(source), {
+    side,
+    source: source.kind === 'endpoint' ? source.url : source.label,
+  });
+}
+
+function formatPassThroughBoundaryWarning(
+  source: PassThroughChainSource,
+): string {
+  const name =
+    source.kind === 'endpoint'
+      ? `endpoint ${source.url}`
+      : `disk-backed glob ${source.label}`;
+  return (
+    `diff side resolved via pass-through against ${name}: ` +
+    'no Source-record sidecar is attached (suppressed by `storage: disk` / endpoint pass-through, ADR-0041), ' +
+    'so `--format=html` Source-file snippet sections will render empty for this side.'
+  );
 }
 
 function rawPassThroughRejection(

@@ -1,4 +1,5 @@
 import { DynamicModule, Module } from '@nestjs/common';
+import type { SparqlyLogger } from 'common';
 import type { ParsedSource } from 'core';
 import { ConfigController } from '../config';
 import {
@@ -60,6 +61,7 @@ export interface ServerModuleOptions {
   savedQueries: SavedQueriesServerConfig;
   sourcesAdmin: SourcesAdminServerConfig;
   sourceStateBroker: SourceStateBroker;
+  logger?: SparqlyLogger;
 }
 
 @Module({})
@@ -98,6 +100,7 @@ export class ServerModule {
           useValue: new DiffService(
             options.engineMap,
             options.resolutionRegistry,
+            options.logger,
           ),
         },
         {
