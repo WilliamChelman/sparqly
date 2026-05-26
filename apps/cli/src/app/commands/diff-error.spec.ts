@@ -155,8 +155,23 @@ describe('diffErrorExitCode — per-variant stable exit code map', () => {
   }
 
   it('returns distinct codes per variant (no collisions in the map)', () => {
-    const codes = cases.map((c) => c.code);
-    expect(new Set(codes).size).toBe(codes.length);
+    const variantKey = (error: DiffError): string => {
+      if (error.kind === 'source') return `source/${error.source.kind}`;
+      if (error.kind === 'target') return `target/${error.target.kind}`;
+      return error.kind;
+    };
+    const codesByVariant = new Map<string, number>();
+    for (const { error, code } of cases) {
+      const key = variantKey(error);
+      const prior = codesByVariant.get(key);
+      if (prior !== undefined) {
+        expect(prior).toBe(code);
+      } else {
+        codesByVariant.set(key, code);
+      }
+    }
+    const distinctCodes = Array.from(codesByVariant.values());
+    expect(new Set(distinctCodes).size).toBe(distinctCodes.length);
   });
 });
 
