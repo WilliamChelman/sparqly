@@ -47,9 +47,13 @@ export interface SavedQueriesServerConfig {
 
 export type SourceKind = 'glob' | 'endpoint' | 'empty' | 'view' | 'file';
 
+// Mirrors `SourceRow.mode` (ADR-0044); used by the diff page's ADR-0047 gate.
+export type SourceListingMode = 'in-memory' | 'disk-backed' | 'endpoint';
+
 export interface SourceListingEntry {
   id: string;
   kind: SourceKind;
+  mode: SourceListingMode;
   label: string;
   default?: boolean;
   parentId?: string;

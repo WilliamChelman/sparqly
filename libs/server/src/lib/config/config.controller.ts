@@ -1,5 +1,5 @@
 import { Controller, Get, Inject } from '@nestjs/common';
-import type { ParsedSource } from 'core';
+import { storageTier, type ParsedSource } from 'core';
 import type { DescribeConfig } from '../describe';
 import {
   MetaChildrenCache,
@@ -11,6 +11,7 @@ import {
   SPARQL_SOURCES_ADMIN_CONFIG,
   type SavedQueriesServerConfig,
   type SourceListingEntry,
+  type SourceListingMode,
   type SourcesAdminServerConfig,
   type SparqlContext,
 } from '../bootstrap';
@@ -64,6 +65,7 @@ export class ConfigController {
       const entry: SourceListingEntry = {
         id: src.id,
         kind: src.kind,
+        mode: listingMode(src),
         label: src.id,
       };
       if ((src as { default?: true }).default === true) entry.default = true;
@@ -74,10 +76,12 @@ export class ConfigController {
         this.metaChildrenCache.hasParent(src.id)
       ) {
         const children = await this.metaChildrenCache.getChildren(src.id);
+        const childMode: SourceListingMode = listingMode(src);
         for (const child of children) {
           out.push({
             id: child.id,
             kind: 'file',
+            mode: childMode,
             label: child.id,
             parentId: child.parentId,
           });
@@ -86,4 +90,9 @@ export class ConfigController {
     }
     return out;
   }
+}
+
+function listingMode(src: ParsedSource): SourceListingMode {
+  if (src.kind === 'endpoint') return 'endpoint';
+  return storageTier(src) === 'disk' ? 'disk-backed' : 'in-memory';
 }

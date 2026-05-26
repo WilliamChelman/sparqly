@@ -9,9 +9,9 @@ import { MultiSourcesPickerComponent } from './multi-sources-picker.component';
 
 const THREE_SOURCE_LISTING: SourceListing = {
   sources: [
-    { id: 'alpha', kind: 'glob', label: 'alpha (glob)' },
-    { id: 'beta', kind: 'glob', label: 'beta (glob)' },
-    { id: 'gamma', kind: 'endpoint', label: 'gamma (endpoint)' },
+    { id: 'alpha', kind: 'glob', mode: 'in-memory', label: 'alpha (glob)' },
+    { id: 'beta', kind: 'glob', mode: 'in-memory', label: 'beta (glob)' },
+    { id: 'gamma', kind: 'endpoint', mode: 'endpoint', label: 'gamma (endpoint)' },
   ],
 };
 
@@ -47,9 +47,9 @@ describe('MultiSourcesPickerComponent', () => {
   it('filters out sources whose kind matches excludeKinds', () => {
     const listingWithEmpty: SourceListing = {
       sources: [
-        { id: 'alpha', kind: 'glob', label: 'alpha' },
-        { id: 'beta', kind: 'empty', label: 'beta' } as SourceListingEntry,
-        { id: 'gamma', kind: 'glob', label: 'gamma' },
+        { id: 'alpha', kind: 'glob', mode: 'in-memory', label: 'alpha' },
+        { id: 'beta', kind: 'empty', mode: 'in-memory', label: 'beta' } as SourceListingEntry,
+        { id: 'gamma', kind: 'glob', mode: 'in-memory', label: 'gamma' },
       ],
     };
     const { fixture } = setup(listingWithEmpty, ['empty']);
@@ -113,7 +113,7 @@ describe('MultiSourcesPickerComponent', () => {
 
   it('Single-source mode (one included source) collapses to a locked row, no dropdown', () => {
     const single: SourceListing = {
-      sources: [{ id: 'only', kind: 'glob', label: 'only (glob)' }],
+      sources: [{ id: 'only', kind: 'glob', mode: 'in-memory', label: 'only (glob)' }],
     };
     const { fixture } = setup(single);
     fixture.detectChanges();
@@ -127,9 +127,9 @@ describe('MultiSourcesPickerComponent', () => {
   it('groups children under their meta and keeps meta/child ticks independent', () => {
     const grouped: SourceListing = {
       sources: [
-        { id: 'docs', kind: 'glob', label: 'docs (glob)' },
-        { id: 'docs/a.ttl', kind: 'file', label: 'a.ttl', parentId: 'docs' },
-        { id: 'docs/b.ttl', kind: 'file', label: 'b.ttl', parentId: 'docs' },
+        { id: 'docs', kind: 'glob', mode: 'in-memory', label: 'docs (glob)' },
+        { id: 'docs/a.ttl', kind: 'file', mode: 'in-memory', label: 'a.ttl', parentId: 'docs' },
+        { id: 'docs/b.ttl', kind: 'file', mode: 'in-memory', label: 'b.ttl', parentId: 'docs' },
       ],
     };
     const { fixture } = setup(grouped);
@@ -168,9 +168,9 @@ describe('MultiSourcesPickerComponent', () => {
   it('auto-expands parent groups when value includes a child id, so cdkListbox values match rendered options', () => {
     const grouped: SourceListing = {
       sources: [
-        { id: 'docs', kind: 'glob', label: 'docs (glob)' },
-        { id: 'docs/a.ttl', kind: 'file', label: 'a.ttl', parentId: 'docs' },
-        { id: 'docs/b.ttl', kind: 'file', label: 'b.ttl', parentId: 'docs' },
+        { id: 'docs', kind: 'glob', mode: 'in-memory', label: 'docs (glob)' },
+        { id: 'docs/a.ttl', kind: 'file', mode: 'in-memory', label: 'a.ttl', parentId: 'docs' },
+        { id: 'docs/b.ttl', kind: 'file', mode: 'in-memory', label: 'b.ttl', parentId: 'docs' },
       ],
     };
     const { fixture } = setup(grouped);

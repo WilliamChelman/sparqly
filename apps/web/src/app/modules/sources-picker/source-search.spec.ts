@@ -6,8 +6,8 @@ const EMPTY = new Set<string>();
 describe('buildSourceTree', () => {
   it('renders every flat top-level entry when the query is empty', () => {
     const sources: SourceListingEntry[] = [
-      { id: 'left', kind: 'glob', label: 'left' },
-      { id: 'right', kind: 'glob', label: 'right' },
+      { id: 'left', kind: 'glob', mode: 'in-memory', label: 'left' },
+      { id: 'right', kind: 'glob', mode: 'in-memory', label: 'right' },
     ];
 
     const result = buildSourceTree(sources, '', EMPTY);
@@ -20,8 +20,8 @@ describe('buildSourceTree', () => {
 
   it('reports empty=true with no rows when nothing matches', () => {
     const sources: SourceListingEntry[] = [
-      { id: 'left', kind: 'glob', label: 'left' },
-      { id: 'right', kind: 'glob', label: 'right' },
+      { id: 'left', kind: 'glob', mode: 'in-memory', label: 'left' },
+      { id: 'right', kind: 'glob', mode: 'in-memory', label: 'right' },
     ];
 
     const result = buildSourceTree(sources, 'zzzz', EMPTY);
@@ -33,9 +33,9 @@ describe('buildSourceTree', () => {
 
   it('collapses a group by default and shows its total child count', () => {
     const sources: SourceListingEntry[] = [
-      { id: 'docs', kind: 'glob', label: 'docs' },
-      { id: 'docs/a.ttl', kind: 'file', label: 'docs/a.ttl', parentId: 'docs' },
-      { id: 'docs/b.ttl', kind: 'file', label: 'docs/b.ttl', parentId: 'docs' },
+      { id: 'docs', kind: 'glob', mode: 'in-memory', label: 'docs' },
+      { id: 'docs/a.ttl', kind: 'file', mode: 'in-memory', label: 'docs/a.ttl', parentId: 'docs' },
+      { id: 'docs/b.ttl', kind: 'file', mode: 'in-memory', label: 'docs/b.ttl', parentId: 'docs' },
     ];
 
     const result = buildSourceTree(sources, '', EMPTY);
@@ -52,9 +52,9 @@ describe('buildSourceTree', () => {
 
   it('renders children indented (depth 1) with parent prefix stripped when group is expanded', () => {
     const sources: SourceListingEntry[] = [
-      { id: 'docs', kind: 'glob', label: 'docs' },
-      { id: 'docs/a.ttl', kind: 'file', label: 'docs/a.ttl', parentId: 'docs' },
-      { id: 'docs/b.ttl', kind: 'file', label: 'docs/b.ttl', parentId: 'docs' },
+      { id: 'docs', kind: 'glob', mode: 'in-memory', label: 'docs' },
+      { id: 'docs/a.ttl', kind: 'file', mode: 'in-memory', label: 'docs/a.ttl', parentId: 'docs' },
+      { id: 'docs/b.ttl', kind: 'file', mode: 'in-memory', label: 'docs/b.ttl', parentId: 'docs' },
     ];
 
     const result = buildSourceTree(sources, '', new Set(['docs']));
@@ -75,14 +75,15 @@ describe('buildSourceTree', () => {
 
   it('hides non-matching siblings entirely (no dimming) and auto-expands the parent', () => {
     const sources: SourceListingEntry[] = [
-      { id: 'docs', kind: 'glob', label: 'docs' },
+      { id: 'docs', kind: 'glob', mode: 'in-memory', label: 'docs' },
       {
         id: 'docs/alice.ttl',
         kind: 'file',
+        mode: 'in-memory',
         label: 'docs/alice.ttl',
         parentId: 'docs',
       },
-      { id: 'docs/bob.ttl', kind: 'file', label: 'docs/bob.ttl', parentId: 'docs' },
+      { id: 'docs/bob.ttl', kind: 'file', mode: 'in-memory', label: 'docs/bob.ttl', parentId: 'docs' },
     ];
 
     const result = buildSourceTree(sources, 'alice', EMPTY);
@@ -101,10 +102,11 @@ describe('buildSourceTree', () => {
 
   it('keeps the parent breadcrumb selectable when the parent itself matches', () => {
     const sources: SourceListingEntry[] = [
-      { id: 'era-skos', kind: 'glob', label: 'era-skos' },
+      { id: 'era-skos', kind: 'glob', mode: 'in-memory', label: 'era-skos' },
       {
         id: 'era-skos/concept.ttl',
         kind: 'file',
+        mode: 'in-memory',
         label: 'era-skos/concept.ttl',
         parentId: 'era-skos',
       },
@@ -120,10 +122,10 @@ describe('buildSourceTree', () => {
 
   it('reports matchCount that includes matched parents and matched children', () => {
     const sources: SourceListingEntry[] = [
-      { id: 'docs', kind: 'glob', label: 'docs' },
-      { id: 'docs/a.ttl', kind: 'file', label: 'docs/a.ttl', parentId: 'docs' },
-      { id: 'docs/b.ttl', kind: 'file', label: 'docs/b.ttl', parentId: 'docs' },
-      { id: 'docs/c.ttl', kind: 'file', label: 'docs/c.ttl', parentId: 'docs' },
+      { id: 'docs', kind: 'glob', mode: 'in-memory', label: 'docs' },
+      { id: 'docs/a.ttl', kind: 'file', mode: 'in-memory', label: 'docs/a.ttl', parentId: 'docs' },
+      { id: 'docs/b.ttl', kind: 'file', mode: 'in-memory', label: 'docs/b.ttl', parentId: 'docs' },
+      { id: 'docs/c.ttl', kind: 'file', mode: 'in-memory', label: 'docs/c.ttl', parentId: 'docs' },
     ];
 
     const result = buildSourceTree(sources, '.ttl', EMPTY);
@@ -134,10 +136,11 @@ describe('buildSourceTree', () => {
 
   it('highlights the matched substring within the displayLabel (prefix-stripped for children)', () => {
     const sources: SourceListingEntry[] = [
-      { id: 'docs', kind: 'glob', label: 'docs' },
+      { id: 'docs', kind: 'glob', mode: 'in-memory', label: 'docs' },
       {
         id: 'docs/alice.ttl',
         kind: 'file',
+        mode: 'in-memory',
         label: 'docs/alice.ttl',
         parentId: 'docs',
       },
@@ -152,8 +155,8 @@ describe('buildSourceTree', () => {
 
   it('matches case-insensitively', () => {
     const sources: SourceListingEntry[] = [
-      { id: 'left', kind: 'glob', label: 'left' },
-      { id: 'right', kind: 'glob', label: 'right' },
+      { id: 'left', kind: 'glob', mode: 'in-memory', label: 'left' },
+      { id: 'right', kind: 'glob', mode: 'in-memory', label: 'right' },
     ];
 
     const result = buildSourceTree(sources, 'RIG', EMPTY);
@@ -166,9 +169,9 @@ describe('buildSourceTree', () => {
 
   it('honors user-expanded groups during search only if the group itself matches', () => {
     const sources: SourceListingEntry[] = [
-      { id: 'docs', kind: 'glob', label: 'docs' },
-      { id: 'docs/a.ttl', kind: 'file', label: 'docs/a.ttl', parentId: 'docs' },
-      { id: 'docs/b.ttl', kind: 'file', label: 'docs/b.ttl', parentId: 'docs' },
+      { id: 'docs', kind: 'glob', mode: 'in-memory', label: 'docs' },
+      { id: 'docs/a.ttl', kind: 'file', mode: 'in-memory', label: 'docs/a.ttl', parentId: 'docs' },
+      { id: 'docs/b.ttl', kind: 'file', mode: 'in-memory', label: 'docs/b.ttl', parentId: 'docs' },
     ];
 
     // Query matches the group itself; user has it expanded → show all children.

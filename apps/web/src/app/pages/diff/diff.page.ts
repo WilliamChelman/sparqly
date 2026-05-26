@@ -89,6 +89,16 @@ import { EditorFrameController } from './editor-frame-controller';
               (valueChange)="leftSide.query.set($event)"
             />
 
+            @if (leftScopingHint(); as hint) {
+              <p
+                data-testid="scoping-query-hint-left"
+                class="text-sm text-foreground-muted"
+                role="status"
+              >
+                {{ hint }}
+              </p>
+            }
+
             @if (errors()?.left; as left) {
               <p app-error-banner>
                 {{ format(left) }}
@@ -130,6 +140,16 @@ import { EditorFrameController } from './editor-frame-controller';
               (valueChange)="rightSide.query.set($event)"
             />
 
+            @if (rightScopingHint(); as hint) {
+              <p
+                data-testid="scoping-query-hint-right"
+                class="text-sm text-foreground-muted"
+                role="status"
+              >
+                {{ hint }}
+              </p>
+            }
+
             @if (errors()?.right; as right) {
               <p app-error-banner>
                 {{ format(right) }}
@@ -166,6 +186,7 @@ import { EditorFrameController } from './editor-frame-controller';
             variant="primary"
             type="button"
             [loading]="running()"
+            [disabled]="runDisabled()"
             (click)="run()"
           >
             {{ running() ? 'running…' : 'Run' }}
@@ -204,6 +225,19 @@ export class DiffPage implements OnInit {
   readonly savedQueries = signal<readonly SavedQuerySummary[]>([]);
   readonly leftPinnedSlug = computed(() => pinnedSlugOf(this.leftSide));
   readonly rightPinnedSlug = computed(() => pinnedSlugOf(this.rightSide));
+
+  readonly leftScopingHint = computed(() =>
+    this.scopingHintFor(this.leftId(), this.leftSide.query()),
+  );
+  readonly rightScopingHint = computed(() =>
+    this.scopingHintFor(this.rightId(), this.rightSide.query()),
+  );
+  readonly runDisabled = computed(
+    () =>
+      this.running() ||
+      this.leftScopingHint() !== null ||
+      this.rightScopingHint() !== null,
+  );
 
   format(error: DiffError): string {
     return formatDiffError(error);
@@ -282,6 +316,32 @@ export class DiffPage implements OnInit {
     this.savedQueriesService.list().subscribe((entries) => {
       this.savedQueries.set(entries);
     });
+  }
+
+  // ADR-0047 UX gate; server-side guard remains source of truth.
+  private scopingHintFor(id: string, query: string): string | null {
+    const entry = this.sourceEntry(id);
+    if (entry === null) return null;
+    if (entry.mode !== 'endpoint' && entry.mode !== 'disk-backed') return null;
+    if (query.trim() !== '') return null;
+    const label =
+      entry.mode === 'endpoint'
+        ? `endpoint \`${entry.id}\``
+        : `disk-backed glob \`${entry.id}\``;
+    return `${label} needs a scoping query — enter a SELECT or CONSTRUCT above before running diff.`;
+  }
+
+  private sourceEntry(id: string): SourceListingEntry | null {
+    const list = this.sources();
+    if (list === null || id === '') return null;
+    // Picker addresses may carry a `@id:ref` suffix; listing keys are bare ids.
+    let bareId = id;
+    if (id.startsWith('@')) {
+      const body = id.slice(1);
+      const colon = body.lastIndexOf(':');
+      bareId = colon === -1 ? body : body.slice(0, colon);
+    }
+    return list.find((s) => s.id === bareId) ?? null;
   }
 
   run(): void {

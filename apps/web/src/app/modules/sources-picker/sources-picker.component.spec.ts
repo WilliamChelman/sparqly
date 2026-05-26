@@ -18,8 +18,8 @@ const REFS_OK: RefsResponse = {
 
 const TWO_SOURCE_LISTING: SourceListing = {
   sources: [
-    { id: 'left', kind: 'glob', label: 'left (glob)' },
-    { id: 'right', kind: 'glob', label: 'right (glob)', default: true },
+    { id: 'left', kind: 'glob', mode: 'in-memory', label: 'left (glob)' },
+    { id: 'right', kind: 'glob', mode: 'in-memory', label: 'right (glob)', default: true },
   ],
 };
 

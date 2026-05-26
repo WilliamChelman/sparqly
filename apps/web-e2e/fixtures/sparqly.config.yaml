@@ -3,6 +3,12 @@ sources:
     glob: ./data/alpha.ttl
   - id: beta
     glob: ./data/beta.ttl
+  # Raw pass-through targets for the ADR-0047 diff-page gate. Never queried.
+  - id: gamma
+    glob: ./data/alpha.ttl
+    storage: disk
+  - id: delta
+    endpoint: http://127.0.0.1:1/sparql
 
 context:
   prefixes:

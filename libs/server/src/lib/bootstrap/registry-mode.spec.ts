@@ -95,6 +95,33 @@ describe('createServer — served registry', () => {
     }
   });
 
+  it('GET /api/config tags every listed source with `mode` so the diff page can gate Run on raw pass-through (ADR-0047 / #375)', async () => {
+    const cfgDir = await mkdtemp(join(tmpdir(), 'sparqly-reg-mode-'));
+    const local = await createServer({
+      sources: [
+        { id: 'inmem', glob: join(dirA, '*.ttl') },
+        { id: 'disk', glob: join(dirA, '*.ttl'), storage: 'disk' },
+        { id: 'remote', endpoint: 'http://127.0.0.1:1/sparql' },
+      ],
+      port: 0,
+      configDir: cfgDir,
+    });
+    try {
+      const resp = await fetch(`http://localhost:${local.port}/api/config`);
+      expect(resp.status).toBe(200);
+      const json = (await resp.json()) as {
+        sources: Array<{ id: string; mode: string }>;
+      };
+      const byId = new Map(json.sources.map((s) => [s.id, s]));
+      expect(byId.get('inmem')?.mode).toBe('in-memory');
+      expect(byId.get('disk')?.mode).toBe('disk-backed');
+      expect(byId.get('remote')?.mode).toBe('endpoint');
+    } finally {
+      await local.close();
+      await rm(cfgDir, { recursive: true, force: true });
+    }
+  });
+
   it('GET /api/config surfaces a configured `describe:` block, filling missing fields with defaults', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sparqly-reg-desc-'));
     await writeFile(join(dir, 'd.ttl'), SAMPLE_A);

@@ -51,4 +51,4 @@ playwright-report/
 __screenshots__/
 
 vitest.config.*.timestamp*
-/.sparqly
+.sparqly

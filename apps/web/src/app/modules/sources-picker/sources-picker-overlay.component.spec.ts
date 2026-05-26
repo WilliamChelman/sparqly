@@ -10,8 +10,8 @@ import {
 import { SourcesPickerOverlayComponent } from './sources-picker-overlay.component';
 
 const TWO_SOURCES: SourceListingEntry[] = [
-  { id: 'left', kind: 'glob', label: 'left (glob)' },
-  { id: 'right', kind: 'glob', label: 'right (glob)' },
+  { id: 'left', kind: 'glob', mode: 'in-memory', label: 'left (glob)' },
+  { id: 'right', kind: 'glob', mode: 'in-memory', label: 'right (glob)' },
 ];
 
 const SHA_A = 'a'.repeat(40);
@@ -105,16 +105,18 @@ describe('SourcesPickerOverlayComponent', () => {
 
   it('hides non-matching siblings while filtering and renders the parent as a non-clickable breadcrumb', () => {
     const grouped: SourceListingEntry[] = [
-      { id: 'docs', kind: 'glob', label: 'docs' },
+      { id: 'docs', kind: 'glob', mode: 'in-memory', label: 'docs' },
       {
         id: 'docs/alice.ttl',
         kind: 'file',
+        mode: 'in-memory',
         label: 'docs/alice.ttl',
         parentId: 'docs',
       },
       {
         id: 'docs/bob.ttl',
         kind: 'file',
+        mode: 'in-memory',
         label: 'docs/bob.ttl',
         parentId: 'docs',
       },
@@ -138,10 +140,11 @@ describe('SourcesPickerOverlayComponent', () => {
 
   it('renders child labels with the parent prefix stripped and indented under the group', () => {
     const grouped: SourceListingEntry[] = [
-      { id: 'era-skos', kind: 'glob', label: 'era-skos' },
+      { id: 'era-skos', kind: 'glob', mode: 'in-memory', label: 'era-skos' },
       {
         id: 'era-skos/Concepts.ttl',
         kind: 'file',
+        mode: 'in-memory',
         label: 'era-skos/Concepts.ttl',
         parentId: 'era-skos',
       },
@@ -158,16 +161,18 @@ describe('SourcesPickerOverlayComponent', () => {
 
   it('shows a group child count when no query is active', () => {
     const grouped: SourceListingEntry[] = [
-      { id: 'docs', kind: 'glob', label: 'docs' },
+      { id: 'docs', kind: 'glob', mode: 'in-memory', label: 'docs' },
       {
         id: 'docs/a.ttl',
         kind: 'file',
+        mode: 'in-memory',
         label: 'docs/a.ttl',
         parentId: 'docs',
       },
       {
         id: 'docs/b.ttl',
         kind: 'file',
+        mode: 'in-memory',
         label: 'docs/b.ttl',
         parentId: 'docs',
       },
@@ -182,16 +187,18 @@ describe('SourcesPickerOverlayComponent', () => {
 
   it('shows a match-count badge while filtering', () => {
     const grouped: SourceListingEntry[] = [
-      { id: 'docs', kind: 'glob', label: 'docs' },
+      { id: 'docs', kind: 'glob', mode: 'in-memory', label: 'docs' },
       {
         id: 'docs/a.ttl',
         kind: 'file',
+        mode: 'in-memory',
         label: 'docs/a.ttl',
         parentId: 'docs',
       },
       {
         id: 'docs/b.ttl',
         kind: 'file',
+        mode: 'in-memory',
         label: 'docs/b.ttl',
         parentId: 'docs',
       },
@@ -210,10 +217,11 @@ describe('SourcesPickerOverlayComponent', () => {
 
   it('toggles a group via its chevron without selecting it', () => {
     const grouped: SourceListingEntry[] = [
-      { id: 'docs', kind: 'glob', label: 'docs' },
+      { id: 'docs', kind: 'glob', mode: 'in-memory', label: 'docs' },
       {
         id: 'docs/a.ttl',
         kind: 'file',
+        mode: 'in-memory',
         label: 'docs/a.ttl',
         parentId: 'docs',
       },

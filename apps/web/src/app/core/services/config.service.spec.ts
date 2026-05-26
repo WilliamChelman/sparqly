@@ -12,8 +12,8 @@ import {
 
 const PAYLOAD: ConfigPayload = {
   sources: [
-    { id: 'a', kind: 'glob', label: 'A (glob)' },
-    { id: 'b', kind: 'glob', label: 'B (glob)', default: true },
+    { id: 'a', kind: 'glob', mode: 'in-memory', label: 'A (glob)' },
+    { id: 'b', kind: 'glob', mode: 'in-memory', label: 'B (glob)', default: true },
   ],
   context: { prefixes: { ex: 'http://example.org/' }, base: 'http://x/' },
   describe: {

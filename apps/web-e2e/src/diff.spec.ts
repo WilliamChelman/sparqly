@@ -1,12 +1,18 @@
 import { expect, test, type Page } from '@playwright/test';
 
 const TABULAR_QUERY = 'SELECT ?s WHERE { ?s a <http://example.org/Person> }';
+const CONSTRUCT_SCOPE_QUERY =
+  'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o } LIMIT 1';
 
-async function pickRightSource(page: Page, id: string) {
-  await page.getByRole('button', { name: new RegExp(`^right`, 'i') }).click();
+async function pickSideSource(page: Page, side: 'left' | 'right', id: string) {
+  await page.getByRole('button', { name: new RegExp(`^${side}`, 'i') }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByText(id, { exact: true }).click();
   await dialog.getByRole('button', { name: 'Apply' }).click();
+}
+
+async function pickRightSource(page: Page, id: string) {
+  await pickSideSource(page, 'right', id);
 }
 
 async function setEditorBody(page: Page, side: 'left' | 'right', body: string) {
@@ -57,5 +63,55 @@ test.describe('diff page · graph + tabular happy paths', () => {
     await expect(page.getByTestId('tabular-diff')).toBeVisible();
     // 2 rows added (carol, dave) and 2 removed (alice, bob).
     await expect(page.getByTestId('diff-totals')).toContainText('+2 -2');
+  });
+});
+
+test.describe('diff page · pre-flight gate for raw pass-through sources (#375)', () => {
+  test('raw disk-backed glob on left, empty query → Run disabled and hint names the source', async ({
+    page,
+  }) => {
+    await page.goto('/diff');
+    await pickSideSource(page, 'left', 'gamma');
+
+    const hint = page.getByTestId('scoping-query-hint-left');
+    await expect(hint).toBeVisible();
+    await expect(hint).toContainText('gamma');
+    await expect(
+      page.getByRole('button', { name: 'Run', exact: true }),
+    ).toBeDisabled();
+  });
+
+  test('typing a CONSTRUCT scoping query on the disk-backed side clears the hint and re-enables Run', async ({
+    page,
+  }) => {
+    await page.goto('/diff');
+    await pickSideSource(page, 'left', 'gamma');
+
+    const runBtn = page.getByRole('button', { name: 'Run', exact: true });
+    await expect(runBtn).toBeDisabled();
+
+    await setEditorBody(page, 'left', CONSTRUCT_SCOPE_QUERY);
+
+    await expect(page.getByTestId('scoping-query-hint-left')).toHaveCount(0);
+    await expect(runBtn).toBeEnabled();
+  });
+
+  test('raw endpoint on right, empty query → Run disabled, hint shown; query re-enables Run', async ({
+    page,
+  }) => {
+    await page.goto('/diff');
+    await pickSideSource(page, 'right', 'delta');
+
+    const hint = page.getByTestId('scoping-query-hint-right');
+    await expect(hint).toBeVisible();
+    await expect(hint).toContainText('delta');
+
+    const runBtn = page.getByRole('button', { name: 'Run', exact: true });
+    await expect(runBtn).toBeDisabled();
+
+    await setEditorBody(page, 'right', CONSTRUCT_SCOPE_QUERY);
+
+    await expect(page.getByTestId('scoping-query-hint-right')).toHaveCount(0);
+    await expect(runBtn).toBeEnabled();
   });
 });

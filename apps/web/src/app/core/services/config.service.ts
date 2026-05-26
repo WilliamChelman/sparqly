@@ -4,9 +4,14 @@ import { map, type Observable } from 'rxjs';
 
 export type SourceKind = 'glob' | 'endpoint' | 'empty' | 'view' | 'file';
 
+// Mirrors `SourceRow.mode` (ADR-0044); diff page gates Run on the raw
+// pass-through modes per ADR-0047.
+export type SourceListingMode = 'in-memory' | 'disk-backed' | 'endpoint';
+
 export interface SourceListingEntry {
   id: string;
   kind: SourceKind;
+  mode: SourceListingMode;
   label: string;
   default?: boolean;
   parentId?: string;

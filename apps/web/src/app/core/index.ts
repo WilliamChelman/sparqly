@@ -6,6 +6,7 @@ export {
   type SourceKind,
   type SourceListing,
   type SourceListingEntry,
+  type SourceListingMode,
 } from './services/config.service';
 export {
   SavedQueriesService,
