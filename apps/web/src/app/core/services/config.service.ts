@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { map, type Observable } from 'rxjs';
+import { map, shareReplay, type Observable } from 'rxjs';
 
 export type SourceKind = 'glob' | 'endpoint' | 'empty' | 'view' | 'file';
 
@@ -51,9 +51,12 @@ export interface SourceListing {
 @Injectable({ providedIn: 'root' })
 export class ConfigService {
   private readonly http = inject(HttpClient);
+  private readonly _config = this.http
+    .get<ConfigPayload>('/api/config')
+    .pipe(shareReplay(1));
 
   config(): Observable<ConfigPayload> {
-    return this.http.get<ConfigPayload>('/api/config');
+    return this._config;
   }
 
   list(): Observable<SourceListing> {
