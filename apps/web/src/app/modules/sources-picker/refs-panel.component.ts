@@ -59,7 +59,11 @@ export type RefsPanelState =
   host: { class: 'flex h-full flex-col overflow-hidden' },
   template: `
     @let s = state();
-    @if (s.kind !== 'no-git-repo' && s.kind !== 'no-git-history') {
+    @if (
+      s.kind !== 'no-git-repo' &&
+      s.kind !== 'no-git-history' &&
+      !omitSearchHeader()
+    ) {
       <div class="flex flex-col gap-1.5 border-b border-border p-3">
         <div class="flex items-center gap-2">
           <input
@@ -222,6 +226,7 @@ export class RefsPanelComponent {
   readonly stagedRef = input<string>('');
   readonly refSearch = input<string>('');
   readonly refreshError = input<string | null>(null);
+  readonly omitSearchHeader = input<boolean>(false);
 
   readonly filtered = computed<RefsResponse>(() => {
     const s = this.state();

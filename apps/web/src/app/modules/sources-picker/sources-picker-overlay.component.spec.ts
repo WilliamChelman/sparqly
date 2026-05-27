@@ -3,6 +3,8 @@ import type { SourceListingEntry } from '@app/core';
 import { of, Subject, type Observable } from 'rxjs';
 import {
   RefsApiClient,
+  type CommitsLoadResult,
+  type CommitsResponse,
   type RefreshResult,
   type RefsLoadResult,
   type RefsResponse,
@@ -31,14 +33,19 @@ interface StubRefsApi {
   readonly client: RefsApiClient;
   readonly calls: string[];
   readonly refreshCalls: string[];
+  readonly commitsCalls: Array<{ id: string; scope: string }>;
 }
+
+const EMPTY_COMMITS: CommitsResponse = { commits: [], nextBefore: null };
 
 function stubRefsApi(
   responses: Partial<Record<string, RefsLoadResult>> = {},
   refreshResponses: Partial<Record<string, RefreshResult>> = {},
+  commitsResponses: Partial<Record<string, CommitsLoadResult>> = {},
 ): StubRefsApi {
   const calls: string[] = [];
   const refreshCalls: string[] = [];
+  const commitsCalls: Array<{ id: string; scope: string }> = [];
   const client = {
     load(id: string): Observable<RefsLoadResult> {
       calls.push(id);
@@ -50,8 +57,19 @@ function stubRefsApi(
       const fallback: RefreshResult = { state: 'ok', refs: REFS_DEFAULT };
       return of(refreshResponses[id] ?? fallback);
     },
+    loadCommits(
+      id: string,
+      options: { scope: string },
+    ): Observable<CommitsLoadResult> {
+      commitsCalls.push({ id, scope: options.scope });
+      const fallback: CommitsLoadResult = {
+        state: 'ok',
+        commits: EMPTY_COMMITS,
+      };
+      return of(commitsResponses[id] ?? fallback);
+    },
   } as unknown as RefsApiClient;
-  return { client, calls, refreshCalls };
+  return { client, calls, refreshCalls, commitsCalls };
 }
 
 function mount(
@@ -452,9 +470,13 @@ describe('SourcesPickerOverlayComponent', () => {
         load(_id: string) {
           return subj.asObservable();
         },
+        loadCommits(_id: string, _opts: { scope: string }) {
+          return of<CommitsLoadResult>({ state: 'ok', commits: EMPTY_COMMITS });
+        },
       } as unknown as RefsApiClient,
       calls: [],
       refreshCalls: [],
+      commitsCalls: [],
     };
     const { fixture } = mount(TWO_SOURCES, 'right', lateApi);
     const root = fixture.nativeElement as HTMLElement;

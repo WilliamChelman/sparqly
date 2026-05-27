@@ -7,6 +7,8 @@ import {
 import { firstValueFrom } from 'rxjs';
 import {
   RefsApiClient,
+  type CommitsLoadResult,
+  type CommitsResponse,
   type RefreshResult,
   type RefsLoadResult,
   type RefsResponse,
@@ -149,6 +151,69 @@ describe('RefsApiClient', () => {
     const otherReloaded = await firstValueFrom(client.load('other'));
     expect(otherReloaded).toEqual<RefsLoadResult>({ state: 'ok', refs: otherRefs });
     http.verify();
+  });
+
+  describe('loadCommits', () => {
+    const COMMITS: CommitsResponse = {
+      commits: [
+        {
+          sha: 'a'.repeat(40),
+          shortSha: 'aaaaaaa',
+          subject: 'first',
+          authorName: 'Alice',
+          authorDate: '2026-05-27T10:00:00Z',
+          parents: [],
+        },
+      ],
+      nextBefore: null,
+    };
+
+    it('GETs /api/sources/:id/commits?ref=HEAD and resolves with state:ok and the body', async () => {
+      const { http, client } = setup();
+      const promise = firstValueFrom(
+        client.loadCommits('docs', { scope: 'HEAD' }),
+      );
+      const req = http.expectOne('/api/sources/docs/commits?ref=HEAD');
+      expect(req.request.method).toBe('GET');
+      req.flush(COMMITS);
+      const result = await promise;
+      expect(result).toEqual<CommitsLoadResult>({
+        state: 'ok',
+        commits: COMMITS,
+      });
+      http.verify();
+    });
+
+    it('translates 404 { error: "bad-ref" } into state:bad-ref (not a thrown error)', async () => {
+      const { http, client } = setup();
+      const promise = firstValueFrom(
+        client.loadCommits('docs', { scope: 'HEAD' }),
+      );
+      http.expectOne('/api/sources/docs/commits?ref=HEAD').flush(
+        { error: 'bad-ref' },
+        { status: 404, statusText: 'Not Found' },
+      );
+      const result = await promise;
+      expect(result).toEqual<CommitsLoadResult>({ state: 'bad-ref' });
+      http.verify();
+    });
+
+    it('caches per (sourceId, scope) — same id+scope: no second HTTP', async () => {
+      const { http, client } = setup();
+      const first = firstValueFrom(
+        client.loadCommits('docs', { scope: 'HEAD' }),
+      );
+      http.expectOne('/api/sources/docs/commits?ref=HEAD').flush(COMMITS);
+      await first;
+      const second = await firstValueFrom(
+        client.loadCommits('docs', { scope: 'HEAD' }),
+      );
+      expect(second).toEqual<CommitsLoadResult>({
+        state: 'ok',
+        commits: COMMITS,
+      });
+      http.verify();
+    });
   });
 
   it('translates a 502 { error: "fetch-failed", kind } body into a state:"fetch-failed" result (not a thrown error), and leaves the existing cache entry untouched', async () => {

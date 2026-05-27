@@ -300,10 +300,15 @@ describe('SourcesPickerComponent', () => {
     const req1 = http.expectOne('/api/sources/right/refs');
     req1.flush(REFS_OK);
     fixture.detectChanges();
+    http
+      .expectOne('/api/sources/right/commits?ref=HEAD')
+      .flush({ commits: [], nextBefore: null });
+    fixture.detectChanges();
     // Refocusing the same source row should not trigger a new request.
     (root.querySelector('[data-source-id="right"]') as HTMLElement).click();
     fixture.detectChanges();
     http.expectNone('/api/sources/right/refs');
+    http.expectNone('/api/sources/right/commits?ref=HEAD');
     http.verify();
   });
 
@@ -316,6 +321,10 @@ describe('SourcesPickerComponent', () => {
     fixture.detectChanges();
     http.expectOne('/api/sources/right/refs').flush(REFS_OK);
     fixture.detectChanges();
+    http
+      .expectOne('/api/sources/right/commits?ref=HEAD')
+      .flush({ commits: [], nextBefore: null });
+    fixture.detectChanges();
     // Close via Cancel
     (
       root.querySelector('[data-testid="overlay-cancel"]') as HTMLButtonElement
@@ -326,6 +335,9 @@ describe('SourcesPickerComponent', () => {
     fixture.detectChanges();
     const req2 = http.expectOne('/api/sources/right/refs');
     req2.flush(REFS_OK);
+    http
+      .expectOne('/api/sources/right/commits?ref=HEAD')
+      .flush({ commits: [], nextBefore: null });
     http.verify();
   });
 

@@ -33,10 +33,37 @@ export type RefreshResult =
   | { state: 'ok'; refs: RefsResponse }
   | { state: 'fetch-failed'; kind: string };
 
+export interface CommitEntry {
+  sha: string;
+  shortSha: string;
+  subject: string;
+  authorName: string;
+  authorDate: string;
+  parents: string[];
+}
+
+export interface CommitsResponse {
+  commits: CommitEntry[];
+  nextBefore: string | null;
+}
+
+export type CommitsLoadResult =
+  | { state: 'ok'; commits: CommitsResponse }
+  | { state: 'bad-ref' }
+  | { state: 'git-io' };
+
+export interface LoadCommitsOptions {
+  scope: 'HEAD';
+}
+
 @Injectable()
 export class RefsApiClient {
   private readonly http = inject(HttpClient);
   private readonly cache = new Map<string, Observable<RefsLoadResult>>();
+  private readonly commitsCache = new Map<
+    string,
+    Observable<CommitsLoadResult>
+  >();
 
   load(sourceId: string): Observable<RefsLoadResult> {
     const cached = this.cache.get(sourceId);
@@ -68,6 +95,42 @@ export class RefsApiClient {
         shareReplay({ bufferSize: 1, refCount: false }),
       );
     this.cache.set(sourceId, stream);
+    return stream;
+  }
+
+  loadCommits(
+    sourceId: string,
+    options: LoadCommitsOptions,
+  ): Observable<CommitsLoadResult> {
+    const key = `${sourceId}\x00${options.scope}`;
+    const cached = this.commitsCache.get(key);
+    if (cached !== undefined) return cached;
+    const stream = this.http
+      .get<CommitsResponse>(
+        `/api/sources/${encodeURIComponent(sourceId)}/commits?ref=${encodeURIComponent(options.scope)}`,
+      )
+      .pipe(
+        map((commits): CommitsLoadResult => ({ state: 'ok', commits })),
+        catchError((err: unknown) => {
+          if (
+            err instanceof HttpErrorResponse &&
+            err.status === 404 &&
+            err.error !== null &&
+            typeof err.error === 'object'
+          ) {
+            const body = err.error as { error?: unknown };
+            if (body.error === 'bad-ref') {
+              return of<CommitsLoadResult>({ state: 'bad-ref' });
+            }
+            if (body.error === 'git-io') {
+              return of<CommitsLoadResult>({ state: 'git-io' });
+            }
+          }
+          return throwError(() => err);
+        }),
+        shareReplay({ bufferSize: 1, refCount: false }),
+      );
+    this.commitsCache.set(key, stream);
     return stream;
   }
 

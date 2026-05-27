@@ -371,6 +371,149 @@ describe('GET /api/sources/:id/refs', () => {
   });
 });
 
+describe('GET /api/sources/:id/commits', () => {
+  let repo: string;
+  let shas: string[] = [];
+  let server: CreatedServer | undefined;
+
+  beforeEach(async () => {
+    Logger.overrideLogger(false);
+    shas = [];
+    repo = await mkdtemp(join(tmpdir(), 'sparqly-commits-route-'));
+    await git(repo, ['init', '-q', '-b', 'main']);
+    for (let i = 1; i <= 3; i++) {
+      await writeFile(join(repo, 'a.ttl'), `@prefix : <#> . :s :p :o${i} .\n`);
+      await git(repo, ['add', '.']);
+      await git(repo, ['commit', '-q', '-m', `change ${i}`]);
+      shas.push(await git(repo, ['rev-parse', 'HEAD']));
+    }
+  });
+
+  afterEach(async () => {
+    if (server) await server.close();
+    server = undefined;
+    await rm(repo, { recursive: true, force: true });
+  });
+
+  it('returns { commits, nextBefore: null } for a glob with history', async () => {
+    server = await createServer({
+      sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/alpha/commits?ref=HEAD`,
+    );
+    expect(resp.status).toBe(200);
+    const json = (await resp.json()) as {
+      commits: Array<{
+        sha: string;
+        shortSha: string;
+        subject: string;
+        authorName: string;
+        authorDate: string;
+        parents: string[];
+      }>;
+      nextBefore: string | null;
+    };
+    expect(json.nextBefore).toBeNull();
+    expect(json.commits.map((c) => c.sha)).toEqual([
+      shas[2],
+      shas[1],
+      shas[0],
+    ]);
+    const newest = json.commits[0];
+    expect(newest.shortSha).toBe(shas[2].slice(0, 7));
+    expect(newest.subject).toBe('change 3');
+    expect(newest.authorName).toBe('test');
+    expect(newest.authorDate).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(newest.parents).toEqual([shas[1]]);
+  });
+
+  it('returns commits of the leaf glob for a view whose `from:` chain bottoms on a glob', async () => {
+    server = await createServer({
+      sources: [
+        { id: 'docs', glob: join(repo, '*.ttl') },
+        {
+          id: 'kept',
+          from: '@docs',
+          query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        },
+      ],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/kept/commits?ref=HEAD`,
+    );
+    expect(resp.status).toBe(200);
+    const json = (await resp.json()) as {
+      commits: Array<{ sha: string }>;
+      nextBefore: string | null;
+    };
+    expect(json.commits.map((c) => c.sha)).toEqual([
+      shas[2],
+      shas[1],
+      shas[0],
+    ]);
+  });
+
+  it('returns 404 { error: "pin-unsupported", reason: "storage-disk" } for a disk-backed glob', async () => {
+    server = await createServer({
+      sources: [
+        { id: 'docs', glob: join(repo, '*.ttl'), storage: 'disk' },
+      ],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/docs/commits?ref=HEAD`,
+    );
+    expect(resp.status).toBe(404);
+    const json = (await resp.json()) as { error?: string; reason?: string };
+    expect(json.error).toBe('pin-unsupported');
+    expect(json.reason).toBe('storage-disk');
+  });
+
+  it('returns 404 { error: "bad-ref" } for a non-existent ref', async () => {
+    server = await createServer({
+      sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/alpha/commits?ref=no-such-ref`,
+    );
+    expect(resp.status).toBe(404);
+    const json = (await resp.json()) as { error?: string };
+    expect(json.error).toBe('bad-ref');
+  });
+
+  it('returns commits for the resolved file path for a split-glob child', async () => {
+    await writeFile(join(repo, 'b.ttl'), '@prefix : <#> . :s :p :o2 .\n');
+    await git(repo, ['add', '.']);
+    await git(repo, ['commit', '-q', '-m', 'add b']);
+
+    server = await createServer({
+      sources: [
+        { id: 'docs', glob: join(repo, '*.ttl'), splitByFile: true },
+      ],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/${encodeURIComponent(
+        'docs/a.ttl',
+      )}/commits?ref=HEAD`,
+    );
+    expect(resp.status).toBe(200);
+    const json = (await resp.json()) as {
+      commits: Array<{ sha: string; subject: string }>;
+    };
+    // a.ttl was touched by the 3 initial commits, not the "add b" commit
+    expect(json.commits.map((c) => c.sha)).toEqual([
+      shas[2],
+      shas[1],
+      shas[0],
+    ]);
+  });
+});
+
 describe('POST /api/sources/:id/refs/fetch', () => {
   let bare: string;
   let repo: string;
