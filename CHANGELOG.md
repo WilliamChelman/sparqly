@@ -1,3 +1,9 @@
+## [0.32.1](https://github.com/WilliamChelman/sparqly/compare/v0.32.0...v0.32.1) (2026-05-27)
+
+### Bug Fixes
+
+* **web:** improve YASQE cursor visibility inside matched bracket blocks ([3c7694f](https://github.com/WilliamChelman/sparqly/commit/3c7694f5297efbc8a9cc8184d80e9fcdd69949af))
+
 ## [0.32.0](https://github.com/WilliamChelman/sparqly/compare/v0.31.0...v0.32.0) (2026-05-26)
 
 ### Features
