@@ -31,7 +31,11 @@ A **Source** whose value is the URL of a remote SPARQL HTTP endpoint.
 A **Source** that produces no triples of its own, intended to host a view whose query composes data via `SERVICE` clauses across endpoints that do not themselves support `SERVICE`.
 
 **View**:
-A **Source** that scopes exactly one **Upstream** with a SPARQL query, whose shape must be `CONSTRUCT` or a triple-shaped `SELECT`. Cross-source composition is expressed with `SERVICE` clauses inside the query, not multiple upstreams.
+A **Source** that scopes exactly one **Upstream** with a SPARQL query, whose shape must be `CONSTRUCT` or a **triple-shaped SELECT**. Cross-source composition is expressed with `SERVICE` clauses inside the query, not multiple upstreams.
+
+**Triple-shaped SELECT**:
+A `SELECT` query whose projection is exactly `?s ?p ?o` or `?s ?p ?o ?g` (position-independent). A valid query shape for a **View** and for the `query` command when an RDF output format is explicitly requested — in the latter case the result rows are reified as triples or quads for serialization. Rows with an unbound `?g` are promoted to the default graph rather than dropped.
+_Avoid_: "SPO query", "graph-shaped SELECT", "triple SELECT"
 
 **Anonymous view**:
 A **View** synthesized at command time from an inline query on `hash` or `diff`; never persisted to the registry and never cached. On `diff`, an anonymous view may project an arbitrary `SELECT` tuple, which selects **tabular diff** over **graph diff**.
@@ -231,7 +235,7 @@ _Avoid_: "test id" as a default selector, "test hook"
 - An **Upstream** is itself a **Source** (glob, endpoint, empty, or view; reference is rejected).
 - A **View** whose `from:` is an **Endpoint source** or a **Disk-backed glob** resolves via **pass-through**; in-memory glob, empty, and view upstreams resolve via **materialized**.
 - A **View** with `cache:` declared writes to the **Result cache** after resolution.
-- **`query`** picks one **target source** from the **source registry** and resolves it: **pass-through** when the target is an endpoint or a **Disk-backed glob**, **materialized** otherwise.
+- **`query`** picks one **target source** from the **source registry** and resolves it: **pass-through** when the target is an endpoint or a **Disk-backed glob**, **materialized** otherwise. When an RDF output format (`turtle`, `trig`, `nquads`) is requested and the query is a **triple-shaped SELECT**, the result rows are reified as triples or quads before serialization; a non-triple-shaped SELECT with an RDF format is a hard error. Extension inference applies: `.trig` → TriG, `.nq`/`.nquads` → N-Quads.
 - **`serve`** exposes the **served registry**; resolution per source follows the same rules as `query`.
 - **`hash`** picks one **target source** and always **canonicalizes** the resolved Store; it refuses any raw **pass-through** target (endpoint or **Disk-backed glob** — must be wrapped in a view or scoped with an inline query) and refuses arbitrary-SELECT views.
 - **`diff`** picks one **target source** per side and dispatches by query shape: **graph diff** when both sides produce triples; **tabular diff** when both sides project arbitrary SELECT tuples with matching variable names. Mixed-shape pairs are rejected. Both modes refuse a raw **pass-through** target (endpoint or **Disk-backed glob**) on either side.
