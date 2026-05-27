@@ -10,6 +10,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
 } from '@nestjs/common';
 import {
   discoverRepoRoot,
@@ -19,10 +20,13 @@ import {
 import { SPARQL_SERVED_REGISTRY } from '../bootstrap';
 import { hasGitHistoryForPathspec } from './eligibility-check';
 import { fetchRefs } from './fetch-refs';
+import { listCommits, type CommitsResponse } from './list-commits';
 import { listRefs } from './list-refs';
 import { translatePathspec, type PathspecTarget } from './pathspec-translation';
 import type { RefsResponse } from './refs-response';
 import { resolveRefsSource } from './resolve-refs-source';
+
+const COMMITS_PAGE_SIZE = 50;
 
 const repoDiscovery: RepoDiscoveryDeps = {
   hasGitDir(dir: string): boolean {
@@ -60,6 +64,28 @@ export class RefsController {
       );
     }
     return listRefs(ctx.repoRoot);
+  }
+
+  @Get(':id/commits')
+  async commits(
+    @Param('id') id: string,
+    @Query('ref') ref: string | undefined,
+  ): Promise<CommitsResponse> {
+    const ctx = this.resolveRefsContext(id);
+    const pathspec = translatePathspec(ctx.pathspecTarget);
+    const scope = ref ?? 'HEAD';
+    const result = await listCommits(ctx.repoRoot, {
+      ref: scope,
+      pathspec,
+      limit: COMMITS_PAGE_SIZE,
+    });
+    if (result.isErr()) {
+      throw new HttpException(
+        { error: result.error.kind },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    return result.value;
   }
 
   @Post(':id/refs/fetch')

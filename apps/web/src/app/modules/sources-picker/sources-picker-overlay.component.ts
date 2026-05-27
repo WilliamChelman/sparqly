@@ -15,6 +15,10 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent } from '@app/modules/button';
 import type { SourceListingEntry } from '@app/core';
+import {
+  CommitsPanelComponent,
+  type CommitsPanelState,
+} from './commits-panel.component';
 import { RefsApiClient } from './refs-api.client';
 import { RefsPanelComponent, type RefsPanelState } from './refs-panel.component';
 import {
@@ -29,7 +33,7 @@ import {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [RefsApiClient],
-  imports: [RefsPanelComponent, ButtonComponent],
+  imports: [RefsPanelComponent, CommitsPanelComponent, ButtonComponent],
   template: `
     <div
       data-testid="sources-overlay"
@@ -172,16 +176,69 @@ import {
             }
           </div>
           <div class="flex flex-col overflow-hidden">
-            <app-refs-panel
-              [state]="refsState()"
-              [stagedRef]="stagedRef()"
-              [refSearch]="refSearch()"
-              [refreshError]="refreshError()"
-              (stagedRefChange)="stagedRef.set($event)"
-              (refSearchChange)="refSearch.set($event)"
-              (appliedRef)="onAppliedRef($event)"
-              (refresh)="onRefreshRemotes()"
-            />
+            <div class="flex flex-1 flex-col overflow-y-auto">
+              <app-refs-panel
+                [state]="refsState()"
+                [stagedRef]="stagedRef()"
+                [refSearch]="refSearch()"
+                [refreshError]="refreshError()"
+                [omitSearchHeader]="true"
+                (stagedRefChange)="stagedRef.set($event)"
+                (refSearchChange)="refSearch.set($event)"
+                (appliedRef)="onAppliedRef($event)"
+                (refresh)="onRefreshRemotes()"
+              />
+              @if (showCommitsPanel()) {
+                <app-commits-panel
+                  [state]="commitsState()"
+                  (commitPicked)="onAppliedRef($event)"
+                />
+              }
+            </div>
+            @if (showLiftedRefInput()) {
+              <div class="flex flex-col gap-1.5 border-t border-border p-3">
+                <div class="flex items-center gap-2">
+                  <input
+                    data-testid="refs-search"
+                    type="text"
+                    placeholder="Search refs…"
+                    class="min-w-0 flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-foreground-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+                    [value]="refSearch()"
+                    (input)="onRefSearchInput($event)"
+                    (keydown.enter)="onRefSearchEnter($event)"
+                  />
+                  @if (stagedRef() !== '') {
+                    <button
+                      app-btn
+                      variant="secondary"
+                      type="button"
+                      data-testid="refs-clear"
+                      title="Clear selected ref"
+                      class="shrink-0"
+                      (click)="stagedRef.set('')"
+                    >Clear</button>
+                  }
+                  <button
+                    app-btn
+                    variant="secondary"
+                    type="button"
+                    data-testid="refs-refresh"
+                    class="shrink-0"
+                    (click)="onRefreshRemotes()"
+                  >⟳ Refresh remotes</button>
+                </div>
+                <p class="text-[11px] text-foreground-faint">
+                  Press <kbd class="rounded border border-border bg-surface-sunken px-1 font-mono text-[10px]">Enter</kbd>
+                  to use a custom ref (e.g. <code class="font-mono">HEAD~3</code> or a SHA).
+                </p>
+                @if (refreshError(); as kind) {
+                  <p
+                    data-testid="refs-refresh-error"
+                    class="text-[12px] text-foreground-muted"
+                  >Refresh failed ({{ kind }})</p>
+                }
+              </div>
+            }
           </div>
         </div>
         <div class="flex items-center justify-end gap-2 border-t border-border bg-surface-sunken px-3 py-2">
@@ -213,8 +270,19 @@ export class SourcesPickerOverlayComponent {
   readonly query = signal<string>('');
   readonly refSearch = signal<string>('');
   readonly refsState = signal<RefsPanelState>({ kind: 'idle' });
+  readonly commitsState = signal<CommitsPanelState>({ kind: 'idle' });
   readonly refreshError = signal<string | null>(null);
   readonly expandedGroups = signal<ReadonlySet<string>>(new Set());
+
+  readonly showCommitsPanel = computed(() => {
+    const r = this.refsState();
+    return r.kind === 'loaded' || r.kind === 'loading';
+  });
+
+  readonly showLiftedRefInput = computed(() => {
+    const r = this.refsState();
+    return r.kind !== 'no-git-repo' && r.kind !== 'no-git-history';
+  });
 
   readonly tree = computed<SourceTreeResult>(() =>
     buildSourceTree(this.sources(), this.query(), this.expandedGroups()),
@@ -259,9 +327,11 @@ export class SourcesPickerOverlayComponent {
       this.refreshError.set(null);
       if (id === '') {
         this.refsState.set({ kind: 'idle' });
+        this.commitsState.set({ kind: 'idle' });
         return;
       }
       this.refsState.set({ kind: 'loading' });
+      this.commitsState.set({ kind: 'idle' });
       this.refsApi
         .load(id)
         .pipe(takeUntilDestroyed(this.destroyRef))
@@ -269,6 +339,7 @@ export class SourcesPickerOverlayComponent {
           if (this.stagedId() !== id) return;
           if (r.state === 'ok') {
             this.refsState.set({ kind: 'loaded', refs: r.refs });
+            this.loadCommitsForStaged(id);
           } else if (r.state === 'no-git-repo') {
             this.refsState.set({ kind: 'no-git-repo', sourceKind: r.kind });
           } else {
@@ -276,6 +347,39 @@ export class SourcesPickerOverlayComponent {
           }
         });
     });
+  }
+
+  private loadCommitsForStaged(id: string): void {
+    this.commitsState.set({ kind: 'loading' });
+    this.refsApi
+      .loadCommits(id, { scope: 'HEAD' })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((r) => {
+        if (this.stagedId() !== id) return;
+        if (r.state === 'ok') {
+          this.commitsState.set({ kind: 'loaded', commits: r.commits });
+        } else {
+          this.commitsState.set({ kind: 'error', kindLabel: r.state });
+        }
+      });
+  }
+
+  onRefSearchInput(ev: Event): void {
+    const target = ev.target as HTMLInputElement;
+    this.refSearch.set(target.value);
+  }
+
+  onRefSearchEnter(ev: Event): void {
+    ev.preventDefault();
+    const staged = this.stagedRef();
+    if (staged !== '') {
+      this.onAppliedRef(staged);
+      return;
+    }
+    const typed = this.refSearch();
+    if (typed !== '') {
+      this.onAppliedRef(typed);
+    }
   }
 
   private ensureStagedExpanded(): void {
