@@ -9,6 +9,10 @@ sources:
     storage: disk
   - id: delta
     endpoint: http://127.0.0.1:1/sparql
+  # No file has ever matched this pattern, so /refs returns no-git-history.
+  # Used by the picker e2e covering the explainer empty state (issue #378).
+  - id: epsilon
+    glob: ./data/never-existed-*.ttl
 
 context:
   prefixes:

@@ -244,6 +244,102 @@ describe('GET /api/sources/:id/refs', () => {
     expect(json.reason).toBe('storage-disk');
   });
 
+  it('returns 404 { error: "no-git-history" } for a glob pattern with zero history', async () => {
+    server = await createServer({
+      sources: [{ id: 'docs', glob: join(repo, 'no-such-*.ttl') }],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/docs/refs`,
+    );
+    expect(resp.status).toBe(404);
+    const json = (await resp.json()) as { error?: string };
+    expect(json.error).toBe('no-git-history');
+  });
+
+  it('returns 404 { error: "no-git-history" } for a .gitignored file', async () => {
+    await writeFile(join(repo, '.gitignore'), 'secret.ttl\n');
+    await git(repo, ['add', '.gitignore']);
+    await git(repo, ['commit', '-q', '-m', 'add gitignore']);
+    await writeFile(join(repo, 'secret.ttl'), '@prefix : <#> . :s :p :o .\n');
+
+    server = await createServer({
+      sources: [{ id: 'docs', glob: join(repo, 'secret.ttl') }],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/docs/refs`,
+    );
+    expect(resp.status).toBe(404);
+    const json = (await resp.json()) as { error?: string };
+    expect(json.error).toBe('no-git-history');
+  });
+
+  it('returns 404 { error: "no-git-history" } for an untracked-but-not-ignored file', async () => {
+    await writeFile(join(repo, 'fresh.ttl'), '@prefix : <#> . :s :p :o .\n');
+    server = await createServer({
+      sources: [{ id: 'docs', glob: join(repo, 'fresh.ttl') }],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/docs/refs`,
+    );
+    expect(resp.status).toBe(404);
+    const json = (await resp.json()) as { error?: string };
+    expect(json.error).toBe('no-git-history');
+  });
+
+  it('still serves refs when a file was deleted at HEAD but exists in history', async () => {
+    await writeFile(join(repo, 'doomed.ttl'), '@prefix : <#> . :s :p :o .\n');
+    await git(repo, ['add', 'doomed.ttl']);
+    await git(repo, ['commit', '-q', '-m', 'add doomed']);
+    await git(repo, ['rm', '-q', 'doomed.ttl']);
+    await git(repo, ['commit', '-q', '-m', 'remove doomed']);
+
+    server = await createServer({
+      sources: [{ id: 'docs', glob: join(repo, 'doomed.ttl') }],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/docs/refs`,
+    );
+    expect(resp.status).toBe(200);
+  });
+
+  it('pin-unsupported takes precedence over no-git-history for a disk glob with no history', async () => {
+    server = await createServer({
+      sources: [
+        { id: 'docs', glob: join(repo, 'no-such-*.ttl'), storage: 'disk' },
+      ],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/docs/refs`,
+    );
+    expect(resp.status).toBe(404);
+    const json = (await resp.json()) as { error?: string; reason?: string };
+    expect(json.error).toBe('pin-unsupported');
+    expect(json.reason).toBe('storage-disk');
+  });
+
+  it('returns 404 no-git-history for a split-glob child whose resolved file has no history', async () => {
+    await writeFile(join(repo, 'zzz.ttl'), '@prefix : <#> . :s :p :o .\n');
+    server = await createServer({
+      sources: [
+        { id: 'docs', glob: join(repo, '*.ttl'), splitByFile: true },
+      ],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/${encodeURIComponent(
+        'docs/zzz.ttl',
+      )}/refs`,
+    );
+    expect(resp.status).toBe(404);
+    const json = (await resp.json()) as { error?: string };
+    expect(json.error).toBe('no-git-history');
+  });
+
   it('returns the leaf glob refs for a multi-hop view chain (view → view → glob)', async () => {
     server = await createServer({
       sources: [

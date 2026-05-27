@@ -17,8 +17,10 @@ import {
   type RepoDiscoveryDeps,
 } from 'core';
 import { SPARQL_SERVED_REGISTRY } from '../bootstrap';
+import { hasGitHistoryForPathspec } from './eligibility-check';
 import { fetchRefs } from './fetch-refs';
 import { listRefs } from './list-refs';
+import { translatePathspec, type PathspecTarget } from './pathspec-translation';
 import type { RefsResponse } from './refs-response';
 import { resolveRefsSource } from './resolve-refs-source';
 
@@ -34,6 +36,11 @@ const repoDiscovery: RepoDiscoveryDeps = {
   },
 };
 
+interface RefsContext {
+  repoRoot: string;
+  pathspecTarget: PathspecTarget;
+}
+
 @Controller('sources')
 export class RefsController {
   constructor(
@@ -43,15 +50,23 @@ export class RefsController {
 
   @Get(':id/refs')
   async list(@Param('id') id: string): Promise<RefsResponse> {
-    const repoRoot = this.resolveRepoRoot(id);
-    return listRefs(repoRoot);
+    const ctx = this.resolveRefsContext(id);
+    const pathspec = translatePathspec(ctx.pathspecTarget);
+    const eligible = await hasGitHistoryForPathspec(ctx.repoRoot, pathspec);
+    if (!eligible) {
+      throw new HttpException(
+        { error: 'no-git-history' },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    return listRefs(ctx.repoRoot);
   }
 
   @Post(':id/refs/fetch')
   @HttpCode(HttpStatus.OK)
   async fetch(@Param('id') id: string): Promise<RefsResponse> {
-    const repoRoot = this.resolveRepoRoot(id);
-    const result = await fetchRefs(repoRoot);
+    const ctx = this.resolveRefsContext(id);
+    const result = await fetchRefs(ctx.repoRoot);
     if (result.isErr()) {
       throw new HttpException(
         { error: 'fetch-failed', kind: result.error.kind },
@@ -61,7 +76,7 @@ export class RefsController {
     return result.value;
   }
 
-  private resolveRepoRoot(id: string): string {
+  private resolveRefsContext(id: string): RefsContext {
     const resolution = resolveRefsSource(id, this.servedRegistry);
     if (resolution.isErr()) {
       const failure = resolution.error;
@@ -80,11 +95,12 @@ export class RefsController {
         HttpStatus.NOT_FOUND,
       );
     }
-    const glob = resolution.value;
+    const { glob, filePath } = resolution.value;
+    const configDir = process.cwd();
     const discovery = discoverRepoRoot(
       {
         glob: glob.glob,
-        configDir: process.cwd(),
+        configDir,
         gitRoot: glob.gitRoot,
       },
       repoDiscovery,
@@ -95,6 +111,11 @@ export class RefsController {
         HttpStatus.NOT_FOUND,
       );
     }
-    return discovery.value;
+    const repoRoot = discovery.value;
+    const pathspecTarget: PathspecTarget =
+      filePath === undefined
+        ? { kind: 'glob', pattern: glob.glob, configDir, repoRoot }
+        : { kind: 'file', path: filePath, repoRoot };
+    return { repoRoot, pathspecTarget };
   }
 }

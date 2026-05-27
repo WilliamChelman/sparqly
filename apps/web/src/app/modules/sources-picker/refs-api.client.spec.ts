@@ -61,6 +61,19 @@ describe('RefsApiClient', () => {
     http.verify();
   });
 
+  it('translates a 404 { error: "no-git-history" } body into a state:no-git-history result (not a thrown error)', async () => {
+    const { http, client } = setup();
+    const promise = firstValueFrom(client.load('untracked'));
+    const req = http.expectOne('/api/sources/untracked/refs');
+    req.flush(
+      { error: 'no-git-history' },
+      { status: 404, statusText: 'Not Found' },
+    );
+    const result = await promise;
+    expect(result).toEqual<RefsLoadResult>({ state: 'no-git-history' });
+    http.verify();
+  });
+
   it('caches the result per source id — a second load() for the same id emits no new HTTP request', async () => {
     const { http, client } = setup();
     const first = firstValueFrom(client.load('docs'));

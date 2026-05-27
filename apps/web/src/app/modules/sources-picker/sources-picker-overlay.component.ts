@@ -269,8 +269,10 @@ export class SourcesPickerOverlayComponent {
           if (this.stagedId() !== id) return;
           if (r.state === 'ok') {
             this.refsState.set({ kind: 'loaded', refs: r.refs });
-          } else {
+          } else if (r.state === 'no-git-repo') {
             this.refsState.set({ kind: 'no-git-repo', sourceKind: r.kind });
+          } else {
+            this.refsState.set({ kind: 'no-git-history' });
           }
         });
     });

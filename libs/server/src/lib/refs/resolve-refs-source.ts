@@ -11,21 +11,39 @@ export type RefsSourceFailure =
   | { kind: 'no-git-repo'; terminatingKind: string }
   | { kind: 'pin-unsupported'; reason: 'storage-disk' };
 
+export interface RefsSourceResolution {
+  glob: ParsedGlobSource & { id: string };
+  /**
+   * Set when the requested id is a split-glob file child — absolute path of
+   * that file. Lets eligibility/commits scope to a single file instead of the
+   * parent glob's full pattern.
+   */
+  filePath?: string;
+}
+
 /** Walks views down through `from:` and files up through `parentId` to find the backing glob. */
 export function resolveRefsSource(
   id: string,
   registry: ReadonlyArray<ParsedSource>,
-): Result<ParsedGlobSource & { id: string }, RefsSourceFailure> {
+): Result<RefsSourceResolution, RefsSourceFailure> {
+  return resolve(id, registry, undefined);
+}
+
+function resolve(
+  id: string,
+  registry: ReadonlyArray<ParsedSource>,
+  filePath: string | undefined,
+): Result<RefsSourceResolution, RefsSourceFailure> {
   const source = registry.find((s) => s.id === id);
   if (source === undefined) {
     return err({ kind: 'unknown-source' });
   }
   if (source.kind === 'glob') {
-    return guardPinSupport(source as ParsedGlobSource & { id: string });
+    return guardPinSupport(source as ParsedGlobSource & { id: string }, filePath);
   }
   if (source.kind === 'view') {
     const leaf = resolveViewLeafGlob(source, registry);
-    if (leaf.isOk()) return guardPinSupport(leaf.value);
+    if (leaf.isOk()) return guardPinSupport(leaf.value, filePath);
     const failure = leaf.error;
     if (failure.kind === 'view-chain-unknown-upstream') {
       return err({ kind: 'no-git-repo', terminatingKind: 'view' });
@@ -37,7 +55,7 @@ export function resolveRefsSource(
     if (parent === undefined) {
       return err({ kind: 'no-git-repo', terminatingKind: 'file' });
     }
-    return resolveRefsSource(source.parentId, registry);
+    return resolve(source.parentId, registry, source.path);
   }
   return err({ kind: 'no-git-repo', terminatingKind: source.kind });
 }
@@ -45,9 +63,10 @@ export function resolveRefsSource(
 /** Refuses `storage: disk` globs — load path rejects `gitRef`, so refs would be useless. */
 function guardPinSupport(
   glob: ParsedGlobSource & { id: string },
-): Result<ParsedGlobSource & { id: string }, RefsSourceFailure> {
+  filePath: string | undefined,
+): Result<RefsSourceResolution, RefsSourceFailure> {
   if (storageTier(glob) === 'disk') {
     return err({ kind: 'pin-unsupported', reason: 'storage-disk' });
   }
-  return ok(glob);
+  return ok(filePath === undefined ? { glob } : { glob, filePath });
 }
