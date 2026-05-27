@@ -26,7 +26,8 @@ export interface RefsResponse {
 
 export type RefsLoadResult =
   | { state: 'ok'; refs: RefsResponse }
-  | { state: 'no-git-repo'; kind: string };
+  | { state: 'no-git-repo'; kind: string }
+  | { state: 'no-git-history' };
 
 export type RefreshResult =
   | { state: 'ok'; refs: RefsResponse }
@@ -49,11 +50,18 @@ export class RefsApiClient {
             err instanceof HttpErrorResponse &&
             err.status === 404 &&
             err.error !== null &&
-            typeof err.error === 'object' &&
-            (err.error as { error?: unknown }).error === 'no-git-repo'
+            typeof err.error === 'object'
           ) {
-            const kind = String((err.error as { kind?: unknown }).kind ?? '');
-            return of<RefsLoadResult>({ state: 'no-git-repo', kind });
+            const body = err.error as { error?: unknown; kind?: unknown };
+            if (body.error === 'no-git-repo') {
+              return of<RefsLoadResult>({
+                state: 'no-git-repo',
+                kind: String(body.kind ?? ''),
+              });
+            }
+            if (body.error === 'no-git-history') {
+              return of<RefsLoadResult>({ state: 'no-git-history' });
+            }
           }
           return throwError(() => err);
         }),

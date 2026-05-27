@@ -49,7 +49,8 @@ export type RefsPanelState =
   | { kind: 'idle' }
   | { kind: 'loading' }
   | { kind: 'loaded'; refs: RefsResponse }
-  | { kind: 'no-git-repo'; sourceKind: string };
+  | { kind: 'no-git-repo'; sourceKind: string }
+  | { kind: 'no-git-history' };
 
 @Component({
   selector: 'app-refs-panel',
@@ -58,7 +59,7 @@ export type RefsPanelState =
   host: { class: 'flex h-full flex-col overflow-hidden' },
   template: `
     @let s = state();
-    @if (s.kind !== 'no-git-repo') {
+    @if (s.kind !== 'no-git-repo' && s.kind !== 'no-git-history') {
       <div class="flex flex-col gap-1.5 border-b border-border p-3">
         <div class="flex items-center gap-2">
           <input
@@ -108,6 +109,15 @@ export type RefsPanelState =
         class="p-4 text-[13px] text-foreground-muted"
       >
         No git refs available for this source ({{ s.sourceKind }})
+      </p>
+    }
+    @if (s.kind === 'no-git-history') {
+      <p
+        data-testid="refs-panel-no-history"
+        class="p-4 text-[13px] text-foreground-muted"
+      >
+        This source has no git history yet — pinning to a ref is unavailable
+        until at least one commit touches it.
       </p>
     }
     @if (s.kind === 'loaded') {

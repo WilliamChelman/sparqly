@@ -10,8 +10,8 @@ describe('resolveRefsSource — locates the glob whose repo backs ref-discovery'
 
     expect(result.isOk()).toBe(true);
     if (!result.isOk()) throw new Error('unreachable');
-    expect(result.value.kind).toBe('glob');
-    expect(result.value.id).toBe('docs');
+    expect(result.value.glob.kind).toBe('glob');
+    expect(result.value.glob.id).toBe('docs');
   });
 
   it('walks a view chain to its leaf glob (single hop)', () => {
@@ -28,7 +28,7 @@ describe('resolveRefsSource — locates the glob whose repo backs ref-discovery'
 
     expect(result.isOk()).toBe(true);
     if (!result.isOk()) throw new Error('unreachable');
-    expect(result.value.id).toBe('docs');
+    expect(result.value.glob.id).toBe('docs');
   });
 
   it('walks a multi-hop view chain (view → view → glob) to the leaf', () => {
@@ -50,7 +50,7 @@ describe('resolveRefsSource — locates the glob whose repo backs ref-discovery'
 
     expect(result.isOk()).toBe(true);
     if (!result.isOk()) throw new Error('unreachable');
-    expect(result.value.id).toBe('docs');
+    expect(result.value.glob.id).toBe('docs');
   });
 
   it('errors no-git-repo kind:endpoint when the source is itself an endpoint', () => {
@@ -124,8 +124,37 @@ describe('resolveRefsSource — locates the glob whose repo backs ref-discovery'
 
     expect(result.isOk()).toBe(true);
     if (!result.isOk()) throw new Error('unreachable');
-    expect(result.value.kind).toBe('glob');
-    expect(result.value.id).toBe('docs');
+    expect(result.value.glob.kind).toBe('glob');
+    expect(result.value.glob.id).toBe('docs');
+  });
+
+  it('exposes the resolved file path on the result for a split-glob file child', () => {
+    const parsed = parseSourceSpecs([
+      { id: 'docs', glob: 'data/*.ttl', splitByFile: true },
+    ]);
+    const child: ParsedFileSource = {
+      kind: 'file',
+      id: 'docs/alice.ttl',
+      path: '/abs/data/alice.ttl',
+      parentId: 'docs',
+    };
+    const registry: ReadonlyArray<ParsedSource> = [...parsed, child];
+
+    const result = resolveRefsSource('docs/alice.ttl', registry);
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.filePath).toBe('/abs/data/alice.ttl');
+  });
+
+  it('does not set filePath when the resolved source is a parent glob', () => {
+    const registry = parseSourceSpecs([{ id: 'docs', glob: 'data/*.ttl' }]);
+
+    const result = resolveRefsSource('docs', registry);
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.filePath).toBeUndefined();
   });
 
   it('errors no-git-repo kind:file when a file child has no parent in the registry', () => {

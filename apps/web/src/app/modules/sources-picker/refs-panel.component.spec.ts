@@ -162,6 +162,16 @@ describe('RefsPanelComponent', () => {
     expect(root.querySelector('[data-section]')).toBeNull();
   });
 
+  it('renders a "no git history" explainer (and hides the search/free-form input) when state is no-git-history', () => {
+    const { fixture } = mount({ kind: 'no-git-history' });
+    const root = fixture.nativeElement as HTMLElement;
+    const msg = root.querySelector('[data-testid="refs-panel-no-history"]');
+    expect(msg).toBeTruthy();
+    expect(msg?.textContent ?? '').toContain('no git history');
+    expect(root.querySelector('[data-section]')).toBeNull();
+    expect(root.querySelector('[data-testid="refs-search"]')).toBeNull();
+  });
+
   it('renders a "Search refs…" input in the panel header that reflects the refSearch input value', () => {
     const { fixture } = mount({ kind: 'loaded', refs: REFS }, '', 'feat');
     const root = fixture.nativeElement as HTMLElement;
