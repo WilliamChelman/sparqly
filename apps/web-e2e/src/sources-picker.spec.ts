@@ -217,6 +217,106 @@ test.describe('source picker · empty-scope hint', () => {
   });
 });
 
+test.describe('source picker · Commits pagination (Show more)', () => {
+  test('clicking "Show more" issues a follow-up /commits request with `before` and appends the next page', async ({
+    page,
+  }) => {
+    const PAGE1_FIRST = '1'.repeat(40);
+    const PAGE1_LAST = 'a'.repeat(40);
+    const PAGE2_LAST = '2'.repeat(40);
+    const iso = new Date().toISOString();
+
+    await page.route('**/api/sources/alpha/refs', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          head: { ref: 'HEAD', kind: 'head', sha: PAGE1_FIRST },
+          branches: [{ ref: 'main', kind: 'branch', sha: PAGE1_FIRST }],
+          remoteBranches: [],
+          tags: [],
+        }),
+      });
+    });
+    await page.route('**/api/sources/alpha/commits**', async (route) => {
+      const url = new URL(route.request().url());
+      const before = url.searchParams.get('before');
+      if (before === null) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            commits: [
+              {
+                sha: PAGE1_FIRST,
+                shortSha: PAGE1_FIRST.slice(0, 7),
+                subject: 'one',
+                authorName: 'A',
+                authorDate: iso,
+                parents: [],
+              },
+              {
+                sha: PAGE1_LAST,
+                shortSha: PAGE1_LAST.slice(0, 7),
+                subject: 'two',
+                authorName: 'A',
+                authorDate: iso,
+                parents: [],
+              },
+            ],
+            nextBefore: PAGE1_LAST,
+          }),
+        });
+      } else if (before === PAGE1_LAST) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            commits: [
+              {
+                sha: PAGE2_LAST,
+                shortSha: PAGE2_LAST.slice(0, 7),
+                subject: 'three',
+                authorName: 'A',
+                authorDate: iso,
+                parents: [],
+              },
+            ],
+            nextBefore: null,
+          }),
+        });
+      } else {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'invalid-before' }),
+        });
+      }
+    });
+
+    await page.goto('/');
+    await page.getByTestId('sources-picker-trigger').click();
+    const overlay = page.getByTestId('sources-overlay');
+    await expect(overlay).toBeVisible();
+
+    await overlay.locator('[data-source-id="alpha"]').click();
+
+    await expect(overlay.locator('[data-section="commits"]')).toBeVisible();
+    await expect(overlay.locator('[data-commit-sha]')).toHaveCount(2);
+
+    const showMore = overlay.getByTestId('commits-show-more');
+    await expect(showMore).toBeVisible();
+    await showMore.click();
+
+    // Next page appended; Show more disappears (final page).
+    await expect(overlay.locator('[data-commit-sha]')).toHaveCount(3);
+    await expect(
+      overlay.locator(`[data-commit-sha="${PAGE2_LAST}"]`),
+    ).toBeVisible();
+    await expect(overlay.getByTestId('commits-show-more')).toHaveCount(0);
+  });
+});
+
 test.describe('source picker · no-git-history explainer', () => {
   test('opening the picker on a source whose glob has no git history renders the explainer and hides the free-form ref input', async ({
     page,

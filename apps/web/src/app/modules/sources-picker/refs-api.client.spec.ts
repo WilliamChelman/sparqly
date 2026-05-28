@@ -198,6 +198,59 @@ describe('RefsApiClient', () => {
       http.verify();
     });
 
+    it('GETs /api/sources/:id/commits?ref=…&before=… when before is provided', async () => {
+      const { http, client } = setup();
+      const before = 'b'.repeat(40);
+      const promise = firstValueFrom(
+        client.loadCommits('docs', { scope: 'HEAD', before }),
+      );
+      const req = http.expectOne(
+        `/api/sources/docs/commits?ref=HEAD&before=${before}`,
+      );
+      expect(req.request.method).toBe('GET');
+      req.flush(COMMITS);
+      const result = await promise;
+      expect(result).toEqual<CommitsLoadResult>({
+        state: 'ok',
+        commits: COMMITS,
+      });
+      http.verify();
+    });
+
+    it('caches per (sourceId, scope, before) — same triplet: no second HTTP; different `before` triggers a fresh request', async () => {
+      const { http, client } = setup();
+      const before = 'b'.repeat(40);
+
+      const first = firstValueFrom(
+        client.loadCommits('docs', { scope: 'HEAD', before }),
+      );
+      http
+        .expectOne(`/api/sources/docs/commits?ref=HEAD&before=${before}`)
+        .flush(COMMITS);
+      await first;
+
+      // Same (scope, before) — cache hit.
+      const second = await firstValueFrom(
+        client.loadCommits('docs', { scope: 'HEAD', before }),
+      );
+      expect(second).toEqual<CommitsLoadResult>({
+        state: 'ok',
+        commits: COMMITS,
+      });
+
+      // Different before — fresh request.
+      const otherBefore = 'c'.repeat(40);
+      const third = firstValueFrom(
+        client.loadCommits('docs', { scope: 'HEAD', before: otherBefore }),
+      );
+      http
+        .expectOne(`/api/sources/docs/commits?ref=HEAD&before=${otherBefore}`)
+        .flush(COMMITS);
+      await third;
+
+      http.verify();
+    });
+
     it('caches per (sourceId, scope) — same id+scope: no second HTTP', async () => {
       const { http, client } = setup();
       const first = firstValueFrom(

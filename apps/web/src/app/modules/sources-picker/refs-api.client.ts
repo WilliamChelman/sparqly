@@ -55,6 +55,7 @@ export type CommitsLoadResult =
 
 export interface LoadCommitsOptions {
   scope: string;
+  before?: string;
 }
 
 @Injectable()
@@ -103,12 +104,17 @@ export class RefsApiClient {
     sourceId: string,
     options: LoadCommitsOptions,
   ): Observable<CommitsLoadResult> {
-    const key = `${sourceId}\x00${options.scope}`;
+    const beforeKey = options.before ?? '';
+    const key = `${sourceId}\x00${options.scope}\x00${beforeKey}`;
     const cached = this.commitsCache.get(key);
     if (cached !== undefined) return cached;
+    const beforeQuery =
+      options.before !== undefined
+        ? `&before=${encodeURIComponent(options.before)}`
+        : '';
     const stream = this.http
       .get<CommitsResponse>(
-        `/api/sources/${encodeURIComponent(sourceId)}/commits?ref=${encodeURIComponent(options.scope)}`,
+        `/api/sources/${encodeURIComponent(sourceId)}/commits?ref=${encodeURIComponent(options.scope)}${beforeQuery}`,
       )
       .pipe(
         map((commits): CommitsLoadResult => ({ state: 'ok', commits })),

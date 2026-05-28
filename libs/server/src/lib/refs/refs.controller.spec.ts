@@ -557,6 +557,91 @@ describe('GET /api/sources/:id/commits', () => {
     expect(returned).not.toContain(shas[2]);
   });
 
+  it('paginates with limit + before cursor: round-trips page 1 → page 2 with no row overlap and stable ordering', async () => {
+    // Add two more commits so we have 5 total touching a.ttl.
+    for (let i = 4; i <= 5; i++) {
+      await writeFile(join(repo, 'a.ttl'), `@prefix : <#> . :s :p :o${i} .\n`);
+      await git(repo, ['add', '.']);
+      await git(repo, ['commit', '-q', '-m', `change ${i}`]);
+      shas.push(await git(repo, ['rev-parse', 'HEAD']));
+    }
+
+    server = await createServer({
+      sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
+      port: 0,
+    });
+
+    const page1Resp = await fetch(
+      `http://localhost:${server.port}/api/sources/alpha/commits?ref=HEAD&limit=2`,
+    );
+    expect(page1Resp.status).toBe(200);
+    const page1 = (await page1Resp.json()) as {
+      commits: Array<{ sha: string }>;
+      nextBefore: string | null;
+    };
+    // Newest 2 of 5: shas[4], shas[3]
+    expect(page1.commits.map((c) => c.sha)).toEqual([shas[4], shas[3]]);
+    expect(page1.nextBefore).toBe(shas[3]);
+
+    const page2Resp = await fetch(
+      `http://localhost:${server.port}/api/sources/alpha/commits?ref=HEAD&limit=2&before=${page1.nextBefore}`,
+    );
+    expect(page2Resp.status).toBe(200);
+    const page2 = (await page2Resp.json()) as {
+      commits: Array<{ sha: string }>;
+      nextBefore: string | null;
+    };
+    // Next 2 older: shas[2], shas[1]; one remains so nextBefore = shas[1]
+    expect(page2.commits.map((c) => c.sha)).toEqual([shas[2], shas[1]]);
+    expect(page2.nextBefore).toBe(shas[1]);
+
+    // No overlap between pages.
+    const p1Set = new Set(page1.commits.map((c) => c.sha));
+    for (const c of page2.commits) expect(p1Set.has(c.sha)).toBe(false);
+
+    // Final page: one row left, nextBefore null.
+    const page3Resp = await fetch(
+      `http://localhost:${server.port}/api/sources/alpha/commits?ref=HEAD&limit=2&before=${page2.nextBefore}`,
+    );
+    const page3 = (await page3Resp.json()) as {
+      commits: Array<{ sha: string }>;
+      nextBefore: string | null;
+    };
+    expect(page3.commits.map((c) => c.sha)).toEqual([shas[0]]);
+    expect(page3.nextBefore).toBeNull();
+  });
+
+  it('defaults limit to 50 when the query param is omitted', async () => {
+    server = await createServer({
+      sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/alpha/commits?ref=HEAD`,
+    );
+    expect(resp.status).toBe(200);
+    const json = (await resp.json()) as {
+      commits: Array<{ sha: string }>;
+      nextBefore: string | null;
+    };
+    // Only 3 commits total — well under default 50; nextBefore null.
+    expect(json.commits).toHaveLength(3);
+    expect(json.nextBefore).toBeNull();
+  });
+
+  it('returns 400 { error: "invalid-before" } when before is not a 40-hex SHA', async () => {
+    server = await createServer({
+      sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/alpha/commits?ref=HEAD&before=not-a-sha`,
+    );
+    expect(resp.status).toBe(400);
+    const json = (await resp.json()) as { error?: string };
+    expect(json.error).toBe('invalid-before');
+  });
+
   it('returns commits across all refs for scope=__all__, including side-branch commits unreachable from HEAD', async () => {
     // Branch off the first commit, add a commit touching the same glob on
     // a side branch that is *not* reachable from HEAD. scope=__all__ must
