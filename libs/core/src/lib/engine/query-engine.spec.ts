@@ -1,4 +1,4 @@
-import { DataFactory, Store } from 'n3';
+import { DataFactory, Parser, Store } from 'n3';
 import { describe, expect, it } from 'vitest';
 import { QueryEngine } from './query-engine';
 import { ttl } from '../test/turtle';
@@ -142,6 +142,70 @@ describe('QueryEngine.execute', () => {
     expect(result.body).toContain('<http://example.org/a>');
     expect(result.body).toContain('<http://example.org/p>');
     expect(result.body).toContain('<http://example.org/b>');
+  });
+
+  describe('triple-shaped SELECT reification', () => {
+    it('reifies SELECT ?s ?p ?o ?g + --format=nquads into N-Quads that round-trip through the n3 parser', async () => {
+      const engine = new QueryEngine(namedGraphStore());
+
+      const result = await engine.execute(
+        'SELECT ?s ?p ?o ?g WHERE { GRAPH ?g { ?s ?p ?o } }',
+        { format: 'nquads' },
+      );
+
+      expect(result.format).toBe('nquads');
+      expect(result.contentType).toBe('application/n-quads');
+      const quads = new Parser({ format: 'application/n-quads' }).parse(result.body);
+      expect(quads).toHaveLength(1);
+      expect(quads[0].subject.value).toBe('http://example.org/s');
+      expect(quads[0].graph.value).toBe('http://example.org/g');
+    });
+
+    it('reifies SELECT ?s ?p ?o + --format=turtle into Turtle (default-graph case)', async () => {
+      const engine = new QueryEngine(exampleStore());
+
+      const result = await engine.execute(
+        'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
+        { format: 'turtle' },
+      );
+
+      expect(result.format).toBe('turtle');
+      const quads = new Parser({ format: 'text/turtle' }).parse(result.body);
+      expect(quads).toHaveLength(1);
+      expect(quads[0].subject.value).toBe('http://example.org/a');
+      expect(quads[0].predicate.value).toBe('http://example.org/p');
+      expect(quads[0].object.value).toBe('http://example.org/b');
+      expect(quads[0].graph.termType).toBe('DefaultGraph');
+    });
+
+    it('rejects a non-triple-shaped SELECT + RDF format with an error naming the projection', async () => {
+      const engine = new QueryEngine(exampleStore());
+
+      await expect(
+        engine.execute('SELECT ?foo ?bar WHERE { ?foo ?p ?bar }', {
+          format: 'trig',
+        }),
+      ).rejects.toThrow(/triple-shaped.*\?foo.*\?bar|\?foo.*\?bar.*triple-shaped/i);
+    });
+
+    it('reifies SELECT ?s ?p ?o ?g + --format=trig into TriG that round-trips through the n3 parser', async () => {
+      const engine = new QueryEngine(namedGraphStore());
+
+      const result = await engine.execute(
+        'SELECT ?s ?p ?o ?g WHERE { GRAPH ?g { ?s ?p ?o } }',
+        { format: 'trig' },
+      );
+
+      expect(result.format).toBe('trig');
+      expect(result.contentType).toBe('application/trig');
+      const quads = new Parser({ format: 'application/trig' }).parse(result.body);
+      expect(quads).toHaveLength(1);
+      expect(quads[0].subject.value).toBe('http://example.org/s');
+      expect(quads[0].predicate.value).toBe('http://example.org/p');
+      expect(quads[0].object.value).toBe('http://example.org/o');
+      expect(quads[0].graph.termType).toBe('NamedNode');
+      expect(quads[0].graph.value).toBe('http://example.org/g');
+    });
   });
 
   it('rejects --format=trig on a SELECT query with a clear error', async () => {
