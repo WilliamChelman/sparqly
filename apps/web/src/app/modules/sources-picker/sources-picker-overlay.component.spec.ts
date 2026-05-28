@@ -33,7 +33,7 @@ interface StubRefsApi {
   readonly client: RefsApiClient;
   readonly calls: string[];
   readonly refreshCalls: string[];
-  readonly commitsCalls: Array<{ id: string; scope: string }>;
+  readonly commitsCalls: Array<{ id: string; scope: string; before?: string }>;
 }
 
 const EMPTY_COMMITS: CommitsResponse = { commits: [], nextBefore: null };
@@ -42,10 +42,11 @@ function stubRefsApi(
   responses: Partial<Record<string, RefsLoadResult>> = {},
   refreshResponses: Partial<Record<string, RefreshResult>> = {},
   commitsResponses: Partial<Record<string, CommitsLoadResult>> = {},
+  commitsByKey: Partial<Record<string, CommitsLoadResult>> = {},
 ): StubRefsApi {
   const calls: string[] = [];
   const refreshCalls: string[] = [];
-  const commitsCalls: Array<{ id: string; scope: string }> = [];
+  const commitsCalls: Array<{ id: string; scope: string; before?: string }> = [];
   const client = {
     load(id: string): Observable<RefsLoadResult> {
       calls.push(id);
@@ -59,9 +60,12 @@ function stubRefsApi(
     },
     loadCommits(
       id: string,
-      options: { scope: string },
+      options: { scope: string; before?: string },
     ): Observable<CommitsLoadResult> {
-      commitsCalls.push({ id, scope: options.scope });
+      commitsCalls.push({ id, scope: options.scope, before: options.before });
+      const key = `${id}\x00${options.scope}\x00${options.before ?? ''}`;
+      const keyed = commitsByKey[key];
+      if (keyed !== undefined) return of(keyed);
       const fallback: CommitsLoadResult = {
         state: 'ok',
         commits: EMPTY_COMMITS,
@@ -618,6 +622,178 @@ describe('SourcesPickerOverlayComponent', () => {
     // List preserved.
     expect(root.querySelector('[data-ref="main"]')).toBeTruthy();
     expect(root.querySelector('[data-ref="feat/x"]')).toBeTruthy();
+  });
+
+  describe('Commits section · pagination (Show more)', () => {
+    const SHA_PAGE1_LAST = 'a'.repeat(40);
+    const SHA_PAGE1_FIRST = '1'.repeat(40);
+    const SHA_PAGE2_LAST = '2'.repeat(40);
+    const PAGE1: CommitsResponse = {
+      commits: [
+        {
+          sha: SHA_PAGE1_FIRST,
+          shortSha: SHA_PAGE1_FIRST.slice(0, 7),
+          subject: 'one',
+          authorName: 'A',
+          authorDate: '2026-05-25T10:00:00Z',
+          parents: [],
+        },
+        {
+          sha: SHA_PAGE1_LAST,
+          shortSha: SHA_PAGE1_LAST.slice(0, 7),
+          subject: 'two',
+          authorName: 'A',
+          authorDate: '2026-05-24T10:00:00Z',
+          parents: [],
+        },
+      ],
+      nextBefore: SHA_PAGE1_LAST,
+    };
+    const PAGE2: CommitsResponse = {
+      commits: [
+        {
+          sha: SHA_PAGE2_LAST,
+          shortSha: SHA_PAGE2_LAST.slice(0, 7),
+          subject: 'three',
+          authorName: 'A',
+          authorDate: '2026-05-23T10:00:00Z',
+          parents: [],
+        },
+      ],
+      nextBefore: null,
+    };
+
+    it('clicking Show more calls loadCommits with before=nextBefore and appends the new page to the rendered list', () => {
+      const api = stubRefsApi(
+        {},
+        {},
+        { right: { state: 'ok', commits: PAGE1 } },
+        {
+          [`right\x00HEAD\x00${SHA_PAGE1_LAST}`]: {
+            state: 'ok',
+            commits: PAGE2,
+          },
+        },
+      );
+      const { fixture } = mount(TWO_SOURCES, 'right', api);
+      const root = fixture.nativeElement as HTMLElement;
+      // Initial fetch with no `before`
+      expect(api.commitsCalls).toEqual([
+        { id: 'right', scope: 'HEAD', before: undefined },
+      ]);
+      // Page 1 rendered
+      expect(
+        Array.from(root.querySelectorAll('[data-commit-sha]')).map((el) =>
+          el.getAttribute('data-commit-sha'),
+        ),
+      ).toEqual([SHA_PAGE1_FIRST, SHA_PAGE1_LAST]);
+
+      const showMore = root.querySelector(
+        '[data-testid="commits-show-more"]',
+      ) as HTMLButtonElement;
+      expect(showMore).toBeTruthy();
+      showMore.click();
+      fixture.detectChanges();
+
+      expect(api.commitsCalls).toEqual([
+        { id: 'right', scope: 'HEAD', before: undefined },
+        { id: 'right', scope: 'HEAD', before: SHA_PAGE1_LAST },
+      ]);
+      // Both pages now rendered, in order
+      expect(
+        Array.from(root.querySelectorAll('[data-commit-sha]')).map((el) =>
+          el.getAttribute('data-commit-sha'),
+        ),
+      ).toEqual([SHA_PAGE1_FIRST, SHA_PAGE1_LAST, SHA_PAGE2_LAST]);
+      // Show more is hidden (page 2 has nextBefore = null)
+      expect(
+        root.querySelector('[data-testid="commits-show-more"]'),
+      ).toBeNull();
+    });
+
+    it('changing the scope resets the cursor — the first fetch under the new scope carries no `before`', () => {
+      const api = stubRefsApi(
+        {},
+        {},
+        { right: { state: 'ok', commits: PAGE1 } },
+        {
+          [`right\x00HEAD\x00${SHA_PAGE1_LAST}`]: {
+            state: 'ok',
+            commits: PAGE2,
+          },
+        },
+      );
+      const { fixture } = mount(TWO_SOURCES, 'right', api);
+      const root = fixture.nativeElement as HTMLElement;
+      // Page page 2 first
+      (
+        root.querySelector(
+          '[data-testid="commits-show-more"]',
+        ) as HTMLButtonElement
+      ).click();
+      fixture.detectChanges();
+      // Now switch scope to __all__
+      const scopeSelect = root.querySelector(
+        '[data-testid="commits-scope-select"]',
+      ) as HTMLSelectElement;
+      scopeSelect.value = '__all__';
+      scopeSelect.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+
+      // The first call under __all__ scope carries no `before`
+      const allCalls = api.commitsCalls.filter((c) => c.scope === '__all__');
+      expect(allCalls.length).toBeGreaterThan(0);
+      expect(allCalls[0].before).toBeUndefined();
+    });
+
+    it('re-opening a previously paginated scope renders accumulated pages from cache without re-fetching', () => {
+      const api = stubRefsApi(
+        {},
+        {},
+        { right: { state: 'ok', commits: PAGE1 } },
+        {
+          [`right\x00HEAD\x00${SHA_PAGE1_LAST}`]: {
+            state: 'ok',
+            commits: PAGE2,
+          },
+          [`right\x00main\x00`]: {
+            state: 'ok',
+            commits: { commits: [], nextBefore: null },
+          },
+        },
+      );
+      const { fixture } = mount(TWO_SOURCES, 'right', api);
+      const root = fixture.nativeElement as HTMLElement;
+      // Paginate to page 2
+      (
+        root.querySelector(
+          '[data-testid="commits-show-more"]',
+        ) as HTMLButtonElement
+      ).click();
+      fixture.detectChanges();
+      const scopeSelect = root.querySelector(
+        '[data-testid="commits-scope-select"]',
+      ) as HTMLSelectElement;
+      // Switch away
+      scopeSelect.value = 'main';
+      scopeSelect.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+      const callsAfterAway = api.commitsCalls.length;
+
+      // Switch back to HEAD
+      scopeSelect.value = 'HEAD';
+      scopeSelect.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+
+      // No new HTTP calls were made on re-entry to HEAD
+      expect(api.commitsCalls.length).toBe(callsAfterAway);
+      // Both accumulated pages still render
+      expect(
+        Array.from(root.querySelectorAll('[data-commit-sha]')).map((el) =>
+          el.getAttribute('data-commit-sha'),
+        ),
+      ).toEqual([SHA_PAGE1_FIRST, SHA_PAGE1_LAST, SHA_PAGE2_LAST]);
+    });
   });
 
   it('emits applied with the initial selection when Apply is clicked without picking another row', () => {

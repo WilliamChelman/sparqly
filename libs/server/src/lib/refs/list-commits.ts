@@ -12,6 +12,7 @@ export interface ListCommitsOptions {
   readonly ref: string;
   readonly pathspec: string;
   readonly limit: number;
+  readonly before?: string;
 }
 
 export interface CommitEntry {
@@ -36,9 +37,19 @@ export async function listCommits(
   repoRoot: string,
   options: ListCommitsOptions,
 ): Promise<Result<CommitsResponse, ListCommitsError>> {
-  // `__all__` is a sentinel that maps to `git log --all` — walk every ref
-  // rather than commits reachable from a single named viewpoint.
-  const scopeArgs = options.ref === '__all__' ? ['--all'] : [options.ref];
+  // When `before` is provided, walk from its parents (`<sha>^@`) — the
+  // scope's reachability is implicit because we already surfaced `before`
+  // from that scope on the prior page. Cursor-based, so interleaving calls
+  // can't shift the page boundaries.
+  const scopeArgs =
+    options.before !== undefined
+      ? [`${options.before}^@`]
+      : options.ref === '__all__'
+        ? ['--all']
+        : [options.ref];
+  // Over-fetch by one to detect whether more pages remain without a second
+  // shell-out.
+  const fetchCount = options.limit + 1;
   let stdout: string;
   try {
     const result = await execFileAsync(
@@ -48,7 +59,7 @@ export async function listCommits(
         repoRoot,
         'log',
         ...scopeArgs,
-        `--max-count=${options.limit}`,
+        `--max-count=${fetchCount}`,
         `--format=${LOG_FORMAT}${RECORD_SEP}`,
         '--',
         options.pathspec,
@@ -69,7 +80,7 @@ export async function listCommits(
     return err({ kind: 'git-io' });
   }
 
-  const commits = stdout
+  const allCommits = stdout
     .split(RECORD_SEP)
     .map((rec) => rec.replace(/^\n/, ''))
     .filter((rec) => rec.length > 0)
@@ -89,5 +100,10 @@ export async function listCommits(
       };
     });
 
-  return ok({ commits, nextBefore: null });
+  const hasMore = allCommits.length > options.limit;
+  const commits = hasMore ? allCommits.slice(0, options.limit) : allCommits;
+  const nextBefore =
+    hasMore && commits.length > 0 ? commits[commits.length - 1].sha : null;
+
+  return ok({ commits, nextBefore });
 }

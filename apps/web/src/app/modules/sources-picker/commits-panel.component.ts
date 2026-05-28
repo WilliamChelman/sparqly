@@ -113,6 +113,16 @@ const ALL_REFS_VALUE = '__all__';
             </li>
           }
         </ul>
+        @if (s.commits.nextBefore !== null) {
+          <div class="px-2.5 pb-2 pt-0.5">
+            <button
+              type="button"
+              data-testid="commits-show-more"
+              class="w-full cursor-pointer rounded-md border border-border bg-surface px-2 py-1 text-[12px] text-foreground-muted hover:bg-surface-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+              (click)="showMore.emit()"
+            >Show more</button>
+          </div>
+        }
       }
     }
   `,
@@ -161,6 +171,7 @@ export class CommitsPanelComponent {
 
   @Output() readonly commitPicked = new EventEmitter<string>();
   @Output() readonly scopeChange = new EventEmitter<string>();
+  @Output() readonly showMore = new EventEmitter<void>();
 
   relative(isoDate: string): string {
     return relativeDate(isoDate, this.now());

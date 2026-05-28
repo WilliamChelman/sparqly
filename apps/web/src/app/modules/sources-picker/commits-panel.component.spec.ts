@@ -105,6 +105,28 @@ describe('CommitsPanelComponent', () => {
     expect(err?.textContent).toMatch(/bad-ref/i);
   });
 
+  it('renders a "Show more" button when nextBefore !== null and emits showMore on click', () => {
+    const withMore: CommitsResponse = { ...COMMITS, nextBefore: SHA_B };
+    const { fixture, component } = mount({ kind: 'loaded', commits: withMore });
+    const root = fixture.nativeElement as HTMLElement;
+    const button = root.querySelector(
+      '[data-testid="commits-show-more"]',
+    ) as HTMLButtonElement;
+    expect(button).toBeTruthy();
+    const emits: number[] = [];
+    component.showMore.subscribe(() => emits.push(1));
+    button.click();
+    expect(emits).toEqual([1]);
+  });
+
+  it('hides the "Show more" button when nextBefore is null', () => {
+    const { fixture } = mount({ kind: 'loaded', commits: COMMITS });
+    const root = fixture.nativeElement as HTMLElement;
+    expect(
+      root.querySelector('[data-testid="commits-show-more"]'),
+    ).toBeNull();
+  });
+
   it('renders nothing visible when state is idle (no source selected)', () => {
     const { fixture } = mount({ kind: 'idle' });
     const root = fixture.nativeElement as HTMLElement;

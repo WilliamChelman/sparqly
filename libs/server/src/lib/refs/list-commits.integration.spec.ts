@@ -95,6 +95,68 @@ describe('listCommits — happy path on a linear history', () => {
   });
 });
 
+describe('listCommits — cursor pagination', () => {
+  let repo: string;
+  const shas: string[] = [];
+
+  beforeAll(async () => {
+    repo = await mkdtemp(join(tmpdir(), 'sparqly-list-commits-cursor-'));
+    await git(repo, ['init', '-q', '-b', 'main']);
+    for (let i = 1; i <= 5; i++) {
+      await writeFile(join(repo, 'a.txt'), `v${i}\n`);
+      await git(repo, ['add', '.']);
+      await git(repo, ['commit', '-q', '-m', `change ${i}`]);
+      shas.push(await git(repo, ['rev-parse', 'HEAD']));
+    }
+  }, 30_000);
+
+  afterAll(async () => {
+    if (repo) await rm(repo, { recursive: true, force: true });
+  });
+
+  it('emits nextBefore = last returned SHA when more pages remain', async () => {
+    // Page 1: limit=2 on a 5-commit history → returns newest 2,
+    // nextBefore = SHA of the 2nd-newest (the last returned row).
+    const r = await listCommits(repo, {
+      ref: 'HEAD',
+      pathspec: 'a.txt',
+      limit: 2,
+    });
+    expect(r.isOk()).toBe(true);
+    const page1 = r._unsafeUnwrap();
+    expect(page1.commits.map((c) => c.sha)).toEqual([shas[4], shas[3]]);
+    expect(page1.nextBefore).toBe(shas[3]);
+  });
+
+  it('walks from the parent of `before` when provided, with no overlap with the prior page', async () => {
+    const page2 = await listCommits(repo, {
+      ref: 'HEAD',
+      pathspec: 'a.txt',
+      limit: 2,
+      before: shas[3],
+    });
+    expect(page2.isOk()).toBe(true);
+    const result = page2._unsafeUnwrap();
+    // Next two oldest after shas[3]: shas[2], shas[1]
+    expect(result.commits.map((c) => c.sha)).toEqual([shas[2], shas[1]]);
+    // One commit (shas[0]) still remains → nextBefore = shas[1]
+    expect(result.nextBefore).toBe(shas[1]);
+  });
+
+  it('emits nextBefore = null on the last page', async () => {
+    const last = await listCommits(repo, {
+      ref: 'HEAD',
+      pathspec: 'a.txt',
+      limit: 2,
+      before: shas[1],
+    });
+    expect(last.isOk()).toBe(true);
+    const result = last._unsafeUnwrap();
+    expect(result.commits.map((c) => c.sha)).toEqual([shas[0]]);
+    expect(result.nextBefore).toBeNull();
+  });
+});
+
 describe('listCommits — pathspec filter', () => {
   let repo: string;
   let touchedSha = '';

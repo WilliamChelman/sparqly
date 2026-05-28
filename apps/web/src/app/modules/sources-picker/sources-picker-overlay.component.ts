@@ -19,7 +19,7 @@ import {
   CommitsPanelComponent,
   type CommitsPanelState,
 } from './commits-panel.component';
-import { RefsApiClient } from './refs-api.client';
+import { RefsApiClient, type CommitsResponse } from './refs-api.client';
 import { RefsPanelComponent, type RefsPanelState } from './refs-panel.component';
 import {
   buildSourceTree,
@@ -195,6 +195,7 @@ import {
                   [refs]="loadedRefs()"
                   (commitPicked)="onAppliedRef($event)"
                   (scopeChange)="onScopeChange($event)"
+                  (showMore)="onShowMore()"
                 />
               }
             </div>
@@ -310,6 +311,10 @@ export class SourcesPickerOverlayComponent {
   private readonly host = inject(ElementRef<HTMLElement>);
   private lastScrolledSource = '';
   private lastStagedForCommits = '';
+  // Accumulated commits per (sourceId, scope) so re-entering a scope renders
+  // every page already fetched in this overlay session without re-fetching.
+  // Individual page responses are still cached at the API client.
+  private readonly accumulatedCommits = new Map<string, CommitsResponse>();
 
   @Output() readonly applied = new EventEmitter<string>();
   @Output() readonly canceled = new EventEmitter<void>();
@@ -340,6 +345,10 @@ export class SourcesPickerOverlayComponent {
       const prev = this.lastStagedForCommits;
       if (prev !== '' && prev !== id) {
         this.refsApi.clearCommitsCache(prev);
+        const prefix = `${prev}\x00`;
+        for (const k of [...this.accumulatedCommits.keys()]) {
+          if (k.startsWith(prefix)) this.accumulatedCommits.delete(k);
+        }
       }
       this.lastStagedForCommits = id;
       if (id === '') {
@@ -377,6 +386,11 @@ export class SourcesPickerOverlayComponent {
   }
 
   private loadCommitsForStaged(id: string, scope: string): void {
+    const cached = this.accumulatedCommits.get(this.commitsCacheKey(id, scope));
+    if (cached !== undefined) {
+      this.commitsState.set({ kind: 'loaded', commits: cached });
+      return;
+    }
     this.commitsState.set({ kind: 'loading' });
     this.refsApi
       .loadCommits(id, { scope })
@@ -385,10 +399,41 @@ export class SourcesPickerOverlayComponent {
         if (this.stagedId() !== id || this.commitsScope() !== scope) return;
         if (r.state === 'ok') {
           this.commitsState.set({ kind: 'loaded', commits: r.commits });
+          this.accumulatedCommits.set(
+            this.commitsCacheKey(id, scope),
+            r.commits,
+          );
         } else {
           this.commitsState.set({ kind: 'error', kindLabel: r.state });
         }
       });
+  }
+
+  onShowMore(): void {
+    const state = this.commitsState();
+    if (state.kind !== 'loaded') return;
+    const nextBefore = state.commits.nextBefore;
+    if (nextBefore === null) return;
+    const id = this.stagedId();
+    const scope = this.commitsScope();
+    if (id === '') return;
+    this.refsApi
+      .loadCommits(id, { scope, before: nextBefore })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((r) => {
+        if (this.stagedId() !== id || this.commitsScope() !== scope) return;
+        if (r.state !== 'ok') return;
+        const merged: CommitsResponse = {
+          commits: [...state.commits.commits, ...r.commits.commits],
+          nextBefore: r.commits.nextBefore,
+        };
+        this.commitsState.set({ kind: 'loaded', commits: merged });
+        this.accumulatedCommits.set(this.commitsCacheKey(id, scope), merged);
+      });
+  }
+
+  private commitsCacheKey(id: string, scope: string): string {
+    return `${id}\x00${scope}`;
   }
 
   onRefSearchInput(ev: Event): void {

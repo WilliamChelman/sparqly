@@ -27,6 +27,7 @@ import type { RefsResponse } from './refs-response';
 import { resolveRefsSource } from './resolve-refs-source';
 
 const COMMITS_PAGE_SIZE = 50;
+const SHA_REGEX = /^[0-9a-f]{40}$/i;
 
 const repoDiscovery: RepoDiscoveryDeps = {
   hasGitDir(dir: string): boolean {
@@ -70,6 +71,8 @@ export class RefsController {
   async commits(
     @Param('id') id: string,
     @Query('ref') ref: string | undefined,
+    @Query('limit') limit: string | undefined,
+    @Query('before') before: string | undefined,
   ): Promise<CommitsResponse> {
     const ctx = this.resolveRefsContext(id);
     const pathspec = translatePathspec(ctx.pathspecTarget);
@@ -91,10 +94,22 @@ export class RefsController {
         );
       }
     }
+    if (before !== undefined && !SHA_REGEX.test(before)) {
+      throw new HttpException(
+        { error: 'invalid-before' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const parsedLimit = limit === undefined ? NaN : Number.parseInt(limit, 10);
+    const effectiveLimit =
+      Number.isFinite(parsedLimit) && parsedLimit > 0
+        ? parsedLimit
+        : COMMITS_PAGE_SIZE;
     const result = await listCommits(ctx.repoRoot, {
       ref: scope,
       pathspec,
-      limit: COMMITS_PAGE_SIZE,
+      limit: effectiveLimit,
+      before,
     });
     if (result.isErr()) {
       throw new HttpException(
