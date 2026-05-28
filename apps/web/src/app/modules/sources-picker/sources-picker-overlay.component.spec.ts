@@ -68,6 +68,9 @@ function stubRefsApi(
       };
       return of(commitsResponses[id] ?? fallback);
     },
+    clearCommitsCache(_id: string): void {
+      /* no-op for the stub */
+    },
   } as unknown as RefsApiClient;
   return { client, calls, refreshCalls, commitsCalls };
 }
@@ -472,6 +475,9 @@ describe('SourcesPickerOverlayComponent', () => {
         },
         loadCommits(_id: string, _opts: { scope: string }) {
           return of<CommitsLoadResult>({ state: 'ok', commits: EMPTY_COMMITS });
+        },
+        clearCommitsCache(_id: string): void {
+          /* no-op */
         },
       } as unknown as RefsApiClient,
       calls: [],

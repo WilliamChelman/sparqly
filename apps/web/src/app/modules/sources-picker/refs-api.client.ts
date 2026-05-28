@@ -50,10 +50,11 @@ export interface CommitsResponse {
 export type CommitsLoadResult =
   | { state: 'ok'; commits: CommitsResponse }
   | { state: 'bad-ref' }
-  | { state: 'git-io' };
+  | { state: 'git-io' }
+  | { state: 'invalid-scope' };
 
 export interface LoadCommitsOptions {
-  scope: 'HEAD';
+  scope: string;
 }
 
 @Injectable()
@@ -114,16 +115,18 @@ export class RefsApiClient {
         catchError((err: unknown) => {
           if (
             err instanceof HttpErrorResponse &&
-            err.status === 404 &&
             err.error !== null &&
             typeof err.error === 'object'
           ) {
             const body = err.error as { error?: unknown };
-            if (body.error === 'bad-ref') {
+            if (err.status === 404 && body.error === 'bad-ref') {
               return of<CommitsLoadResult>({ state: 'bad-ref' });
             }
-            if (body.error === 'git-io') {
+            if (err.status === 404 && body.error === 'git-io') {
               return of<CommitsLoadResult>({ state: 'git-io' });
+            }
+            if (err.status === 400 && body.error === 'invalid-scope') {
+              return of<CommitsLoadResult>({ state: 'invalid-scope' });
             }
           }
           return throwError(() => err);
@@ -132,6 +135,13 @@ export class RefsApiClient {
       );
     this.commitsCache.set(key, stream);
     return stream;
+  }
+
+  clearCommitsCache(sourceId: string): void {
+    const prefix = `${sourceId}\x00`;
+    for (const key of [...this.commitsCache.keys()]) {
+      if (key.startsWith(prefix)) this.commitsCache.delete(key);
+    }
   }
 
   refresh(sourceId: string): Observable<RefreshResult> {

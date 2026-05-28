@@ -39,6 +39,184 @@ test.describe('source picker · Commits section', () => {
   });
 });
 
+test.describe('source picker · Commits scope selector', () => {
+  test('default scope is HEAD; selecting "All refs" re-fetches and renders the new rows', async ({
+    page,
+  }) => {
+    const HEAD_SHA = 'a'.repeat(40);
+    const SIDE_SHA = 'b'.repeat(40);
+    const iso = new Date().toISOString();
+
+    await page.route('**/api/sources/alpha/refs', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          head: { ref: 'HEAD', kind: 'head', sha: HEAD_SHA },
+          branches: [{ ref: 'main', kind: 'branch', sha: HEAD_SHA }],
+          remoteBranches: [],
+          tags: [],
+        }),
+      });
+    });
+    await page.route('**/api/sources/alpha/commits**', async (route) => {
+      const url = new URL(route.request().url());
+      const ref = url.searchParams.get('ref');
+      if (ref === 'HEAD') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            commits: [
+              {
+                sha: HEAD_SHA,
+                shortSha: HEAD_SHA.slice(0, 7),
+                subject: 'head-only change',
+                authorName: 'A',
+                authorDate: iso,
+                parents: [],
+              },
+            ],
+            nextBefore: null,
+          }),
+        });
+      } else if (ref === '__all__') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            commits: [
+              {
+                sha: SIDE_SHA,
+                shortSha: SIDE_SHA.slice(0, 7),
+                subject: 'side-only change',
+                authorName: 'A',
+                authorDate: iso,
+                parents: [],
+              },
+              {
+                sha: HEAD_SHA,
+                shortSha: HEAD_SHA.slice(0, 7),
+                subject: 'head-only change',
+                authorName: 'A',
+                authorDate: iso,
+                parents: [],
+              },
+            ],
+            nextBefore: null,
+          }),
+        });
+      } else {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'invalid-scope' }),
+        });
+      }
+    });
+
+    await page.goto('/');
+    await page.getByTestId('sources-picker-trigger').click();
+    const overlay = page.getByTestId('sources-overlay');
+    await expect(overlay).toBeVisible();
+
+    await overlay.locator('[data-source-id="alpha"]').click();
+
+    await expect(overlay.locator('[data-section="commits"]')).toBeVisible();
+
+    const scope = overlay.getByTestId('commits-scope-select');
+    await expect(scope).toHaveValue('HEAD');
+
+    await expect(overlay.locator('[data-commit-sha]')).toHaveCount(1);
+
+    await scope.selectOption('__all__');
+
+    await expect(overlay.locator('[data-commit-sha]')).toHaveCount(2);
+    await expect(
+      overlay.locator(`[data-commit-sha="${SIDE_SHA}"]`),
+    ).toBeVisible();
+  });
+});
+
+test.describe('source picker · empty-scope hint', () => {
+  test('HEAD scope with zero commits renders the "all refs" affordance; clicking it flips the selector and reveals commits', async ({
+    page,
+  }) => {
+    const SIDE_SHA = 'c'.repeat(40);
+    const HEAD_SHA = 'd'.repeat(40);
+    const iso = new Date().toISOString();
+
+    await page.route('**/api/sources/alpha/refs', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          head: { ref: 'HEAD', kind: 'head', sha: HEAD_SHA },
+          branches: [{ ref: 'main', kind: 'branch', sha: HEAD_SHA }],
+          remoteBranches: [],
+          tags: [],
+        }),
+      });
+    });
+    await page.route('**/api/sources/alpha/commits**', async (route) => {
+      const url = new URL(route.request().url());
+      const ref = url.searchParams.get('ref');
+      if (ref === 'HEAD') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ commits: [], nextBefore: null }),
+        });
+      } else if (ref === '__all__') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            commits: [
+              {
+                sha: SIDE_SHA,
+                shortSha: SIDE_SHA.slice(0, 7),
+                subject: 'side-branch change',
+                authorName: 'A',
+                authorDate: iso,
+                parents: [],
+              },
+            ],
+            nextBefore: null,
+          }),
+        });
+      } else {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'invalid-scope' }),
+        });
+      }
+    });
+
+    await page.goto('/');
+    await page.getByTestId('sources-picker-trigger').click();
+    const overlay = page.getByTestId('sources-overlay');
+    await expect(overlay).toBeVisible();
+
+    await overlay.locator('[data-source-id="alpha"]').click();
+
+    // Empty-scope hint is visible with no rows
+    await expect(overlay.getByTestId('commits-empty-hint')).toBeVisible();
+    await expect(overlay.locator('[data-commit-sha]')).toHaveCount(0);
+
+    // Click "all refs" → selector flips → row appears
+    await overlay.getByTestId('commits-empty-hint-action').click();
+
+    await expect(overlay.getByTestId('commits-scope-select')).toHaveValue(
+      '__all__',
+    );
+    await expect(
+      overlay.locator(`[data-commit-sha="${SIDE_SHA}"]`),
+    ).toBeVisible();
+  });
+});
+
 test.describe('source picker · no-git-history explainer', () => {
   test('opening the picker on a source whose glob has no git history renders the explainer and hides the free-form ref input', async ({
     page,
