@@ -230,3 +230,5 @@ A command runs against exactly one **target source**, chosen by precedence:
 Otherwise the command errors and lists the available `@id`s. A `kind: 'reference'` alias is rejected as a target — references are upstream pointers, not data.
 
 Multi-source merging at the command boundary is intentionally not provided. Compose across sources with a view, optionally hosted on an `empty` source for federated `SERVICE` queries.
+
+Merging many files **inside a single source** (a glob) into one output file is a `query` recipe — see [docs/recipes.md](./recipes.md#merge-files-into-one-output).
