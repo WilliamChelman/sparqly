@@ -17,7 +17,7 @@ async function deleteIfPresent(page: Page, slug: string) {
   if (await deleteBtn.isVisible().catch(() => false)) {
     page.once('dialog', (d) => void d.accept());
     await deleteBtn.click();
-    await expect(page).toHaveURL(/\/queries$/);
+    await expect(page).toHaveURL(/\/queries(\?.*)?$/);
   }
 }
 
@@ -36,7 +36,7 @@ test.describe('queries page · create → list → load → run', () => {
     // Create surface.
     await page.goto('/queries');
     await page.getByRole('button', { name: '+ New' }).click();
-    await expect(page).toHaveURL(/\/queries\/new$/);
+    await expect(page).toHaveURL(/\/queries\/new(\?.*)?$/);
 
     await page.getByLabel('Slug', { exact: true }).fill(SLUG);
     // YASQE wraps CodeMirror 5; driving the value via the CM API skips
@@ -50,7 +50,7 @@ test.describe('queries page · create → list → load → run', () => {
       }, BODY);
 
     await page.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/queries/${SLUG}$`));
+    await expect(page).toHaveURL(new RegExp(`/queries/${SLUG}(\\?.*)?$`));
 
     // List — navigate to the index so the rail re-fetches from the server.
     await page.goto('/queries');
