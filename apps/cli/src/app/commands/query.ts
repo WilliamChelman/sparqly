@@ -1,3 +1,4 @@
+import { extname } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { ok, type Result, type ResultAsync } from 'neverthrow';
 import { z } from 'zod';
@@ -6,6 +7,8 @@ import {
   createGitTreeWalker,
   defaultGlobWalker,
   expandSplitGlobs,
+  MIME_TO_FORMAT,
+  N3_FORMAT_BY_EXT,
   parseSourceSpecs,
   parseSparqlPrefixes,
   QueryEngine,
@@ -108,6 +111,14 @@ const indexCacheDirField: FieldDescriptor = {
   schema: z.string().min(1),
 };
 
+export function inferQueryFormatFromOut(
+  out: string | undefined,
+): SparqlFormat | undefined {
+  if (out === undefined) return undefined;
+  const mime = N3_FORMAT_BY_EXT[extname(out).toLowerCase()];
+  return mime ? MIME_TO_FORMAT[mime] : undefined;
+}
+
 export function resolveQueryTargetResult(
   config: QueryConfig,
   registry?: ReadonlyArray<ParsedSource>,
@@ -182,7 +193,7 @@ export const querySpec: CommandSpec<QueryConfig> = {
       query = stdinQuery as string;
     }
 
-    const format = config.format;
+    const format = config.format ?? inferQueryFormatFromOut(config.out);
     const mutable = config.mutable === true;
     const registry = await expandSplitGlobs(
       parseSourceSpecs(config.sources ?? []),

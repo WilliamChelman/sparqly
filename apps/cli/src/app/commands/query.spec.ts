@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { blockSchemaFromFields, defaultsFromFields } from '../runner/fields/field';
 import { QueryErrorSignal } from './query-error';
-import { querySpec, resolveQueryTargetResult } from './query';
+import { querySpec, resolveQueryTargetResult, inferQueryFormatFromOut } from './query';
 
 describe('querySpec — single-target shape', () => {
   it('binds a single positional to the `source` field', () => {
@@ -40,11 +40,13 @@ describe('querySpec — single-target shape', () => {
     expect('graphMode' in defaults).toBe(false);
   });
 
-  it('rejects unknown --format with the SUPPORTED_FORMATS enum (json, turtle)', () => {
+  it('accepts json, turtle, trig, nquads as --format and rejects others', () => {
     const schema = blockSchemaFromFields(querySpec.fields);
     expect(schema.safeParse({ format: 'csv' }).success).toBe(false);
     expect(schema.safeParse({ format: 'json' }).success).toBe(true);
     expect(schema.safeParse({ format: 'turtle' }).success).toBe(true);
+    expect(schema.safeParse({ format: 'trig' }).success).toBe(true);
+    expect(schema.safeParse({ format: 'nquads' }).success).toBe(true);
   });
 
   it('does not expose a top-level graphMode field (graph-name semantics live on transforms)', () => {
@@ -84,6 +86,22 @@ describe('querySpec — single-target shape', () => {
       message: 'down',
     });
     expect(querySpec.exitCode(signal)).toBe(34);
+  });
+});
+
+describe('inferQueryFormatFromOut', () => {
+  it.each([
+    ['data.ttl', 'turtle'],
+    ['out/data.trig', 'trig'],
+    ['out/data.nq', 'nquads'],
+    ['out/data.nquads', 'nquads'],
+    ['DATA.TRIG', 'trig'],
+    ['DATA.NQ', 'nquads'],
+    ['out/data.json', undefined],
+    ['out/data.unknown', undefined],
+    [undefined, undefined],
+  ] as const)('maps %p to %p', (path, expected) => {
+    expect(inferQueryFormatFromOut(path)).toBe(expected);
   });
 });
 

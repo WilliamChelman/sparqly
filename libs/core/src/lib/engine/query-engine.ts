@@ -24,14 +24,25 @@ import type {
 } from '../sources/errors';
 import type { ParsedEndpointSource } from '../sources';
 
-export const SUPPORTED_FORMATS = ['json', 'turtle'] as const;
+export const SUPPORTED_FORMATS = ['json', 'turtle', 'trig', 'nquads'] as const;
 
 export type SparqlFormat = (typeof SUPPORTED_FORMATS)[number];
 
 const FORMAT_TO_MIME: Record<SparqlFormat, string> = {
   json: 'application/sparql-results+json',
   turtle: 'text/turtle',
+  trig: 'application/trig',
+  nquads: 'application/n-quads',
 };
+
+export const MIME_TO_FORMAT: Readonly<Record<string, SparqlFormat>> =
+  Object.fromEntries(
+    (Object.entries(FORMAT_TO_MIME) as Array<[SparqlFormat, string]>).map(
+      ([format, mime]) => [mime, format],
+    ),
+  );
+
+const RDF_FORMATS: ReadonlySet<SparqlFormat> = new Set(['turtle', 'trig', 'nquads']);
 
 export interface ExecuteOptions {
   format?: SparqlFormat;
@@ -135,15 +146,15 @@ export class QueryEngine {
         resultType === 'quads' ? 'turtle' : 'json';
       const format = options.format ?? defaultFormat;
 
-      if (format === 'turtle' && resultType !== 'quads') {
+      if (RDF_FORMATS.has(format) && resultType !== 'quads') {
         const queryKind = resultType === 'boolean' ? 'ASK' : 'SELECT';
         throw new Error(
-          `Format 'turtle' is incompatible with ${queryKind} queries. Use 'json' or omit --format.`,
+          `Format '${format}' is incompatible with ${queryKind} queries. Use 'json' or omit --format.`,
         );
       }
       if (format === 'json' && resultType === 'quads') {
         throw new Error(
-          `Format 'json' is incompatible with CONSTRUCT/DESCRIBE queries. Use 'turtle' or omit --format.`,
+          `Format 'json' is incompatible with CONSTRUCT/DESCRIBE queries. Use 'turtle', 'trig', 'nquads', or omit --format.`,
         );
       }
 
@@ -199,7 +210,7 @@ export class QueryEngine {
       query,
       type,
       ms,
-      size: isOk ? resultSize(outcome.resultType, outcome.body) : undefined,
+      size: isOk ? resultSize(outcome.resultType, outcome.body, outcome.format) : undefined,
       bytes: isOk ? Buffer.byteLength(outcome.body) : undefined,
       err: isOk ? undefined : outcome.err,
     });
@@ -230,8 +241,15 @@ function isParsedEndpointSource(
   );
 }
 
-function resultSize(resultType: string, body: string): QueryResultSize {
-  if (resultType === 'quads') return { quads: new Parser().parse(body).length };
+function resultSize(
+  resultType: string,
+  body: string,
+  format: SparqlFormat,
+): QueryResultSize {
+  if (resultType === 'quads') {
+    const parserFormat = format === 'nquads' ? 'N-Quads' : format === 'trig' ? 'TriG' : 'Turtle';
+    return { quads: new Parser({ format: parserFormat }).parse(body).length };
+  }
   const parsed = JSON.parse(body) as {
     boolean?: boolean;
     results?: { bindings?: unknown[] };

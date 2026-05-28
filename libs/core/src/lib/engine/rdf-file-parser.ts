@@ -22,7 +22,7 @@ export interface ParseFileResult {
   prefixes: Record<string, string>;
 }
 
-const N3_FORMAT_BY_EXT: Record<string, string> = {
+export const N3_FORMAT_BY_EXT: Record<string, string> = {
   '.ttl': 'text/turtle',
   '.turtle': 'text/turtle',
   '.nt': 'application/n-triples',
