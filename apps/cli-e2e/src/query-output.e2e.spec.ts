@@ -103,18 +103,18 @@ describe('sparqly query — output formats', () => {
       expect(result.stderr).toMatch(/json.*CONSTRUCT|incompatible/i);
     });
 
-    it('--format turtle on SELECT exits non-zero with a clear message', async () => {
+    it('--format turtle on a non-triple-shaped SELECT exits non-zero with a clear message', async () => {
       const result = await runCli([
         'query',
         sources,
         '--format',
         'turtle',
         '-q',
-        'SELECT * WHERE { ?s ?p ?o } LIMIT 1',
+        'SELECT ?id WHERE { ?p <http://example.org/id> ?id } LIMIT 1',
       ]);
 
       expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toMatch(/turtle.*SELECT|incompatible/i);
+      expect(result.stderr).toMatch(/turtle.*SELECT|triple-shaped|incompatible/i);
     });
 
     it('unknown --format value exits non-zero', async () => {

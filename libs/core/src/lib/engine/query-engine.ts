@@ -1,8 +1,10 @@
 import type * as RDF from '@rdfjs/types';
 import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
-import { Parser } from 'n3';
+import { Parser, Writer } from 'n3';
 import { ResultAsync } from 'neverthrow';
 import { noopLogger, type SparqlyLogger } from 'common';
+import { detectSelectShape } from '../diff';
+import { reifyTripleShapedBindings } from './select-spo-reifier';
 import {
   buildEndpointContext,
   describeEndpointError,
@@ -146,10 +148,9 @@ export class QueryEngine {
         resultType === 'quads' ? 'turtle' : 'json';
       const format = options.format ?? defaultFormat;
 
-      if (RDF_FORMATS.has(format) && resultType !== 'quads') {
-        const queryKind = resultType === 'boolean' ? 'ASK' : 'SELECT';
+      if (RDF_FORMATS.has(format) && resultType === 'boolean') {
         throw new Error(
-          `Format '${format}' is incompatible with ${queryKind} queries. Use 'json' or omit --format.`,
+          `Format '${format}' is incompatible with ASK queries. Use 'json' or omit --format.`,
         );
       }
       if (format === 'json' && resultType === 'quads') {
@@ -160,6 +161,9 @@ export class QueryEngine {
 
       const mediaType = FORMAT_TO_MIME[format];
       const body = await this.wrapEndpointErrors(async () => {
+        if (RDF_FORMATS.has(format) && resultType === 'bindings') {
+          return reifyBindingsToRdfString(result, query, format, mediaType);
+        }
         const stringified = await this.engine.resultToString(result, mediaType);
         return streamToString(stringified.data);
       });
@@ -246,8 +250,9 @@ function resultSize(
   body: string,
   format: SparqlFormat,
 ): QueryResultSize {
-  if (resultType === 'quads') {
-    const parserFormat = format === 'nquads' ? 'N-Quads' : format === 'trig' ? 'TriG' : 'Turtle';
+  if (format === 'turtle' || format === 'trig' || format === 'nquads') {
+    const parserFormat =
+      format === 'nquads' ? 'N-Quads' : format === 'trig' ? 'TriG' : 'Turtle';
     return { quads: new Parser({ format: parserFormat }).parse(body).length };
   }
   const parsed = JSON.parse(body) as {
@@ -256,6 +261,62 @@ function resultSize(
   };
   if (resultType === 'boolean') return { boolean: parsed.boolean };
   return { rows: parsed.results?.bindings?.length ?? 0 };
+}
+
+async function reifyBindingsToRdfString(
+  result: Awaited<ReturnType<ComunicaQueryEngine['query']>>,
+  query: string,
+  format: SparqlFormat,
+  mediaType: string,
+): Promise<string> {
+  const { variables } = detectSelectShape(query);
+  const rows = await collectBindingRows(result, variables);
+  const quads = reifyTripleShapedBindings({ variables, bindings: rows });
+  if (quads === null) {
+    const projection = variables.length === 0 ? '(none)' : `?${variables.join(' ?')}`;
+    throw new Error(
+      `Format '${format}' requires a triple-shaped SELECT projecting ?s ?p ?o (and optionally ?g). Got projection: ${projection}.`,
+    );
+  }
+  return writeQuadsToString(quads, mediaType);
+}
+
+async function collectBindingRows(
+  result: Awaited<ReturnType<ComunicaQueryEngine['query']>>,
+  variables: ReadonlyArray<string>,
+): Promise<Record<string, RDF.Term>[]> {
+  if (result.resultType !== 'bindings') {
+    throw new Error(
+      `expected bindings result for reification, got ${result.resultType}`,
+    );
+  }
+  const stream = await result.execute();
+  const rows: Record<string, RDF.Term>[] = [];
+  for await (const b of stream as AsyncIterable<{
+    get(name: string): RDF.Term | undefined;
+  }>) {
+    const row: Record<string, RDF.Term> = {};
+    for (const v of variables) {
+      const term = b.get(v);
+      if (term !== undefined) row[v] = term;
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+async function writeQuadsToString(
+  quads: ReadonlyArray<RDF.Quad>,
+  mediaType: string,
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const writer = new Writer({ format: mediaType });
+    writer.addQuads(quads as RDF.Quad[]);
+    writer.end((err: Error | null | undefined, output: string) => {
+      if (err) reject(err);
+      else resolve(output);
+    });
+  });
 }
 
 async function streamToString(stream: NodeJS.ReadableStream): Promise<string> {
