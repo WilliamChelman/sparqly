@@ -36,6 +36,9 @@ export async function listCommits(
   repoRoot: string,
   options: ListCommitsOptions,
 ): Promise<Result<CommitsResponse, ListCommitsError>> {
+  // `__all__` is a sentinel that maps to `git log --all` — walk every ref
+  // rather than commits reachable from a single named viewpoint.
+  const scopeArgs = options.ref === '__all__' ? ['--all'] : [options.ref];
   let stdout: string;
   try {
     const result = await execFileAsync(
@@ -44,7 +47,7 @@ export async function listCommits(
         '-C',
         repoRoot,
         'log',
-        options.ref,
+        ...scopeArgs,
         `--max-count=${options.limit}`,
         `--format=${LOG_FORMAT}${RECORD_SEP}`,
         '--',

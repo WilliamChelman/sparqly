@@ -74,6 +74,23 @@ export class RefsController {
     const ctx = this.resolveRefsContext(id);
     const pathspec = translatePathspec(ctx.pathspecTarget);
     const scope = ref ?? 'HEAD';
+    if (scope !== 'HEAD' && scope !== '__all__') {
+      // Scope is a *named* viewpoint, not a SHA or free-form revision —
+      // validate against the same `for-each-ref` listing the /refs endpoint
+      // exposes. Anything else (arbitrary SHA, `HEAD~3`, typo) → 400.
+      const refs = await listRefs(ctx.repoRoot);
+      const known = new Set<string>([
+        ...refs.branches.map((b) => b.ref),
+        ...refs.remoteBranches.map((r) => r.ref),
+        ...refs.tags.map((t) => t.ref),
+      ]);
+      if (!known.has(scope)) {
+        throw new HttpException(
+          { error: 'invalid-scope' },
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
     const result = await listCommits(ctx.repoRoot, {
       ref: scope,
       pathspec,

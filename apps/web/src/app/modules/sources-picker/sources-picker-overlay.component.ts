@@ -191,7 +191,10 @@ import {
               @if (showCommitsPanel()) {
                 <app-commits-panel
                   [state]="commitsState()"
+                  [scope]="commitsScope()"
+                  [refs]="loadedRefs()"
                   (commitPicked)="onAppliedRef($event)"
+                  (scopeChange)="onScopeChange($event)"
                 />
               }
             </div>
@@ -271,12 +274,18 @@ export class SourcesPickerOverlayComponent {
   readonly refSearch = signal<string>('');
   readonly refsState = signal<RefsPanelState>({ kind: 'idle' });
   readonly commitsState = signal<CommitsPanelState>({ kind: 'idle' });
+  readonly commitsScope = signal<string>('HEAD');
   readonly refreshError = signal<string | null>(null);
   readonly expandedGroups = signal<ReadonlySet<string>>(new Set());
 
   readonly showCommitsPanel = computed(() => {
     const r = this.refsState();
     return r.kind === 'loaded' || r.kind === 'loading';
+  });
+
+  readonly loadedRefs = computed(() => {
+    const r = this.refsState();
+    return r.kind === 'loaded' ? r.refs : null;
   });
 
   readonly showLiftedRefInput = computed(() => {
@@ -300,6 +309,7 @@ export class SourcesPickerOverlayComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly host = inject(ElementRef<HTMLElement>);
   private lastScrolledSource = '';
+  private lastStagedForCommits = '';
 
   @Output() readonly applied = new EventEmitter<string>();
   @Output() readonly canceled = new EventEmitter<void>();
@@ -325,13 +335,22 @@ export class SourcesPickerOverlayComponent {
     effect(() => {
       const id = this.stagedId();
       this.refreshError.set(null);
+      // Switching staged source: drop the previous source's commits cache
+      // entries so memory stays bounded and a return visit fetches fresh.
+      const prev = this.lastStagedForCommits;
+      if (prev !== '' && prev !== id) {
+        this.refsApi.clearCommitsCache(prev);
+      }
+      this.lastStagedForCommits = id;
       if (id === '') {
         this.refsState.set({ kind: 'idle' });
         this.commitsState.set({ kind: 'idle' });
+        this.commitsScope.set('HEAD');
         return;
       }
       this.refsState.set({ kind: 'loading' });
       this.commitsState.set({ kind: 'idle' });
+      this.commitsScope.set('HEAD');
       this.refsApi
         .load(id)
         .pipe(takeUntilDestroyed(this.destroyRef))
@@ -339,7 +358,7 @@ export class SourcesPickerOverlayComponent {
           if (this.stagedId() !== id) return;
           if (r.state === 'ok') {
             this.refsState.set({ kind: 'loaded', refs: r.refs });
-            this.loadCommitsForStaged(id);
+            this.loadCommitsForStaged(id, this.commitsScope());
           } else if (r.state === 'no-git-repo') {
             this.refsState.set({ kind: 'no-git-repo', sourceKind: r.kind });
           } else {
@@ -349,13 +368,21 @@ export class SourcesPickerOverlayComponent {
     });
   }
 
-  private loadCommitsForStaged(id: string): void {
+  onScopeChange(scope: string): void {
+    if (scope === this.commitsScope()) return;
+    this.commitsScope.set(scope);
+    const id = this.stagedId();
+    if (id === '') return;
+    this.loadCommitsForStaged(id, scope);
+  }
+
+  private loadCommitsForStaged(id: string, scope: string): void {
     this.commitsState.set({ kind: 'loading' });
     this.refsApi
-      .loadCommits(id, { scope: 'HEAD' })
+      .loadCommits(id, { scope })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((r) => {
-        if (this.stagedId() !== id) return;
+        if (this.stagedId() !== id || this.commitsScope() !== scope) return;
         if (r.state === 'ok') {
           this.commitsState.set({ kind: 'loaded', commits: r.commits });
         } else {

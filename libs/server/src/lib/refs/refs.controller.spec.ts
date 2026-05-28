@@ -472,7 +472,7 @@ describe('GET /api/sources/:id/commits', () => {
     expect(json.reason).toBe('storage-disk');
   });
 
-  it('returns 404 { error: "bad-ref" } for a non-existent ref', async () => {
+  it('returns 400 { error: "invalid-scope" } for a scope that is not HEAD, __all__, or a listed ref', async () => {
     server = await createServer({
       sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
       port: 0,
@@ -480,9 +480,24 @@ describe('GET /api/sources/:id/commits', () => {
     const resp = await fetch(
       `http://localhost:${server.port}/api/sources/alpha/commits?ref=no-such-ref`,
     );
-    expect(resp.status).toBe(404);
+    expect(resp.status).toBe(400);
     const json = (await resp.json()) as { error?: string };
-    expect(json.error).toBe('bad-ref');
+    expect(json.error).toBe('invalid-scope');
+  });
+
+  it('returns 400 { error: "invalid-scope" } for a 40-hex SHA scope value', async () => {
+    server = await createServer({
+      sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
+      port: 0,
+    });
+    // shas[1] is a real commit object — but scope is a *named* viewpoint,
+    // not a SHA. The endpoint must reject it.
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/alpha/commits?ref=${shas[1]}`,
+    );
+    expect(resp.status).toBe(400);
+    const json = (await resp.json()) as { error?: string };
+    expect(json.error).toBe('invalid-scope');
   });
 
   it('returns commits for the resolved file path for a split-glob child', async () => {
@@ -511,6 +526,71 @@ describe('GET /api/sources/:id/commits', () => {
       shas[1],
       shas[0],
     ]);
+  });
+
+  it('returns commits reachable from a named branch scope only', async () => {
+    // Branch off the first commit and add a commit on `side` that does not
+    // exist on main. Asking for scope=side returns the side-only commit
+    // alongside the shared ancestor; the main-only commits are excluded.
+    await git(repo, ['checkout', '-q', '-b', 'side', shas[0]]);
+    await writeFile(join(repo, 'a.ttl'), '@prefix : <#> . :s :p :side .\n');
+    await git(repo, ['add', '.']);
+    await git(repo, ['commit', '-q', '-m', 'side change']);
+    const sideSha = await git(repo, ['rev-parse', 'HEAD']);
+    await git(repo, ['checkout', '-q', 'main']);
+
+    server = await createServer({
+      sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/alpha/commits?ref=side`,
+    );
+    expect(resp.status).toBe(200);
+    const json = (await resp.json()) as {
+      commits: Array<{ sha: string }>;
+    };
+    const returned = json.commits.map((c) => c.sha);
+    expect(returned).toContain(sideSha);
+    expect(returned).toContain(shas[0]);
+    expect(returned).not.toContain(shas[1]);
+    expect(returned).not.toContain(shas[2]);
+  });
+
+  it('returns commits across all refs for scope=__all__, including side-branch commits unreachable from HEAD', async () => {
+    // Branch off the first commit, add a commit touching the same glob on
+    // a side branch that is *not* reachable from HEAD. scope=__all__ must
+    // surface it; scope=HEAD does not.
+    await git(repo, ['checkout', '-q', '-b', 'side', shas[0]]);
+    await writeFile(join(repo, 'a.ttl'), '@prefix : <#> . :s :p :side .\n');
+    await git(repo, ['add', '.']);
+    await git(repo, ['commit', '-q', '-m', 'side change']);
+    const sideSha = await git(repo, ['rev-parse', 'HEAD']);
+    await git(repo, ['checkout', '-q', 'main']);
+
+    server = await createServer({
+      sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
+      port: 0,
+    });
+    const resp = await fetch(
+      `http://localhost:${server.port}/api/sources/alpha/commits?ref=__all__`,
+    );
+    expect(resp.status).toBe(200);
+    const json = (await resp.json()) as {
+      commits: Array<{ sha: string }>;
+    };
+    const returned = json.commits.map((c) => c.sha);
+    expect(returned).toContain(sideSha);
+    expect(returned).toContain(shas[2]);
+
+    // HEAD scope must *not* contain the side-branch commit
+    const headResp = await fetch(
+      `http://localhost:${server.port}/api/sources/alpha/commits?ref=HEAD`,
+    );
+    const headJson = (await headResp.json()) as {
+      commits: Array<{ sha: string }>;
+    };
+    expect(headJson.commits.map((c) => c.sha)).not.toContain(sideSha);
   });
 });
 
