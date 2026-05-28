@@ -114,6 +114,60 @@ describe('QueryEngine.execute', () => {
     expect(result.body).toContain('http://example.org/a');
   });
 
+  it('honours --format=trig override on CONSTRUCT', async () => {
+    const engine = new QueryEngine(exampleStore());
+
+    const result = await engine.execute(
+      'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      { format: 'trig' },
+    );
+
+    expect(result.format).toBe('trig');
+    expect(result.contentType).toBe('application/trig');
+    expect(result.body).toContain('http://example.org/a');
+    expect(result.body).toContain('http://example.org/p');
+    expect(result.body).toContain('http://example.org/b');
+  });
+
+  it('honours --format=nquads override on CONSTRUCT', async () => {
+    const engine = new QueryEngine(exampleStore());
+
+    const result = await engine.execute(
+      'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+      { format: 'nquads' },
+    );
+
+    expect(result.format).toBe('nquads');
+    expect(result.contentType).toBe('application/n-quads');
+    expect(result.body).toContain('<http://example.org/a>');
+    expect(result.body).toContain('<http://example.org/p>');
+    expect(result.body).toContain('<http://example.org/b>');
+  });
+
+  it('rejects --format=trig on a SELECT query with a clear error', async () => {
+    const engine = new QueryEngine(exampleStore());
+
+    await expect(
+      engine.execute('SELECT ?s WHERE { ?s ?p ?o }', { format: 'trig' }),
+    ).rejects.toThrow(/trig.*SELECT|SELECT.*trig|incompatible/i);
+  });
+
+  it('rejects --format=nquads on a SELECT query with a clear error', async () => {
+    const engine = new QueryEngine(exampleStore());
+
+    await expect(
+      engine.execute('SELECT ?s WHERE { ?s ?p ?o }', { format: 'nquads' }),
+    ).rejects.toThrow(/nquads|n-quads|incompatible/i);
+  });
+
+  it('rejects --format=trig on an ASK query with a clear error', async () => {
+    const engine = new QueryEngine(exampleStore());
+
+    await expect(
+      engine.execute('ASK WHERE { ?s ?p ?o }', { format: 'trig' }),
+    ).rejects.toThrow(/trig|incompatible/i);
+  });
+
   it('rejects --format=turtle on a SELECT query with a clear error', async () => {
     const engine = new QueryEngine(exampleStore());
 
