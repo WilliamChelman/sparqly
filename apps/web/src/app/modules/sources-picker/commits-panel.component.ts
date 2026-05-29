@@ -88,7 +88,7 @@ const ALL_REFS_VALUE = '__all__';
           >all refs</button>.
         </p>
       } @else {
-        <ul class="list-none overflow-y-auto p-1.5">
+        <ul class="min-h-0 flex-1 list-none overflow-y-auto p-1.5">
           @for (c of s.commits.commits; track c.sha) {
             <li>
               <button

@@ -19,7 +19,6 @@ import {
   CommitsPanelComponent,
   type CommitsPanelState,
 } from './commits-panel.component';
-import { RefSearchBarComponent } from './ref-search-bar.component';
 import { RefsApiClient, type CommitsResponse } from './refs-api.client';
 import { RefsPanelComponent, type RefsPanelState } from './refs-panel.component';
 import {
@@ -34,12 +33,7 @@ import {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [RefsApiClient],
-  imports: [
-    RefsPanelComponent,
-    CommitsPanelComponent,
-    ButtonComponent,
-    RefSearchBarComponent,
-  ],
+  imports: [RefsPanelComponent, CommitsPanelComponent, ButtonComponent],
   template: `
     <div
       data-testid="sources-overlay"
@@ -182,37 +176,40 @@ import {
             }
           </div>
           <div class="flex flex-col overflow-hidden">
-            <div class="flex flex-1 flex-col overflow-y-auto">
+            @if (showCommitsPanel()) {
+              <div role="tablist" class="flex shrink-0 border-b border-border">
+                @for (t of tabs; track t.id) {
+                  <button
+                    role="tab"
+                    type="button"
+                    [attr.data-testid]="'tab-' + t.id"
+                    [attr.aria-selected]="effectiveTab() === t.id"
+                    class="cursor-pointer border-b-2 border-transparent px-3 py-2 text-[12px] font-medium text-foreground-muted hover:text-foreground aria-selected:border-accent aria-selected:text-foreground"
+                    (click)="activeTab.set(t.id)"
+                  >{{ t.label }}</button>
+                }
+              </div>
+            }
+            @if (effectiveTab() === 'commits') {
+              <app-commits-panel
+                class="min-h-0 flex-1"
+                [state]="commitsState()"
+                [scope]="commitsScope()"
+                [refs]="loadedRefs()"
+                (commitPicked)="onAppliedRef($event)"
+                (scopeChange)="onScopeChange($event)"
+                (showMore)="onShowMore()"
+              />
+            } @else {
               <app-refs-panel
+                class="min-h-0 flex-1"
                 [state]="refsState()"
                 [stagedRef]="stagedRef()"
                 [refSearch]="refSearch()"
                 [refreshError]="refreshError()"
-                [omitSearchHeader]="true"
                 (stagedRefChange)="stagedRef.set($event)"
                 (refSearchChange)="refSearch.set($event)"
                 (appliedRef)="onAppliedRef($event)"
-                (refresh)="onRefreshRemotes()"
-              />
-              @if (showCommitsPanel()) {
-                <app-commits-panel
-                  [state]="commitsState()"
-                  [scope]="commitsScope()"
-                  [refs]="loadedRefs()"
-                  (commitPicked)="onAppliedRef($event)"
-                  (scopeChange)="onScopeChange($event)"
-                  (showMore)="onShowMore()"
-                />
-              }
-            </div>
-            @if (showLiftedRefInput()) {
-              <app-ref-search-bar
-                [refSearch]="refSearch()"
-                [stagedRef]="stagedRef()"
-                [refreshError]="refreshError()"
-                (refSearchChange)="refSearch.set($event)"
-                (appliedRef)="onAppliedRef($event)"
-                (clear)="stagedRef.set('')"
                 (refresh)="onRefreshRemotes()"
               />
             }
@@ -251,20 +248,23 @@ export class SourcesPickerOverlayComponent {
   readonly commitsScope = signal<string>('HEAD');
   readonly refreshError = signal<string | null>(null);
   readonly expandedGroups = signal<ReadonlySet<string>>(new Set());
+  readonly activeTab = signal<'refs' | 'commits'>('refs');
+  readonly tabs = [{ id: 'refs', label: 'Refs' }, { id: 'commits', label: 'Commits' }] as const;
 
   readonly showCommitsPanel = computed(() => {
     const r = this.refsState();
     return r.kind === 'loaded' || r.kind === 'loading';
   });
 
+  // Fall back to refs when commits are unavailable so a stale 'commits'
+  // selection never strands the user on an empty panel.
+  readonly effectiveTab = computed<'refs' | 'commits'>(() =>
+    this.activeTab() === 'commits' && this.showCommitsPanel() ? 'commits' : 'refs',
+  );
+
   readonly loadedRefs = computed(() => {
     const r = this.refsState();
     return r.kind === 'loaded' ? r.refs : null;
-  });
-
-  readonly showLiftedRefInput = computed(() => {
-    const r = this.refsState();
-    return r.kind !== 'no-git-repo' && r.kind !== 'no-git-history';
   });
 
   readonly tree = computed<SourceTreeResult>(() =>
@@ -455,6 +455,8 @@ export class SourcesPickerOverlayComponent {
     if (this.stagedId() !== id) {
       this.stagedRef.set('');
       this.refSearch.set('');
+      // A freshly staged source lands on the Refs tab (the common path).
+      this.activeTab.set('refs');
     }
     this.stagedId.set(id);
   }

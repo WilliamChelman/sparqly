@@ -15,6 +15,9 @@ test.describe('source picker · Commits section', () => {
 
     await overlay.locator('[data-source-id="alpha"]').click();
 
+    // Commits live behind the Commits tab.
+    await overlay.getByTestId('tab-commits').click();
+
     // Commits section renders with at least one row touching alpha.ttl
     await expect(overlay.locator('[data-section="commits"]')).toBeVisible();
     const rows = overlay.locator('[data-commit-sha]');
@@ -122,6 +125,9 @@ test.describe('source picker · Commits scope selector', () => {
 
     await overlay.locator('[data-source-id="alpha"]').click();
 
+    // Commits live behind the Commits tab.
+    await overlay.getByTestId('tab-commits').click();
+
     await expect(overlay.locator('[data-section="commits"]')).toBeVisible();
 
     const scope = overlay.getByTestId('commits-scope-select');
@@ -200,6 +206,9 @@ test.describe('source picker · empty-scope hint', () => {
     await expect(overlay).toBeVisible();
 
     await overlay.locator('[data-source-id="alpha"]').click();
+
+    // Commits live behind the Commits tab.
+    await overlay.getByTestId('tab-commits').click();
 
     // Empty-scope hint is visible with no rows
     await expect(overlay.getByTestId('commits-empty-hint')).toBeVisible();
@@ -300,6 +309,9 @@ test.describe('source picker · Commits pagination (Show more)', () => {
     await expect(overlay).toBeVisible();
 
     await overlay.locator('[data-source-id="alpha"]').click();
+
+    // Commits live behind the Commits tab.
+    await overlay.getByTestId('tab-commits').click();
 
     await expect(overlay.locator('[data-section="commits"]')).toBeVisible();
     await expect(overlay.locator('[data-commit-sha]')).toHaveCount(2);

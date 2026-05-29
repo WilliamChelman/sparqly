@@ -99,6 +99,17 @@ function mount(
   return { fixture, refsApi };
 }
 
+// Commits live behind the "Commits" tab; click into it so the commit list and
+// its controls are in the DOM.
+function activateCommitsTab(
+  fixture: ReturnType<typeof mount>['fixture'],
+): void {
+  const root = fixture.nativeElement as HTMLElement;
+  (root.querySelector('[data-testid="tab-commits"]') as HTMLButtonElement)
+    .click();
+  fixture.detectChanges();
+}
+
 describe('SourcesPickerOverlayComponent', () => {
   it('renders one row per source entry passed in', () => {
     const { fixture } = mount(TWO_SOURCES);
@@ -624,6 +635,89 @@ describe('SourcesPickerOverlayComponent', () => {
     expect(root.querySelector('[data-ref="feat/x"]')).toBeTruthy();
   });
 
+  describe('Refs / Commits tabs', () => {
+    const ONE_COMMIT: CommitsResponse = {
+      commits: [
+        {
+          sha: SHA_A,
+          shortSha: SHA_A.slice(0, 7),
+          subject: 'only',
+          authorName: 'A',
+          authorDate: '2026-05-25T10:00:00Z',
+          parents: [],
+        },
+      ],
+      nextBefore: null,
+    };
+
+    it('defaults to the Refs tab — the refs search shows and the commits scope selector does not', () => {
+      const { fixture } = mount(TWO_SOURCES, 'right');
+      const root = fixture.nativeElement as HTMLElement;
+      expect(
+        root
+          .querySelector('[data-testid="tab-refs"]')
+          ?.getAttribute('aria-selected'),
+      ).toBe('true');
+      expect(root.querySelector('[data-testid="refs-search"]')).toBeTruthy();
+      expect(
+        root.querySelector('[data-testid="commits-scope-select"]'),
+      ).toBeNull();
+    });
+
+    it('clicking the Commits tab swaps the refs search out for the commit list', () => {
+      const api = stubRefsApi(
+        {},
+        {},
+        { right: { state: 'ok', commits: ONE_COMMIT } },
+      );
+      const { fixture } = mount(TWO_SOURCES, 'right', api);
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('[data-testid="refs-search"]')).toBeTruthy();
+      activateCommitsTab(fixture);
+      expect(root.querySelector('[data-testid="refs-search"]')).toBeNull();
+      expect(
+        root.querySelector('[data-testid="commits-scope-select"]'),
+      ).toBeTruthy();
+      expect(root.querySelector(`[data-commit-sha="${SHA_A}"]`)).toBeTruthy();
+      expect(
+        root
+          .querySelector('[data-testid="tab-commits"]')
+          ?.getAttribute('aria-selected'),
+      ).toBe('true');
+    });
+
+    it('shows no tabs for a source with no git repo — just the refs-panel message', () => {
+      const api = stubRefsApi({
+        right: { state: 'no-git-repo', kind: 'endpoint' },
+      });
+      const { fixture } = mount(TWO_SOURCES, 'right', api);
+      const root = fixture.nativeElement as HTMLElement;
+      expect(root.querySelector('[data-testid="tab-commits"]')).toBeNull();
+      expect(root.querySelector('[data-testid="tab-refs"]')).toBeNull();
+      expect(
+        root.querySelector('[data-testid="refs-panel-no-git"]'),
+      ).toBeTruthy();
+    });
+
+    it('returns to the Refs tab when the staged source changes', () => {
+      const { fixture } = mount(TWO_SOURCES, 'right');
+      const root = fixture.nativeElement as HTMLElement;
+      activateCommitsTab(fixture);
+      expect(
+        root
+          .querySelector('[data-testid="tab-commits"]')
+          ?.getAttribute('aria-selected'),
+      ).toBe('true');
+      (root.querySelector('[data-source-id="left"]') as HTMLElement).click();
+      fixture.detectChanges();
+      expect(
+        root
+          .querySelector('[data-testid="tab-refs"]')
+          ?.getAttribute('aria-selected'),
+      ).toBe('true');
+    });
+  });
+
   describe('Commits section · pagination (Show more)', () => {
     const SHA_PAGE1_LAST = 'a'.repeat(40);
     const SHA_PAGE1_FIRST = '1'.repeat(40);
@@ -677,6 +771,7 @@ describe('SourcesPickerOverlayComponent', () => {
       );
       const { fixture } = mount(TWO_SOURCES, 'right', api);
       const root = fixture.nativeElement as HTMLElement;
+      activateCommitsTab(fixture);
       // Initial fetch with no `before`
       expect(api.commitsCalls).toEqual([
         { id: 'right', scope: 'HEAD', before: undefined },
@@ -725,6 +820,7 @@ describe('SourcesPickerOverlayComponent', () => {
       );
       const { fixture } = mount(TWO_SOURCES, 'right', api);
       const root = fixture.nativeElement as HTMLElement;
+      activateCommitsTab(fixture);
       // Page page 2 first
       (
         root.querySelector(
@@ -764,6 +860,7 @@ describe('SourcesPickerOverlayComponent', () => {
       );
       const { fixture } = mount(TWO_SOURCES, 'right', api);
       const root = fixture.nativeElement as HTMLElement;
+      activateCommitsTab(fixture);
       // Paginate to page 2
       (
         root.querySelector(
