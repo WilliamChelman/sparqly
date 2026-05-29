@@ -236,14 +236,21 @@ function createSourceRunner(
   let pending: NodeJS.Timeout | undefined;
   let inFlight = false;
   let queued: RefreshTrigger | undefined;
+  // Set by dispose() (on server close). Guards every observable side effect so
+  // a rebuild that is already in-flight or queued when the watcher tears down
+  // cannot emit `view-rebuilt` or mutate a storeRef after close — teardown is
+  // deterministic, not best-effort.
+  let disposed = false;
 
   const rebuild = async (trigger: RefreshTrigger): Promise<void> => {
+    if (disposed) return;
     if (inFlight) {
       queued = trigger;
       return;
     }
     inFlight = true;
     try {
+      if (disposed) return;
       const planId = target.plan.id;
       // ADR-0031: un-touched sources have no live storeRef. Don't load on
       // their behalf in response to FS / TTL / freshness events — the next
@@ -268,6 +275,7 @@ function createSourceRunner(
         registry: target.registry,
         logger: deps.boundaryLogger,
       });
+      if (disposed) return;
       if (refreshed.mode === 'materialized') {
         storeRef.current = refreshed.store;
         target.onRebuiltFiles?.(refreshed.files);
@@ -287,7 +295,7 @@ function createSourceRunner(
     } finally {
       inFlight = false;
       const next = queued;
-      if (next) {
+      if (next && !disposed) {
         queued = undefined;
         void rebuild(next);
       }
@@ -295,6 +303,7 @@ function createSourceRunner(
   };
 
   const schedule = (trigger: RefreshTrigger): void => {
+    if (disposed) return;
     if (pending) clearTimeout(pending);
     pending = setTimeout(() => {
       pending = undefined;
@@ -305,6 +314,8 @@ function createSourceRunner(
   return {
     schedule,
     dispose: () => {
+      disposed = true;
+      queued = undefined;
       if (pending) {
         clearTimeout(pending);
         pending = undefined;
