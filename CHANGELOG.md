@@ -1,3 +1,19 @@
+## [0.33.0](https://github.com/WilliamChelman/sparqly/compare/v0.32.1...v0.33.0) (2026-05-29)
+
+### Features
+
+* **query:** TriG and N-Quads output formats ([#382](https://github.com/WilliamChelman/sparqly/issues/382)) ([8859241](https://github.com/WilliamChelman/sparqly/commit/8859241ebcbb7a471b1093c6e0952951b27d1148))
+* **query:** triple-shaped SELECT reification ([#383](https://github.com/WilliamChelman/sparqly/issues/383)) ([6f87f5c](https://github.com/WilliamChelman/sparqly/commit/6f87f5c12d6010817e6a254af0c3ac933c14818c))
+* **server:** no-git-history eligibility check on /api/sources/:id/refs ([#378](https://github.com/WilliamChelman/sparqly/issues/378)) ([a3d3589](https://github.com/WilliamChelman/sparqly/commit/a3d35895d50857486dbd4c570196e662172383cd))
+* **sources-picker:** commits scope selector and empty-scope hint ([#380](https://github.com/WilliamChelman/sparqly/issues/380)) ([10fb6e9](https://github.com/WilliamChelman/sparqly/commit/10fb6e98eafc826d1dc6be8029e60eb9a2141319))
+* **sources-picker:** commits section with on-demand pinning ([#379](https://github.com/WilliamChelman/sparqly/issues/379)) ([96bb7e5](https://github.com/WilliamChelman/sparqly/commit/96bb7e58b64f91635ca44faa0f58876cc3a50acc))
+* **sources-picker:** cursor pagination for the commits list ([#381](https://github.com/WilliamChelman/sparqly/issues/381)) ([f31380d](https://github.com/WilliamChelman/sparqly/commit/f31380dc1ade6ff4e83ed2627aaf6e84ccc19f9d))
+* **sources-picker:** tab refs and commits in the picker overlay ([c52e9e4](https://github.com/WilliamChelman/sparqly/commit/c52e9e44023db2595a988e200c6439e575f92690))
+
+### Bug Fixes
+
+* **server:** make watcher teardown deterministic to stop flaky rebuild-after-close ([5339964](https://github.com/WilliamChelman/sparqly/commit/5339964b4ca516e31c719eacae2ac0dbe68d1f26))
+
 ## [0.32.1](https://github.com/WilliamChelman/sparqly/compare/v0.32.0...v0.32.1) (2026-05-27)
 
 ### Bug Fixes
