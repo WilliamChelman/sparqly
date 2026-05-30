@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { map, shareReplay, type Observable } from 'rxjs';
 
-export type SourceKind = 'glob' | 'endpoint' | 'empty' | 'view' | 'file';
+export type SourceKind = 'glob' | 'endpoint' | 'empty' | 'file';
 
 // Mirrors `SourceRow.mode` (ADR-0044); diff page gates Run on the raw
 // pass-through modes per ADR-0047.

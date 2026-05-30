@@ -2,7 +2,7 @@ export type SourceRow =
   | ({
       mode: 'in-memory';
       id: string;
-      kind: 'glob' | 'file' | 'view' | 'empty';
+      kind: 'glob' | 'file' | 'empty';
       state: InMemoryState | 'mixed';
       default?: true;
       parentId?: string;
