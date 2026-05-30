@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadSources } from './load-sources';
-import { parseSourceSpec, parseSourceSpecs } from './source-spec';
+import { parseSourceSpec } from './source-spec';
 import {
   startFakeSparqlEndpoint,
   type FakeSparqlEndpoint,
@@ -284,7 +284,7 @@ describe('loadSources — endpoint auth, headers, and timeoutMs', () => {
   });
 });
 
-describe('loadSources — single-target view walks its `from:` chain', () => {
+describe('loadSources — single-target glob transforms', () => {
   let dir: string;
 
   beforeEach(async () => {
@@ -309,38 +309,6 @@ describe('loadSources — single-target view walks its `from:` chain', () => {
     expect(quads).toHaveLength(1);
     expect(quads[0].graph.termType).toBe('NamedNode');
     expect(quads[0].graph.value).toBe(`file://${a}`);
-  });
-
-  it('walks a view target through its `from:` chain in the registry', async () => {
-    const a = join(dir, 'a.ttl');
-    await writeFile(
-      a,
-      [
-        '@prefix ex: <http://example.org/> .',
-        'ex:a ex:p ex:b .',
-        'ex:c ex:p ex:d .',
-      ].join('\n'),
-    );
-
-    const registry = parseSourceSpecs([
-      { id: 'raw', glob: a },
-      {
-        id: 'derived',
-        from: '@raw',
-        query:
-          'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:r ?o } WHERE { ?s ex:p ?o }',
-      },
-    ]);
-    const derived = registry.find((s) => s.id === 'derived');
-    if (derived === undefined) throw new Error('derived view not found');
-
-    const { store } = await loadSources(derived, { registry });
-
-    const predicates = new Set(
-      store.getQuads(null, null, null, null).map((q) => q.predicate.value),
-    );
-    expect(predicates.has('http://example.org/r')).toBe(true);
-    expect(store.size).toBe(2);
   });
 
   it('honours a `graphName: { mode: forceAll, graph }` override on a glob target', async () => {

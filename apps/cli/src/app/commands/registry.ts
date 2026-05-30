@@ -1,4 +1,3 @@
-import { cacheClearSpec, cacheListSpec } from './cache';
 import { diffSpec } from './diff/diff';
 import { formatSpec } from './format';
 import { hashSpec } from './hash';
@@ -9,8 +8,6 @@ import { serveSpec } from './serve';
 import type { CommandSpec } from '../runner/fields/spec';
 
 const ALL_SPECS: ReadonlyArray<CommandSpec<never>> = [
-  cacheListSpec as unknown as CommandSpec<never>,
-  cacheClearSpec as unknown as CommandSpec<never>,
   diffSpec as unknown as CommandSpec<never>,
   formatSpec as unknown as CommandSpec<never>,
   hashSpec as unknown as CommandSpec<never>,

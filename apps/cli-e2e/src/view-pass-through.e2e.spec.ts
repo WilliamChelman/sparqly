@@ -1,7 +1,6 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   startFakeSparqlEndpoint,
@@ -138,56 +137,6 @@ describe('view pass-through — diff --query / --left-query / --right-query', ()
     for (const seen of [leftRec.captured(), rightRec.captured()]) {
       expect(seen.every((q) => !MATERIALIZE_RE.test(q))).toBe(true);
     }
-  });
-});
-
-describe('view pass-through — declared view with from: @endpoint', () => {
-  let endpoint: FakeSparqlEndpoint | undefined;
-  let dir: string;
-
-  beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'sparqly-view-passthrough-decl-'));
-  });
-
-  afterEach(async () => {
-    if (endpoint) await endpoint.close();
-    endpoint = undefined;
-    await rm(dir, { recursive: true, force: true });
-  });
-
-  it("a declared view's query reaches the endpoint when the view is used by `query`", async () => {
-    const recording = await startRecordingEndpoint(SPARQL_BINDINGS);
-    endpoint = recording.endpoint;
-
-    const configPath = join(dir, 'sparqly.query.yaml');
-    await writeFile(
-      configPath,
-      dedent`
-        sources:
-          - id: ep
-            endpoint: "${endpoint.url}"
-          - id: snap
-            from: "@ep"
-            query: ${JSON.stringify(SCOPE_QUERY)}
-      ` + '\n',
-    );
-
-    const result = await runCli(
-      [
-        'query',
-        '@snap',
-        '--config',
-        configPath,
-        '-q',
-        'SELECT ?s WHERE { ?s ?p ?o }',
-      ],
-      { env: {} },
-    );
-
-    expect(result.exitCode, result.stderr).toBe(0);
-    const seen = recording.captured();
-    expect(seen.length).toBeGreaterThan(0);
-    expect(seen.some((q) => q.includes('FILTER'))).toBe(true);
   });
 });
 

@@ -10,10 +10,8 @@ import {
   resolveSource,
   selectTarget,
   storageTier,
-  viewChainPassThroughSource,
   type AnnotationPredicateIris,
   type ParsedSource,
-  type PassThroughChainSource,
   type RawPassThroughTargetError,
   type SourceRecordSidecar,
   type SourceSpecInput,
@@ -93,7 +91,6 @@ export async function resolveSide(
   }
 
   const effectiveRegistry = registry ?? parseSourceSpecs(config.sources ?? []);
-  warnIfPassThroughResolved(target, effectiveRegistry, side, logger);
   const sources = await resolveSource(target, {
     registry: effectiveRegistry,
     logger,
@@ -119,38 +116,6 @@ export async function resolveSide(
     sourceRecords: sources.sourceRecords,
     annotated: sources.sourceRecords !== undefined,
   };
-}
-
-function warnIfPassThroughResolved(
-  target: ParsedSource,
-  registry: ReadonlyArray<ParsedSource>,
-  side: 'left' | 'right',
-  logger: SparqlyLogger,
-): void {
-  const source = viewChainPassThroughSource(target, registry);
-  if (source === undefined) return;
-  logger.warn(formatPassThroughBoundaryWarning(source), {
-    side,
-    source: passThroughSourceField(source),
-  });
-}
-
-function formatPassThroughBoundaryWarning(
-  source: PassThroughChainSource,
-): string {
-  const name =
-    source.kind === 'endpoint'
-      ? `endpoint ${source.url}`
-      : `disk-backed glob ${source.label}`;
-  return (
-    `diff side resolved via pass-through against ${name}: ` +
-    'no Source-record sidecar is attached (suppressed by `storage: disk` / endpoint pass-through, ADR-0041), ' +
-    'so `--format=html` Source-file snippet sections will render empty for this side.'
-  );
-}
-
-function passThroughSourceField(source: PassThroughChainSource): string {
-  return source.kind === 'endpoint' ? source.url : source.label;
 }
 
 function rawPassThroughRejection(

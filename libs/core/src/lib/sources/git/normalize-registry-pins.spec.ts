@@ -27,12 +27,7 @@ describe('normalizeRegistryPinsResult', () => {
   it('returns the registry unchanged when no glob declares gitRef', async () => {
     const registry: ReadonlyArray<ParsedSource> = [
       { kind: 'glob', id: 'a', glob: 'data/*.ttl' },
-      {
-        kind: 'view',
-        id: 'v',
-        from: 'a',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      },
+      { kind: 'endpoint', id: 'e', endpoint: 'https://example.org/sparql' },
     ];
     const result = await normalizeRegistryPinsResult(registry, {
       configDir: '/work/repo',

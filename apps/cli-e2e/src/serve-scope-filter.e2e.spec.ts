@@ -132,54 +132,6 @@ describe('sparqly serve — --source as a scope filter (ADR-0016 / #197)', () =>
     expect(available).not.toContain('beta');
   });
 
-  it('--source @view serves only the view; its `from:` upstream is resolved internally but not listed', async () => {
-    const upstreamPath = join(dir, 'upstream.ttl');
-    await writeFile(
-      upstreamPath,
-      '@prefix ex: <http://example.org/> . ex:keep ex:p ex:v . ex:drop ex:p ex:w .\n',
-    );
-    const configPath = join(dir, 'sparqly.config.yaml');
-    await writeFile(
-      configPath,
-      dedent`
-        sources:
-          - id: upstream
-            glob: "${upstreamPath}"
-          - id: view
-            from: "@upstream"
-            query: "PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }"
-      ` + '\n',
-    );
-
-    handle = await startServe(['--config', configPath, '--source', '@view']);
-
-    const view = await fetch(
-      `${handle.baseUrl}/api/sparql/view?query=${SELECT_S}`,
-    );
-    expect(view.status).toBe(200);
-    const json = (await view.json()) as {
-      results: { bindings: Array<{ s: { value: string } }> };
-    };
-    expect(json.results.bindings.map((b) => b.s.value)).toEqual([
-      'http://example.org/keep',
-    ]);
-
-    const upstream = await fetch(
-      `${handle.baseUrl}/api/sparql/upstream?query=${SELECT_S}`,
-    );
-    expect(upstream.status).toBe(400);
-    const upstreamJson = (await upstream.json()) as {
-      kind?: string;
-      ref?: string;
-    };
-    expect(upstreamJson.kind).toBe('unknown-ref');
-    expect(upstreamJson.ref).toBe('@upstream');
-
-    const cfg = await fetch(`${handle.baseUrl}/api/config`);
-    const cfgJson = (await cfg.json()) as { sources: Array<{ id: string }> };
-    expect(cfgJson.sources.map((s) => s.id)).toEqual(['view']);
-  });
-
   it('--source @nonexistent fails at boot with an error listing the available @ids', async () => {
     const alphaPath = join(dir, 'alpha.ttl');
     await writeFile(

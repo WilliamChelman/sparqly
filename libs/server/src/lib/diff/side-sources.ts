@@ -29,7 +29,6 @@ export function applyAddressPin(
   ref: string,
 ): ParsedSource {
   if (entry.kind === 'glob') return { ...entry, gitRef: ref };
-  if (entry.kind === 'view') return { ...entry, fromGitRef: ref };
   if (entry.kind === 'file') {
     return {
       kind: 'glob',
@@ -121,9 +120,6 @@ function hasRuntimePinOverride(
   if (target.kind !== declared.kind) return true;
   if (target.kind === 'glob' && declared.kind === 'glob') {
     return target.gitRef !== declared.gitRef;
-  }
-  if (target.kind === 'view' && declared.kind === 'view') {
-    return target.fromGitRef !== declared.fromGitRef;
   }
   return false;
 }

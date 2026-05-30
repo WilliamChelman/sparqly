@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { parseSourceSpec, type ParsedFileSource } from './source-spec';
 import { storageTier } from './glob-storage';
 
-const VIEW_QUERY = 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }';
-
 describe('parseSourceSpec — storage (ADR-0041)', () => {
   it('carries an explicit `storage: disk` through onto the parsed glob', () => {
     expect(parseSourceSpec({ glob: 'data/*.trig', storage: 'disk' })).toEqual({
@@ -44,18 +42,6 @@ describe('parseSourceSpec — storage (ADR-0041)', () => {
         storage: 'disk',
       }),
     ).toThrow(/storage.*only.*glob.*endpoint/i);
-  });
-
-  it('rejects `storage` on a view source with a useful message', () => {
-    expect(() =>
-      parseSourceSpec({
-        id: 'scoped',
-        from: '@raw',
-        query: VIEW_QUERY,
-        // @ts-expect-error — storage only valid on glob
-        storage: 'disk',
-      }),
-    ).toThrow(/storage.*only.*glob.*view/i);
   });
 
   it('rejects `storage` on an empty source with a useful message', () => {
@@ -138,15 +124,10 @@ describe('storageTier (ADR-0041)', () => {
     expect(storageTier(child)).toBe('memory');
   });
 
-  it('reports memory for non-glob sources — an endpoint, view, or empty materializes nothing', () => {
-    expect(storageTier(parseSourceSpec('https://example.com/sparql'))).toBe(
+  it('reports memory for non-glob sources — an endpoint or empty materializes nothing', () => {
+    expect(storageTier(parseSourceSpec({ endpoint: 'http://e' }))).toBe(
       'memory',
     );
-    expect(
-      storageTier(
-        parseSourceSpec({ id: 'v', from: '@raw', query: VIEW_QUERY }),
-      ),
-    ).toBe('memory');
     expect(storageTier(parseSourceSpec({ id: 'e', empty: true }))).toBe(
       'memory',
     );

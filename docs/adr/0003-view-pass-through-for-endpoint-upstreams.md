@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0051
 ---
 
 # Views with a single endpoint upstream resolve via pass-through
+
+> Superseded by ADR-0051: `view` is removed as a source kind. The pass-through behaviour survives for an **inline query** against an endpoint; only the "view" framing is gone.
 
 When a view's `from:` is exactly one endpoint upstream, the view query is sent over the SPARQL protocol to that endpoint via Comunica federation rather than materializing the endpoint's full content into a local in-memory `Store`. This extends the `pass-through` mode that `loadQuerySources` already implements for the `query` command (`libs/core/src/lib/load-query-sources.ts:13`) to the `view-resolver` path used by `hash`, `diff`, and declared `view` sources, so the user's scoping query is bounded by the endpoint's compute and only the result set crosses the wire.
 

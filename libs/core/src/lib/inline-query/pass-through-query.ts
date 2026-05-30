@@ -15,7 +15,7 @@ import type {
   QueryExecutionError,
 } from '../sources/errors';
 
-export interface ViewQueryLogMeta {
+export interface InlineQueryLogMeta {
   source: string;
   logger?: SparqlyLogger;
 }
@@ -24,20 +24,22 @@ export type PassThroughSource =
   | { kind: 'endpoint'; endpoint: ParsedEndpointSource }
   | { kind: 'disk-backed'; indexSource: RDF.Source; label: string };
 
-export interface ResolveViewPassThroughOptions {
+export interface RunPassThroughQueryOptions {
   source: PassThroughSource;
-  viewQuery: string;
+  query: string;
   engine?: ComunicaQueryEngine;
-  meta?: ViewQueryLogMeta;
+  meta?: InlineQueryLogMeta;
 }
 
-export type ResolveViewPassThroughError =
-  | EndpointFetchError
-  | QueryExecutionError;
+export type RunPassThroughQueryError = EndpointFetchError | QueryExecutionError;
 
-export function resolveViewPassThroughResult(
-  options: ResolveViewPassThroughOptions,
-): ResultAsync<Store, ResolveViewPassThroughError> {
+/**
+ * Runs an inline query directly against an endpoint or a disk-backed glob index
+ * (no in-heap materialization). Returns the projected `Store` (ADR-0024).
+ */
+export function runPassThroughQueryResult(
+  options: RunPassThroughQueryOptions,
+): ResultAsync<Store, RunPassThroughQueryError> {
   return ResultAsync.fromPromise(executePassThrough(options), (err) =>
     options.source.kind === 'endpoint'
       ? {
@@ -47,37 +49,19 @@ export function resolveViewPassThroughResult(
         }
       : {
           kind: 'query-execution' as const,
-          query: options.viewQuery,
+          query: options.query,
           message: err instanceof Error ? err.message : String(err),
         },
   );
 }
 
-/**
- * @deprecated Use {@link resolveViewPassThroughResult} (ADR-0024). Retained as
- * a thin throw-based adapter for callers that have not migrated yet.
- */
-export async function resolveViewPassThrough(
-  options: ResolveViewPassThroughOptions,
-): Promise<Store> {
-  const result = await resolveViewPassThroughResult(options);
-  if (result.isErr()) {
-    const prefix =
-      options.source.kind === 'endpoint'
-        ? `endpoint ${options.source.endpoint.endpoint}`
-        : `disk-backed glob ${options.source.label}`;
-    throw new Error(`${prefix}: ${result.error.message}`);
-  }
-  return result.value;
-}
-
 async function executePassThrough(
-  options: ResolveViewPassThroughOptions,
+  options: RunPassThroughQueryOptions,
 ): Promise<Store> {
   const engine = options.engine ?? new ComunicaQueryEngine();
   const out = new Store();
   const started = Date.now();
-  const type = detectQueryType(options.viewQuery);
+  const type = detectQueryType(options.query);
   try {
     const context =
       options.source.kind === 'endpoint'
@@ -87,7 +71,7 @@ async function executePassThrough(
         : ({ sources: [options.source.indexSource] } as Parameters<
             ComunicaQueryEngine['query']
           >[1]);
-    const result = await engine.query(options.viewQuery, context);
+    const result = await engine.query(options.query, context);
     if (result.resultType === 'bindings') {
       const bindings = await result.execute();
       for await (const b of bindings as AsyncIterable<{
@@ -119,14 +103,14 @@ async function executePassThrough(
       }
     } else {
       throw new Error(
-        `view query produced unexpected result type: ${String(result.resultType)}`,
+        `inline query produced unexpected result type: ${String(result.resultType)}`,
       );
     }
     if (options.meta) {
       emitQueryEvent(options.meta.logger, {
         source: options.meta.source,
         mode: 'view',
-        query: options.viewQuery,
+        query: options.query,
         type,
         ms: Date.now() - started,
         size: { quads: out.size },
@@ -148,7 +132,7 @@ async function executePassThrough(
       emitQueryEvent(options.meta.logger, {
         source: options.meta.source,
         mode: 'view',
-        query: options.viewQuery,
+        query: options.query,
         type,
         ms: Date.now() - started,
         err: new Error(`${prefix}: ${detail}`),

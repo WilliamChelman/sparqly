@@ -110,31 +110,6 @@ describe('resolveInlineSelectBindings', () => {
     expect(xs).toEqual(['a', 'b']);
   });
 
-  it('runs against a view upstream (the view scopes the data, then the SELECT runs against the view result)', async () => {
-    const a = join(dataDir, 'a.ttl');
-    await writeFile(
-      a,
-      [
-        '@prefix ex: <http://example.org/> .',
-        'ex:keep ex:p ex:v .',
-        'ex:drop ex:p ex:v .',
-      ].join('\n'),
-    );
-    const result = await resolveInlineSelectBindings({
-      source: {
-        id: 'kept',
-        from: '@raw',
-        query:
-          'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }',
-      },
-      registry: [{ id: 'raw', glob: a }],
-      query: 'SELECT ?s WHERE { ?s ?p ?o }',
-    });
-    expect(result.rows.map((r) => r['s']?.value)).toEqual([
-      'http://example.org/keep',
-    ]);
-  });
-
   describe('endpoint upstream (pass-through)', () => {
     let endpoint: FakeSparqlEndpoint | undefined;
 

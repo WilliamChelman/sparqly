@@ -129,7 +129,7 @@ export function formatRawPassThroughRejection(
   return (
     `${named} cannot be hashed or diffed directly${where}: ` +
     `the canonicalization step has no scoping query and would materialise the whole upstream. ` +
-    'Wrap it in a `view` source kind, pass `--query`/`--query-file` to scope it inline, ' +
+    'Pass `--query`/`--query-file` to scope it inline, ' +
     'or pipe `sparqly query --format=turtle` into the command.'
   );
 }

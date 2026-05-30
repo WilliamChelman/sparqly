@@ -29,7 +29,7 @@ import type {
   ViewValidationError,
 } from '../sources/errors';
 import type { TabularRow } from '../diff';
-import { validateViewQueryResult } from '../views/view-query-validate';
+import { validateInlineQueryResult } from './validate-query';
 
 export interface InlineSelectBindingsInput {
   source: SourceSpecInput;
@@ -105,7 +105,7 @@ export function resolveInlineSelectBindingsResult(
     InlineSelectBindingsResult,
     ResolveInlineSelectBindingsError
   >((query) =>
-    validateViewQueryResult(query, { mode: 'tabular-anon' })
+    validateInlineQueryResult(query, { mode: 'tabular-anon' })
       .map(() => query)
       .asyncAndThen<
         InlineSelectBindingsResult,

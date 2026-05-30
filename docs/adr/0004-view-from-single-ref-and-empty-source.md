@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0051
 ---
 
 # View `from:` is a single ref; multi-source composition uses SPARQL `SERVICE`
+
+> Superseded by ADR-0051: `view` and `from:` are removed. The `kind: 'empty'` source survives as a neutral target for an **inline query**'s `SERVICE` composition (and is earmarked to become a writable disk store).
 
 A view's `from:` is narrowed from `ReadonlyArray<string>` to a single `string` ref, eliminating in-resolver multi-upstream merging. Cross-source composition is delegated to SPARQL `SERVICE` clauses authored in the view query. To support composing across endpoints whose own SPARQL implementation cannot federate via `SERVICE`, a new `kind: 'empty'` source is introduced — an in-memory `Store` with no triples that exists solely to host a query whose data flows in through `SERVICE` clauses dispatched by Comunica's local engine.
 

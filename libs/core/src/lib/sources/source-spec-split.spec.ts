@@ -8,8 +8,6 @@ import {
   type ParsedFileSource,
 } from './source-spec';
 
-const VIEW_QUERY = 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }';
-
 describe('parseSourceSpec — splitByFile flag', () => {
   it('accepts splitByFile: true on a glob source and propagates it to the parsed output', () => {
     expect(
@@ -47,16 +45,14 @@ describe('parseSourceSpec — splitByFile flag', () => {
     ).toThrow(/splitByFile.*only.*glob.*endpoint/i);
   });
 
-  it('rejects splitByFile on a view source with a useful message', () => {
+  it('rejects splitByFile on an endpoint source with a useful message (no view)', () => {
     expect(() =>
       parseSourceSpec({
-        id: 'scoped',
-        from: '@raw',
-        query: VIEW_QUERY,
+        endpoint: 'http://e',
         // @ts-expect-error — splitByFile only valid on glob
         splitByFile: true,
       }),
-    ).toThrow(/splitByFile.*only.*glob.*view/i);
+    ).toThrow(/splitByFile.*only.*glob/i);
   });
 
   it('rejects splitByFile on an empty source with a useful message', () => {

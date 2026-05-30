@@ -76,12 +76,12 @@ describe('parseSourceSpec — object form', () => {
         glob: 'data/*.ttl',
         endpoint: 'https://example.com/sparql',
       }),
-    ).toThrow(/exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`/);
+    ).toThrow(/exactly one of `glob:`, `endpoint:`, or `empty:`/);
   });
 
-  it('rejects an object with no glob:, endpoint:, or from:', () => {
+  it('rejects an object with no glob:, endpoint:, or empty:', () => {
     expect(() => parseSourceSpec({ id: 'orphan' })).toThrow(
-      /exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`/,
+      /exactly one of `glob:`, `endpoint:`, or `empty:`/,
     );
   });
 });
@@ -103,7 +103,7 @@ describe('parseSourceSpec — empty source', () => {
         glob: 'data/*.ttl',
       }),
     ).toThrow(
-      /exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`/,
+      /exactly one of `glob:`, `endpoint:`, or `empty:`/,
     );
   });
 
@@ -116,22 +116,20 @@ describe('parseSourceSpec — empty source', () => {
         endpoint: 'https://example.com/sparql',
       }),
     ).toThrow(
-      /exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`/,
+      /exactly one of `glob:`, `endpoint:`, or `empty:`/,
     );
   });
 
-  it('rejects empty: true combined with from:', () => {
+  it('rejects empty: true combined with the removed `from:` field (ADR-0051)', () => {
     expect(() =>
       parseSourceSpec({
         id: 'mix',
-        // @ts-expect-error — empty: true is mutually exclusive with from
+        // @ts-expect-error — `from` was removed with the view source kind
         empty: true,
         from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       }),
-    ).toThrow(
-      /exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`/,
-    );
+    ).toThrow(/no longer a valid source field/);
   });
 
   it('requires an id on empty sources', () => {
@@ -149,7 +147,7 @@ describe('parseSourceSpec — empty source', () => {
         empty: false,
       }),
     ).toThrow(
-      /exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`/,
+      /exactly one of `glob:`, `endpoint:`, or `empty:`/,
     );
   });
 
@@ -173,318 +171,60 @@ describe('parseSourceSpec — empty source', () => {
   });
 });
 
-describe('parseSourceSpec — view discriminant', () => {
-  it('parses a view with a single string from ref, an inline query, and an id', () => {
-    expect(
-      parseSourceSpec({
-        id: 'filtered',
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      }),
-    ).toEqual({
-      kind: 'view',
-      id: 'filtered',
-      from: 'raw',
-      query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-    });
-  });
-
-  it('parses a view with queryFile instead of inline query', () => {
-    expect(
-      parseSourceSpec({
-        id: 'filtered',
-        from: '@raw',
-        queryFile: './scope.rq',
-      }),
-    ).toEqual({
-      kind: 'view',
-      id: 'filtered',
-      from: 'raw',
-      queryFile: './scope.rq',
-    });
-  });
-
-  it('rejects `from:` given as an array (any length) and points at SERVICE for composition', () => {
-    expect(() =>
-      parseSourceSpec({
-        id: 'fanned',
-        // @ts-expect-error — array form is no longer accepted
-        from: ['@a', '@b'],
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      }),
-    ).toThrow(/`from:`.*single.*ref.*SERVICE/i);
-    expect(() =>
-      parseSourceSpec({
-        id: 'one-element',
-        // @ts-expect-error — single-element arrays are also rejected
-        from: ['@a'],
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      }),
-    ).toThrow(/`from:`.*single.*ref.*SERVICE/i);
-    expect(() =>
-      parseSourceSpec({
-        id: 'empty',
-        // @ts-expect-error — empty arrays are also rejected
-        from: [],
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      }),
-    ).toThrow(/`from:`.*single.*ref.*SERVICE/i);
-  });
-
-  it('rejects a view with both query and queryFile', () => {
+describe('parseSourceSpec — removed view fields (ADR-0051)', () => {
+  it('rejects an object declaring `from:`', () => {
     expect(() =>
       parseSourceSpec({
         id: 'filtered',
+        // @ts-expect-error — `from` was removed with the view source kind
         from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        queryFile: './scope.rq',
       }),
-    ).toThrow(/`query`.*`queryFile`.*mutual/i);
-  });
-
-  it('rejects a view with neither query nor queryFile', () => {
+    ).toThrow(/no longer a valid source field/);
     expect(() =>
       parseSourceSpec({
         id: 'filtered',
-        from: '@raw',
-      }),
-    ).toThrow(/view.*exactly one of `query`.*`queryFile`/i);
-  });
-
-  it('rejects a view without an id', () => {
-    expect(() =>
-      parseSourceSpec({
+        // @ts-expect-error — `from` was removed with the view source kind
         from: '@raw',
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       }),
-    ).toThrow(/view.*id.*required/i);
+    ).toThrow(/ADR-0051/);
   });
 
-  it('parses `from: "@raw:v1.2"` to `{ from: "raw", fromGitRef: "v1.2" }` (ADR-0029, #275)', () => {
-    expect(
-      parseSourceSpec({
-        id: 'filtered',
-        from: '@raw:v1.2',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      }),
-    ).toEqual({
-      kind: 'view',
-      id: 'filtered',
-      from: 'raw',
-      fromGitRef: 'v1.2',
-      query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-    });
-  });
-
-  it('rejects a from value that is not a `@id` reference', () => {
+  it('rejects an object declaring `query:`', () => {
     expect(() =>
       parseSourceSpec({
         id: 'filtered',
-        from: 'raw',
+        // @ts-expect-error — `query` was removed with the view source kind
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       }),
-    ).toThrow(/from.*ref.*@/i);
-  });
-
-  it('rejects a view that also declares glob:', () => {
+    ).toThrow(/no longer a valid source field/);
     expect(() =>
       parseSourceSpec({
-        id: 'mix',
-        from: '@raw',
-        glob: 'data/*.ttl',
+        id: 'filtered',
+        // @ts-expect-error — `query` was removed with the view source kind
         query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       }),
-    ).toThrow(/exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`/);
+    ).toThrow(/ADR-0051/);
   });
 
-  it('rejects a view that also declares endpoint:', () => {
+  it('rejects an object declaring `cache:` (on any source)', () => {
     expect(() =>
-      parseSourceSpec({
-        id: 'mix',
-        from: '@raw',
-        endpoint: 'https://example.org/sparql',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      }),
-    ).toThrow(/exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`/);
-  });
-});
-
-describe('parseSourceSpec — view cache block', () => {
-  it('parses a view with cache.ttl as a duration string', () => {
-    expect(
       parseSourceSpec({
         id: 'cached',
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+        glob: 'x.ttl',
+        // @ts-expect-error — `cache` was removed with the view source kind
         cache: { ttl: '1h' },
       }),
-    ).toEqual({
-      kind: 'view',
-      id: 'cached',
-      from: 'raw',
-      query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      cache: { strategy: 'ttl', ttlMs: 60 * 60 * 1000 },
-    });
-  });
-
-  it('honours a per-view cacheDir override on the cache block', () => {
-    expect(
-      parseSourceSpec({
-        id: 'cached',
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        cache: { ttl: '5m', cacheDir: './tmp/my-cache' },
-      }),
-    ).toMatchObject({
-      cache: { strategy: 'ttl', ttlMs: 5 * 60 * 1000, cacheDir: './tmp/my-cache' },
-    });
-  });
-
-  it('accepts ttl as a positive number of milliseconds', () => {
-    expect(
-      parseSourceSpec({
-        id: 'cached',
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        cache: { ttl: 1500 },
-      }),
-    ).toMatchObject({ cache: { strategy: 'ttl', ttlMs: 1500 } });
-  });
-
-  it('parses a freshness ASK probe as the cache strategy', () => {
-    expect(
-      parseSourceSpec({
-        id: 'cached',
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        cache: { freshness: 'ASK { ?s ?p ?o }' },
-      }),
-    ).toMatchObject({
-      cache: { strategy: 'freshness', freshness: 'ASK { ?s ?p ?o }' },
-    });
-  });
-
-  it('parses everlasting:true as the cache strategy', () => {
-    expect(
-      parseSourceSpec({
-        id: 'cached',
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        cache: { everlasting: true },
-      }),
-    ).toMatchObject({
-      cache: { strategy: 'everlasting' },
-    });
-  });
-
-  it('rejects a cache block declaring no strategy', () => {
+    ).toThrow(/no longer a valid source field/);
     expect(() =>
       parseSourceSpec({
         id: 'cached',
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        // @ts-expect-error — must declare exactly one strategy
-        cache: {},
-      }),
-    ).toThrow(/cache.*exactly one.*ttl.*freshness.*everlasting/i);
-  });
-
-  it('rejects an unparseable ttl duration string', () => {
-    expect(() =>
-      parseSourceSpec({
-        id: 'cached',
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        cache: { ttl: 'forever' },
-      }),
-    ).toThrow(/cache.*ttl/i);
-  });
-
-  it('rejects ttl + freshness combined', () => {
-    expect(() =>
-      parseSourceSpec({
-        id: 'cached',
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        cache: { ttl: '1h', freshness: 'ASK { ?s ?p ?o }' },
-      }),
-    ).toThrow(/cache.*exactly one.*ttl.*freshness.*everlasting/i);
-  });
-
-  it('rejects ttl + everlasting combined', () => {
-    expect(() =>
-      parseSourceSpec({
-        id: 'cached',
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        cache: { ttl: '1h', everlasting: true },
-      }),
-    ).toThrow(/cache.*exactly one.*ttl.*freshness.*everlasting/i);
-  });
-
-  it('rejects freshness + everlasting combined', () => {
-    expect(() =>
-      parseSourceSpec({
-        id: 'cached',
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        cache: { freshness: 'ASK { ?s ?p ?o }', everlasting: true },
-      }),
-    ).toThrow(/cache.*exactly one.*ttl.*freshness.*everlasting/i);
-  });
-
-  it('rejects everlasting:false (must be true to opt into the strategy)', () => {
-    expect(() =>
-      parseSourceSpec({
-        id: 'cached',
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        cache: { everlasting: false },
-      }),
-    ).toThrow(/everlasting.*true/i);
-  });
-
-  it('rejects an empty freshness ASK string', () => {
-    expect(() =>
-      parseSourceSpec({
-        id: 'cached',
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        cache: { freshness: '' },
-      }),
-    ).toThrow(/freshness.*non-empty/i);
-  });
-
-  it('rejects unknown keys on the cache block', () => {
-    expect(() =>
-      parseSourceSpec({
-        id: 'cached',
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        // @ts-expect-error — `bogus` is not a known cache key
-        cache: { ttl: '1h', bogus: true },
-      }),
-    ).toThrow(/cache.*unknown.*bogus/i);
-  });
-
-  it('rejects a cache block on a non-view source (glob)', () => {
-    expect(() =>
-      parseSourceSpec({
-        glob: 'data/*.ttl',
-        // @ts-expect-error — cache only valid on view sources
+        glob: 'x.ttl',
+        // @ts-expect-error — `cache` was removed with the view source kind
         cache: { ttl: '1h' },
       }),
-    ).toThrow(/cache.*view/i);
-  });
-
-  it('rejects a cache block on an endpoint source', () => {
-    expect(() =>
-      parseSourceSpec({
-        endpoint: 'https://example.org/sparql',
-        // @ts-expect-error — cache only valid on view sources
-        cache: { ttl: '1h' },
-      }),
-    ).toThrow(/cache.*view/i);
+    ).toThrow(/ADR-0051/);
   });
 });
 
@@ -702,18 +442,6 @@ describe('parseSourceSpec — transforms field (closed registry)', () => {
     ).toThrow(/`transforms`.*only.*glob.*endpoint/);
   });
 
-  it('rejects transforms on a view source', () => {
-    expect(() =>
-      parseSourceSpec({
-        id: 'v',
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        // @ts-expect-error — transforms only valid on glob
-        transforms: [],
-      }),
-    ).toThrow(/`transforms`.*only.*glob.*view/);
-  });
-
   it('rejects transforms on an empty source', () => {
     expect(() =>
       parseSourceSpec({
@@ -831,18 +559,6 @@ describe('parseSourceSpec — gitRef / gitRoot on glob sources (ADR-0029)', () =
         gitRef: 'v1.2.0',
       }),
     ).toThrow(/gitRef.*only.*glob.*endpoint/i);
-  });
-
-  it('rejects gitRef on a view source', () => {
-    expect(() =>
-      parseSourceSpec({
-        id: 'v',
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        // @ts-expect-error — gitRef is glob-only
-        gitRef: 'v1.2.0',
-      }),
-    ).toThrow(/gitRef.*only.*glob.*view/i);
   });
 
   it('rejects gitRef on an empty source', () => {
@@ -1033,23 +749,6 @@ describe('parseSourceSpec — default: true marker', () => {
     ).toThrow(/`default`.*true/i);
   });
 
-  it('accepts default: true on a view source', () => {
-    expect(
-      parseSourceSpec({
-        id: 'filtered',
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        default: true,
-      }),
-    ).toEqual({
-      kind: 'view',
-      id: 'filtered',
-      from: 'raw',
-      query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      default: true,
-    });
-  });
-
   it('accepts default: true on an empty source', () => {
     expect(
       parseSourceSpec({ id: 'composer', empty: true, default: true }),
@@ -1073,28 +772,6 @@ describe('parseSourceSpec — default: true marker', () => {
       id: 'live',
       default: true,
     });
-  });
-});
-
-describe('parseSourceSpecs — view from: single-ref invariant', () => {
-  const VIEW_QUERY = 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }';
-
-  it('accepts a view whose `from` is a single endpoint ref', () => {
-    expect(() =>
-      parseSourceSpecs([
-        { endpoint: 'https://example.com/sparql', id: 'live' },
-        { id: 'scoped', from: '@live', query: VIEW_QUERY },
-      ]),
-    ).not.toThrow();
-  });
-
-  it('accepts a view whose `from` is a single glob ref', () => {
-    expect(() =>
-      parseSourceSpecs([
-        { glob: 'data/*.ttl', id: 'files' },
-        { id: 'scoped', from: '@files', query: VIEW_QUERY },
-      ]),
-    ).not.toThrow();
   });
 });
 

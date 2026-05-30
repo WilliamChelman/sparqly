@@ -20,7 +20,7 @@ const TURTLE =
   'ex:alice ex:knows ex:bob .\n' +
   'ex:bob ex:knows ex:carol .\n';
 
-describe('sparqly hash — view-over-disk-backed-glob pass-through (#373, ADR-0047)', () => {
+describe('sparqly hash — raw pass-through-target rejection (#373, ADR-0047)', () => {
   let projectRoot: string;
   let endpoint: FakeSparqlEndpoint | undefined;
 
@@ -39,33 +39,6 @@ describe('sparqly hash — view-over-disk-backed-glob pass-through (#373, ADR-00
       endpoint = undefined;
     }
     await rm(projectRoot, { recursive: true, force: true });
-  });
-
-  it('hash @view-over-disk-backed-glob materialises only the scoped result', async () => {
-    await writeFile(
-      join(projectRoot, 'sparqly.config.yaml'),
-      dedent`
-        sources:
-          - id: disk
-            glob: data/*.ttl
-            storage: disk
-          - id: scoped
-            from: "@disk"
-            query: |
-              PREFIX ex: <http://example.org/>
-              CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:alice) }
-      ` + '\n',
-    );
-
-    const result = await runCli(['hash', '--quiet', '@scoped'], {
-      cwd: projectRoot,
-      env: CLEARED_ENV,
-    });
-
-    expect(result.stderr).toBe('');
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toMatch(/^[0-9a-f]{64} {2}/);
-    expect(result.stdout).toContain('@scoped');
   });
 
   it('hash @disk-backed-glob (raw) rejects with the unified raw-pass-through template', async () => {
@@ -88,7 +61,7 @@ describe('sparqly hash — view-over-disk-backed-glob pass-through (#373, ADR-00
     expect(result.stderr).toContain('disk-backed glob @disk');
     expect(result.stderr).toMatch(/cannot be hashed or diffed directly/i);
     expect(result.stderr).toMatch(/canonicaliz/i);
-    expect(result.stderr).toMatch(/wrap it in a `view`/i);
+    expect(result.stderr).toMatch(/--query-file/i);
     expect(result.stderr).toMatch(/--query/);
   });
 
@@ -119,7 +92,7 @@ describe('sparqly hash — view-over-disk-backed-glob pass-through (#373, ADR-00
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain(`endpoint ${endpointUrl}`);
     expect(result.stderr).toMatch(/cannot be hashed or diffed directly/i);
-    expect(result.stderr).toMatch(/wrap it in a `view`/i);
+    expect(result.stderr).toMatch(/--query-file/i);
     expect(endpoint.requestCount()).toBe(0);
   });
 });

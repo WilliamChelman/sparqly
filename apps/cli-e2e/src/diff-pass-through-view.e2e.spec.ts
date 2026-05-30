@@ -50,42 +50,6 @@ describe('sparqly diff — view-over-disk-backed-glob pass-through (#374, ADR-00
     await rm(projectRoot, { recursive: true, force: true });
   });
 
-  it('graph-diffs two view-over-disk-backed-glob sides through pass-through resolution', async () => {
-    await writeFile(
-      join(projectRoot, 'sparqly.config.yaml'),
-      dedent`
-        sources:
-          - id: disk-left
-            glob: left/*.ttl
-            storage: disk
-          - id: disk-right
-            glob: right/*.ttl
-            storage: disk
-          - id: scoped-left
-            from: "@disk-left"
-            query: |
-              PREFIX ex: <http://example.org/>
-              CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }
-          - id: scoped-right
-            from: "@disk-right"
-            query: |
-              PREFIX ex: <http://example.org/>
-              CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }
-      ` + '\n',
-    );
-
-    const result = await runCli(
-      ['diff', '--quiet', '@scoped-left', '@scoped-right'],
-      { cwd: projectRoot, env: CLEARED_ENV },
-    );
-
-    expect(result.exitCode).toBe(1);
-    // bob ex:knows ex:carol — present on left, absent on right
-    expect(result.stdout).toMatch(/^- .*carol/m);
-    // bob ex:knows ex:dan — present on right, absent on left
-    expect(result.stdout).toMatch(/^\+ .*dan/m);
-  });
-
   it('rejects a raw disk-backed glob on the left side with the unified raw-pass-through template', async () => {
     await writeFile(
       join(projectRoot, 'sparqly.config.yaml'),
@@ -109,7 +73,7 @@ describe('sparqly diff — view-over-disk-backed-glob pass-through (#374, ADR-00
     expect(result.stderr).toContain('disk-backed glob @disk-left');
     expect(result.stderr).toContain('left side');
     expect(result.stderr).toMatch(/cannot be hashed or diffed directly/i);
-    expect(result.stderr).toMatch(/wrap it in a `view`/i);
+    expect(result.stderr).toMatch(/--query-file/i);
     expect(result.stderr).toMatch(/--query/);
   });
 
@@ -144,35 +108,7 @@ describe('sparqly diff — view-over-disk-backed-glob pass-through (#374, ADR-00
     expect(result.stderr).toContain(`endpoint ${endpointUrl}`);
     expect(result.stderr).toContain('right side');
     expect(result.stderr).toMatch(/cannot be hashed or diffed directly/i);
-    expect(result.stderr).toMatch(/wrap it in a `view`/i);
+    expect(result.stderr).toMatch(/--query-file/i);
     expect(endpoint.requestCount()).toBe(0);
-  });
-
-  it('diffs a view-over-disk-backed side against an in-memory side (mixed-resolution)', async () => {
-    await writeFile(
-      join(projectRoot, 'sparqly.config.yaml'),
-      dedent`
-        sources:
-          - id: disk-left
-            glob: left/*.ttl
-            storage: disk
-          - id: scoped-left
-            from: "@disk-left"
-            query: |
-              PREFIX ex: <http://example.org/>
-              CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }
-          - id: mem
-            glob: mem/*.ttl
-      ` + '\n',
-    );
-
-    // mem and scoped-left both contain TURTLE_LEFT — identical content
-    const result = await runCli(
-      ['diff', '--quiet', '@scoped-left', '@mem'],
-      { cwd: projectRoot, env: CLEARED_ENV },
-    );
-
-    expect(result.stderr).toBe('');
-    expect(result.exitCode).toBe(0);
   });
 });

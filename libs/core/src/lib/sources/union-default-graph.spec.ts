@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { parseSourceSpec, type ParsedFileSource } from './source-spec';
 import { unionDefaultGraphEnabled } from './union-default-graph';
 
-const VIEW_QUERY = 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }';
-
 describe('parseSourceSpec — unionDefaultGraph (ADR-0040)', () => {
   it('carries an explicit `unionDefaultGraph: false` through onto the parsed glob', () => {
     expect(
@@ -50,16 +48,14 @@ describe('parseSourceSpec — unionDefaultGraph (ADR-0040)', () => {
     ).toThrow(/unionDefaultGraph.*only.*glob.*endpoint/i);
   });
 
-  it('rejects `unionDefaultGraph` on a view source with a useful message', () => {
+  it('rejects `unionDefaultGraph` on an endpoint source with a useful message (no view)', () => {
     expect(() =>
       parseSourceSpec({
-        id: 'scoped',
-        from: '@raw',
-        query: VIEW_QUERY,
+        endpoint: 'http://e',
         // @ts-expect-error — unionDefaultGraph only valid on glob
         unionDefaultGraph: true,
       }),
-    ).toThrow(/unionDefaultGraph.*only.*glob.*view/i);
+    ).toThrow(/unionDefaultGraph.*only.*glob/i);
   });
 
   it('rejects `unionDefaultGraph` on an empty source with a useful message', () => {
@@ -116,14 +112,9 @@ describe('unionDefaultGraphEnabled (ADR-0040)', () => {
     expect(unionDefaultGraphEnabled(file)).toBe(false);
   });
 
-  it('reports false for non-glob sources — a view, endpoint, or empty owns standard SPARQL semantics', () => {
+  it('reports false for non-glob sources — an endpoint or empty owns standard SPARQL semantics', () => {
     expect(
       unionDefaultGraphEnabled(parseSourceSpec('https://example.com/sparql')),
-    ).toBe(false);
-    expect(
-      unionDefaultGraphEnabled(
-        parseSourceSpec({ id: 'v', from: '@raw', query: VIEW_QUERY }),
-      ),
     ).toBe(false);
     expect(
       unionDefaultGraphEnabled(parseSourceSpec({ id: 'e', empty: true })),

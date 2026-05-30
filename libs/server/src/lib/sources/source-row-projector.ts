@@ -4,7 +4,7 @@ export type SourceRow =
   | ({
       mode: 'in-memory';
       id: string;
-      kind: 'glob' | 'file' | 'view' | 'empty';
+      kind: 'glob' | 'file' | 'empty';
       state: InMemoryState | 'mixed';
       default?: true;
       parentId?: string;
@@ -149,7 +149,6 @@ export function projectSourceRow(
   if (
     source.kind !== 'glob' &&
     source.kind !== 'file' &&
-    source.kind !== 'view' &&
     source.kind !== 'empty'
   ) {
     throw new Error(

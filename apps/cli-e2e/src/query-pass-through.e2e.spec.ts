@@ -1,7 +1,6 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   startFakeSparqlEndpoint,
@@ -66,57 +65,5 @@ describe('sparqly query — pass-through federation', () => {
         (q) => !/\bSELECT\s+\?s\s+\?p\s+\?o\s+WHERE\s*{\s*\?s\s+\?p\s+\?o\s*}\s*$/i.test(q),
       ),
     ).toBe(true);
-  });
-
-  it('view-of-endpoint forces materialization (load-time SELECT against the endpoint)', async () => {
-    const captured: string[] = [];
-    endpoint = await startFakeSparqlEndpoint(({ query }) => {
-      captured.push(query);
-      return {
-        contentType: 'application/sparql-results+json',
-        body: JSON.stringify({
-          head: { vars: ['s', 'p', 'o'] },
-          results: {
-            bindings: [
-              {
-                s: { type: 'uri', value: 'http://example.org/keep' },
-                p: { type: 'uri', value: 'http://example.org/p' },
-                o: { type: 'uri', value: 'http://example.org/v1' },
-              },
-            ],
-          },
-        }),
-      };
-    });
-
-    const configPath = join(dir, 'sparqly.query.yaml');
-    await writeFile(
-      configPath,
-      dedent`
-        sources:
-          - id: ep
-            endpoint: "${endpoint.url}"
-          - id: snap
-            from: "@ep"
-            query: "PREFIX ex: <http://example.org/> SELECT ?s ?p ?o WHERE { ?s ?p ?o }"
-      ` + '\n',
-    );
-
-    const result = await runCli(
-      [
-        'query',
-        '@snap',
-        '--config',
-        configPath,
-        '-q',
-        'SELECT ?s WHERE { ?s ?p ?o }',
-      ],
-      { env: {} },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(captured.some((q) => /SELECT\s+\?s\s+\?p\s+\?o/i.test(q))).toBe(
-      true,
-    );
   });
 });
