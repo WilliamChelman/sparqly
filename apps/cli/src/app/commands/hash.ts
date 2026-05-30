@@ -12,7 +12,7 @@ import {
   extractAnnotationPredicates,
   formatRawPassThroughRejection,
   parseSourceSpecs,
-  resolveAnonymousViewResult,
+  resolveInlineQueryResult,
   resolveSourceResult,
   selectTargetResult,
   storageTier,
@@ -364,8 +364,8 @@ function hashTargetResult(
   const start = Date.now();
 
   if (inlineQuery !== undefined) {
-    const upstreamSpec = anonymousUpstream(target);
-    return resolveAnonymousViewResult({
+    const upstreamSpec = inlineQueryUpstream(target);
+    return resolveInlineQueryResult({
       source: upstreamSpec,
       query: inlineQuery,
       logger,
@@ -460,7 +460,7 @@ function rawPassThroughRejection(
   return undefined;
 }
 
-function anonymousUpstream(target: ParsedSource): SourceSpecInput {
+function inlineQueryUpstream(target: ParsedSource): SourceSpecInput {
   if (target.kind === 'glob') return target.glob;
   if (target.kind === 'file') return target.path;
   if (target.kind === 'endpoint') return target.endpoint;

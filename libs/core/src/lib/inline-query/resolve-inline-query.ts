@@ -17,9 +17,9 @@ import type {
   ViewReferenceError,
   ViewValidationError,
 } from '../sources/errors';
-import { resolveViewResult } from './view-resolver';
+import { resolveViewResult } from '../views/view-resolver';
 
-export interface AnonymousViewInput {
+export interface InlineQueryInput {
   source: SourceSpecInput;
   query?: string;
   queryFile?: string;
@@ -27,7 +27,7 @@ export interface AnonymousViewInput {
   logger?: SparqlyLogger;
 }
 
-export type ResolveAnonymousViewError =
+export type ResolveInlineQueryError =
   | ViewValidationError
   | ViewReferenceError
   | CacheIoError
@@ -37,10 +37,10 @@ export type ResolveAnonymousViewError =
   | TransformParseError
   | GitPinError;
 
-const ANON_UPSTREAM_ID = '__sparqly_anon_upstream__';
-const ANON_VIEW_ID = '__sparqly_anon_view__';
+const SYNTHETIC_UPSTREAM_ID = '__sparqly_inline_upstream__';
+const SYNTHETIC_VIEW_ID = '__sparqly_inline_query__';
 
-function anonViewLabel(upstream: ParsedSource): string {
+function syntheticViewLabel(upstream: ParsedSource): string {
   const label =
     upstream.kind === 'glob'
       ? upstream.glob
@@ -48,34 +48,36 @@ function anonViewLabel(upstream: ParsedSource): string {
         ? upstream.path
         : upstream.kind === 'endpoint'
           ? upstream.endpoint
-          : (upstream.id ?? ANON_VIEW_ID);
+          : (upstream.id ?? SYNTHETIC_VIEW_ID);
   // Keep the synthetic view id distinct from its upstream's so cycle
   // detection on the `from:` chain never false-positives.
-  return label === (upstream.id ?? ANON_UPSTREAM_ID) ? ANON_VIEW_ID : label;
+  return label === (upstream.id ?? SYNTHETIC_UPSTREAM_ID)
+    ? SYNTHETIC_VIEW_ID
+    : label;
 }
 
 /**
- * Primary `Result`-typed anonymous-view resolver. Surface failures (no/both
+ * Primary `Result`-typed inline-query resolver. Surface failures (no/both
  * `query`/`queryFile`, `@id` reference upstream) become {@link ViewValidationError}
  * variants; downstream view-resolution failures pass through unchanged
  * (ADR-0024).
  */
-export function resolveAnonymousViewResult(
-  input: AnonymousViewInput,
-): ResultAsync<Store, ResolveAnonymousViewError> {
+export function resolveInlineQueryResult(
+  input: InlineQueryInput,
+): ResultAsync<Store, ResolveInlineQueryError> {
   const hasQuery = input.query !== undefined;
   const hasQueryFile = input.queryFile !== undefined;
   if (hasQuery && hasQueryFile) {
     return errAsync({
       kind: 'view-validation',
       message:
-        '`query` and `queryFile` are mutually exclusive on an anonymous view',
+        '`query` and `queryFile` are mutually exclusive on an inline query',
     });
   }
   if (!hasQuery && !hasQueryFile) {
     return errAsync({
       kind: 'view-validation',
-      message: 'an anonymous view requires exactly one of `query` or `queryFile`',
+      message: 'an inline query requires exactly one of `query` or `queryFile`',
     });
   }
 
@@ -83,15 +85,15 @@ export function resolveAnonymousViewResult(
   if (upstream.kind === 'reference') {
     return errAsync({
       kind: 'view-validation',
-      message: 'anonymous view: `@id` reference upstreams are not supported here',
+      message: 'inline query: `@id` reference upstreams are not supported here',
     });
   }
-  const upstreamId = upstream.id ?? ANON_UPSTREAM_ID;
+  const upstreamId = upstream.id ?? SYNTHETIC_UPSTREAM_ID;
   const upstreamWithId: ParsedSource = { ...upstream, id: upstreamId };
 
   const view: ParsedViewSource = {
     kind: 'view',
-    id: anonViewLabel(upstream),
+    id: syntheticViewLabel(upstream),
     from: upstreamId,
     ...(hasQuery ? { query: input.query } : {}),
     ...(hasQueryFile ? { queryFile: input.queryFile } : {}),
@@ -105,16 +107,15 @@ export function resolveAnonymousViewResult(
 }
 
 /**
- * @deprecated Use {@link resolveAnonymousViewResult} (ADR-0024). Retained as a
+ * @deprecated Use {@link resolveInlineQueryResult} (ADR-0024). Retained as a
  * thin throw-based adapter for callers that have not migrated yet.
  */
-export async function resolveAnonymousView(
-  input: AnonymousViewInput,
+export async function resolveInlineQuery(
+  input: InlineQueryInput,
 ): Promise<Store> {
-  const result = await resolveAnonymousViewResult(input);
+  const result = await resolveInlineQueryResult(input);
   if (result.isErr()) {
     throw new Error(result.error.message);
   }
   return result.value;
 }
-

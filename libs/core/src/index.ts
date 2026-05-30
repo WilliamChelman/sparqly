@@ -4,6 +4,7 @@ export * from './lib/engine';
 export * from './lib/glob-index';
 export * from './lib/sources';
 export * from './lib/views';
+export * from './lib/inline-query';
 export * from './lib/describe';
 export * from './lib/target';
 export * from './lib/diff';

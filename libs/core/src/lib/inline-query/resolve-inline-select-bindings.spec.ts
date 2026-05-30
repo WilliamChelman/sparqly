@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  resolveAnonymousSelectBindings,
-  resolveAnonymousSelectBindingsResult,
-} from './resolve-anonymous-select-bindings';
+  resolveInlineSelectBindings,
+  resolveInlineSelectBindingsResult,
+} from './resolve-inline-select-bindings';
 import { resolveSourceResult } from '../sources/resolve-source-result';
 import { parseSourceSpec } from '../sources/source-spec';
 import {
@@ -13,7 +13,7 @@ import {
   type FakeSparqlEndpoint,
 } from '../test/fake-sparql-endpoint';
 
-describe('resolveAnonymousSelectBindings', () => {
+describe('resolveInlineSelectBindings', () => {
   let dataDir: string;
   let cwdSandbox: string;
   let originalCwd: string;
@@ -41,7 +41,7 @@ describe('resolveAnonymousSelectBindings', () => {
         'ex:p2 ex:id "2" .',
       ].join('\n'),
     );
-    const result = await resolveAnonymousSelectBindings({
+    const result = await resolveInlineSelectBindings({
       source: { glob: a },
       query: 'PREFIX ex: <http://example.org/> SELECT ?id WHERE { ?p ex:id ?id }',
     });
@@ -62,7 +62,7 @@ describe('resolveAnonymousSelectBindings', () => {
         'ex:p2 ex:id "2" ; ex:status "closed" .',
       ].join('\n'),
     );
-    const result = await resolveAnonymousSelectBindings({
+    const result = await resolveInlineSelectBindings({
       source: { glob: a },
       query:
         'PREFIX ex: <http://example.org/> SELECT ?id ?status WHERE { ?p ex:id ?id ; ex:status ?status }',
@@ -86,7 +86,7 @@ describe('resolveAnonymousSelectBindings', () => {
         'ex:p3 ex:status "closed" .',
       ].join('\n'),
     );
-    const result = await resolveAnonymousSelectBindings({
+    const result = await resolveInlineSelectBindings({
       source: { glob: a },
       query:
         'PREFIX ex: <http://example.org/> SELECT ?status WHERE { ?p ex:status ?status }',
@@ -101,7 +101,7 @@ describe('resolveAnonymousSelectBindings', () => {
   });
 
   it('runs against an empty source upstream (executes whatever the query supplies, e.g. VALUES)', async () => {
-    const result = await resolveAnonymousSelectBindings({
+    const result = await resolveInlineSelectBindings({
       source: { id: 'sink', empty: true },
       query: 'SELECT ?x WHERE { VALUES ?x { "a" "b" } }',
     });
@@ -120,7 +120,7 @@ describe('resolveAnonymousSelectBindings', () => {
         'ex:drop ex:p ex:v .',
       ].join('\n'),
     );
-    const result = await resolveAnonymousSelectBindings({
+    const result = await resolveInlineSelectBindings({
       source: {
         id: 'kept',
         from: '@raw',
@@ -169,7 +169,7 @@ describe('resolveAnonymousSelectBindings', () => {
       const QUERY =
         'PREFIX ex: <http://example.org/> SELECT ?id ?status WHERE { ?p ex:id ?id ; ex:status ?status }';
 
-      const result = await resolveAnonymousSelectBindings({
+      const result = await resolveInlineSelectBindings({
         source: endpoint.url,
         query: QUERY,
       });
@@ -203,7 +203,7 @@ describe('resolveAnonymousSelectBindings', () => {
         };
       });
 
-      await resolveAnonymousSelectBindings({
+      await resolveInlineSelectBindings({
         source: {
           id: 'live',
           endpoint: endpoint.url,
@@ -224,7 +224,7 @@ describe('resolveAnonymousSelectBindings', () => {
       const url = endpoint.url;
 
       await expect(
-        resolveAnonymousSelectBindings({
+        resolveInlineSelectBindings({
           source: url,
           query: 'SELECT ?id WHERE { ?p ?q ?id }',
         }),
@@ -236,7 +236,7 @@ describe('resolveAnonymousSelectBindings', () => {
     const a = join(dataDir, 'a.ttl');
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
     await expect(
-      resolveAnonymousSelectBindings({
+      resolveInlineSelectBindings({
         source: { glob: a },
         query: 'ASK { ?s ?p ?o }',
       }),
@@ -251,7 +251,7 @@ describe('resolveAnonymousSelectBindings', () => {
     const a = join(dataDir, 'a.ttl');
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
     await expect(
-      resolveAnonymousSelectBindings({
+      resolveInlineSelectBindings({
         source: { glob: a },
         query: 'SELECT ?s WHERE { ?s ?p ?o }',
         queryFile: 'q.rq',
@@ -260,7 +260,7 @@ describe('resolveAnonymousSelectBindings', () => {
   });
 });
 
-describe('resolveAnonymousSelectBindingsResult', () => {
+describe('resolveInlineSelectBindingsResult', () => {
   let dataDir: string;
 
   beforeEach(async () => {
@@ -281,7 +281,7 @@ describe('resolveAnonymousSelectBindingsResult', () => {
         'ex:p2 ex:id "2" .',
       ].join('\n'),
     );
-    const result = await resolveAnonymousSelectBindingsResult({
+    const result = await resolveInlineSelectBindingsResult({
       source: { glob: a },
       query: 'PREFIX ex: <http://example.org/> SELECT ?id WHERE { ?p ex:id ?id }',
     });
@@ -292,7 +292,7 @@ describe('resolveAnonymousSelectBindingsResult', () => {
   });
 
   it('returns Result.err with view-validation when neither query nor queryFile is supplied', async () => {
-    const result = await resolveAnonymousSelectBindingsResult({
+    const result = await resolveInlineSelectBindingsResult({
       source: { glob: 'whatever.ttl' },
     });
     expect(result.isErr()).toBe(true);
@@ -301,7 +301,7 @@ describe('resolveAnonymousSelectBindingsResult', () => {
   });
 
   it('returns Result.err with view-validation when both query and queryFile are supplied', async () => {
-    const result = await resolveAnonymousSelectBindingsResult({
+    const result = await resolveInlineSelectBindingsResult({
       source: { glob: 'whatever.ttl' },
       query: 'SELECT ?s WHERE { ?s ?p ?o }',
       queryFile: 'q.rq',
@@ -312,7 +312,7 @@ describe('resolveAnonymousSelectBindingsResult', () => {
   });
 
   it('returns Result.err with view-validation when the upstream is a `@id` reference', async () => {
-    const result = await resolveAnonymousSelectBindingsResult({
+    const result = await resolveInlineSelectBindingsResult({
       source: '@some-id',
       query: 'SELECT ?s WHERE { ?s ?p ?o }',
     });
@@ -324,7 +324,7 @@ describe('resolveAnonymousSelectBindingsResult', () => {
   it('returns Result.err with view-validation when the query is ASK/DESCRIBE/UPDATE', async () => {
     const a = join(dataDir, 'a.ttl');
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
-    const result = await resolveAnonymousSelectBindingsResult({
+    const result = await resolveInlineSelectBindingsResult({
       source: { glob: a },
       query: 'ASK { ?s ?p ?o }',
     });
@@ -334,7 +334,7 @@ describe('resolveAnonymousSelectBindingsResult', () => {
   });
 
   /**
-   * Tabular diff (and any other anonymous-select-bindings consumer) cannot run
+   * Tabular diff (and any other inline-select-bindings consumer) cannot run
    * over a `storage: disk` glob: Comunica's bindings iterator does not stream
    * from a disk-backed RDF.Source the way it does an in-memory Store — the
    * value of the disk tier (ADR-0041) is that the quads never enter the V8
@@ -358,7 +358,7 @@ describe('resolveAnonymousSelectBindingsResult', () => {
         '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
       );
 
-      const result = await resolveAnonymousSelectBindingsResult({
+      const result = await resolveInlineSelectBindingsResult({
         source: { id: 'disk-data', glob: a, storage: 'disk' },
         query: 'PREFIX ex: <http://example.org/> SELECT ?s WHERE { ?s ?p ?o }',
       });

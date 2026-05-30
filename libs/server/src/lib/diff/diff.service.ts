@@ -6,8 +6,8 @@ import {
   extractAnnotationPredicates,
   formatRawPassThroughRejection,
   groupRdfDiffByEntity,
-  resolveAnonymousSelectBindings,
-  resolveAnonymousView,
+  resolveInlineSelectBindings,
+  resolveInlineQuery,
   storageTier,
   tabularDiff,
   viewChainPassThroughSource,
@@ -246,8 +246,8 @@ function resolveGraphSide(
 ): ResultAsyncT<GraphSideOk, DiffError> {
   return safeTry(async function* () {
     if (inlineQuery !== undefined) {
-      const upstream = yield* anonymousUpstream(target, side).safeUnwrap();
-      const store = yield* resolveAnonymousViewAsync(upstream, inlineQuery, side).safeUnwrap();
+      const upstream = yield* inlineQueryUpstream(target, side).safeUnwrap();
+      const store = yield* resolveInlineQueryAsync(upstream, inlineQuery, side).safeUnwrap();
       return ok<GraphSideOk, DiffError>({
         store,
         annotationPredicates: extractAnnotationPredicates(undefined),
@@ -296,13 +296,13 @@ function resolveGraphSide(
   });
 }
 
-function resolveAnonymousViewAsync(
+function resolveInlineQueryAsync(
   upstream: SourceSpecInput,
   query: string,
   side: 'left' | 'right',
 ): ResultAsyncT<Store, DiffError> {
   return ResultAsync.fromPromise(
-    resolveAnonymousView({ source: upstream, query }),
+    resolveInlineQuery({ source: upstream, query }),
     (raw): DiffError => ({
       kind: 'anonymous-view-execution',
       side,
@@ -340,8 +340,8 @@ async function runTabular(args: RunTabularArgs): Promise<DiffResponse> {
     };
   }
 
-  const leftUpstream = anonymousUpstream(args.leftTarget, 'left');
-  const rightUpstream = anonymousUpstream(args.rightTarget, 'right');
+  const leftUpstream = inlineQueryUpstream(args.leftTarget, 'left');
+  const rightUpstream = inlineQueryUpstream(args.rightTarget, 'right');
   if (leftUpstream.isErr() || rightUpstream.isErr()) {
     const errors: DiffErrorResponse['errors'] = {};
     if (leftUpstream.isErr()) errors.left = leftUpstream.error;
@@ -400,7 +400,7 @@ function firstBlankNodeColumn(
   return undefined;
 }
 
-function anonymousUpstream(
+function inlineQueryUpstream(
   target: ParsedSource,
   side: 'left' | 'right',
 ): Result<SourceSpecInput, DiffError> {
@@ -480,7 +480,7 @@ function resolveTabularSide(
   side: 'left' | 'right',
 ): ResultAsyncT<{ rows: TabularRow[] }, DiffError> {
   return ResultAsync.fromPromise(
-    resolveAnonymousSelectBindings({
+    resolveInlineSelectBindings({
       source: upstream,
       query,
       registry: [...registry],

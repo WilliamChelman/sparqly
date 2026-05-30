@@ -6,7 +6,7 @@ import {
   extractAnnotationPredicates,
   formatRawPassThroughRejection,
   parseSourceSpecs,
-  resolveAnonymousView,
+  resolveInlineQuery,
   resolveSource,
   selectTarget,
   storageTier,
@@ -49,7 +49,7 @@ export function resolveDiffSide(
     : applyAtOverride(target, positionalRef);
 }
 
-export function anonymousUpstream(
+export function inlineQueryUpstream(
   target: ParsedSource,
   side: 'left' | 'right',
 ): SourceSpecInput {
@@ -72,8 +72,8 @@ export async function resolveSide(
   registry?: ReadonlyArray<ParsedSource>,
 ): Promise<SideResolved> {
   if (inlineQuery !== undefined) {
-    const upstream = anonymousUpstream(target, side);
-    const store = await resolveAnonymousView({
+    const upstream = inlineQueryUpstream(target, side);
+    const store = await resolveInlineQuery({
       source: upstream,
       query: inlineQuery,
       logger,

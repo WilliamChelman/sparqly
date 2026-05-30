@@ -3,18 +3,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  resolveAnonymousView,
-  resolveAnonymousViewResult,
-} from './anonymous-view-builder';
+  resolveInlineQuery,
+  resolveInlineQueryResult,
+} from './resolve-inline-query';
 
-describe('resolveAnonymousView — cache bypass (regression for #83)', () => {
+describe('resolveInlineQuery — cache bypass (regression for #83)', () => {
   let dataDir: string;
   let cwdSandbox: string;
   let originalCwd: string;
 
   beforeEach(async () => {
-    dataDir = await mkdtemp(join(tmpdir(), 'sparqly-anon-data-'));
-    cwdSandbox = await mkdtemp(join(tmpdir(), 'sparqly-anon-cwd-'));
+    dataDir = await mkdtemp(join(tmpdir(), 'sparqly-inline-data-'));
+    cwdSandbox = await mkdtemp(join(tmpdir(), 'sparqly-inline-cwd-'));
     originalCwd = process.cwd();
     process.chdir(cwdSandbox);
   });
@@ -35,7 +35,7 @@ describe('resolveAnonymousView — cache bypass (regression for #83)', () => {
         'ex:drop ex:p ex:v2 .',
       ].join('\n'),
     );
-    const store = await resolveAnonymousView({
+    const store = await resolveInlineQuery({
       source: { glob: a },
       query:
         'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }',
@@ -49,7 +49,7 @@ describe('resolveAnonymousView — cache bypass (regression for #83)', () => {
   it('does not create a .sparqly/cache directory under cwd', async () => {
     const a = join(dataDir, 'a.ttl');
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
-    await resolveAnonymousView({
+    await resolveInlineQuery({
       source: { glob: a },
       query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
     });
@@ -57,24 +57,24 @@ describe('resolveAnonymousView — cache bypass (regression for #83)', () => {
   });
 });
 
-describe('resolveAnonymousViewResult', () => {
+describe('resolveInlineQueryResult', () => {
   let dataDir: string;
 
   beforeEach(async () => {
-    dataDir = await mkdtemp(join(tmpdir(), 'sparqly-anon-result-data-'));
+    dataDir = await mkdtemp(join(tmpdir(), 'sparqly-inline-result-data-'));
   });
 
   afterEach(async () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  it('returns Result.ok with the scoped Store for a valid anonymous view', async () => {
+  it('returns Result.ok with the scoped Store for a valid inline query', async () => {
     const a = join(dataDir, 'a.ttl');
     await writeFile(
       a,
       '@prefix ex: <http://example.org/> . ex:keep ex:p ex:v .',
     );
-    const result = await resolveAnonymousViewResult({
+    const result = await resolveInlineQueryResult({
       source: { glob: a },
       query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
     });
@@ -84,7 +84,7 @@ describe('resolveAnonymousViewResult', () => {
   });
 
   it('returns Result.err with a view-validation variant when neither query nor queryFile is supplied', async () => {
-    const result = await resolveAnonymousViewResult({
+    const result = await resolveInlineQueryResult({
       source: { glob: 'whatever.ttl' },
     });
     expect(result.isErr()).toBe(true);
@@ -93,7 +93,7 @@ describe('resolveAnonymousViewResult', () => {
   });
 
   it('returns Result.err with a view-validation variant when both query and queryFile are supplied', async () => {
-    const result = await resolveAnonymousViewResult({
+    const result = await resolveInlineQueryResult({
       source: { glob: 'whatever.ttl' },
       query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       queryFile: 'whatever.rq',
@@ -104,7 +104,7 @@ describe('resolveAnonymousViewResult', () => {
   });
 
   it('returns Result.err with a view-validation variant when the upstream is a `@id` reference', async () => {
-    const result = await resolveAnonymousViewResult({
+    const result = await resolveInlineQueryResult({
       source: '@some-id',
       query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
     });
