@@ -38,6 +38,7 @@ interface ServeConfig {
   savedQueriesPath?: string;
   indexCacheDir?: string;
   indexConcurrency?: number;
+  queryConcurrency?: number;
   verbose?: boolean;
   quiet?: boolean;
   logFormat?: 'text' | 'json';
@@ -144,6 +145,11 @@ const indexConcurrencyField: FieldDescriptor = {
   schema: z.number().int().positive(),
 };
 
+const queryConcurrencyField: FieldDescriptor = {
+  key: 'queryConcurrency',
+  schema: z.number().int().positive(),
+};
+
 export const serveSpec: CommandSpec<ServeConfig> = {
   name: 'serve',
   description:
@@ -165,6 +171,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     savedQueriesPathField,
     indexCacheDirField,
     indexConcurrencyField,
+    queryConcurrencyField,
     ...verbosityFieldsFor('serve'),
   ],
   positionals: [{ field: 'source', name: 'glob' }],
@@ -223,6 +230,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       savedQueriesPath: config.savedQueriesPath,
       indexCacheDir: config.indexCacheDir,
       indexConcurrency: config.indexConcurrency,
+      queryConcurrency: config.queryConcurrency,
       spawnIndexBuild: makeSpawnIndexBuild({ cliEntry }),
       spawnQueryWorker: makeSpawnQueryWorker({ cliEntry }),
       logger: boundaryLog,

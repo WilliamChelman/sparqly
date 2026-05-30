@@ -179,6 +179,7 @@ function projectFileLayer(
     'describe',
     'savedQueries',
     'index',
+    'query',
   ] as const) {
     const block = data[blockName];
     if (!block || typeof block !== 'object' || Array.isArray(block)) continue;
@@ -191,7 +192,9 @@ function projectFileLayer(
             ? 'indexCacheDir'
             : blockName === 'index' && k === 'concurrency'
               ? 'indexConcurrency'
-              : k;
+              : blockName === 'query' && k === 'concurrency'
+                ? 'queryConcurrency'
+                : k;
       if (fieldKeys.has(fieldKey)) out[fieldKey] = v;
     }
   }
