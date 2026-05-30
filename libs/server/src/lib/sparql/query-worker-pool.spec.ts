@@ -487,6 +487,41 @@ describe('QueryWorkerPool — load lifecycle', () => {
     await pool.shutdown();
   });
 
+  it('routes invalidate to the worker that owns the source', async () => {
+    const loadOk = (request: WorkerRequest, reply: (m: WorkerMessage) => void): void => {
+      if (request.type === 'load') {
+        reply({
+          type: 'load-success',
+          sourceId: request.sourceId,
+          quads: 1,
+          loadMs: 1,
+          files: [],
+        });
+      }
+    };
+    const { spawn, workers } = recordingSpawn(loadOk);
+    const pool = new QueryWorkerPool({ spawn });
+
+    // Materialize the owning worker by loading the source first.
+    await pool.ensureLoaded(ALPHA, RESOLVE_OPTS);
+
+    pool.invalidate('alpha');
+
+    expect(workers[0].sent).toContainEqual({ type: 'invalidate', sourceId: 'alpha' });
+    await pool.shutdown();
+  });
+
+  it('does not spawn a worker to invalidate a never-touched source', async () => {
+    const { spawn, workers } = recordingSpawn(() => undefined);
+    const pool = new QueryWorkerPool({ spawn });
+
+    // Nothing is resident anywhere — invalidate is a no-op, not a spawn.
+    pool.invalidate('ghost');
+
+    expect(workers).toHaveLength(0);
+    await pool.shutdown();
+  });
+
   it('coalesces concurrent ensureLoaded for the same source onto one load', async () => {
     let loadCount = 0;
     const worker = new FakeWorker((request, reply) => {

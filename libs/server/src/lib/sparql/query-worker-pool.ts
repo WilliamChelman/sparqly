@@ -214,6 +214,16 @@ export class QueryWorkerPool {
     return new ResultAsync(promise);
   }
 
+  /** Drops the resident store for `sourceId` on the worker that owns it, so the
+   * next query rebuilds it from the worker's retained recipe (ADR-0050, #391).
+   * The watcher and the Reload/Unload admin actions post this when a source's
+   * backing files change. A no-op if the owning worker was never materialized —
+   * nothing is resident, so there is nothing to drop (and no worker to spawn). */
+  invalidate(sourceId: string): void {
+    const index = this.assignment.assign(sourceId);
+    this.workers.get(index)?.postMessage({ type: 'invalidate', sourceId });
+  }
+
   query(
     sourceId: string,
     query: string,

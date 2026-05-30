@@ -324,6 +324,42 @@ describe('runQueryWorker — LRU residency (ADR-0050, #387)', () => {
     expect(buildCount).toBe(1);
   });
 
+  it('drops a resident store on invalidate and rebuilds it from the recipe on the next query', async () => {
+    const { build, counts } = countingBuilder(2);
+    const port = new FakePort();
+    // High default budget — the drop is the invalidate, never an eviction.
+    runQueryWorker(port, { buildStore: build });
+
+    port.send(loadReq('a'));
+    await port.next();
+    expect(counts.get('a')).toBe(1);
+
+    // Invalidate (e.g. a `--watch` edit or Reload reached the owning worker):
+    // the resident store is dropped, but the recipe is retained.
+    port.send({ type: 'invalidate', sourceId: 'a' });
+
+    // The next query finds no resident store and rebuilds from the recipe,
+    // transparently, without the main thread re-sending a load.
+    port.send(queryReq(1, 'a'));
+    const result = (await port.next()) as QueryResultMessage;
+    expect(result.requestId).toBe(1);
+    expect(result.ok?.body).toBe('body:a');
+    expect(counts.get('a')).toBe(2);
+  });
+
+  it('ignores an invalidate for a source it has never loaded', async () => {
+    const { build, counts } = countingBuilder(2);
+    const port = new FakePort();
+    runQueryWorker(port, { buildStore: build });
+
+    // No recipe and nothing resident — a stray invalidate is a harmless no-op.
+    port.send({ type: 'invalidate', sourceId: 'ghost' });
+
+    port.send(loadReq('a'));
+    await port.next();
+    expect(counts.get('a')).toBe(1);
+  });
+
   it('never evicts a small registry under the default budget (no behavior change)', async () => {
     const { build, counts } = countingBuilder(2);
     const port = new FakePort();

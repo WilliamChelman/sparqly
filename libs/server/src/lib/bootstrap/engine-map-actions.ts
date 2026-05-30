@@ -1,8 +1,85 @@
-import { err, ok, type Result } from 'neverthrow';
-import type { QueryExecutor, SourceError } from 'core';
+import { err, ok, type Result, type ResultAsync } from 'neverthrow';
+import {
+  resolveSourceResult,
+  type ParsedSource,
+  type QueryExecutor,
+  type SourceError,
+} from 'core';
+import type { SparqlyLogger } from 'common';
 import { isDiskBacked } from './disk-backed-index';
-import type { Entry, LoadedEntry } from './engine-map-types';
+import type { Entry, LoadedEntry, LoadedSources } from './engine-map-types';
+import type { QueryWorkerPool } from '../sparql/query-worker-pool';
 import type { SourceStateEmitter } from '../sources/source-state-emitter';
+
+export interface FreshResolveDeps {
+  registry: ReadonlyArray<ParsedSource>;
+  logger: SparqlyLogger | undefined;
+  configDir: string;
+  sparqlyVersion: string | undefined;
+  indexCacheDir: string | undefined;
+}
+
+/**
+ * ADR-0050: a worker-owned store isn't on the main heap, so callers that need
+ * the actual store (e.g. `diff`) resolve it fresh on main rather than reusing
+ * the worker's resident copy. Projects the resolved sources into the
+ * {@link LoadedSources} shape `ensureSources` returns.
+ */
+export function resolveFreshWorkerSources(
+  source: ParsedSource,
+  deps: FreshResolveDeps,
+): ResultAsync<LoadedSources, SourceError> {
+  return resolveSourceResult(source, deps).map((sources) =>
+    sources.mode === 'materialized'
+      ? {
+          mode: 'materialized',
+          store: sources.store,
+          sourceRecords: sources.sourceRecords,
+        }
+      : sources.mode === 'pass-through'
+        ? { mode: 'pass-through', endpoint: sources.endpoint }
+        : { mode: 'materialized-remote' },
+  );
+}
+
+/**
+ * ADR-0050 (#391): drop the worker-resident store for a watched in-memory source
+ * so the next query rebuilds it from the worker's recipe with fresh on-disk
+ * content. Returns `true` only when the worker owns this source *and* it is
+ * currently loaded — the `--watch` runner then skips its legacy main-thread
+ * rebuild. Returns `false` otherwise (no query pool, endpoint/disk-backed, or an
+ * un-touched source whose resident store there is nothing to drop), preserving
+ * the ADR-0031 laziness.
+ */
+export function invalidateWorkerResident(
+  entry: Entry | undefined,
+  pool: QueryWorkerPool | undefined,
+): boolean {
+  if (entry === undefined || pool === undefined) return false;
+  if (entry.source.kind === 'endpoint' || isDiskBacked(entry.source)) return false;
+  if (entry.current === undefined) return false;
+  pool.invalidate(entry.source.id as string);
+  return true;
+}
+
+/**
+ * ADR-0050: a reclaimed worker (nuclear cancel / OOM respawn) lost its stores —
+ * drop each orphaned source's memo so the next touch rebuilds it on the respawn.
+ */
+export function resetWorkerResidency(
+  entries: Map<string, Entry>,
+  pool: QueryWorkerPool | undefined,
+  sourceIds: ReadonlyArray<string>,
+): void {
+  if (pool === undefined) return;
+  for (const id of sourceIds) {
+    const entry = entries.get(id);
+    if (entry !== undefined && entry.source.kind !== 'endpoint') {
+      entry.loaded = undefined;
+      entry.current = undefined;
+    }
+  }
+}
 
 /**
  * Atomic-swap rebuild of an in-memory entry's materialized store. On success

@@ -34,6 +34,16 @@ export class ResidentSet<T extends { quads: number }> {
     return this.entries.has(id);
   }
 
+  /** Drops `id` from residency (ADR-0050 invalidation, #391). Unconditional,
+   * unlike LRU eviction: it ignores the budget *and* the pin — an in-flight
+   * query already holds its own reference to the store it resolved, so dropping
+   * the map entry can't disrupt it, while a pinned store left resident would
+   * serve stale content to the next query after the edit. Returns whether an
+   * entry was removed. */
+  delete(id: string): boolean {
+    return this.entries.delete(id);
+  }
+
   /** Pins `id` so it survives eviction while a query runs against it. */
   pin(id: string): void {
     this.pins.set(id, (this.pins.get(id) ?? 0) + 1);

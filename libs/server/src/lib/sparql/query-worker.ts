@@ -84,6 +84,11 @@ export function runQueryWorker(
     } else if (request.type === 'cancel') {
       // No-op for an unknown or already-settled query.
       inFlight.get(request.requestId)?.abort();
+    } else if (request.type === 'invalidate') {
+      // Drop the resident store so the next query rebuilds from the retained
+      // recipe with fresh on-disk content (ADR-0050, #391). A no-op when nothing
+      // is resident (already evicted, or never loaded).
+      resident.delete(request.sourceId);
     } else {
       void handleQuery(request);
     }
