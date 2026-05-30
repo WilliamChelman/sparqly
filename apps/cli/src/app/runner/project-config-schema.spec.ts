@@ -50,6 +50,27 @@ describe('validateProjectConfig — query block', () => {
     }
   });
 
+  it('accepts a query block with a per-worker resident-quad budget', () => {
+    const result = validateProjectConfig({
+      sources: ['data/*.ttl'],
+      query: { maxResidentQuads: 1_000_000 },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.query?.maxResidentQuads).toBe(1_000_000);
+    }
+  });
+
+  it('rejects a non-positive-integer query maxResidentQuads', () => {
+    for (const maxResidentQuads of [0, -1, 2.5]) {
+      const result = validateProjectConfig({
+        sources: ['data/*.ttl'],
+        query: { maxResidentQuads },
+      });
+      expect(result.ok).toBe(false);
+    }
+  });
+
   it('accepts an empty query block', () => {
     const result = validateProjectConfig({
       sources: ['data/*.ttl'],

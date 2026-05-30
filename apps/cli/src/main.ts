@@ -11,9 +11,13 @@ import { registerSpec } from './app/runner/runner';
 // the case, host the query worker loop instead of the commander program.
 function maybeRunAsQueryWorker(): boolean {
   if (isMainThread) return false;
-  const role = (workerData as { sparqlyRole?: string } | undefined)?.sparqlyRole;
-  if (role !== 'query-worker' || parentPort === null) return false;
-  runQueryWorker(parentPort as unknown as WorkerPort);
+  const data = workerData as
+    | { sparqlyRole?: string; maxResidentQuads?: number }
+    | undefined;
+  if (data?.sparqlyRole !== 'query-worker' || parentPort === null) return false;
+  runQueryWorker(parentPort as unknown as WorkerPort, {
+    maxResidentQuads: data.maxResidentQuads,
+  });
   return true;
 }
 
