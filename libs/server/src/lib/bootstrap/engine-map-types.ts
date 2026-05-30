@@ -76,6 +76,7 @@ export function unloadedEntry(source: ParsedSource): Entry {
     current: undefined,
     staleReasonSeen: undefined,
     lastError: undefined,
+    loadEpoch: 0,
   };
 }
 
@@ -118,4 +119,8 @@ export interface Entry {
   // Sticky for disk-backed entries: while set, `ensureDiskBacked` skips
   // re-spawning a build — only Retry clears it. Observational for in-memory.
   lastError: SourceRowError | undefined;
+  // Bumped by every Unload (ADR-0050). A worker load captures it before its
+  // round-trip and discards its result if the epoch advanced meanwhile, so a
+  // reload that completes *after* an Unload can't resurrect the cleared entry.
+  loadEpoch: number;
 }

@@ -477,6 +477,69 @@ describe('EngineMap — worker routing (ADR-0050)', () => {
     }
   });
 
+  it('discards a reload that completes after an Unload — the late load-success must not resurrect the unloaded entry', async () => {
+    const registry = parseSourceSpecs([{ id: 'alpha', glob: join(dir, '*.ttl') }]);
+    let loadCount = 0;
+    let releaseReload: (() => void) | undefined;
+    // The initial ensure's load answers immediately; the reload's rebuild is
+    // held open so an Unload can land while that worker round-trip is still in
+    // flight — the exact ordering that wedges the Sources page on `loaded`.
+    const worker = new FakeWorker((request, reply) => {
+      if (request.type === 'load') {
+        loadCount += 1;
+        const send = (): void =>
+          reply({
+            type: 'load-success',
+            sourceId: request.sourceId,
+            quads: 5,
+            loadMs: 3,
+            files: ['a.ttl'],
+          });
+        if (loadCount === 1) send();
+        else releaseReload = send;
+      } else if (request.type === 'query') {
+        reply({ type: 'query-result', requestId: request.requestId, ok: QUERY_OK });
+      }
+      // `invalidate` is fire-and-forget — nothing to reply.
+    });
+    const pool = new QueryWorkerPool({ spawn: () => worker });
+    const emitter = new SourceStateEmitter();
+    const events: SourceTransition[] = [];
+    emitter.subscribe((e) => events.push(e));
+
+    const map = await EngineMap.create(registry, {
+      queryPool: pool,
+      sourceStateEmitter: emitter,
+    });
+    try {
+      await map.ensure('alpha');
+      expect((await map.readState('alpha')).state).toBe('loaded');
+
+      // Reload's worker rebuild is now in flight (held open by the fake worker).
+      const reloadP = map.reload('alpha');
+      await new Promise((r) => setImmediate(r));
+      expect(releaseReload).toBeDefined();
+
+      // Unload lands mid-reload: clears the main mirror and drops residency.
+      await map.unload('alpha');
+      expect((await map.readState('alpha')).state).toBe('not-loaded');
+
+      // The held reload now completes. It must NOT re-populate the entry.
+      releaseReload?.();
+      await reloadP;
+
+      expect(await map.readState('alpha')).toEqual({
+        mode: 'in-memory',
+        state: 'not-loaded',
+      });
+      // The last lifecycle event the Sources page sees is the unload — not a
+      // stale load-success that would flip the row back to `loaded`.
+      expect(events.at(-1)?.kind).toBe('unload');
+    } finally {
+      await map.close();
+    }
+  });
+
   it('Reload returns the entry to loaded; Unload returns it to not-loaded', async () => {
     const registry = parseSourceSpecs([{ id: 'alpha', glob: join(dir, '*.ttl') }]);
     const worker = loadingWorker();
