@@ -2,11 +2,11 @@
 
 Project-stable settings live in a single `sparqly.config.{yaml,yml,json}` at the project root. The file declares the **source registry** plus settings that are stable across many invocations — per-invocation values (output paths, ad-hoc queries, format selection, comparison targets) belong on the CLI, not in the file.
 
-This page covers the file shape, discovery, the five top-level blocks, environment variables, and `@id` resolution at the CLI. The source-spec reference (per-kind schema, transforms, view caching) lives in [`sources.md`](./sources.md).
+This page covers the file shape, discovery, the top-level blocks, environment variables, and `@id` resolution at the CLI. The source-spec reference (per-kind schema, transforms, view caching) lives in [`sources.md`](./sources.md).
 
 ## File layout
 
-The schema is strict: only five top-level keys are accepted, and unknown keys produce errors that name the destination.
+The schema is strict: only a fixed set of top-level keys is accepted, and unknown keys produce errors that name the destination.
 
 ```yaml
 # sparqly.config.yaml
@@ -16,6 +16,7 @@ format: # format-command settings
 cache: # cache-block settings
 context: # shared IRI-display config (prefixes, base)
 describe: # describe-page defaults (serve's webapp)
+index: # disk-backed glob-index settings (serve)
 ```
 
 `context:` is the project-wide carve-out: every IRI-rendering command (`query`, `format`, `diff`, `serve`'s webapp) reads it. The other blocks follow the "block name = command name" convention: `serve` reads `sources` + `serve` + `context` + `describe`; `format` reads `sources` + `format` + `context`; `query` / `diff` read `sources` + `context`; `hash` reads `sources`; `cache list` / `cache clear` read `cache`. `query` has no command-scoped block — every flag it has is per-invocation. The whole-file schema design lives in [ADR-0010](./adr/0010-project-config-scope-layout-and-discovery.md); the `context:` carve-out is [ADR-0012](./adr/0012-context-block-shared-display-config.md).
@@ -123,6 +124,23 @@ cache:
 | `dir` | string | Directory holding view-cache entries. Override per-view with `cache.cacheDir` on the view. |
 
 `SPARQLY_CACHE_DIR` overrides this at runtime (useful for switching between CI and dev cache locations).
+
+## `index:`
+
+Disk-backed glob-index settings. Consumed by `serve`, which builds and refreshes the on-disk quad indexes for `glob` sources in isolated child processes (see [ADR-0042](./adr/0042-disk-backed-index-build-in-child-process.md)).
+
+```yaml
+index:
+  dir: .sparqly/index
+  concurrency: 2
+```
+
+| Field         | Type    | Meaning                                                                                                                       |
+| ------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `dir`         | string  | Glob-index cache root. Relative paths resolve against the config-file directory. Defaults to `<configDir>/.sparqly/index/`.   |
+| `concurrency` | integer | Maximum number of parallel `sparqly index` child builds `serve` runs at once (the `IndexBuildPool` size). Default `2`.        |
+
+All fields are optional.
 
 ## Environment variables
 

@@ -81,6 +81,13 @@ function narrowLoadedSources(sources: LoadedSources): LoadedLikeSources {
       'loadSideSources: unexpected disk-backed mode after raw-target pre-check',
     );
   }
+  // ADR-0050: `ensureSources` fresh-resolves worker-owned stores on main, so a
+  // `materialized-remote` placeholder never reaches diff. Guard defensively.
+  if (sources.mode === 'materialized-remote') {
+    throw new Error(
+      'loadSideSources: unexpected materialized-remote mode — store should resolve on main',
+    );
+  }
   return sources;
 }
 

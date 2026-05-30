@@ -1,7 +1,7 @@
 import type {
   ParsedEndpointSource,
   ParsedSource,
-  QueryEngine,
+  QueryExecutor,
   SourceError,
   SourceRecordSidecar,
 } from 'core';
@@ -13,6 +13,9 @@ import type { StoreRef } from './tokens';
 
 export type LoadedSources =
   | { mode: 'materialized'; store: Store; sourceRecords?: SourceRecordSidecar }
+  // ADR-0050: the materialized store lives in the query worker, not the main
+  // heap. Callers needing the store on main (diff) resolve it fresh instead.
+  | { mode: 'materialized-remote' }
   | { mode: 'pass-through'; endpoint: ParsedEndpointSource }
   | {
       mode: 'disk-backed';
@@ -51,7 +54,7 @@ export function spawnIndexBuildUnavailable(): never {
 }
 
 export interface LoadedEntry {
-  engine: QueryEngine;
+  engine: QueryExecutor;
   storeRef: StoreRef | undefined;
   sources: LoadedSources;
 }
@@ -61,6 +64,9 @@ export interface Entry {
   files: string[];
   loadedAt: number | undefined;
   loadMs: number | undefined;
+  // Worker-owned store's quad count, mirrored on load-success (ADR-0050). For
+  // main-heap stores the count comes from `current.storeRef` instead.
+  quads: number | undefined;
   loaded: Promise<Result<LoadedEntry, SourceError>> | undefined;
   disk: Promise<Result<LoadedEntry, SourceError | IndexingError>> | undefined;
   closeIndex: (() => Promise<void>) | undefined;

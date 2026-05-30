@@ -22,6 +22,8 @@ import {
 import { DEFAULT_DESCRIBE_CONFIG, type DescribeConfig } from '../describe';
 import { EngineMap } from './engine-map';
 import type { SpawnIndexBuild } from './index-build-pool';
+import { QueryWorkerPool } from '../sparql/query-worker-pool';
+import type { QueryWorkerHandle } from '../sparql/query-worker-protocol';
 import { MetaChildrenCache } from './meta-children-cache';
 import { maybeStartWatcher } from './multi-source-watcher';
 import { RequestLoggingInterceptor } from './request-logging.interceptor';
@@ -62,6 +64,12 @@ export interface CreateServerOptions {
   /** Refuses sidecar writes (405) and gates admin actions. */
   readOnly?: boolean;
   spawnIndexBuild?: SpawnIndexBuild;
+  /**
+   * Spawns the in-memory query worker (ADR-0050). When provided, in-memory
+   * materialized queries run off the main event loop. Omitting it keeps them on
+   * the main thread — the default for library embedders and tests.
+   */
+  spawnQueryWorker?: () => QueryWorkerHandle;
   /** Defaults to 2. */
   indexConcurrency?: number;
   /** Defaults to 15_000. */
@@ -110,6 +118,9 @@ export async function createServer(
         error: error instanceof Error ? error.message : String(error),
       }),
   });
+  const queryPool = options.spawnQueryWorker
+    ? new QueryWorkerPool({ spawn: options.spawnQueryWorker })
+    : undefined;
   const engineMap = await EngineMap.create(scope.servedRegistry, {
     resolutionRegistry: scope.resolutionRegistry,
     logger: boundaryLogger,
@@ -118,6 +129,7 @@ export async function createServer(
     spawnIndexBuild: options.spawnIndexBuild,
     indexConcurrency: options.indexConcurrency,
     sourceStateEmitter,
+    queryPool,
   });
   const sourceStateBroker = new SourceStateBroker(
     engineMap,

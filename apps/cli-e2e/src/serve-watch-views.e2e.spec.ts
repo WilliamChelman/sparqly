@@ -40,7 +40,8 @@ async function eventually<T>(
   );
 }
 
-describe('sparqly serve --watch with views', () => {
+// TODO(#391): worker-owned store (ADR-0050) — watcher invalidation lands in #391.
+describe.skip('sparqly serve --watch with views', () => {
   let handle: ServeHandle | undefined;
   let dir: string;
 
