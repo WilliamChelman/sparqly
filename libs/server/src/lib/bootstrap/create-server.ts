@@ -239,6 +239,10 @@ export async function createServer(
         debounceMs: options.watchDebounceMs ?? DEFAULT_DEBOUNCE_MS,
         pollMs: options.watchPollMs ?? DEFAULT_POLL_MS,
         snippetAllowList,
+        // Same cheap walkers used to seed the allow-list at boot — the watcher
+        // re-walks with them to keep it in sync on FS changes (#391).
+        walkGlob: defaultGlobWalker,
+        walkGitGlob: walkGitGlobForSnippets,
         metaChildrenCache,
       })
     : undefined;
