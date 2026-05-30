@@ -70,7 +70,7 @@ The resolution path that runs the user's query against the source's own store â€
 _Avoid_: "pushdown", "federation"
 
 **Lazy materialization** (`serve`):
-The contract that a **Served registry** entry's store is built only on the first request that touches it, then memoized for the life of the process. Speaks to _when_ the store is built, not _how_.
+The contract that a **Served registry** entry's store is built only on the first request that touches it, then memoized for the life of the process. The store for an in-memory entry is built and owned by the **query worker** (ADR-0050), off the main event loop; the main thread keeps only a state mirror. Speaks to _when_ the store is built, not _how_.
 _Avoid_: "lazy loading", "on-demand resolution", "deferred boot"
 
 **Glob index**:

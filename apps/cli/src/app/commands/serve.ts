@@ -5,6 +5,7 @@ import { createServer } from 'server';
 import { configureLogger } from '../logging';
 import { printServeSplash } from './serve-splash';
 import { makeSpawnIndexBuild } from './serve-index-spawn';
+import { makeSpawnQueryWorker } from './serve-query-worker-spawn';
 import { makeShutdownHandler } from './serve-shutdown';
 import type { FieldDescriptor } from '../runner/fields/field';
 import {
@@ -223,6 +224,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       indexCacheDir: config.indexCacheDir,
       indexConcurrency: config.indexConcurrency,
       spawnIndexBuild: makeSpawnIndexBuild({ cliEntry }),
+      spawnQueryWorker: makeSpawnQueryWorker({ cliEntry }),
       logger: boundaryLog,
     });
 

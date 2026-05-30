@@ -57,6 +57,20 @@ export interface ExecuteResult {
   contentType: string;
 }
 
+/**
+ * The query surface the HTTP boundary depends on. {@link QueryEngine} satisfies
+ * it directly (in-process), and ADR-0050's worker-backed executor satisfies it
+ * by message-passing to a worker thread — so the controller stays thread-unaware
+ * and no threading logic leaks into `libs/core`.
+ */
+export interface QueryExecutor {
+  execute(query: string, options?: ExecuteOptions): Promise<ExecuteResult>;
+  executeResult(
+    query: string,
+    options?: ExecuteOptions,
+  ): ResultAsync<ExecuteResult, QueryExecutionError | EndpointFetchError>;
+}
+
 // Materialized RDF source for Comunica's `sources: [...]` context — an
 // RDF/JS source (in-memory `n3.Store` or a disk-backed quadstore index) or
 // a thunk that resolves one lazily.
@@ -83,7 +97,7 @@ export interface QueryEngineOptions {
   unionDefaultGraph?: boolean;
 }
 
-export class QueryEngine {
+export class QueryEngine implements QueryExecutor {
   private readonly engine = new ComunicaQueryEngine();
   private readonly resolveContext: () => Record<string, unknown>;
   private readonly endpointSource: ParsedEndpointSource | undefined;

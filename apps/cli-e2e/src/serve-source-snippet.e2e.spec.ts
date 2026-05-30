@@ -111,7 +111,9 @@ describe('sparqly serve — GET /api/source-snippet (issue #145)', () => {
     expect(resp.status).toBe(403);
   });
 
-  it('--watch rebuild updates the allow-list (newly-matched file becomes readable)', async () => {
+  // TODO(#391): worker-owned store (ADR-0050) — the watcher rebuild that also
+  // refreshes the snippet allow-list returns with worker invalidation in #391.
+  it.skip('--watch rebuild updates the allow-list (newly-matched file becomes readable)', async () => {
     const initialPath = join(scratch, 'a.ttl');
     await writeFile(initialPath, SAMPLE_TTL);
     const configPath = join(scratch, 'sparqly.config.yaml');

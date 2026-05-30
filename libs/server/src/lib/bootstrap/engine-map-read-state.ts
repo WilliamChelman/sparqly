@@ -33,6 +33,8 @@ export interface EntryStateView {
   files: ReadonlyArray<string>;
   loadedAt: number | undefined;
   loadMs: number | undefined;
+  // Worker-owned quad count (ADR-0050); used when there is no main-heap store.
+  quads?: number | undefined;
   lastError: SourceRowError | undefined;
 }
 
@@ -202,7 +204,7 @@ function collectMetrics(entry: EntryStateView): LoadMetrics | undefined {
     loadedAt: entry.loadedAt,
     loadMs: entry.loadMs,
   };
-  const size = entry.current?.storeRef?.current.size;
+  const size = entry.current?.storeRef?.current.size ?? entry.quads;
   if (size !== undefined) metrics.quads = size;
   return metrics;
 }

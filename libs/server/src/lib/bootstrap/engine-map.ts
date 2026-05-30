@@ -9,9 +9,13 @@ import {
   sweepGlobIndexTempDirs,
   unionDefaultGraphEnabled,
   type ParsedSource,
+  type QueryExecutor,
   type SourceError,
 } from 'core';
 import type { StoreRef } from './tokens';
+import { loadEntryViaWorker } from './engine-map-worker-load';
+import type { QueryWorkerPool } from '../sparql/query-worker-pool';
+import type { WorkerResolveOptions } from '../sparql/query-worker-protocol';
 import { isDiskBacked, manifestExists } from './disk-backed-index';
 import { reloadEntry, unloadEntry } from './engine-map-actions';
 import { projectEntryState, reconcileStaleDedup } from './engine-map-read-state';
@@ -44,6 +48,9 @@ export interface EngineMapOptions {
   indexBuildCooldownMs?: number;
   now?: () => number;
   sourceStateEmitter?: SourceStateEmitter;
+  // When set, in-memory materialized queries run off the main loop in this
+  // worker pool (ADR-0050). Omitting it keeps the legacy main-thread path.
+  queryPool?: QueryWorkerPool;
 }
 
 export class EngineMap {
@@ -56,6 +63,7 @@ export class EngineMap {
     private readonly indexCacheDir: string | undefined,
     private readonly buildPool: IndexBuildPool,
     private readonly stateEmitter: SourceStateEmitter | undefined,
+    private readonly queryPool: QueryWorkerPool | undefined,
   ) {}
 
   static async create(
@@ -82,6 +90,7 @@ export class EngineMap {
           files: [],
           loadedAt: undefined,
           loadMs: undefined,
+          quads: undefined,
           loaded: Promise.resolve(ok(loaded)),
           disk: undefined,
           closeIndex: undefined,
@@ -96,6 +105,7 @@ export class EngineMap {
         files: [],
         loadedAt: undefined,
         loadMs: undefined,
+        quads: undefined,
         loaded: undefined,
         disk: undefined,
         closeIndex: undefined,
@@ -152,6 +162,7 @@ export class EngineMap {
       indexCacheDir,
       buildPool,
       stateEmitter,
+      options.queryPool,
     );
   }
 
@@ -161,13 +172,36 @@ export class EngineMap {
 
   // Triggers a one-shot lazy load on first call; concurrent first-touches share
   // the in-flight promise. On `err` the memo slot is cleared for self-heal.
-  ensure(id: string): ResultAsync<QueryEngine, SourceError | IndexingError> {
+  ensure(id: string): ResultAsync<QueryExecutor, SourceError | IndexingError> {
     return this.ensureEntry(id).map((loaded) => loaded.engine);
   }
 
   ensureSources(
     id: string,
   ): ResultAsync<LoadedSources, SourceError | IndexingError> {
+    const entry = this.entries.get(id);
+    // ADR-0050: a worker-owned store isn't on the main heap, so callers that
+    // need the actual store (diff) resolve it fresh on main rather than reusing
+    // the worker's resident copy. Endpoint/disk-backed keep the memoized path.
+    if (entry && this.isWorkerInMemory(entry) && !isDiskBacked(entry.source)) {
+      return resolveSourceResult(entry.source, {
+        registry: this.resolutionRegistry,
+        logger: this.logger,
+        configDir: this.configDir,
+        sparqlyVersion: this.sparqlyVersion,
+        indexCacheDir: this.indexCacheDir,
+      }).map((sources) =>
+        sources.mode === 'materialized'
+          ? {
+              mode: 'materialized',
+              store: sources.store,
+              sourceRecords: sources.sourceRecords,
+            }
+          : sources.mode === 'pass-through'
+            ? { mode: 'pass-through', endpoint: sources.endpoint }
+            : { mode: 'materialized-remote' },
+      );
+    }
     return this.ensureEntry(id).map((loaded) => loaded.sources);
   }
 
@@ -180,9 +214,40 @@ export class EngineMap {
       return this.ensureDiskBacked(entry);
     }
     if (entry.loaded === undefined) {
-      entry.loaded = this.loadEntry(entry);
+      entry.loaded = this.isWorkerInMemory(entry)
+        ? this.loadViaWorker(entry)
+        : this.loadEntry(entry);
     }
     return new ResultAsync(entry.loaded);
+  }
+
+  // True for in-memory materialized sources when a query worker is wired —
+  // endpoint entries are pre-loaded and disk-backed is excluded by the caller.
+  private isWorkerInMemory(entry: Entry): boolean {
+    return this.queryPool !== undefined && entry.source.kind !== 'endpoint';
+  }
+
+  private workerResolveOptions(): WorkerResolveOptions {
+    return {
+      resolutionRegistry: this.resolutionRegistry,
+      configDir: this.configDir,
+      sparqlyVersion: this.sparqlyVersion,
+      indexCacheDir: this.indexCacheDir,
+    };
+  }
+
+  // ADR-0050: the worker builds and owns the store; `loadEntryViaWorker` drives
+  // the transitions and refreshes the main-side state mirror.
+  private loadViaWorker(
+    entry: Entry,
+  ): Promise<Result<LoadedEntry, SourceError>> {
+    return loadEntryViaWorker(
+      entry,
+      this.queryPool as QueryWorkerPool,
+      this.workerResolveOptions(),
+      this.stateEmitter,
+      this.logger,
+    );
   }
 
   // `indexing` outcome is not memoized so each touch re-checks the manifest;
@@ -363,9 +428,16 @@ export class EngineMap {
   // Atomically swaps `StoreRef.current` to the freshly built store — same
   // `StoreRef` instance, so existing holders pick up the new store
   // transparently. Endpoint and disk-backed entries short-circuit.
-  async reload(id: string): Promise<Result<QueryEngine, SourceError>> {
+  async reload(id: string): Promise<Result<QueryExecutor, SourceError>> {
     const entry = this.entries.get(id);
     if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
+    // ADR-0050: a worker-owned store is re-built by the worker. Full drop-and-
+    // rebuild invalidation reaching the worker is #391; here Reload re-runs the
+    // load so the Sources page returns to `loaded`.
+    if (this.isWorkerInMemory(entry) && !isDiskBacked(entry.source)) {
+      entry.loaded = this.loadViaWorker(entry);
+      return (await entry.loaded).map((loaded) => loaded.engine);
+    }
     return reloadEntry(entry, (e) => this.loadEntry(e));
   }
 
@@ -394,7 +466,7 @@ export class EngineMap {
     return this.entries.get(id)?.source;
   }
 
-  getEndpointEngine(id: string): QueryEngine | undefined {
+  getEndpointEngine(id: string): QueryExecutor | undefined {
     const entry = this.entries.get(id);
     if (!entry || entry.source.kind !== 'endpoint') return undefined;
     return entry.current?.engine;
@@ -424,6 +496,7 @@ export class EngineMap {
 
   async close(): Promise<void> {
     await this.buildPool.shutdown();
+    await this.queryPool?.shutdown();
     for (const entry of this.entries.values()) {
       if (entry.closeIndex) {
         try {

@@ -1,5 +1,5 @@
 import { err, ok, type Result } from 'neverthrow';
-import type { QueryEngine, SourceError } from 'core';
+import type { QueryExecutor, SourceError } from 'core';
 import { isDiskBacked } from './disk-backed-index';
 import type { Entry, LoadedEntry } from './engine-map-types';
 import type { SourceStateEmitter } from '../sources/source-state-emitter';
@@ -14,7 +14,7 @@ import type { SourceStateEmitter } from '../sources/source-state-emitter';
 export async function reloadEntry(
   entry: Entry,
   loadEntry: (entry: Entry) => Promise<Result<LoadedEntry, SourceError>>,
-): Promise<Result<QueryEngine, SourceError>> {
+): Promise<Result<QueryExecutor, SourceError>> {
   if (entry.source.kind === 'endpoint') {
     return ok(entry.current!.engine);
   }
@@ -71,6 +71,7 @@ export async function unloadEntry(
   entry.loaded = undefined;
   entry.loadedAt = undefined;
   entry.loadMs = undefined;
+  entry.quads = undefined;
   // Keep `files` so the snippet allow-list doesn't shrink mid-flight.
   emitter?.emit({ kind: 'unload', sourceId: id });
 }
