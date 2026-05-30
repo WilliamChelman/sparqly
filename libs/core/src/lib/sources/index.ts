@@ -23,3 +23,5 @@ export * from './oversized-glob-hint';
 export * from './derive-file-source-id';
 export * from './git/git-tree-walker-factory';
 export * from './git/discover-repo';
+export * from './git/resolve-glob-pin-sha';
+export type { GitPort } from './git/git-port';

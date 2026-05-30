@@ -16,15 +16,11 @@ import {
   Res,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { errAsync, type Result, ResultAsync } from 'neverthrow';
+import { type Result } from 'neverthrow';
 import {
-  QueryEngine,
-  resolveSourceResult,
   selectTargetResult,
-  unionDefaultGraphEnabled,
   type ExecuteResult,
   type ParsedSource,
-  type QuerySources,
   type SourceError,
   type SparqlFormat,
   type TargetError,
@@ -34,7 +30,6 @@ import {
   isIndexingError,
   SPARQL_CONFIG,
   SPARQL_ENGINE_MAP,
-  SPARQL_RESOLUTION_REGISTRY,
   SPARQL_SERVED_REGISTRY,
   type IndexingError,
   type SparqlServerConfig,
@@ -65,8 +60,6 @@ export class RegistrySparqlController {
     @Inject(SPARQL_CONFIG) private readonly config: SparqlServerConfig,
     @Inject(SPARQL_SERVED_REGISTRY)
     private readonly servedRegistry: ReadonlyArray<ParsedSource>,
-    @Inject(SPARQL_RESOLUTION_REGISTRY)
-    private readonly resolutionRegistry: ReadonlyArray<ParsedSource>,
   ) {}
 
   /** Unparameterized alias — forwards to the default source. */
@@ -198,7 +191,20 @@ export class RegistrySparqlController {
     signal: AbortSignal,
   ): Promise<Result<ExecuteResult, SourceError | TargetError | IndexingError>> {
     if (this.isAdHocPin(target)) {
-      return await this.executeAdHocPinned(target, query, format, signal);
+      // ADR-0050 / #390: an ad-hoc pin the registry never pre-built. EngineMap
+      // routes an in-memory pinned glob through the worker pool (keyed by
+      // resolved SHA) so it runs off the main loop, and falls back to a
+      // main-thread build for pass-through/disk-backed/no-worker.
+      return this.engineMap
+        .ensureAdHoc(target)
+        .andThen<ExecuteResult, SourceError | TargetError | IndexingError>(
+          (engine) =>
+            engine.executeResult(query, {
+              format,
+              mutable: this.config.mutable,
+              signal,
+            }),
+        );
     }
     // ensure() shares the in-flight promise so concurrent first-touches load
     // exactly once. Failures surface as typed SourceError so mapError can route
@@ -224,43 +230,6 @@ export class RegistrySparqlController {
       pinOf(target).gitRef !== pinOf(registered).gitRef ||
       pinOf(target).fromGitRef !== pinOf(registered).fromGitRef
     );
-  }
-
-  private executeAdHocPinned(
-    target: ParsedSource,
-    query: string,
-    format: SparqlFormat | undefined,
-    signal: AbortSignal,
-  ): ResultAsync<ExecuteResult, SourceError | TargetError> {
-    return resolveSourceResult(target, {
-      registry: this.resolutionRegistry,
-    }).andThen<ExecuteResult, SourceError | TargetError>((sources: QuerySources) => {
-      if (sources.mode === 'pass-through') {
-        return new QueryEngine(sources.endpoint, {
-          id: target.id as string,
-          mode: 'pass-through',
-        }).executeResult(query, { format, mutable: this.config.mutable, signal });
-      }
-      if (sources.mode === 'disk-backed') {
-        // Release the LevelDB lock, then surface a typed glob-load error.
-        return ResultAsync.fromSafePromise(sources.close()).andThen(() =>
-          errAsync<ExecuteResult, SourceError | TargetError>({
-            kind: 'glob-load',
-            glob: target.kind === 'glob' ? [target.glob] : [],
-            message:
-              'serve does not yet support disk-backed glob sources (`storage: disk`); query them with `sparqly query`',
-          }),
-        );
-      }
-      return new QueryEngine(
-        sources.store,
-        {
-          id: target.id as string,
-          mode: 'materialized',
-        },
-        { unionDefaultGraph: unionDefaultGraphEnabled(target) },
-      ).executeResult(query, { format, mutable: this.config.mutable, signal });
-    });
   }
 }
 

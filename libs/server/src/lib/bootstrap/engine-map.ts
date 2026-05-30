@@ -8,20 +8,25 @@ import {
   resolveSourceResult,
   sweepGlobIndexTempDirs,
   unionDefaultGraphEnabled,
+  type GitPort,
   type ParsedSource,
   type QueryExecutor,
+  type RepoDiscoveryDeps,
   type SourceError,
 } from 'core';
 import type { StoreRef } from './tokens';
 import { loadEntryViaWorker } from './engine-map-worker-load';
+import { ensureAdHocExecutor } from './engine-map-adhoc';
 import type { QueryWorkerPool } from '../sparql/query-worker-pool';
 import type { WorkerResolveOptions } from '../sparql/query-worker-protocol';
 import { isDiskBacked, manifestExists } from './disk-backed-index';
 import { reloadEntry, unloadEntry } from './engine-map-actions';
 import { projectEntryState, reconcileStaleDedup } from './engine-map-read-state';
 import {
+  endpointEntry,
   indexingError,
   spawnIndexBuildUnavailable,
+  unloadedEntry,
   type Entry,
   type IndexingError,
   type LoadedEntry,
@@ -51,6 +56,11 @@ export interface EngineMapOptions {
   // When set, in-memory materialized queries run off the main loop in this
   // worker pool (ADR-0050). Omitting it keeps the legacy main-thread path.
   queryPool?: QueryWorkerPool;
+  // Git port/discovery used to resolve an ad-hoc pin's `gitRef:` to a SHA on the
+  // main thread (the worker routing key, #390). Injected so tests stub git;
+  // production lazily constructs the `git`-CLI port.
+  gitPort?: GitPort;
+  repoDiscovery?: RepoDiscoveryDeps;
 }
 
 export class EngineMap {
@@ -64,6 +74,8 @@ export class EngineMap {
     private readonly buildPool: IndexBuildPool,
     private readonly stateEmitter: SourceStateEmitter | undefined,
     private readonly queryPool: QueryWorkerPool | undefined,
+    private readonly gitPort: GitPort | undefined,
+    private readonly repoDiscovery: RepoDiscoveryDeps | undefined,
   ) {
     // A reclaimed worker (ADR-0050 nuclear cancel) loses its stores — drop the
     // memoized load so the next touch rebuilds them on the respawn.
@@ -79,44 +91,12 @@ export class EngineMap {
     for (const src of servedRegistry) {
       if (src.kind === 'reference') continue;
       if (src.id === undefined) continue;
-      if (src.kind === 'endpoint') {
-        const loaded: LoadedEntry = {
-          engine: new QueryEngine(src, {
-            id: src.id ?? src.endpoint,
-            mode: 'pass-through',
-            logger: options.logger,
-          }),
-          storeRef: undefined,
-          sources: { mode: 'pass-through', endpoint: src },
-        };
-        entries.set(src.id, {
-          source: src,
-          files: [],
-          loadedAt: undefined,
-          loadMs: undefined,
-          quads: undefined,
-          loaded: Promise.resolve(ok(loaded)),
-          disk: undefined,
-          closeIndex: undefined,
-          current: loaded,
-          staleReasonSeen: undefined,
-          lastError: undefined,
-        });
-        continue;
-      }
-      entries.set(src.id, {
-        source: src,
-        files: [],
-        loadedAt: undefined,
-        loadMs: undefined,
-        quads: undefined,
-        loaded: undefined,
-        disk: undefined,
-        closeIndex: undefined,
-        current: undefined,
-        staleReasonSeen: undefined,
-        lastError: undefined,
-      });
+      entries.set(
+        src.id,
+        src.kind === 'endpoint'
+          ? endpointEntry(src, options.logger)
+          : unloadedEntry(src),
+      );
     }
     const configDir = options.configDir ?? process.cwd();
     const indexCacheDir = options.indexCacheDir;
@@ -167,6 +147,8 @@ export class EngineMap {
       buildPool,
       stateEmitter,
       options.queryPool,
+      options.gitPort,
+      options.repoDiscovery,
     );
   }
 
@@ -178,6 +160,24 @@ export class EngineMap {
   // the in-flight promise. On `err` the memo slot is cleared for self-heal.
   ensure(id: string): ResultAsync<QueryExecutor, SourceError | IndexingError> {
     return this.ensureEntry(id).map((loaded) => loaded.engine);
+  }
+
+  /** Resolves a {@link QueryExecutor} for an *ad-hoc pinned* source (`@id:ref`)
+   * that has no pre-built entry (#390). Delegates to {@link ensureAdHocExecutor}:
+   * in-memory pinned globs/views route through the worker keyed by resolved SHA,
+   * else a main-thread build (pass-through/disk-backed/no-worker). */
+  ensureAdHoc(source: ParsedSource): ResultAsync<QueryExecutor, SourceError> {
+    return ensureAdHocExecutor(source, {
+      pool: this.queryPool,
+      resolutionRegistry: this.resolutionRegistry,
+      configDir: this.configDir,
+      sparqlyVersion: this.sparqlyVersion,
+      indexCacheDir: this.indexCacheDir,
+      logger: this.logger,
+      gitPort: this.gitPort,
+      repoDiscovery: this.repoDiscovery,
+      workerResolveOptions: this.workerResolveOptions(),
+    });
   }
 
   ensureSources(

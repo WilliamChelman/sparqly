@@ -1,14 +1,16 @@
-import type {
-  ParsedEndpointSource,
-  ParsedSource,
-  QueryExecutor,
-  SourceError,
-  SourceRecordSidecar,
+import {
+  QueryEngine,
+  type ParsedEndpointSource,
+  type ParsedSource,
+  type QueryExecutor,
+  type SourceError,
+  type SourceRecordSidecar,
 } from 'core';
+import type { SparqlyLogger } from 'common';
 import type { SourceRowError } from '../sources/source-row-projector';
 import type * as RDF from '@rdfjs/types';
 import type { Store } from 'n3';
-import type { Result } from 'neverthrow';
+import { ok, type Result } from 'neverthrow';
 import type { StoreRef } from './tokens';
 
 export type LoadedSources =
@@ -57,6 +59,46 @@ export interface LoadedEntry {
   engine: QueryExecutor;
   storeRef: StoreRef | undefined;
   sources: LoadedSources;
+}
+
+/** A freshly-registered entry whose store hasn't been resolved yet — every
+ * field empty until first touch lazily loads it. */
+export function unloadedEntry(source: ParsedSource): Entry {
+  return {
+    source,
+    files: [],
+    loadedAt: undefined,
+    loadMs: undefined,
+    quads: undefined,
+    loaded: undefined,
+    disk: undefined,
+    closeIndex: undefined,
+    current: undefined,
+    staleReasonSeen: undefined,
+    lastError: undefined,
+  };
+}
+
+/** An endpoint entry: pre-loaded at construction, every query a pass-through to
+ * the remote SPARQL service (no lazy load, no store on the heap). */
+export function endpointEntry(
+  src: ParsedEndpointSource,
+  logger: SparqlyLogger | undefined,
+): Entry {
+  const loaded: LoadedEntry = {
+    engine: new QueryEngine(src, {
+      id: src.id ?? src.endpoint,
+      mode: 'pass-through',
+      logger,
+    }),
+    storeRef: undefined,
+    sources: { mode: 'pass-through', endpoint: src },
+  };
+  return {
+    ...unloadedEntry(src),
+    loaded: Promise.resolve(ok(loaded)),
+    current: loaded,
+  };
 }
 
 export interface Entry {

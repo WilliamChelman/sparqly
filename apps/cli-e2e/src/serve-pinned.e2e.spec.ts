@@ -145,3 +145,54 @@ describe('sparqly serve — pinned glob sources (ADR-0029, issue #278)', () => {
     }
   });
 });
+
+describe('sparqly serve — ad-hoc pinned view (ADR-0050, #390)', () => {
+  let repo: string;
+  let configPath: string;
+
+  beforeEach(async () => {
+    repo = await mkdtemp(join(tmpdir(), 'sparqly-serve-pinned-view-e2e-'));
+    const foaf = join(repo, 'foaf.ttl');
+    await writeFile(foaf, OLD_TTL);
+    await git(repo, ['init', '-q', '-b', 'main']);
+    await git(repo, ['add', '.']);
+    await git(repo, ['commit', '-q', '-m', 'first']);
+    await git(repo, ['tag', '-a', 'v1.2.0', '-m', 'release v1.2.0']);
+    await writeFile(foaf, NEW_TTL);
+    await git(repo, ['add', '.']);
+    await git(repo, ['commit', '-q', '-m', 'second']);
+
+    configPath = join(repo, 'sparqly.config.yaml');
+    await writeFile(
+      configPath,
+      dedent`
+        sources:
+          - id: foaf
+            glob: "${foaf}"
+          - id: keep-view
+            from: "@foaf"
+            query: "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }"
+      ` + '\n',
+    );
+  }, 30_000);
+
+  afterEach(async () => {
+    if (repo) await rm(repo, { recursive: true, force: true });
+  });
+
+  it('GET /api/sparql/<view>:<ref> serves the view materialized against the pinned upstream (off the main loop)', async () => {
+    const handle = await startServe(['--config', configPath]);
+    try {
+      // Unpinned view reflects the working tree; the ad-hoc `:<ref>` variant
+      // routes through the query worker keyed by the leaf glob's SHA and so
+      // reads the pinned upstream — byte-identical to the pre-worker path.
+      const unpinned = await fetchObjects(handle, '/api/sparql/keep-view');
+      expect(unpinned).toEqual(['http://example.org/new']);
+
+      const pinned = await fetchObjects(handle, '/api/sparql/keep-view:v1.2.0');
+      expect(pinned).toEqual(['http://example.org/old']);
+    } finally {
+      await handle.close();
+    }
+  });
+});

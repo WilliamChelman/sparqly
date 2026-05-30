@@ -2,10 +2,12 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { parseSourceSpecs } from 'core';
+import { parseSourceSpecs, type GitPort } from 'core';
 import { EngineMap } from './engine-map';
 import { QueryWorkerPool } from '../sparql/query-worker-pool';
 import type {
+  LoadRequest,
+  QueryRequest,
   QueryWorkerHandle,
   WorkerMessage,
   WorkerRequest,
@@ -240,6 +242,159 @@ describe('EngineMap — worker routing (ADR-0050)', () => {
       await map.ensure('remote');
       expect(worker.sent).toEqual([]);
       expect(await map.readState('remote')).toEqual({ mode: 'endpoint' });
+    } finally {
+      await map.close();
+    }
+  });
+
+  it('routes an ad-hoc pinned glob query through the worker keyed by resolved SHA (#390)', async () => {
+    // The served registry holds the unpinned `alpha`; the request pins a ref
+    // the registered variant doesn't carry, so it bypasses `ensure` and lands
+    // on the ad-hoc path that must still run off the main loop.
+    const [alpha] = parseSourceSpecs([{ id: 'alpha', glob: join(dir, '*.ttl') }]);
+    const PINNED_SHA = 'a'.repeat(40);
+    const fakeGitPort: GitPort = {
+      resolveRefToSha: async () => PINNED_SHA,
+      getRefObjectType: async () => 'commit',
+      readFileAtSha: async () => null,
+      listFilesAtSha: async () => [],
+      // eslint-disable-next-line require-yield
+      readManyAtSha: async function* () {
+        return;
+      },
+    };
+    const worker = loadingWorker();
+    const pool = new QueryWorkerPool({ spawn: () => worker });
+
+    const map = await EngineMap.create([alpha], {
+      queryPool: pool,
+      gitPort: fakeGitPort,
+      repoDiscovery: { hasGitDir: () => true },
+    });
+    try {
+      const pinned = { ...alpha, gitRef: 'release' };
+      const executor = (await map.ensureAdHoc(pinned))._unsafeUnwrap();
+      const result = (
+        await executor.executeResult('SELECT ?s WHERE { ?s ?p ?o }', {
+          format: 'json',
+        })
+      )._unsafeUnwrap();
+      expect(result).toEqual(QUERY_OK);
+
+      // The store was built and queried on the worker, keyed by the resolved
+      // SHA so it can't collide with the unpinned `alpha` residency.
+      const routeId = `alpha@${PINNED_SHA}`;
+      const loads = worker.sent.filter(
+        (m): m is LoadRequest => m.type === 'load',
+      );
+      const queries = worker.sent.filter(
+        (m): m is QueryRequest => m.type === 'query',
+      );
+      expect(loads.map((m) => m.sourceId)).toEqual([routeId]);
+      expect(queries.map((m) => m.sourceId)).toEqual([routeId]);
+    } finally {
+      await map.close();
+    }
+  });
+
+  it('routes an ad-hoc pinned view query through the worker keyed by its leaf glob SHA (#390)', async () => {
+    // A view pinned via `@view:ref` carries `fromGitRef`, which propagates down
+    // the (linear) from-chain to the leaf glob. The routing key is the leaf's
+    // resolved SHA so the pinned view runs off the main loop too.
+    const registry = parseSourceSpecs([
+      { id: 'alpha', glob: join(dir, '*.ttl') },
+      { id: 'myview', from: '@alpha', query: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }' },
+    ]);
+    const view = registry.find((s) => s.id === 'myview');
+    if (view === undefined) throw new Error('view fixture missing');
+    const PINNED_SHA = 'b'.repeat(40);
+    const fakeGitPort: GitPort = {
+      resolveRefToSha: async () => PINNED_SHA,
+      getRefObjectType: async () => 'commit',
+      readFileAtSha: async () => null,
+      listFilesAtSha: async () => [],
+      // eslint-disable-next-line require-yield
+      readManyAtSha: async function* () {
+        return;
+      },
+    };
+    const worker = loadingWorker();
+    const pool = new QueryWorkerPool({ spawn: () => worker });
+    const map = await EngineMap.create(registry, {
+      queryPool: pool,
+      gitPort: fakeGitPort,
+      repoDiscovery: { hasGitDir: () => true },
+    });
+    try {
+      const pinned = { ...view, fromGitRef: 'release' };
+      const executor = (await map.ensureAdHoc(pinned))._unsafeUnwrap();
+      const result = (
+        await executor.executeResult('SELECT ?s WHERE { ?s ?p ?o }', {
+          format: 'json',
+        })
+      )._unsafeUnwrap();
+      expect(result).toEqual(QUERY_OK);
+
+      const routeId = `myview@${PINNED_SHA}`;
+      const loads = worker.sent.filter(
+        (m): m is LoadRequest => m.type === 'load',
+      );
+      const queries = worker.sent.filter(
+        (m): m is QueryRequest => m.type === 'query',
+      );
+      expect(loads.map((m) => m.sourceId)).toEqual([routeId]);
+      expect(queries.map((m) => m.sourceId)).toEqual([routeId]);
+    } finally {
+      await map.close();
+    }
+  });
+
+  it('keys ad-hoc residency by resolved SHA so distinct commits route apart and a repeat pin reuses the slot (#390)', async () => {
+    const [alpha] = parseSourceSpecs([{ id: 'alpha', glob: join(dir, '*.ttl') }]);
+    const SHA = { v1: '1'.repeat(40), v2: '2'.repeat(40) } as const;
+    const fakeGitPort: GitPort = {
+      resolveRefToSha: async (_root, ref) =>
+        SHA[ref as keyof typeof SHA] ?? null,
+      getRefObjectType: async () => 'commit',
+      readFileAtSha: async () => null,
+      listFilesAtSha: async () => [],
+      // eslint-disable-next-line require-yield
+      readManyAtSha: async function* () {
+        return;
+      },
+    };
+    const worker = loadingWorker();
+    const pool = new QueryWorkerPool({ spawn: () => worker });
+    const map = await EngineMap.create([alpha], {
+      queryPool: pool,
+      gitPort: fakeGitPort,
+      repoDiscovery: { hasGitDir: () => true },
+    });
+    try {
+      const run = async (ref: string): Promise<void> => {
+        const executor = (
+          await map.ensureAdHoc({ ...alpha, gitRef: ref })
+        )._unsafeUnwrap();
+        (
+          await executor.executeResult('SELECT ?s WHERE { ?s ?p ?o }', {
+            format: 'json',
+          })
+        )._unsafeUnwrap();
+      };
+      await run('v1');
+      await run('v1');
+      await run('v2');
+
+      // Each request routes by its commit, so the two `v1` queries share a key
+      // (one residency slot) while `v2` is a distinct slot — never colliding.
+      const queryKeys = worker.sent
+        .filter((m): m is QueryRequest => m.type === 'query')
+        .map((m) => m.sourceId);
+      expect(queryKeys).toEqual([
+        `alpha@${SHA.v1}`,
+        `alpha@${SHA.v1}`,
+        `alpha@${SHA.v2}`,
+      ]);
     } finally {
       await map.close();
     }

@@ -193,8 +193,11 @@ export class QueryWorkerPool {
   ensureLoaded(
     source: ParsedSource,
     resolveOptions: WorkerResolveOptions,
+    // Residency key the worker builds and memoizes the store under. Defaults to
+    // the source's own `@id`; an ad-hoc pinned source passes `${id}@${sha}` so
+    // its store routes and resides apart from the unpinned variant (#390).
+    sourceId: string = source.id as string,
   ): ResultAsync<LoadInfo, SourceError> {
-    const sourceId = source.id as string;
     const inFlight = this.loads.get(sourceId);
     if (inFlight !== undefined) return new ResultAsync(inFlight.promise);
     let resolve!: (result: Result<LoadInfo, SourceError>) => void;
