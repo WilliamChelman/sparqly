@@ -210,8 +210,7 @@ function projectFileLayer(
       const block = raw as Record<string, unknown>;
       for (const [k, v] of Object.entries(block)) {
         if (v === undefined) continue;
-        const fieldKey = scope.block === 'cache' && k === 'dir' ? 'cacheDir' : k;
-        out[fieldKey] = v;
+        out[k] = v;
       }
     }
   }

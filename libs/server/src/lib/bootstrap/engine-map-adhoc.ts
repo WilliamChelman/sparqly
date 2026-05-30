@@ -21,7 +21,6 @@ import type { WorkerResolveOptions } from '../sparql/query-worker-protocol';
  * bag so the logic lives outside the (already large) EngineMap class. */
 export interface AdHocDeps {
   pool: QueryWorkerPool | undefined;
-  resolutionRegistry: ReadonlyArray<ParsedSource>;
   configDir: string;
   sparqlyVersion: string | undefined;
   indexCacheDir: string | undefined;
@@ -86,7 +85,6 @@ function resolveAdHocOnMain(
   deps: AdHocDeps,
 ): ResultAsync<QueryExecutor, SourceError> {
   return resolveSourceResult(source, {
-    registry: deps.resolutionRegistry,
     logger: deps.logger,
     configDir: deps.configDir,
     sparqlyVersion: deps.sparqlyVersion,

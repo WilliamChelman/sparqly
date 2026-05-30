@@ -8,7 +8,7 @@ export interface PositionalDescriptor {
   readonly variadic?: boolean;
 }
 
-export type ProjectConfigBlock = 'serve' | 'format' | 'cache';
+export type ProjectConfigBlock = 'serve' | 'format';
 
 export interface ConfigScope {
   /** Whether the command reads the top-level `sources` registry (default: true). */
@@ -25,8 +25,9 @@ export interface CommandSpec<TConfig = Record<string, unknown>> {
   /**
    * Slice of the whole-project config this command consumes. When a `block`
    * is set, the runner flattens the block's keys onto the field-key namespace
-   * (e.g. `serve.port` → field `port`); the block name `cache` is special-cased
-   * to map `cache.dir` → field `cacheDir`. Defaults to `{ sources: true }`.
+   * (e.g. `serve.port` → field `port`); a registry-wide block like `index` is
+   * special-cased to map `index.dir` → field `indexCacheDir`. Defaults to
+   * `{ sources: true }`.
    */
   readonly configScope?: ConfigScope;
   readonly handler: (config: TConfig) => Promise<void> | void;

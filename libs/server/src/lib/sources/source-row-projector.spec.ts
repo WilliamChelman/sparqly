@@ -476,7 +476,7 @@ describe('projectSourceRow — Layer 4 (endpoint extras, #359)', () => {
 /*
  * Layer 5 (failure surface, #360). Inline `error` chip on `failed` rows of the
  * **Sources page** — `kind` (the internal tag verbatim: 'glob-load',
- * 'view-validation', 'index-build-failed', …), `message` (one-line summary),
+ * 'inline-query-validation', 'index-build-failed', …), `message` (one-line summary),
  * `details` (optional full body — stderr tail for disk-backed builds; absent
  * for in-memory by default). The projector emits `error` exactly when the
  * runtime is `failed` — never on any other state, even if the runtime

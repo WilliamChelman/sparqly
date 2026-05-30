@@ -21,9 +21,7 @@ import {
  *  32   source: glob-load                (file/glob load failure)
  *  33   source: query-execution          (SPARQL execution failure)
  *  34   source: endpoint-fetch           (remote endpoint failure)
- *  35   source: view-validation          (view query validation failure)
- *  36   source: view-reference           (view from: ref / cycle / unsupported upstream)
- *  37   source: cache-io                 (view cache read/write/parse failure)
+ *  35   source: inline-query-validation  (inline query validation failure)
  *  38   source: transform-parse          (transform spec parse failure)
  *  39   source: git-pin                  (git-ref pin failure)
  *  40   legacy-message                   (top-level unconverted throw)
@@ -79,12 +77,8 @@ function sourceErrorExitCode(error: SourceError): number {
       return 33;
     case 'endpoint-fetch':
       return 34;
-    case 'view-validation':
+    case 'inline-query-validation':
       return 35;
-    case 'view-reference':
-      return 36;
-    case 'cache-io':
-      return 37;
     case 'transform-parse':
       return 38;
     case 'git-pin':

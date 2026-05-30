@@ -12,7 +12,6 @@ describe('resolveServeScopeResult — ok paths', () => {
     const scope = resolveServeScopeResult(registry)._unsafeUnwrap();
 
     expect(scope.servedRegistry).toEqual(registry);
-    expect(scope.resolutionRegistry).toEqual(registry);
   });
 
   it('serves only the referenced entry but keeps the full registry resolvable', () => {
@@ -26,7 +25,6 @@ describe('resolveServeScopeResult — ok paths', () => {
     expect(scope.servedRegistry).toEqual([
       { kind: 'endpoint', id: 'live', endpoint: 'https://example.com/sparql' },
     ]);
-    expect(scope.resolutionRegistry).toEqual(registry);
     expect(scope.defaultId).toBe('live');
   });
 
@@ -59,7 +57,6 @@ describe('resolveServeScopeResult — ok paths', () => {
     const scope = resolveServeScopeResult([])._unsafeUnwrap();
 
     expect(scope.servedRegistry).toEqual([]);
-    expect(scope.resolutionRegistry).toEqual([]);
     expect(scope.defaultId).toBeUndefined();
   });
 });

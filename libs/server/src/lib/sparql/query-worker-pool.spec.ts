@@ -19,7 +19,6 @@ const ALPHA: ParsedSource = {
 } as ParsedSource;
 
 const RESOLVE_OPTS: WorkerResolveOptions = {
-  resolutionRegistry: [],
   configDir: '/tmp',
   sparqlyVersion: undefined,
   indexCacheDir: undefined,

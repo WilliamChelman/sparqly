@@ -7,11 +7,11 @@ import {
 import type { QueryType } from '../canonical/immutability';
 
 /** Resolution mode label for the SPARQL-execution log event (ADR-0020). */
-export type QueryResolutionMode = 'materialized' | 'pass-through' | 'view';
+export type QueryResolutionMode = 'materialized' | 'pass-through';
 
 /**
  * Result-size facet of the `query` event: `rows` for SELECT, `quads` for
- * CONSTRUCT/DESCRIBE (or a view that produced triples), `boolean` for ASK.
+ * CONSTRUCT/DESCRIBE, `boolean` for ASK.
  */
 export type QueryResultSize =
   | { rows: number }
@@ -19,7 +19,7 @@ export type QueryResultSize =
   | { boolean: boolean | undefined };
 
 export interface QueryLogEvent {
-  /** Source `@id` (or endpoint URL, or view id). Omitted when unknown. */
+  /** Source `@id` (or endpoint URL). Omitted when unknown. */
   source?: string;
   mode?: QueryResolutionMode;
   query: string;

@@ -53,7 +53,6 @@ export {
 
 export interface ResolveSourceResultOptions {
   graphMode?: GraphMode;
-  registry?: ReadonlyArray<ParsedSource>;
   logger?: SparqlyLogger;
   /** Resolution root for `gitRoot:` relative overrides; defaults to `process.cwd()`. */
   configDir?: string;

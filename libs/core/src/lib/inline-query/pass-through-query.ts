@@ -109,7 +109,7 @@ async function executePassThrough(
     if (options.meta) {
       emitQueryEvent(options.meta.logger, {
         source: options.meta.source,
-        mode: 'view',
+        mode: 'pass-through',
         query: options.query,
         type,
         ms: Date.now() - started,
@@ -131,7 +131,7 @@ async function executePassThrough(
             : String(err);
       emitQueryEvent(options.meta.logger, {
         source: options.meta.source,
-        mode: 'view',
+        mode: 'pass-through',
         query: options.query,
         type,
         ms: Date.now() - started,

@@ -92,9 +92,9 @@ describe('sparqly serve — watch mode', () => {
 
       // ADR-0050 (#391): the worker owns the store, so a watched edit drops its
       // resident copy (the next query rebuilds it lazily) rather than rebuilding
-      // on the main thread — the watcher logs `view-invalidated`, not `view-rebuilt`.
+      // on the main thread — the watcher logs `source-invalidated`, not `source-rebuilt`.
       expect(handle.stderr()).toMatch(
-        /INFO \[sparqly\] view-invalidated .*\btrigger=file-change\b/,
+        /INFO \[sparqly\] source-invalidated .*\btrigger=file-change\b/,
       );
     } finally {
       await handle.close();
@@ -128,7 +128,7 @@ describe('sparqly serve — watch mode', () => {
       // Debounce coalesces the rapid edits into far fewer invalidations than
       // edits (ADR-0050 #391: the worker rebuilds lazily on the next query).
       const invalidations = (
-        handle.stderr().match(/\bview-invalidated\b/g) ?? []
+        handle.stderr().match(/\bsource-invalidated\b/g) ?? []
       ).length;
       expect(invalidations).toBeLessThan(4);
       expect(invalidations).toBeGreaterThanOrEqual(1);

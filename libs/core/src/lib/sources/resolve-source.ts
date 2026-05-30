@@ -36,8 +36,6 @@ export interface ResolveSourceOptions {
   // Default `graphName` mode applied when a glob target has no `transforms`
   // declared. Sources that already declare `transforms` pass through unchanged.
   graphMode?: GraphMode;
-  // Sibling sources, used when resolving relative pins across a registry.
-  registry?: ReadonlyArray<ParsedSource>;
   logger?: SparqlyLogger;
 }
 

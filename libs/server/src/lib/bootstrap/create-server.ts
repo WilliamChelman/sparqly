@@ -39,9 +39,9 @@ import type { SparqlContext } from './tokens';
 export interface CreateServerOptions {
   sources: SourceSpecInput | ReadonlyArray<SourceSpecInput>;
   /**
-   * Scope filter. `@id` ref narrows to one entry (its `from:` deps stay
-   * resolvable but unlisted); an inline glob/URL serves `@default`. Absent →
-   * the whole non-`reference` registry is served.
+   * Scope filter. `@id` ref narrows the served registry to one entry; an inline
+   * glob/URL serves `@default`. Absent → the whole non-`reference` registry is
+   * served.
    */
   scope?: string;
   port: number;
@@ -50,7 +50,6 @@ export interface CreateServerOptions {
   webRootDir?: string;
   watch?: boolean;
   watchDebounceMs?: number;
-  watchPollMs?: number;
   context?: SparqlContext;
   describe?: Partial<DescribeConfig>;
   /** Defaults to no-op. */
@@ -89,7 +88,6 @@ export interface CreatedServer {
 }
 
 const DEFAULT_DEBOUNCE_MS = 250;
-const DEFAULT_POLL_MS = 1000;
 
 export async function createServer(
   options: CreateServerOptions,
@@ -131,7 +129,6 @@ export async function createServer(
       })
     : undefined;
   const engineMap = await EngineMap.create(scope.servedRegistry, {
-    resolutionRegistry: scope.resolutionRegistry,
     logger: boundaryLogger,
     configDir: options.configDir ?? process.cwd(),
     indexCacheDir: options.indexCacheDir,
@@ -177,7 +174,6 @@ export async function createServer(
     ServerModule.forRoot({
       engineMap,
       servedRegistry: scope.servedRegistry,
-      resolutionRegistry: scope.resolutionRegistry,
       metaChildrenCache,
       defaultId: scope.defaultId,
       config: { mutable: options.mutable === true },
@@ -231,13 +227,11 @@ export async function createServer(
   const watcher = options.watch
     ? await maybeStartWatcher({
         servedRegistry: scope.servedRegistry,
-        resolutionRegistry: scope.resolutionRegistry,
         engineMap,
         graphMode: options.graphMode,
         logger,
         boundaryLogger,
         debounceMs: options.watchDebounceMs ?? DEFAULT_DEBOUNCE_MS,
-        pollMs: options.watchPollMs ?? DEFAULT_POLL_MS,
         snippetAllowList,
         // Same cheap walkers used to seed the allow-list at boot — the watcher
         // re-walks with them to keep it in sync on FS changes (#391).

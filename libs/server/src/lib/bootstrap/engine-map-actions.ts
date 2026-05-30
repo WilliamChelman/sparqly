@@ -12,7 +12,6 @@ import type { QueryWorkerPool } from '../sparql/query-worker-pool';
 import type { SourceStateEmitter } from '../sources/source-state-emitter';
 
 export interface FreshResolveDeps {
-  registry: ReadonlyArray<ParsedSource>;
   logger: SparqlyLogger | undefined;
   configDir: string;
   sparqlyVersion: string | undefined;

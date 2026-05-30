@@ -20,15 +20,6 @@ const sparqlAuthSchema = z.discriminatedUnion('type', [
     .strict(),
 ]);
 
-const cacheBlockSchema = z
-  .object({
-    ttl: z.union([z.string(), z.number()]).optional(),
-    freshness: z.string().optional(),
-    everlasting: z.boolean().optional(),
-    cacheDir: z.string().optional(),
-  })
-  .strict();
-
 const sourceObjectSchema = z
   .object({
     id: z.string().optional(),
@@ -39,7 +30,6 @@ const sourceObjectSchema = z
     default: z.literal(true).optional(),
     query: z.string().optional(),
     queryFile: z.string().optional(),
-    cache: cacheBlockSchema.optional(),
     transforms: z.array(z.unknown()).optional(),
     auth: sparqlAuthSchema.optional(),
     headers: z.record(z.string(), z.string()).optional(),

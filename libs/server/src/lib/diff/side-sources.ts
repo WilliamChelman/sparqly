@@ -44,7 +44,6 @@ export function applyAddressPin(
 /** Sides with a runtime pin override bypass the warm cache and resolve fresh. */
 export function loadSideSources(
   engineMap: EngineMap,
-  resolutionRegistry: ReadonlyArray<ParsedSource>,
   target: ParsedSource,
 ): ResultAsyncT<LoadedLikeSources, SourceError> {
   if (target.id !== undefined && !hasRuntimePinOverride(engineMap, target)) {
@@ -53,9 +52,7 @@ export function loadSideSources(
       .mapErr(indexingToSourceError)
       .map(narrowLoadedSources);
   }
-  return resolveSourceResult(target, { registry: resolutionRegistry }).map(
-    narrowQuerySources,
-  );
+  return resolveSourceResult(target).map(narrowQuerySources);
 }
 
 function indexingToSourceError(

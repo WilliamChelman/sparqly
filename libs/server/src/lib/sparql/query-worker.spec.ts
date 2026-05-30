@@ -67,9 +67,8 @@ describe('runQueryWorker', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  function resolveOptionsFor(registry: ReturnType<typeof parseSourceSpecs>): WorkerResolveOptions {
+  function resolveOptionsFor(): WorkerResolveOptions {
     return {
-      resolutionRegistry: registry,
       configDir: dir,
       sparqlyVersion: undefined,
       indexCacheDir: undefined,
@@ -86,7 +85,7 @@ describe('runQueryWorker', () => {
       type: 'load',
       sourceId: 'alpha',
       source,
-      resolveOptions: resolveOptionsFor(registry),
+      resolveOptions: resolveOptionsFor(),
     });
     const load = await port.next();
     expect(load.type).toBe('load-success');
@@ -109,7 +108,7 @@ describe('runQueryWorker', () => {
 
     // The worker's body must match the legacy main-thread path exactly.
     const sources = (
-      await resolveSourceResult(source, { registry, configDir: dir })
+      await resolveSourceResult(source, { configDir: dir })
     )._unsafeUnwrap();
     if (sources.mode !== 'materialized') throw new Error('expected materialized');
     const expected = await new QueryEngine(
@@ -133,7 +132,7 @@ describe('runQueryWorker', () => {
       type: 'load',
       sourceId: 'broken',
       source,
-      resolveOptions: resolveOptionsFor(registry),
+      resolveOptions: resolveOptionsFor(),
     });
     const load = await port.next();
     expect(load.type).toBe('load-failure');
@@ -145,7 +144,6 @@ describe('runQueryWorker', () => {
 
 describe('runQueryWorker — LRU residency (ADR-0050, #387)', () => {
   const resolveOptions: WorkerResolveOptions = {
-    resolutionRegistry: [],
     configDir: '/tmp',
     sparqlyVersion: undefined,
     indexCacheDir: undefined,

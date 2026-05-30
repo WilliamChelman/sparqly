@@ -67,7 +67,6 @@ export async function resolveSide(
   inlineQuery: string | undefined,
   side: 'left' | 'right',
   logger: SparqlyLogger,
-  registry?: ReadonlyArray<ParsedSource>,
 ): Promise<SideResolved> {
   if (inlineQuery !== undefined) {
     const upstream = inlineQueryUpstream(target, side);
@@ -90,9 +89,7 @@ export async function resolveSide(
     throw new DiffErrorSignal({ kind: 'source', side, source: rawRejection });
   }
 
-  const effectiveRegistry = registry ?? parseSourceSpecs(config.sources ?? []);
   const sources = await resolveSource(target, {
-    registry: effectiveRegistry,
     logger,
   });
   if (sources.mode === 'pass-through' || sources.mode === 'disk-backed') {

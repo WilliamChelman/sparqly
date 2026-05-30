@@ -14,19 +14,16 @@ import { resolveSourceResult, type SourceError } from '../sources';
 import { detectSelectShape } from '../diff';
 import {
   parseSourceSpec,
-  parseSourceSpecs,
   type ParsedSource,
   type SourceSpecInput,
 } from '../sources';
 import type {
-  CacheIoError,
   EndpointFetchError,
   GitPinError,
   GlobLoadError,
+  InlineQueryValidationError,
   QueryExecutionError,
   TransformParseError,
-  ViewReferenceError,
-  ViewValidationError,
 } from '../sources/errors';
 import type { TabularRow } from '../diff';
 import { validateInlineQueryResult } from './validate-query';
@@ -35,8 +32,6 @@ export interface InlineSelectBindingsInput {
   source: SourceSpecInput;
   query?: string;
   queryFile?: string;
-  /** Sibling source-specs to resolve a `view` upstream's `from:` chain. */
-  registry?: ReadonlyArray<SourceSpecInput>;
   engine?: ComunicaQueryEngine;
   logger?: SparqlyLogger;
 }
@@ -48,9 +43,7 @@ export interface InlineSelectBindingsResult {
 }
 
 export type ResolveInlineSelectBindingsError =
-  | ViewValidationError
-  | ViewReferenceError
-  | CacheIoError
+  | InlineQueryValidationError
   | EndpointFetchError
   | QueryExecutionError
   | GlobLoadError
@@ -71,14 +64,14 @@ export function resolveInlineSelectBindingsResult(
   const hasQueryFile = input.queryFile !== undefined;
   if (hasQuery && hasQueryFile) {
     return errAsync({
-      kind: 'view-validation',
+      kind: 'inline-query-validation',
       message:
         '`query` and `queryFile` are mutually exclusive on an inline query',
     });
   }
   if (!hasQuery && !hasQueryFile) {
     return errAsync({
-      kind: 'view-validation',
+      kind: 'inline-query-validation',
       message: 'an inline query requires exactly one of `query` or `queryFile`',
     });
   }
@@ -86,17 +79,17 @@ export function resolveInlineSelectBindingsResult(
   const upstream = parseSourceSpec(input.source);
   if (upstream.kind === 'reference') {
     return errAsync({
-      kind: 'view-validation',
+      kind: 'inline-query-validation',
       message: 'inline query: `@id` reference upstreams are not supported here',
     });
   }
 
-  const queryLoader: ResultAsync<string, ViewValidationError> = hasQuery
+  const queryLoader: ResultAsync<string, InlineQueryValidationError> = hasQuery
     ? okAsync(input.query as string)
     : ResultAsync.fromPromise(
         readFile(resolvePath(process.cwd(), input.queryFile as string), 'utf8'),
         (err) => ({
-          kind: 'view-validation' as const,
+          kind: 'inline-query-validation' as const,
           message: err instanceof Error ? err.message : String(err),
         }),
       );
@@ -125,12 +118,13 @@ function executeSelectBindingsResult(
   const engine = input.engine ?? new ComunicaQueryEngine();
   const source = upstreamLabel(upstream);
   const type = detectQueryType(query);
+  const mode = upstream.kind === 'endpoint' ? 'pass-through' : 'materialized';
   const started = Date.now();
 
   const eventOk = (bindings: InlineSelectBindingsResult): void => {
     emitQueryEvent(input.logger, {
       source,
-      mode: 'view',
+      mode,
       query,
       type,
       ms: Date.now() - started,
@@ -140,7 +134,7 @@ function executeSelectBindingsResult(
   const eventErr = (err: unknown): void => {
     emitQueryEvent(input.logger, {
       source,
-      mode: 'view',
+      mode,
       query,
       type,
       ms: Date.now() - started,
@@ -173,14 +167,7 @@ function executeSelectBindingsResult(
     });
   }
 
-  const siblingRegistry = parseSourceSpecs(
-    (input.registry ?? []) as SourceSpecInput[],
-  );
-  const fullRegistry: ParsedSource[] = [upstream, ...siblingRegistry];
-  return resolveSourceResult(upstream, {
-    registry: fullRegistry,
-    logger: input.logger,
-  })
+  return resolveSourceResult(upstream, { logger: input.logger })
     .mapErr(narrowUpstreamError)
     .andThen<
       InlineSelectBindingsResult,
@@ -198,7 +185,7 @@ function executeSelectBindingsResult(
       const message =
         'inline query: endpoint upstream cannot be materialized in tabular diff (use pass-through)';
       eventErr(new Error(message));
-      return errAsync({ kind: 'view-validation', message });
+      return errAsync({ kind: 'inline-query-validation', message });
     }
     return ResultAsync.fromPromise(
       (async () => {
@@ -238,19 +225,19 @@ export async function resolveInlineSelectBindings(
 }
 
 // Variants the upstream resolver never actually produces here; collapse to
-// view-validation so the caller's narrower union stays exhaustive.
+// inline-query-validation so the caller's narrower union stays exhaustive.
 function narrowUpstreamError(
   err: SourceError,
 ): ResolveInlineSelectBindingsError {
   if (err.kind === 'reference-target') {
     return {
-      kind: 'view-validation',
+      kind: 'inline-query-validation',
       message:
         "inline query: `kind: 'reference'` entries cannot be resolved as a target",
     };
   }
   if (err.kind === 'raw-pass-through-target') {
-    return { kind: 'view-validation', message: err.message };
+    return { kind: 'inline-query-validation', message: err.message };
   }
   return err;
 }

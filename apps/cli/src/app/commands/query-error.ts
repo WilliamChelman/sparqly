@@ -15,9 +15,7 @@ import {
  *  32   source: glob-load                (file/glob load failure)
  *  33   source: query-execution          (SPARQL execution failure)
  *  34   source: endpoint-fetch           (remote endpoint failure)
- *  35   source: view-validation          (view query validation failure)
- *  36   source: view-reference           (view from: ref / cycle / unsupported)
- *  37   source: cache-io                 (view cache read/write/parse failure)
+ *  35   source: inline-query-validation  (inline query validation failure)
  *  38   source: transform-parse          (transform spec parse failure)
  *  39   source: git-pin                  (gitRef/--at resolution failure, ADR-0029)
  *  50   target: ref-as-target            (reference alias picked as data)
@@ -35,12 +33,8 @@ export function queryErrorExitCode(error: SourceError | TargetError): number {
       return 33;
     case 'endpoint-fetch':
       return 34;
-    case 'view-validation':
+    case 'inline-query-validation':
       return 35;
-    case 'view-reference':
-      return 36;
-    case 'cache-io':
-      return 37;
     case 'transform-parse':
       return 38;
     case 'git-pin':

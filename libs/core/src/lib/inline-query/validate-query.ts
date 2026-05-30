@@ -1,6 +1,6 @@
 import { Result, err, ok } from 'neverthrow';
 import { Parser as SparqlParser } from 'sparqljs';
-import type { ViewValidationError } from '../sources/errors';
+import type { InlineQueryValidationError } from '../sources/errors';
 
 export type InlineQueryMode = 'strict' | 'tabular-anon';
 
@@ -19,13 +19,13 @@ export interface ValidateInlineQueryOptions {
 
 /**
  * `Result`-typed validator for an inline query. Returns `Result.ok(undefined)`
- * on success and a {@link ViewValidationError} carrying the underlying message
+ * on success and a {@link InlineQueryValidationError} carrying the underlying message
  * on failure (ADR-0024).
  */
 export function validateInlineQueryResult(
   query: string,
   options: ValidateInlineQueryOptions = {},
-): Result<void, ViewValidationError> {
+): Result<void, InlineQueryValidationError> {
   const mode = options.mode ?? 'strict';
   try {
     const parsed = new SparqlParser().parse(query);
@@ -56,8 +56,8 @@ export function validateInlineQueryResult(
   }
 }
 
-function toError(message: string): ViewValidationError {
-  return { kind: 'view-validation', message };
+function toError(message: string): InlineQueryValidationError {
+  return { kind: 'inline-query-validation', message };
 }
 
 function checkSelectProjection(

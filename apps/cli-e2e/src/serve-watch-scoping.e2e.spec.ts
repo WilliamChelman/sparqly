@@ -104,11 +104,11 @@ describe('sparqly serve --watch — single-target scoping (ADR-0005)', () => {
     );
     expect(after).toEqual(['Alice', 'Bob']);
 
-    // ADR-0050 (#391): the worker owns the store, so the in-chain edit drops its
-    // resident copy once (debounced) — logged as `view-invalidated`, with the
+    // ADR-0050 (#391): the worker owns the store, so the edit drops its
+    // resident copy once (debounced) — logged as `source-invalidated`, with the
     // rebuild deferred to the next query.
     const invalidations = (
-      handle.stderr().match(/\bview-invalidated\b/g) ?? []
+      handle.stderr().match(/\bsource-invalidated\b/g) ?? []
     ).length;
     expect(invalidations).toBe(1);
   });
@@ -170,7 +170,7 @@ describe('sparqly serve --watch — single-target scoping (ADR-0005)', () => {
 
     // The untargeted glob isn't watched, so nothing is dropped or rebuilt.
     const invalidations = (
-      handle.stderr().match(/\bview-invalidated\b/g) ?? []
+      handle.stderr().match(/\bsource-invalidated\b/g) ?? []
     ).length;
     expect(invalidations).toBe(0);
   });

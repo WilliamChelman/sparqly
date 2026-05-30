@@ -36,25 +36,9 @@ describe('formatErrorExitCode — per-variant stable exit code map', () => {
       code: 34,
     },
     {
-      name: 'source/view-validation',
-      error: { kind: 'view-validation', message: 'bad view' },
+      name: 'source/inline-query-validation',
+      error: { kind: 'inline-query-validation', message: 'bad query' },
       code: 35,
-    },
-    {
-      name: 'source/view-reference',
-      error: {
-        kind: 'view-reference',
-        viewId: 'v',
-        ref: '@nope',
-        reason: 'unknown',
-        message: 'missing',
-      },
-      code: 36,
-    },
-    {
-      name: 'source/cache-io',
-      error: { kind: 'cache-io', cachePath: '/tmp/c', message: 'eio' },
-      code: 37,
     },
     {
       name: 'source/transform-parse',

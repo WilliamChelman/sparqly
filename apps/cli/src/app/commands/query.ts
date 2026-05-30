@@ -217,7 +217,6 @@ export const querySpec: CommandSpec<QueryConfig> = {
         .asyncAndThen<ExecuteResult, SourceError | TargetError>((target) => {
         const loadStart = Date.now();
         return resolveSourceResult(target, {
-          registry,
           logger: boundaryLog,
           configDir: process.cwd(),
           sparqlyVersion: cliVersion(),

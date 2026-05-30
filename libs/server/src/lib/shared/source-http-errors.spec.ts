@@ -34,25 +34,9 @@ describe('sourceErrorToStatus — per-variant status mapping for SourceError', (
       status: HttpStatus.BAD_GATEWAY,
     },
     {
-      name: 'view-validation',
-      error: { kind: 'view-validation', message: 'projection mismatch' },
+      name: 'inline-query-validation',
+      error: { kind: 'inline-query-validation', message: 'projection mismatch' },
       status: HttpStatus.BAD_REQUEST,
-    },
-    {
-      name: 'view-reference',
-      error: {
-        kind: 'view-reference',
-        viewId: 'v',
-        ref: 'r',
-        reason: 'unknown',
-        message: 'unknown @id',
-      },
-      status: HttpStatus.BAD_REQUEST,
-    },
-    {
-      name: 'cache-io',
-      error: { kind: 'cache-io', cachePath: '/c', message: 'EACCES' },
-      status: HttpStatus.INTERNAL_SERVER_ERROR,
     },
     {
       name: 'transform-parse',
@@ -72,6 +56,6 @@ describe('sourceErrorToStatus — per-variant status mapping for SourceError', (
   }
 
   it('covers every variant of SourceError (compile-time exhaustiveness sanity)', () => {
-    expect(cases.length).toBe(8);
+    expect(cases.length).toBe(6);
   });
 });
