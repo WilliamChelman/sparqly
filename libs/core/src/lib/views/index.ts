@@ -5,4 +5,5 @@ export * from './view-pass-through';
 export * from './anonymous-view-builder';
 export * from './resolve-anonymous-select-bindings';
 export * from './resolve-view-leaf-glob';
+export * from './resolve-view-pin-sha';
 export * from './view-chain-pass-through';
