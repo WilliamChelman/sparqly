@@ -871,6 +871,40 @@ describe('registerSpec', () => {
       expect(received).toMatchObject({ queryMaxResidentQuads: 1_000_000 });
     });
 
+    it('serve flattens the `query` block — maxOldGenerationSizeMb → queryMaxOldGenerationSizeMb', async () => {
+      let received: Record<string, unknown> | undefined;
+      const queryMaxOldGenerationSizeMbField: FieldDescriptor = {
+        key: 'queryMaxOldGenerationSizeMb',
+        schema: z.number().int().positive().optional(),
+      };
+      const spec: CommandSpec<Record<string, unknown>> = {
+        name: 'serve',
+        description: 's',
+        fields: [sourcesField, queryMaxOldGenerationSizeMbField],
+        configScope: { sources: true, block: 'serve' },
+        handler: (c) => {
+          received = c as Record<string, unknown>;
+        },
+        exitCode: () => 1,
+      };
+      const program = makeProgram();
+      registerSpec(program, spec, {
+        env: {},
+        cwd: '/cwd',
+        loadFile: async () => ({
+          data: {
+            sources: ['data/*.ttl'],
+            query: { maxOldGenerationSizeMb: 256 },
+          },
+          filepath: '/cfg.yaml',
+        }),
+      });
+      await program.parseAsync(['serve', '--config', '/cfg.yaml'], {
+        from: 'user',
+      });
+      expect(received).toMatchObject({ queryMaxOldGenerationSizeMb: 256 });
+    });
+
     it('query sees `sources` only — no command-scoped block (and ignores serve/format/cache blocks in the file)', async () => {
       let received: Record<string, unknown> | undefined;
       const spec: CommandSpec<Record<string, unknown>> = {
