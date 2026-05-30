@@ -108,8 +108,16 @@ interface WatchedSource {
    * ADR-0031: storeRef lookup is deferred to event time. An un-touched source
    * has no storeRef yet — the runner short-circuits the rebuild for it so a
    * chokidar event does not subvert laziness.
+   *
+   * ADR-0050 (#391): a worker-owned in-memory store has no main-thread storeRef.
+   * `invalidate(id)` drops its resident copy on the owning worker (a no-op, and
+   * `false`, for a non-worker or un-touched source) so the same laziness holds —
+   * `false` falls through to the legacy storeRef path below.
    */
-  engineMap: { getStoreRef: (id: string) => StoreRef | undefined };
+  engineMap: {
+    getStoreRef: (id: string) => StoreRef | undefined;
+    invalidate: (id: string) => boolean;
+  };
   target: ParsedSource;
   registry: ReadonlyArray<ParsedSource>;
   /**
@@ -252,6 +260,29 @@ function createSourceRunner(
     try {
       if (disposed) return;
       const planId = target.plan.id;
+      const refreshedIds =
+        trigger.kind === 'file-change' ? inChainViewIds : [trigger.viewId];
+      const logRefreshing = (): void => {
+        for (const id of refreshedIds) {
+          deps.boundaryLogger.info('view-refreshing', {
+            ...sourceField,
+            view: id,
+            trigger: trigger.kind,
+          });
+        }
+      };
+      // ADR-0050 (#391): a worker owns this source's store. Drop its resident
+      // copy so the *next* query rebuilds it from disk — main does no rebuild
+      // here. `invalidate` returns false (and falls through) when the source is
+      // non-worker or un-touched, preserving the ADR-0031 laziness below.
+      if (planId !== undefined && target.engineMap.invalidate(planId)) {
+        logRefreshing();
+        deps.boundaryLogger.info('view-invalidated', {
+          ...sourceField,
+          trigger: trigger.kind,
+        });
+        return;
+      }
       // ADR-0031: un-touched sources have no live storeRef. Don't load on
       // their behalf in response to FS / TTL / freshness events — the next
       // `ensure(id)` from a request will build the store fresh.
@@ -260,15 +291,7 @@ function createSourceRunner(
           ? target.engineMap.getStoreRef(planId)
           : undefined;
       if (!storeRef) return;
-      const refreshedIds =
-        trigger.kind === 'file-change' ? inChainViewIds : [trigger.viewId];
-      for (const id of refreshedIds) {
-        deps.boundaryLogger.info('view-refreshing', {
-          ...sourceField,
-          view: id,
-          trigger: trigger.kind,
-        });
-      }
+      logRefreshing();
       const start = Date.now();
       const refreshed = await resolveSource(target.target, {
         graphMode: deps.graphMode,

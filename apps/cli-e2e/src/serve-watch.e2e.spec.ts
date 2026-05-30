@@ -73,8 +73,7 @@ describe('sparqly serve — watch mode', () => {
     }
   });
 
-  // TODO(#391): worker-owned store (ADR-0050) — watcher invalidation lands in #391.
-  it.skip('--watch picks up file edits after the debounce window (US 16)', async () => {
+  it('--watch picks up file edits after the debounce window (US 16)', async () => {
     const handle = await startServe([dataPath, '--watch', '--watch-debounce', '100']);
     try {
       const before = await fetchNames(handle);
@@ -91,16 +90,18 @@ describe('sparqly serve — watch mode', () => {
       const after = await eventuallyContains(handle, 'Dave');
       expect(after).toContain('Dave');
 
+      // ADR-0050 (#391): the worker owns the store, so a watched edit drops its
+      // resident copy (the next query rebuilds it lazily) rather than rebuilding
+      // on the main thread — the watcher logs `view-invalidated`, not `view-rebuilt`.
       expect(handle.stderr()).toMatch(
-        /INFO \[sparqly\] view-rebuilt .*\bfiles=\d+\b.*\bquads=\d+\b.*\bms=\d+\b/,
+        /INFO \[sparqly\] view-invalidated .*\btrigger=file-change\b/,
       );
     } finally {
       await handle.close();
     }
   });
 
-  // TODO(#391): see US 16 above.
-  it.skip('--watch debounces rapid edits into a single rebuild (US 17)', async () => {
+  it('--watch debounces rapid edits into a single rebuild (US 17)', async () => {
     const handle = await startServe([
       dataPath,
       '--watch',
@@ -124,9 +125,13 @@ describe('sparqly serve — watch mode', () => {
 
       await eventuallyContains(handle, 'Four');
 
-      const rebuilds = (handle.stderr().match(/\bview-rebuilt\b/g) ?? []).length;
-      expect(rebuilds).toBeLessThan(4);
-      expect(rebuilds).toBeGreaterThanOrEqual(1);
+      // Debounce coalesces the rapid edits into far fewer invalidations than
+      // edits (ADR-0050 #391: the worker rebuilds lazily on the next query).
+      const invalidations = (
+        handle.stderr().match(/\bview-invalidated\b/g) ?? []
+      ).length;
+      expect(invalidations).toBeLessThan(4);
+      expect(invalidations).toBeGreaterThanOrEqual(1);
     } finally {
       await handle.close();
     }

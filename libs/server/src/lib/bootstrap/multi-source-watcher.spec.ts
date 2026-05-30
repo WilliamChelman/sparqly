@@ -5,6 +5,11 @@ import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { SparqlyLogFields, SparqlyLogger } from 'common';
 import { createServer, type CreatedServer } from './create-server';
+import type {
+  QueryWorkerHandle,
+  WorkerMessage,
+  WorkerRequest,
+} from '../sparql/query-worker-protocol';
 
 interface RecordedLog {
   level: 'debug' | 'info' | 'warn' | 'error';
@@ -61,6 +66,73 @@ function recordingLogger(): {
       });
     },
   };
+}
+
+const EMPTY_RESULT_BODY = JSON.stringify({
+  head: { vars: ['s'] },
+  results: { bindings: [] },
+});
+
+/** In-process query-worker stand-in (ADR-0050) — answers load/query so a source
+ * routes through the pool and becomes `loaded`, and records every request so a
+ * test can assert the watcher reached it with an `invalidate`. No real thread,
+ * no real store. */
+class FakeQueryWorker implements QueryWorkerHandle {
+  private readonly listeners: Array<(m: WorkerMessage) => void> = [];
+  readonly sent: WorkerRequest[] = [];
+
+  postMessage(message: WorkerRequest): void {
+    this.sent.push(message);
+    queueMicrotask(() => {
+      if (message.type === 'load') {
+        this.emit({
+          type: 'load-success',
+          sourceId: message.sourceId,
+          quads: 1,
+          loadMs: 1,
+          files: [],
+        });
+      } else if (message.type === 'query') {
+        this.emit({
+          type: 'query-result',
+          requestId: message.requestId,
+          ok: {
+            body: EMPTY_RESULT_BODY,
+            format: 'json',
+            contentType: 'application/sparql-results+json',
+          },
+        });
+      }
+    });
+  }
+
+  on(event: 'message', listener: (m: WorkerMessage) => void): void;
+  on(event: 'error', listener: (err: Error) => void): void;
+  on(event: 'exit', listener: (code: number) => void): void;
+  on(event: string, listener: (...args: never[]) => void): void {
+    if (event === 'message') this.listeners.push(listener as (m: WorkerMessage) => void);
+  }
+
+  async terminate(): Promise<number> {
+    return 0;
+  }
+
+  private emit(message: WorkerMessage): void {
+    for (const l of this.listeners) l(message);
+  }
+}
+
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 2000,
+): Promise<void> {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(`waitFor timed out after ${timeoutMs}ms`);
+    }
+    await new Promise((r) => setTimeout(r, 10));
+  }
 }
 
 async function bindings(url: string): Promise<string[]> {
@@ -217,5 +289,83 @@ describe('createServer — multi-source watcher lifecycle', () => {
     expect(
       entries.filter((e) => e.msg === 'view-rebuilt').length,
     ).toBe(rebuildsBeforeClose);
+  });
+});
+
+describe('createServer — watcher invalidation reaches the query worker (ADR-0050, #391)', () => {
+  let touchedDir: string;
+  let untouchedDir: string;
+  let server: CreatedServer | undefined;
+
+  beforeEach(async () => {
+    Logger.overrideLogger(false);
+    touchedDir = await mkdtemp(join(tmpdir(), 'sparqly-watch-worker-touched-'));
+    untouchedDir = await mkdtemp(
+      join(tmpdir(), 'sparqly-watch-worker-untouched-'),
+    );
+    await writeFile(
+      join(touchedDir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:initial .',
+    );
+    await writeFile(
+      join(untouchedDir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .',
+    );
+  });
+
+  afterEach(async () => {
+    if (server) {
+      await server.close();
+      server = undefined;
+    }
+    await rm(touchedDir, { recursive: true, force: true });
+    await rm(untouchedDir, { recursive: true, force: true });
+  });
+
+  it('a watched file change posts invalidate to the owning worker, and leaves an un-touched source alone', async () => {
+    const worker = new FakeQueryWorker();
+    server = await createServer({
+      sources: [
+        { id: 'touched', glob: join(touchedDir, '*.ttl') },
+        { id: 'untouched', glob: join(untouchedDir, '*.ttl') },
+      ],
+      port: 0,
+      watch: true,
+      watchDebounceMs: 25,
+      spawnQueryWorker: () => worker,
+    });
+
+    // Warm `touched` so its store is resident on the worker; `untouched` stays
+    // un-queried for the life of the test.
+    await bindings(`http://localhost:${server.port}/api/sparql/touched`);
+    await waitFor(() => worker.sent.some((m) => m.type === 'query'));
+
+    // Edit a watched file under the loaded source.
+    await writeFile(
+      join(touchedDir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:edited .',
+    );
+
+    // The watcher reaches the owning worker with an invalidate so the next
+    // query rebuilds the resident store from disk.
+    await waitFor(() =>
+      worker.sent.some(
+        (m) => m.type === 'invalidate' && m.sourceId === 'touched',
+      ),
+    );
+
+    // Edit a file under the never-queried source and give the watcher time to
+    // process it: laziness holds — no invalidate is posted for it (nothing is
+    // resident to drop).
+    await writeFile(
+      join(untouchedDir, 'b.ttl'),
+      '@prefix ex: <http://example.org/> . ex:e ex:p ex:f .',
+    );
+    await new Promise((r) => setTimeout(r, 200));
+    expect(
+      worker.sent.some(
+        (m) => m.type === 'invalidate' && m.sourceId === 'untouched',
+      ),
+    ).toBe(false);
   });
 });

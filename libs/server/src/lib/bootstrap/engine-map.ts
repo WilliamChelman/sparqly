@@ -20,7 +20,13 @@ import { ensureAdHocExecutor } from './engine-map-adhoc';
 import type { QueryWorkerPool } from '../sparql/query-worker-pool';
 import type { WorkerResolveOptions } from '../sparql/query-worker-protocol';
 import { isDiskBacked, manifestExists } from './disk-backed-index';
-import { reloadEntry, unloadEntry } from './engine-map-actions';
+import {
+  invalidateWorkerResident,
+  reloadEntry,
+  resetWorkerResidency,
+  resolveFreshWorkerSources,
+  unloadEntry,
+} from './engine-map-actions';
 import { projectEntryState, reconcileStaleDedup } from './engine-map-read-state';
 import {
   endpointEntry,
@@ -79,7 +85,9 @@ export class EngineMap {
   ) {
     // A reclaimed worker (ADR-0050 nuclear cancel) loses its stores — drop the
     // memoized load so the next touch rebuilds them on the respawn.
-    this.queryPool?.onReset((ids) => this.resetWorkerSources(ids));
+    this.queryPool?.onReset((ids) =>
+      resetWorkerResidency(this.entries, this.queryPool, ids),
+    );
   }
 
   static async create(
@@ -188,23 +196,13 @@ export class EngineMap {
     // need the actual store (diff) resolve it fresh on main rather than reusing
     // the worker's resident copy. Endpoint/disk-backed keep the memoized path.
     if (entry && this.isWorkerInMemory(entry) && !isDiskBacked(entry.source)) {
-      return resolveSourceResult(entry.source, {
+      return resolveFreshWorkerSources(entry.source, {
         registry: this.resolutionRegistry,
         logger: this.logger,
         configDir: this.configDir,
         sparqlyVersion: this.sparqlyVersion,
         indexCacheDir: this.indexCacheDir,
-      }).map((sources) =>
-        sources.mode === 'materialized'
-          ? {
-              mode: 'materialized',
-              store: sources.store,
-              sourceRecords: sources.sourceRecords,
-            }
-          : sources.mode === 'pass-through'
-            ? { mode: 'pass-through', endpoint: sources.endpoint }
-            : { mode: 'materialized-remote' },
-      );
+      });
     }
     return this.ensureEntry(id).map((loaded) => loaded.sources);
   }
@@ -435,30 +433,33 @@ export class EngineMap {
   async reload(id: string): Promise<Result<QueryExecutor, SourceError>> {
     const entry = this.entries.get(id);
     if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
-    // ADR-0050: a worker-owned store is re-built by the worker. Full drop-and-
-    // rebuild invalidation reaching the worker is #391; here Reload re-runs the
-    // load so the Sources page returns to `loaded`.
+    // ADR-0050 (#391): the worker owns the store, so Reload drops its resident
+    // copy first — a bare re-load against a still-resident store just echoes its
+    // metrics — then re-loads, which now genuinely rebuilds it from disk and
+    // returns the Sources page to `loaded`.
     if (this.isWorkerInMemory(entry) && !isDiskBacked(entry.source)) {
+      this.invalidate(id);
       entry.loaded = this.loadViaWorker(entry);
       return (await entry.loaded).map((loaded) => loaded.engine);
     }
     return reloadEntry(entry, (e) => this.loadEntry(e));
   }
 
-  // ADR-0050: drop each orphaned source's memo so the next touch rebuilds it.
-  private resetWorkerSources(sourceIds: ReadonlyArray<string>): void {
-    for (const id of sourceIds) {
-      const entry = this.entries.get(id);
-      if (entry !== undefined && this.isWorkerInMemory(entry)) {
-        entry.loaded = undefined;
-        entry.current = undefined;
-      }
-    }
+  /** Drops the worker-resident store for a watched in-memory source so the next
+   * query rebuilds it from disk (ADR-0050, #391). Returns whether the `--watch`
+   * runner should skip its legacy main-thread rebuild — see
+   * {@link invalidateWorkerResident}. */
+  invalidate(id: string): boolean {
+    return invalidateWorkerResident(this.entries.get(id), this.queryPool);
   }
 
   async unload(id: string): Promise<void> {
     const entry = this.entries.get(id);
     if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
+    // ADR-0050 (#391): drop the worker's resident store too — otherwise the next
+    // query routes back to its sticky worker and finds the store still resident,
+    // re-loading nothing. A no-op for non-worker / un-touched entries.
+    this.invalidate(id);
     await unloadEntry(id, entry, this.stateEmitter);
   }
 

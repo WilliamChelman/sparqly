@@ -137,6 +137,43 @@ describe('EngineMap — worker routing (ADR-0050)', () => {
     }
   });
 
+  it('invalidate(id) reaches the owning worker only once the source is loaded', async () => {
+    const registry = parseSourceSpecs([{ id: 'alpha', glob: join(dir, '*.ttl') }]);
+    const worker = loadingWorker();
+    const pool = new QueryWorkerPool({ spawn: () => worker });
+    const map = await EngineMap.create(registry, { queryPool: pool });
+    try {
+      // Un-touched source: nothing is resident, so invalidate stays lazy — it
+      // posts nothing and reports not-handled so the watcher skips it.
+      expect(map.invalidate('alpha')).toBe(false);
+      expect(worker.sent).toEqual([]);
+
+      await map.ensure('alpha');
+
+      // Loaded: invalidate reaches the worker and reports handled so the
+      // watcher does not also run its legacy main-thread rebuild.
+      expect(map.invalidate('alpha')).toBe(true);
+      expect(worker.sent).toContainEqual({ type: 'invalidate', sourceId: 'alpha' });
+    } finally {
+      await map.close();
+    }
+  });
+
+  it('invalidate(id) reports not-handled for an endpoint source', async () => {
+    const registry = parseSourceSpecs([
+      { id: 'remote', endpoint: 'http://127.0.0.1:1/sparql' },
+    ]);
+    const worker = loadingWorker();
+    const pool = new QueryWorkerPool({ spawn: () => worker });
+    const map = await EngineMap.create(registry, { queryPool: pool });
+    try {
+      expect(map.invalidate('remote')).toBe(false);
+      expect(worker.sent).toEqual([]);
+    } finally {
+      await map.close();
+    }
+  });
+
   it('rebuilds a worker-owned store on the next touch after the worker is reclaimed mid-cancel', async () => {
     const registry = parseSourceSpecs([{ id: 'alpha', glob: join(dir, '*.ttl') }]);
     const workers: FakeWorker[] = [];
@@ -395,6 +432,46 @@ describe('EngineMap — worker routing (ADR-0050)', () => {
         `alpha@${SHA.v1}`,
         `alpha@${SHA.v2}`,
       ]);
+    } finally {
+      await map.close();
+    }
+  });
+
+  it('Reload drops the worker residency before re-loading so the rebuild is real', async () => {
+    const registry = parseSourceSpecs([{ id: 'alpha', glob: join(dir, '*.ttl') }]);
+    const worker = loadingWorker();
+    const pool = new QueryWorkerPool({ spawn: () => worker });
+    const map = await EngineMap.create(registry, { queryPool: pool });
+    try {
+      await map.ensure('alpha');
+      await map.reload('alpha');
+
+      // Reload posts invalidate (drop) *then* load (rebuild) — not a bare
+      // re-load, which the worker would answer from its still-resident store
+      // without rebuilding.
+      expect(worker.sent.map((m) => m.type)).toEqual(['load', 'invalidate', 'load']);
+      expect((await map.readState('alpha')).state).toBe('loaded');
+    } finally {
+      await map.close();
+    }
+  });
+
+  it('Unload drops the worker residency so it stays gone until the next query', async () => {
+    const registry = parseSourceSpecs([{ id: 'alpha', glob: join(dir, '*.ttl') }]);
+    const worker = loadingWorker();
+    const pool = new QueryWorkerPool({ spawn: () => worker });
+    const map = await EngineMap.create(registry, { queryPool: pool });
+    try {
+      await map.ensure('alpha');
+      await map.unload('alpha');
+
+      // Unload drops the worker's resident store and the main mirror; it does
+      // not re-load (no rebuild until the next query).
+      expect(worker.sent.map((m) => m.type)).toEqual(['load', 'invalidate']);
+      expect(await map.readState('alpha')).toEqual({
+        mode: 'in-memory',
+        state: 'not-loaded',
+      });
     } finally {
       await map.close();
     }

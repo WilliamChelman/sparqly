@@ -50,9 +50,7 @@ describe('sparqly serve --watch — single-target scoping (ADR-0005)', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  // TODO(#391): worker-owned store (ADR-0050) — watcher invalidation lands in
-  // #391. The negative test below still holds because the watcher just no-ops.
-  it.skip('modifying a glob in the target chain triggers exactly one rebuild', async () => {
+  it('modifying a glob in the target chain triggers exactly one rebuild', async () => {
     const targetPath = join(dir, 'target.ttl');
     const otherPath = join(dir, 'other.ttl');
     await writeFile(
@@ -106,8 +104,13 @@ describe('sparqly serve --watch — single-target scoping (ADR-0005)', () => {
     );
     expect(after).toEqual(['Alice', 'Bob']);
 
-    const rebuilds = (handle.stderr().match(/\bview-rebuilt\b/g) ?? []).length;
-    expect(rebuilds).toBe(1);
+    // ADR-0050 (#391): the worker owns the store, so the in-chain edit drops its
+    // resident copy once (debounced) — logged as `view-invalidated`, with the
+    // rebuild deferred to the next query.
+    const invalidations = (
+      handle.stderr().match(/\bview-invalidated\b/g) ?? []
+    ).length;
+    expect(invalidations).toBe(1);
   });
 
   it('modifying a glob belonging to an untargeted entry does NOT trigger a rebuild', async () => {
@@ -165,7 +168,10 @@ describe('sparqly serve --watch — single-target scoping (ADR-0005)', () => {
     const after = await fetchNames(handle);
     expect(after).toEqual(['Alice']);
 
-    const rebuilds = (handle.stderr().match(/\bview-rebuilt\b/g) ?? []).length;
-    expect(rebuilds).toBe(0);
+    // The untargeted glob isn't watched, so nothing is dropped or rebuilt.
+    const invalidations = (
+      handle.stderr().match(/\bview-invalidated\b/g) ?? []
+    ).length;
+    expect(invalidations).toBe(0);
   });
 });

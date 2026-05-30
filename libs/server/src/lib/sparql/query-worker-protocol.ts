@@ -48,7 +48,21 @@ export interface CancelRequest {
   requestId: number;
 }
 
-export type WorkerRequest = LoadRequest | QueryRequest | CancelRequest;
+/** main → worker: drop the resident store for `sourceId` so the next query
+ * rebuilds it from the retained recipe (ADR-0050, #391). The build *recipe*
+ * survives, so a `--watch` edit / Reload / Unload need not re-send a `load`:
+ * the worker re-resolves the source from disk on the next query, picking up the
+ * new content. Unknown or non-resident ids are a no-op. */
+export interface InvalidateRequest {
+  type: 'invalidate';
+  sourceId: string;
+}
+
+export type WorkerRequest =
+  | LoadRequest
+  | QueryRequest
+  | CancelRequest
+  | InvalidateRequest;
 
 /** worker → main: the store finished building — carries the metrics the
  * Sources-page state mirror surfaces in `/api/sources`. */
