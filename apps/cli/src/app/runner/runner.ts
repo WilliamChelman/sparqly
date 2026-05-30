@@ -194,7 +194,9 @@ function projectFileLayer(
               ? 'indexConcurrency'
               : blockName === 'query' && k === 'concurrency'
                 ? 'queryConcurrency'
-                : k;
+                : blockName === 'query' && k === 'maxResidentQuads'
+                  ? 'queryMaxResidentQuads'
+                  : k;
       if (fieldKeys.has(fieldKey)) out[fieldKey] = v;
     }
   }

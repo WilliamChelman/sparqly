@@ -17,9 +17,10 @@ cache: # cache-block settings
 context: # shared IRI-display config (prefixes, base)
 describe: # describe-page defaults (serve's webapp)
 index: # disk-backed glob-index settings (serve)
+query: # in-memory query worker pool (serve)
 ```
 
-`context:` is the project-wide carve-out: every IRI-rendering command (`query`, `format`, `diff`, `serve`'s webapp) reads it. The other blocks follow the "block name = command name" convention: `serve` reads `sources` + `serve` + `context` + `describe`; `format` reads `sources` + `format` + `context`; `query` / `diff` read `sources` + `context`; `hash` reads `sources`; `cache list` / `cache clear` read `cache`. `query` has no command-scoped block — every flag it has is per-invocation. The whole-file schema design lives in [ADR-0010](./adr/0010-project-config-scope-layout-and-discovery.md); the `context:` carve-out is [ADR-0012](./adr/0012-context-block-shared-display-config.md).
+`context:` is the project-wide carve-out: every IRI-rendering command (`query`, `format`, `diff`, `serve`'s webapp) reads it. The other blocks follow the "block name = command name" convention: `serve` reads `sources` + `serve` + `context` + `describe`; `format` reads `sources` + `format` + `context`; `query` / `diff` read `sources` + `context`; `hash` reads `sources`; `cache list` / `cache clear` read `cache`. `query` has no command-scoped block — every flag it has is per-invocation.
 
 ## Discovery
 
@@ -47,13 +48,13 @@ serve:
   readOnly: false
 ```
 
-| Field           | Type    | Meaning                                                                                                                |
-| --------------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `port`          | integer | HTTP port the server binds to. Default `3000`. Override at runtime with `--port` or `SPARQLY_PORT`.                    |
-| `watch`         | boolean | Watch the target's chain (globs and any `cache.ttl` / `cache.freshness` views) and rebuild on change. Default `false`. |
-| `watchDebounce` | integer | Debounce window for `--watch` rebuilds, in ms. Default `250`.                                                          |
-| `watchPoll`     | integer | Poll interval (ms) for cache-freshness ASK probes under `--watch`. Default `1000`.                                     |
-| `mutable`       | boolean | If true, the SPARQL endpoint accepts `INSERT` / `DELETE` against the in-memory store.                                  |
+| Field           | Type    | Meaning                                                                                                                                                                                                                                                                                                                                                                                  |
+| --------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `port`          | integer | HTTP port the server binds to. Default `3000`. Override at runtime with `--port` or `SPARQLY_PORT`.                                                                                                                                                                                                                                                                                      |
+| `watch`         | boolean | Watch the target's chain (globs and any `cache.ttl` / `cache.freshness` views) and rebuild on change. Default `false`.                                                                                                                                                                                                                                                                   |
+| `watchDebounce` | integer | Debounce window for `--watch` rebuilds, in ms. Default `250`.                                                                                                                                                                                                                                                                                                                            |
+| `watchPoll`     | integer | Poll interval (ms) for cache-freshness ASK probes under `--watch`. Default `1000`.                                                                                                                                                                                                                                                                                                       |
+| `mutable`       | boolean | If true, the SPARQL endpoint accepts `INSERT` / `DELETE` against the in-memory store.                                                                                                                                                                                                                                                                                                    |
 | `readOnly`      | boolean | If true, refuse writes to the **saved-query sidecar** (`PUT` / `DELETE` return 405) and refuse Sources-page admin actions (Load / Reload / Unload / (Re)build index return 403). The webapp hides the corresponding affordances. Default `false`. Override at runtime with `--read-only`. Independent of `mutable`, which only gates SPARQL-protocol writes against the in-memory store. |
 
 All fields are optional; unset fields fall back to their built-in defaults.
@@ -70,7 +71,7 @@ format:
 | -------------------------- | ---------- | ------------------------------------------------------------------- |
 | `objectAnchoredPredicates` | `string[]` | Predicate IRIs that should anchor object grouping in pretty output. |
 
-`prefixes` and `base` used to live here; they moved to [`context:`](#context) (ADR-0012). A config that still puts them under `format:` fails validation with a redirect message to `context.prefixes` / `context.base`.
+`prefixes` and `base` used to live here; they moved to [`context:`](#context). A config that still puts them under `format:` fails validation with a redirect message to `context.prefixes` / `context.base`.
 
 ## `context:`
 
@@ -91,11 +92,11 @@ context:
 
 Both fields are optional; an empty `context:` block is legal and equivalent to omitting it. The block is named after JSON-LD's `@context` for the prefix-map + base semantic, but the contents use sparqly-internal subkeys.
 
-There are no CLI overrides for these values — `--prefix`, `--prefixes`, and `--base` were removed across `format`, `diff`, and `query`. Display config lives in `context:` or it doesn't live (ADR-0012).
+There are no CLI overrides for these values — `--prefix`, `--prefixes`, and `--base` were removed across `format`, `diff`, and `query`. Display config lives in `context:` or it doesn't live.
 
 ## `describe:`
 
-Defaults for the webapp's describe page (see [ADR-0015](./adr/0015-webapp-describe-page-with-multi-source-aggregation.md), [ADR-0025](./adr/0025-multi-origin-best-effort-aggregation-in-describe.md)). Consumed by `serve` only.
+Defaults for the webapp's describe page. Consumed by `serve` only.
 
 ```yaml
 describe:
@@ -104,10 +105,10 @@ describe:
   fromSourcePredicate: urn:sparqly:fromSource
 ```
 
-| Field                 | Type    | Meaning                                                                                                                                                                              |
-| --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `perSourceSoftLimit`  | integer | Per-source quad cap applied when a describe request omits `perSourceLimit`. A source that hits the cap reports `truncated: true` on its response entry.                              |
-| `perSourceHardLimit`  | integer | Absolute ceiling: a request-supplied `perSourceLimit` larger than this is clamped down to it.                                                                                        |
+| Field                 | Type    | Meaning                                                                                                                                                                               |
+| --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `perSourceSoftLimit`  | integer | Per-source quad cap applied when a describe request omits `perSourceLimit`. A source that hits the cap reports `truncated: true` on its response entry.                               |
+| `perSourceHardLimit`  | integer | Absolute ceiling: a request-supplied `perSourceLimit` larger than this is clamped down to it.                                                                                         |
 | `fromSourcePredicate` | string  | Predicate IRI used in the RDF-star annotation that records per-quad source membership on the describe response. Defaults to a built-in `urn:sparqly:*` IRI; override to namespace it. |
 
 All fields are optional.
@@ -127,7 +128,7 @@ cache:
 
 ## `index:`
 
-Disk-backed glob-index settings. Consumed by `serve`, which builds and refreshes the on-disk quad indexes for `glob` sources in isolated child processes (see [ADR-0042](./adr/0042-disk-backed-index-build-in-child-process.md)).
+Disk-backed glob-index settings. Consumed by `serve`, which builds and refreshes the on-disk quad indexes for `glob` sources in isolated child processes.
 
 ```yaml
 index:
@@ -135,10 +136,27 @@ index:
   concurrency: 2
 ```
 
-| Field         | Type    | Meaning                                                                                                                       |
-| ------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `dir`         | string  | Glob-index cache root. Relative paths resolve against the config-file directory. Defaults to `<configDir>/.sparqly/index/`.   |
-| `concurrency` | integer | Maximum number of parallel `sparqly index` child builds `serve` runs at once (the `IndexBuildPool` size). Default `2`.        |
+| Field         | Type    | Meaning                                                                                                                     |
+| ------------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `dir`         | string  | Glob-index cache root. Relative paths resolve against the config-file directory. Defaults to `<configDir>/.sparqly/index/`. |
+| `concurrency` | integer | Maximum number of parallel `sparqly index` child builds `serve` runs at once (the `IndexBuildPool` size). Default `2`.      |
+
+All fields are optional.
+
+## `query:`
+
+In-memory query worker settings. `serve` runs CPU-bound in-memory SPARQL queries off the main event loop in a bounded pool of worker threads, so one heavy query can't freeze other requests.
+
+```yaml
+query:
+  concurrency: 2
+  maxResidentQuads: 50000000
+```
+
+| Field              | Type    | Meaning                                                                                                                                                                                                                                                                                                                                           |
+| ------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `concurrency`      | integer | Number of in-memory query workers in the pool. A source is pinned to one worker by a hash of its id, so its store is built once and reused. Default `2`.                                                                                                                                                                                          |
+| `maxResidentQuads` | integer | Per-worker LRU budget, in quads, for resident stores. When a build pushes a worker over budget it evicts its least-recently-used idle store (a store with an in-flight query is never evicted); a later query for an evicted source rebuilds it transparently on the same worker. Defaults high enough that typical small registries never evict. |
 
 All fields are optional.
 

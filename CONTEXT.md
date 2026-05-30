@@ -70,7 +70,7 @@ The resolution path that runs the user's query against the source's own store â€
 _Avoid_: "pushdown", "federation"
 
 **Lazy materialization** (`serve`):
-The contract that a **Served registry** entry's store is built only on the first request that touches it, then memoized for the life of the process. The store for an in-memory entry is built and owned by the **query worker** (ADR-0050), off the main event loop; the main thread keeps only a state mirror. Speaks to _when_ the store is built, not _how_.
+The contract that a **Served registry** entry's store is built only on the first request that touches it, then held resident under a per-worker LRU budget (`query.maxResidentQuads`) rather than for the life of the process (ADR-0050 amends ADR-0031). The store for an in-memory entry is built and owned by the **query worker**, off the main event loop; the main thread keeps only a state mirror. When a build pushes a worker over budget it evicts its least-recently-used idle store (a store with an in-flight query is pinned); a later query for an evicted source rebuilds it transparently on the same sticky worker. Speaks to _when_ the store is built, not _how_.
 _Avoid_: "lazy loading", "on-demand resolution", "deferred boot"
 
 **Glob index**:

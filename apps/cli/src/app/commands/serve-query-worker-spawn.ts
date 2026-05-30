@@ -5,6 +5,10 @@ export interface SpawnQueryWorkerOptions {
   /** `process.argv[1]` captured before `main.ts` overwrites it — the CLI bundle
    * the worker re-runs in `worker_thread` mode. */
   cliEntry: string;
+  /** Per-worker LRU resident-quad budget (`query.maxResidentQuads`, ADR-0050).
+   * Travels in `workerData` so the worker enforces it on its own thread; omitted
+   * means the worker's built-in default applies. */
+  maxResidentQuads?: number;
   /** Injectable for tests; defaults to a real `worker_threads.Worker`. */
   createWorker?: (entry: string) => QueryWorkerHandle;
 }
@@ -22,7 +26,10 @@ export function makeSpawnQueryWorker(
     options.createWorker ??
     ((entry: string): QueryWorkerHandle =>
       new Worker(entry, {
-        workerData: { sparqlyRole: 'query-worker' },
+        workerData: {
+          sparqlyRole: 'query-worker',
+          maxResidentQuads: options.maxResidentQuads,
+        },
       }) as unknown as QueryWorkerHandle);
   return () => create(options.cliEntry);
 }

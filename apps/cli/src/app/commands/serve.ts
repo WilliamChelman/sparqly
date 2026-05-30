@@ -39,6 +39,7 @@ interface ServeConfig {
   indexCacheDir?: string;
   indexConcurrency?: number;
   queryConcurrency?: number;
+  queryMaxResidentQuads?: number;
   verbose?: boolean;
   quiet?: boolean;
   logFormat?: 'text' | 'json';
@@ -150,6 +151,11 @@ const queryConcurrencyField: FieldDescriptor = {
   schema: z.number().int().positive(),
 };
 
+const queryMaxResidentQuadsField: FieldDescriptor = {
+  key: 'queryMaxResidentQuads',
+  schema: z.number().int().positive(),
+};
+
 export const serveSpec: CommandSpec<ServeConfig> = {
   name: 'serve',
   description:
@@ -172,6 +178,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     indexCacheDirField,
     indexConcurrencyField,
     queryConcurrencyField,
+    queryMaxResidentQuadsField,
     ...verbosityFieldsFor('serve'),
   ],
   positionals: [{ field: 'source', name: 'glob' }],
@@ -232,7 +239,10 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       indexConcurrency: config.indexConcurrency,
       queryConcurrency: config.queryConcurrency,
       spawnIndexBuild: makeSpawnIndexBuild({ cliEntry }),
-      spawnQueryWorker: makeSpawnQueryWorker({ cliEntry }),
+      spawnQueryWorker: makeSpawnQueryWorker({
+        cliEntry,
+        maxResidentQuads: config.queryMaxResidentQuads,
+      }),
       logger: boundaryLog,
     });
 

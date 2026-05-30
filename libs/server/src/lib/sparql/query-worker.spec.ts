@@ -2,14 +2,23 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { ok, ResultAsync } from 'neverthrow';
 import {
   parseSourceSpecs,
   QueryEngine,
   resolveSourceResult,
   unionDefaultGraphEnabled,
+  type ExecuteResult,
 } from 'core';
-import { runQueryWorker, type WorkerPort } from './query-worker';
+import {
+  runQueryWorker,
+  type ResidentStore,
+  type StoreBuilder,
+  type WorkerPort,
+} from './query-worker';
 import type {
+  LoadRequest,
+  QueryRequest,
   QueryResultMessage,
   WorkerMessage,
   WorkerRequest,
@@ -131,5 +140,141 @@ describe('runQueryWorker', () => {
     if (load.type === 'load-failure') {
       expect(typeof load.error.kind).toBe('string');
     }
+  });
+});
+
+describe('runQueryWorker — LRU residency (ADR-0050, #387)', () => {
+  const resolveOptions: WorkerResolveOptions = {
+    resolutionRegistry: [],
+    configDir: '/tmp',
+    sparqlyVersion: undefined,
+    indexCacheDir: undefined,
+  };
+
+  function loadReq(sourceId: string): LoadRequest {
+    const [source] = parseSourceSpecs([{ id: sourceId, glob: `/x/${sourceId}.ttl` }]);
+    return { type: 'load', sourceId, source, resolveOptions };
+  }
+
+  function queryReq(requestId: number, sourceId: string): QueryRequest {
+    return {
+      type: 'query',
+      requestId,
+      sourceId,
+      query: 'SELECT * WHERE { ?s ?p ?o }',
+      format: 'json',
+      mutable: false,
+    };
+  }
+
+  function executeResult(body: string): ExecuteResult {
+    return { body, format: 'json', contentType: 'application/sparql-results+json' };
+  }
+
+  function fakeStore(quads: number, body: string): ResidentStore {
+    return {
+      quads,
+      files: [],
+      engine: {
+        execute: async () => executeResult(body),
+        executeResult: () => ResultAsync.fromSafePromise(Promise.resolve(executeResult(body))),
+      },
+    };
+  }
+
+  /** A builder backed by fake stores; records how many times each source was
+   * (re)built so a test can observe eviction → rebuild. */
+  function countingBuilder(quadsPerSource = 2): {
+    build: StoreBuilder;
+    counts: Map<string, number>;
+  } {
+    const counts = new Map<string, number>();
+    const build: StoreBuilder = async (request) => {
+      counts.set(request.sourceId, (counts.get(request.sourceId) ?? 0) + 1);
+      return ok(fakeStore(quadsPerSource, `body:${request.sourceId}`));
+    };
+    return { build, counts };
+  }
+
+  it('rebuilds an evicted store from its recipe on the next query (transparent re-touch)', async () => {
+    const { build, counts } = countingBuilder(2);
+    const port = new FakePort();
+    runQueryWorker(port, { maxResidentQuads: 3, buildStore: build });
+
+    port.send(loadReq('a'));
+    await port.next();
+    // Loading 'b' pushes the resident total to 4 > 3 → evicts idle LRU 'a'.
+    port.send(loadReq('b'));
+    await port.next();
+    expect(counts.get('a')).toBe(1);
+
+    // Query 'a' — its store was evicted, so the worker rebuilds from the recipe
+    // and answers correctly without the main thread re-sending a load.
+    port.send(queryReq(1, 'a'));
+    const result = (await port.next()) as QueryResultMessage;
+    expect(result.requestId).toBe(1);
+    expect(result.ok?.body).toBe('body:a');
+    expect(counts.get('a')).toBe(2);
+  });
+
+  it('never evicts a store while a query is in flight against it', async () => {
+    const counts = new Map<string, number>();
+    let releaseA!: () => void;
+    const aGate = new Promise<void>((resolve) => {
+      releaseA = resolve;
+    });
+    const build: StoreBuilder = async (request) => {
+      counts.set(request.sourceId, (counts.get(request.sourceId) ?? 0) + 1);
+      if (request.sourceId === 'a') {
+        return ok({
+          quads: 2,
+          files: [],
+          engine: {
+            execute: async () => executeResult('a-result'),
+            executeResult: () =>
+              new ResultAsync(aGate.then(() => ok(executeResult('a-result')))),
+          },
+        });
+      }
+      return ok(fakeStore(2, `body:${request.sourceId}`));
+    };
+    const port = new FakePort();
+    runQueryWorker(port, { maxResidentQuads: 3, buildStore: build });
+
+    port.send(loadReq('a'));
+    await port.next();
+    // Start a query on 'a' — it pins 'a' and blocks on the gate.
+    port.send(queryReq(1, 'a'));
+    // Load 'b' while 'a' is pinned: the resident total hits 4 > 3, but 'a' (the
+    // LRU) is pinned, so nothing is evicted.
+    port.send(loadReq('b'));
+    await port.next();
+
+    // Release the in-flight query — it still resolves against the live store.
+    releaseA();
+    const result = (await port.next()) as QueryResultMessage;
+    expect(result.requestId).toBe(1);
+    expect(result.ok?.body).toBe('a-result');
+    // 'a' was never evicted, so it was never rebuilt.
+    expect(counts.get('a')).toBe(1);
+  });
+
+  it('never evicts a small registry under the default budget (no behavior change)', async () => {
+    const { build, counts } = countingBuilder(2);
+    const port = new FakePort();
+    // No maxResidentQuads → the high default budget applies.
+    runQueryWorker(port, { buildStore: build });
+
+    for (const id of ['a', 'b', 'c']) {
+      port.send(loadReq(id));
+      await port.next();
+    }
+
+    // The first-touched source is still resident: querying it answers without
+    // a rebuild (its build count stays 1).
+    port.send(queryReq(1, 'a'));
+    const result = (await port.next()) as QueryResultMessage;
+    expect(result.ok?.body).toBe('body:a');
+    expect(counts.get('a')).toBe(1);
   });
 });

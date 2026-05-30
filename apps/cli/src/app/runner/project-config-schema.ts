@@ -58,6 +58,10 @@ const queryBlockSchema = z
     // Bounded in-memory query worker pool size (ADR-0050). Mirrors
     // `index.concurrency`; a source is pinned to one worker by hash. Defaults to 2.
     concurrency: z.number().int().positive(),
+    // Per-worker LRU resident-store budget in quads (ADR-0050, amends ADR-0031).
+    // The worker evicts its least-recently-used idle store when a build pushes it
+    // over budget. Defaults high enough that typical small registries never evict.
+    maxResidentQuads: z.number().int().positive(),
   })
   .partial()
   .strict();

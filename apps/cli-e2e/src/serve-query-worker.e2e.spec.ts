@@ -44,6 +44,64 @@ describe('sparqly serve — off-main-thread in-memory queries (ADR-0050)', () =>
     return configPath;
   }
 
+  /** Two materialized sources pinned to one worker (`query.concurrency: 1`)
+   * under a resident budget too small to hold both — so touching one evicts the
+   * other. */
+  async function writeEvictionConfig(): Promise<string> {
+    for (const [id, n] of [
+      ['alpha', 3],
+      ['beta', 4],
+    ] as const) {
+      const lines = ['@prefix ex: <http://example.org/> .'];
+      for (let i = 0; i < n; i++) lines.push(`ex:${id}${i} ex:p ex:o${i} .`);
+      await writeFile(join(dir, `${id}.ttl`), lines.join('\n') + '\n');
+    }
+    const configPath = join(dir, 'sparqly.config.yaml');
+    await writeFile(
+      configPath,
+      dedent`
+        query:
+          concurrency: 1
+          maxResidentQuads: 5
+        sources:
+          - id: alpha
+            glob: "${join(dir, 'alpha.ttl')}"
+          - id: beta
+            glob: "${join(dir, 'beta.ttl')}"
+      ` + '\n',
+    );
+    return configPath;
+  }
+
+  it('transparently rebuilds an evicted store under a low resident budget', async () => {
+    // alpha(3) + beta(4) = 7 quads > budget 5, and both pin to the single
+    // worker, so each touch evicts the other. Alternating queries force the
+    // worker to rebuild from its retained recipe every time, off the main loop.
+    const configPath = await writeEvictionConfig();
+    handle = await startServe(['--config', configPath]);
+
+    const count = async (id: string): Promise<string> => {
+      const res = await fetch(
+        `${handle!.baseUrl}/api/sparql/${id}?query=${encodeURIComponent(
+          'SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }',
+        )}`,
+        { headers: { accept: 'application/sparql-results+json' } },
+      );
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as {
+        results: { bindings: Array<{ n: { value: string } }> };
+      };
+      return json.results.bindings[0].n.value;
+    };
+
+    // Each source keeps returning its own correct count across repeated
+    // cross-eviction — the rebuild is invisible to the client.
+    for (let round = 0; round < 3; round++) {
+      expect(await count('alpha')).toBe('3');
+      expect(await count('beta')).toBe('4');
+    }
+  });
+
   it('returns a correct in-memory query result across the worker boundary', async () => {
     const configPath = await writeConfig(3);
     handle = await startServe(['--config', configPath, '--verbose']);
