@@ -185,7 +185,13 @@ function parseWithN3(
 ): Promise<ParseFileResult> {
   const records: RdfRecord[] = [];
   const prefixes: Record<string, string> = {};
-  const parser = new LineTrackingParser({ format });
+  // Resolve relative IRIs (notably `<>`) against the file, matching the
+  // rdf-parse path. Without a base, n3 yields an empty-value NamedNode that an
+  // n3 Store round-trips as a DefaultGraph, crashing RDFC-1.0 canonicalization.
+  const parser = new LineTrackingParser({
+    format,
+    baseIRI: `file://${path}`,
+  });
 
   return new Promise((resolve, reject) => {
     const onQuad = (err: Error | null, quad?: WithLine): void => {
@@ -274,7 +280,8 @@ function streamLoadError(path: string, message: string): GlobLoadError {
  */
 function createN3QuadStream(path: string, format: string): Readable {
   const fileStream = createReadStream(path, { encoding: 'utf8' });
-  const parser = new StreamParser({ format });
+  // See parseWithN3: resolve relative IRIs against the file's base IRI.
+  const parser = new StreamParser({ format, baseIRI: `file://${path}` });
   fileStream.on('error', (err) => parser.destroy(err));
   fileStream.pipe(parser);
   return parser;
