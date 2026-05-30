@@ -33,6 +33,24 @@ describe('parseRdfFile', () => {
     expect(records[0].line).toBe(1);
   });
 
+  // Regression: a relative `<>` IRI must resolve against the file base, not
+  // collapse to an empty-value NamedNode. An empty NamedNode round-trips
+  // through an n3 Store as a DefaultGraph, which then crashes RDFC-1.0
+  // canonicalization (`o.datatype.value` on a non-literal) during diff.
+  it('resolves a relative empty IRI <> against the file base', async () => {
+    const file = join(dir, 'rel.ttl');
+    await writeFile(
+      file,
+      '@prefix dct: <http://purl.org/dc/terms/> .\n' +
+        '<http://example.org/a> dct:source <> .\n',
+    );
+    const { records } = await parseRdfFile(file);
+    expect(records).toHaveLength(1);
+    const object = records[0].quad.object;
+    expect(object.termType).toBe('NamedNode');
+    expect(object.value).toBe(`file://${file}`);
+  });
+
   it('emits distinct lines per (p, o) pair in a multi-line subject block', async () => {
     const file = join(dir, 'multi.ttl');
     await writeFile(
@@ -473,6 +491,23 @@ describe('streamRdfFileQuads', () => {
 
     expect(quads).toHaveLength(1);
     expect(quads[0].graph.value).toBe('http://example.org/g');
+  });
+
+  // Regression: same empty-IRI hazard as the buffered path (see parseRdfFile).
+  it('resolves a relative empty IRI <> against the file base', async () => {
+    const file = join(dir, 'rel.ttl');
+    await writeFile(
+      file,
+      '@prefix dct: <http://purl.org/dc/terms/> .\n' +
+        '<http://example.org/a> dct:source <> .\n',
+    );
+
+    const quads: Quad[] = [];
+    for await (const quad of streamRdfFileQuads(file)) quads.push(quad);
+
+    expect(quads).toHaveLength(1);
+    expect(quads[0].object.termType).toBe('NamedNode');
+    expect(quads[0].object.value).toBe(`file://${file}`);
   });
 
   it('yields quads streaming a JSON-LD file', async () => {

@@ -364,3 +364,47 @@ describe('canonicalizeRdf', () => {
     expect(fromGlob.canonicalText).toBe(fromSingle.canonicalText);
   });
 });
+
+describe('canonicalizeStore degenerate-term guard', () => {
+  // An empty-value NamedNode (e.g. a relative `<>` parsed with no base, or an
+  // empty IRI from an endpoint) collapses to a DefaultGraph term inside an n3
+  // Store. RDFC-1.0 then crashes with an opaque `reading 'value'` TypeError.
+  // The guard must turn that into a clear, actionable error instead.
+  it('rejects with a clear error when an S/P/O term is a degenerate empty IRI', async () => {
+    const { Store, DataFactory } = await import('n3');
+    const { namedNode, quad } = DataFactory;
+    const store = new Store();
+    store.addQuad(
+      quad(
+        namedNode('http://example.org/s'),
+        namedNode('http://purl.org/dc/terms/source'),
+        namedNode(''),
+      ),
+    );
+
+    await expect(canonicalizeStore(store)).rejects.toThrow(
+      /degenerate empty IRI/i,
+    );
+    // The opaque rdf-canonize failure mode must not leak through.
+    await expect(canonicalizeStore(store)).rejects.not.toThrow(
+      /reading 'value'/,
+    );
+  });
+
+  it('names the offending triple so the bad data can be located', async () => {
+    const { Store, DataFactory } = await import('n3');
+    const { namedNode, quad } = DataFactory;
+    const store = new Store();
+    store.addQuad(
+      quad(
+        namedNode('http://example.org/concepts/NTFNP'),
+        namedNode('http://purl.org/dc/terms/source'),
+        namedNode(''),
+      ),
+    );
+
+    await expect(canonicalizeStore(store)).rejects.toThrow(
+      /http:\/\/example\.org\/concepts\/NTFNP/,
+    );
+  });
+});
