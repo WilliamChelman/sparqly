@@ -62,6 +62,9 @@ const queryBlockSchema = z
     // The worker evicts its least-recently-used idle store when a build pushes it
     // over budget. Defaults high enough that typical small registries never evict.
     maxResidentQuads: z.number().int().positive(),
+    // Grace window (ms) before a cancelled query whose worker hasn't torn down
+    // its stream is reclaimed by terminate + respawn (ADR-0050). Defaults to 250.
+    cancelGraceMs: z.number().int().positive(),
   })
   .partial()
   .strict();

@@ -516,4 +516,17 @@ describe('QueryEngine.executeResult', () => {
       await endpoint.close();
     }
   });
+
+  it('returns a query-execution error instead of a result when the signal is already aborted', async () => {
+    const engine = new QueryEngine(exampleStore());
+    const signal = AbortSignal.abort();
+
+    const result = await engine.executeResult('SELECT ?s WHERE { ?s ?p ?o }', {
+      signal,
+    });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('query-execution');
+  });
 });

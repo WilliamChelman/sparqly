@@ -64,7 +64,11 @@ export class EngineMap {
     private readonly buildPool: IndexBuildPool,
     private readonly stateEmitter: SourceStateEmitter | undefined,
     private readonly queryPool: QueryWorkerPool | undefined,
-  ) {}
+  ) {
+    // A reclaimed worker (ADR-0050 nuclear cancel) loses its stores — drop the
+    // memoized load so the next touch rebuilds them on the respawn.
+    this.queryPool?.onReset((ids) => this.resetWorkerSources(ids));
+  }
 
   static async create(
     servedRegistry: ReadonlyArray<ParsedSource>,
@@ -439,6 +443,17 @@ export class EngineMap {
       return (await entry.loaded).map((loaded) => loaded.engine);
     }
     return reloadEntry(entry, (e) => this.loadEntry(e));
+  }
+
+  // ADR-0050: drop each orphaned source's memo so the next touch rebuilds it.
+  private resetWorkerSources(sourceIds: ReadonlyArray<string>): void {
+    for (const id of sourceIds) {
+      const entry = this.entries.get(id);
+      if (entry !== undefined && this.isWorkerInMemory(entry)) {
+        entry.loaded = undefined;
+        entry.current = undefined;
+      }
+    }
   }
 
   async unload(id: string): Promise<void> {

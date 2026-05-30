@@ -12,6 +12,7 @@ import {
   Param,
   Post,
   Query,
+  Req,
   Res,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -49,6 +50,14 @@ interface ResLike {
   send(body: string): ResLike;
 }
 
+/** The slice of the raw request the controller needs to detect a client
+ * disconnect (ADR-0050). `close`/`aborted` fire when the HTTP connection drops
+ * before the response completes — the trigger to cancel the in-flight query. */
+interface ReqLike {
+  on(event: string, listener: () => void): void;
+  off(event: string, listener: () => void): void;
+}
+
 @Controller('sparql')
 export class RegistrySparqlController {
   constructor(
@@ -66,9 +75,10 @@ export class RegistrySparqlController {
     @Query('query') query: string | undefined,
     @Headers('accept') accept: string | undefined,
     @Res() res: ResLike,
+    @Req() req: ReqLike,
   ): Promise<void> {
     this.assertQuery(query);
-    await this.respond(undefined, query, accept, res);
+    await this.respond(undefined, query, accept, res, req);
   }
 
   @Post()
@@ -77,9 +87,10 @@ export class RegistrySparqlController {
     @Headers('accept') accept: string | undefined,
     @Body() body: unknown,
     @Res() res: ResLike,
+    @Req() req: ReqLike,
   ): Promise<void> {
     const query = this.extractPostQuery(contentType, body);
-    await this.respond(undefined, query, accept, res);
+    await this.respond(undefined, query, accept, res, req);
   }
 
   @Get('*id')
@@ -88,9 +99,10 @@ export class RegistrySparqlController {
     @Query('query') query: string | undefined,
     @Headers('accept') accept: string | undefined,
     @Res() res: ResLike,
+    @Req() req: ReqLike,
   ): Promise<void> {
     this.assertQuery(query);
-    await this.respond(toRef(id), query, accept, res);
+    await this.respond(toRef(id), query, accept, res, req);
   }
 
   @Post('*id')
@@ -100,9 +112,10 @@ export class RegistrySparqlController {
     @Headers('accept') accept: string | undefined,
     @Body() body: unknown,
     @Res() res: ResLike,
+    @Req() req: ReqLike,
   ): Promise<void> {
     const query = this.extractPostQuery(contentType, body);
-    await this.respond(toRef(id), query, accept, res);
+    await this.respond(toRef(id), query, accept, res, req);
   }
 
   private assertQuery(query: string | undefined): asserts query is string {
@@ -139,17 +152,32 @@ export class RegistrySparqlController {
     query: string,
     accept: string | undefined,
     res: ResLike,
+    req: ReqLike,
   ): Promise<void> {
     const format = pickFormat(accept);
     const selected = selectTargetResult(this.servedRegistry, ref);
     if (selected.isErr()) {
       throw mapError(selected.error);
     }
-    const result = await this.executeAgainstTarget(
-      selected.value,
-      query,
-      format,
-    );
+    // A client disconnect cancels the in-flight query (ADR-0050) so it can't tie
+    // up a bounded worker. Detached on settle so a normal close fires no stray
+    // cancel.
+    const abort = new AbortController();
+    const onDisconnect = (): void => abort.abort();
+    req.on('close', onDisconnect);
+    req.on('aborted', onDisconnect);
+    let result: Result<ExecuteResult, SourceError | TargetError | IndexingError>;
+    try {
+      result = await this.executeAgainstTarget(
+        selected.value,
+        query,
+        format,
+        abort.signal,
+      );
+    } finally {
+      req.off('close', onDisconnect);
+      req.off('aborted', onDisconnect);
+    }
     result.match(
       (ok: ExecuteResult) => {
         res
@@ -167,9 +195,10 @@ export class RegistrySparqlController {
     target: ParsedSource,
     query: string,
     format: SparqlFormat | undefined,
+    signal: AbortSignal,
   ): Promise<Result<ExecuteResult, SourceError | TargetError | IndexingError>> {
     if (this.isAdHocPin(target)) {
-      return await this.executeAdHocPinned(target, query, format);
+      return await this.executeAdHocPinned(target, query, format, signal);
     }
     // ensure() shares the in-flight promise so concurrent first-touches load
     // exactly once. Failures surface as typed SourceError so mapError can route
@@ -181,6 +210,7 @@ export class RegistrySparqlController {
           engine.executeResult(query, {
             format,
             mutable: this.config.mutable,
+            signal,
           }),
       );
   }
@@ -200,6 +230,7 @@ export class RegistrySparqlController {
     target: ParsedSource,
     query: string,
     format: SparqlFormat | undefined,
+    signal: AbortSignal,
   ): ResultAsync<ExecuteResult, SourceError | TargetError> {
     return resolveSourceResult(target, {
       registry: this.resolutionRegistry,
@@ -208,7 +239,7 @@ export class RegistrySparqlController {
         return new QueryEngine(sources.endpoint, {
           id: target.id as string,
           mode: 'pass-through',
-        }).executeResult(query, { format, mutable: this.config.mutable });
+        }).executeResult(query, { format, mutable: this.config.mutable, signal });
       }
       if (sources.mode === 'disk-backed') {
         // Release the LevelDB lock, then surface a typed glob-load error.
@@ -228,7 +259,7 @@ export class RegistrySparqlController {
           mode: 'materialized',
         },
         { unionDefaultGraph: unionDefaultGraphEnabled(target) },
-      ).executeResult(query, { format, mutable: this.config.mutable });
+      ).executeResult(query, { format, mutable: this.config.mutable, signal });
     });
   }
 }
