@@ -136,6 +136,9 @@ export async function unloadEntry(
   ) {
     return;
   }
+  // Supersede any in-flight load: a worker round-trip that resolves after this
+  // Unload must discard its result rather than re-populate the cleared entry.
+  entry.loadEpoch += 1;
   if (entry.closeIndex) {
     try {
       await entry.closeIndex();
