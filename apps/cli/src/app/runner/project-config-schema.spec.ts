@@ -38,6 +38,56 @@ describe('validateProjectConfig — savedQueries block', () => {
   });
 });
 
+describe('validateProjectConfig — query block', () => {
+  it('accepts a query block with a worker-pool concurrency cap', () => {
+    const result = validateProjectConfig({
+      sources: ['data/*.ttl'],
+      query: { concurrency: 3 },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.query?.concurrency).toBe(3);
+    }
+  });
+
+  it('accepts an empty query block', () => {
+    const result = validateProjectConfig({
+      sources: ['data/*.ttl'],
+      query: {},
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects an unknown field under query', () => {
+    const result = validateProjectConfig({
+      sources: ['data/*.ttl'],
+      query: { unknown: 1 },
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects a non-positive-integer query concurrency', () => {
+    for (const concurrency of [0, -1, 2.5]) {
+      const result = validateProjectConfig({
+        sources: ['data/*.ttl'],
+        query: { concurrency },
+      });
+      expect(result.ok).toBe(false);
+    }
+  });
+
+  it('still rejects a scalar query at root as a per-invocation flag', () => {
+    const result = validateProjectConfig({
+      sources: ['data/*.ttl'],
+      query: 'SELECT * WHERE { ?s ?p ?o }',
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues[0].message).toMatch(/per-invocation/);
+    }
+  });
+});
+
 describe('validateProjectConfig — index block', () => {
   it('accepts an index block with a dir overriding the Glob index cache root', () => {
     const result = validateProjectConfig({

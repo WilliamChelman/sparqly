@@ -53,6 +53,15 @@ const indexBlockSchema = z
   .partial()
   .strict();
 
+const queryBlockSchema = z
+  .object({
+    // Bounded in-memory query worker pool size (ADR-0050). Mirrors
+    // `index.concurrency`; a source is pinned to one worker by hash. Defaults to 2.
+    concurrency: z.number().int().positive(),
+  })
+  .partial()
+  .strict();
+
 const describeBlockSchema = z
   .object({
     // Per-source quad cap applied when a request omits `perSourceLimit`.
@@ -104,7 +113,12 @@ const KNOWN_TOP_LEVEL = new Set([
   'describe',
   'savedQueries',
   'index',
+  'query',
 ]);
+
+// Keys that name a config block AND a per-invocation flag — disambiguated by
+// shape: an object is the block, a scalar is the misplaced per-invocation flag.
+const BLOCK_OR_PER_INVOCATION = new Set(['format', 'query']);
 
 const baseProjectSchema = z
   .object({
@@ -116,6 +130,7 @@ const baseProjectSchema = z
     describe: describeBlockSchema.optional(),
     savedQueries: savedQueriesBlockSchema.optional(),
     index: indexBlockSchema.optional(),
+    query: queryBlockSchema.optional(),
   })
   .strict();
 
@@ -134,9 +149,12 @@ export function validateProjectConfig(parsed: unknown):
       const value = obj[key];
       const isObjectShape =
         typeof value === 'object' && value !== null && !Array.isArray(value);
-      // `format` is both a block name and a per-invocation flag — disambiguate
-      // by shape: object → block, scalar → per-invocation.
-      if (KNOWN_TOP_LEVEL.has(key) && (key !== 'format' || isObjectShape)) {
+      // `format`/`query` are both block names and per-invocation flags —
+      // disambiguate by shape: object → block, scalar → per-invocation.
+      if (
+        KNOWN_TOP_LEVEL.has(key) &&
+        (!BLOCK_OR_PER_INVOCATION.has(key) || isObjectShape)
+      ) {
         continue;
       }
       if (PER_INVOCATION_KEYS.has(key)) {

@@ -72,6 +72,8 @@ export interface CreateServerOptions {
   spawnQueryWorker?: () => QueryWorkerHandle;
   /** Defaults to 2. */
   indexConcurrency?: number;
+  /** Query worker pool size (`query.concurrency`, ADR-0050). Defaults to 2. */
+  queryConcurrency?: number;
   /** Defaults to 15_000. */
   sseHeartbeatMs?: number;
   /** Defaults to 256. */
@@ -119,7 +121,10 @@ export async function createServer(
       }),
   });
   const queryPool = options.spawnQueryWorker
-    ? new QueryWorkerPool({ spawn: options.spawnQueryWorker })
+    ? new QueryWorkerPool({
+        spawn: options.spawnQueryWorker,
+        concurrency: options.queryConcurrency,
+      })
     : undefined;
   const engineMap = await EngineMap.create(scope.servedRegistry, {
     resolutionRegistry: scope.resolutionRegistry,
