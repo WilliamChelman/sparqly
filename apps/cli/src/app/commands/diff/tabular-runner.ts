@@ -3,7 +3,7 @@ import {
   detectSelectShape,
   formatDiffSummaryLine,
   formatTabularDiff,
-  resolveAnonymousSelectBindings,
+  resolveInlineSelectBindings,
   tabularDiff,
   type ParsedSource,
   type SelectShapeReport,
@@ -13,7 +13,7 @@ import { writeOutputToFile } from '../../output';
 import { DiffErrorSignal } from '../diff-error';
 import { DiffPresentSignal, type DiffConfig } from './diff';
 import { type DiffFormat } from './fields';
-import { anonymousUpstream } from './side';
+import { inlineQueryUpstream } from './side';
 
 /** Throws when one side is triples-shape and the other tuples-shape — neither dispatch path can compare them. */
 export function detectTabularDispatch(
@@ -101,18 +101,18 @@ export async function runTabularDiff(args: RunTabularDiffArgs): Promise<void> {
     );
   }
 
-  const leftUpstream = anonymousUpstream(leftTarget, 'left');
-  const rightUpstream = anonymousUpstream(rightTarget, 'right');
+  const leftUpstream = inlineQueryUpstream(leftTarget, 'left');
+  const rightUpstream = inlineQueryUpstream(rightTarget, 'right');
   const sourcesRegistry: SourceSpecInput[] = config.sources ?? [];
 
   const [left, right] = await Promise.all([
-    resolveAnonymousSelectBindings({
+    resolveInlineSelectBindings({
       source: leftUpstream,
       query: leftInlineQuery,
       registry: sourcesRegistry,
       logger,
     }),
-    resolveAnonymousSelectBindings({
+    resolveInlineSelectBindings({
       source: rightUpstream,
       query: rightInlineQuery,
       registry: sourcesRegistry,

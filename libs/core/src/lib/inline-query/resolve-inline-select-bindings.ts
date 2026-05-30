@@ -29,9 +29,9 @@ import type {
   ViewValidationError,
 } from '../sources/errors';
 import type { TabularRow } from '../diff';
-import { validateViewQueryResult } from './view-query-validate';
+import { validateViewQueryResult } from '../views/view-query-validate';
 
-export interface AnonymousSelectBindingsInput {
+export interface InlineSelectBindingsInput {
   source: SourceSpecInput;
   query?: string;
   queryFile?: string;
@@ -41,13 +41,13 @@ export interface AnonymousSelectBindingsInput {
   logger?: SparqlyLogger;
 }
 
-export interface AnonymousSelectBindingsResult {
+export interface InlineSelectBindingsResult {
   variables: string[];
   /** In source-iteration order; multiplicity preserved (no dedup). */
   rows: TabularRow[];
 }
 
-export type ResolveAnonymousSelectBindingsError =
+export type ResolveInlineSelectBindingsError =
   | ViewValidationError
   | ViewReferenceError
   | CacheIoError
@@ -64,23 +64,22 @@ function upstreamLabel(upstream: ParsedSource): string {
   return upstream.id ?? `(${upstream.kind})`;
 }
 
-export function resolveAnonymousSelectBindingsResult(
-  input: AnonymousSelectBindingsInput,
-): ResultAsync<AnonymousSelectBindingsResult, ResolveAnonymousSelectBindingsError> {
+export function resolveInlineSelectBindingsResult(
+  input: InlineSelectBindingsInput,
+): ResultAsync<InlineSelectBindingsResult, ResolveInlineSelectBindingsError> {
   const hasQuery = input.query !== undefined;
   const hasQueryFile = input.queryFile !== undefined;
   if (hasQuery && hasQueryFile) {
     return errAsync({
       kind: 'view-validation',
       message:
-        '`query` and `queryFile` are mutually exclusive on an anonymous select-bindings resolver',
+        '`query` and `queryFile` are mutually exclusive on an inline query',
     });
   }
   if (!hasQuery && !hasQueryFile) {
     return errAsync({
       kind: 'view-validation',
-      message:
-        'an anonymous select-bindings resolver requires exactly one of `query` or `queryFile`',
+      message: 'an inline query requires exactly one of `query` or `queryFile`',
     });
   }
 
@@ -88,8 +87,7 @@ export function resolveAnonymousSelectBindingsResult(
   if (upstream.kind === 'reference') {
     return errAsync({
       kind: 'view-validation',
-      message:
-        'anonymous select-bindings: `@id` reference upstreams are not supported here',
+      message: 'inline query: `@id` reference upstreams are not supported here',
     });
   }
 
@@ -104,14 +102,14 @@ export function resolveAnonymousSelectBindingsResult(
       );
 
   return queryLoader.andThen<
-    AnonymousSelectBindingsResult,
-    ResolveAnonymousSelectBindingsError
+    InlineSelectBindingsResult,
+    ResolveInlineSelectBindingsError
   >((query) =>
     validateViewQueryResult(query, { mode: 'tabular-anon' })
       .map(() => query)
       .asyncAndThen<
-        AnonymousSelectBindingsResult,
-        ResolveAnonymousSelectBindingsError
+        InlineSelectBindingsResult,
+        ResolveInlineSelectBindingsError
       >((validQuery) =>
         executeSelectBindingsResult(upstream, validQuery, input),
       ),
@@ -121,18 +119,15 @@ export function resolveAnonymousSelectBindingsResult(
 function executeSelectBindingsResult(
   upstream: Exclude<ParsedSource, { kind: 'reference' }>,
   query: string,
-  input: AnonymousSelectBindingsInput,
-): ResultAsync<
-  AnonymousSelectBindingsResult,
-  ResolveAnonymousSelectBindingsError
-> {
+  input: InlineSelectBindingsInput,
+): ResultAsync<InlineSelectBindingsResult, ResolveInlineSelectBindingsError> {
   const shape = detectSelectShape(query);
   const engine = input.engine ?? new ComunicaQueryEngine();
   const source = upstreamLabel(upstream);
   const type = detectQueryType(query);
   const started = Date.now();
 
-  const eventOk = (bindings: AnonymousSelectBindingsResult): void => {
+  const eventOk = (bindings: InlineSelectBindingsResult): void => {
     emitQueryEvent(input.logger, {
       source,
       mode: 'view',
@@ -188,20 +183,20 @@ function executeSelectBindingsResult(
   })
     .mapErr(narrowUpstreamError)
     .andThen<
-      AnonymousSelectBindingsResult,
-      ResolveAnonymousSelectBindingsError
+      InlineSelectBindingsResult,
+      ResolveInlineSelectBindingsError
     >((sources) => {
     if (sources.mode === 'disk-backed') {
       // Release the LevelDB lock before returning so the next open of the index dir succeeds.
       void sources.close();
       const message =
-        'anonymous select-bindings: disk-backed glob upstream (`storage: disk`) cannot be materialized for tabular diff';
+        'inline query: disk-backed glob upstream (`storage: disk`) cannot be materialized for tabular diff';
       eventErr(new Error(message));
       return errAsync({ kind: 'glob-load', glob: [], message });
     }
     if (sources.mode !== 'materialized') {
       const message =
-        'anonymous select-bindings: endpoint upstream cannot be materialized in tabular diff (use pass-through)';
+        'inline query: endpoint upstream cannot be materialized in tabular diff (use pass-through)';
       eventErr(new Error(message));
       return errAsync({ kind: 'view-validation', message });
     }
@@ -227,11 +222,11 @@ function executeSelectBindingsResult(
   });
 }
 
-/** @deprecated Use {@link resolveAnonymousSelectBindingsResult}. Throw-based adapter. */
-export async function resolveAnonymousSelectBindings(
-  input: AnonymousSelectBindingsInput,
-): Promise<AnonymousSelectBindingsResult> {
-  const result = await resolveAnonymousSelectBindingsResult(input);
+/** @deprecated Use {@link resolveInlineSelectBindingsResult}. Throw-based adapter. */
+export async function resolveInlineSelectBindings(
+  input: InlineSelectBindingsInput,
+): Promise<InlineSelectBindingsResult> {
+  const result = await resolveInlineSelectBindingsResult(input);
   if (result.isErr()) {
     const err = result.error;
     if (err.kind === 'endpoint-fetch') {
@@ -246,12 +241,12 @@ export async function resolveAnonymousSelectBindings(
 // view-validation so the caller's narrower union stays exhaustive.
 function narrowUpstreamError(
   err: SourceError,
-): ResolveAnonymousSelectBindingsError {
+): ResolveInlineSelectBindingsError {
   if (err.kind === 'reference-target') {
     return {
       kind: 'view-validation',
       message:
-        "anonymous select-bindings: `kind: 'reference'` entries cannot be resolved as a target",
+        "inline query: `kind: 'reference'` entries cannot be resolved as a target",
     };
   }
   if (err.kind === 'raw-pass-through-target') {
@@ -263,10 +258,10 @@ function narrowUpstreamError(
 async function collectBindings(
   result: Awaited<ReturnType<ComunicaQueryEngine['query']>>,
   variables: string[],
-): Promise<AnonymousSelectBindingsResult> {
+): Promise<InlineSelectBindingsResult> {
   if (result.resultType !== 'bindings') {
     throw new Error(
-      `anonymous select-bindings: expected SELECT (bindings), got ${result.resultType}`,
+      `inline query: expected SELECT (bindings), got ${result.resultType}`,
     );
   }
   const bindings = await result.execute();
