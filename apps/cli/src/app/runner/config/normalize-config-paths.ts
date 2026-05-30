@@ -5,9 +5,9 @@ export function normalizeConfigPaths(
   configDir: string,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...parsed };
-  // The view Result cache (`cache.dir`) and the Glob index cache root
-  // (`index.dir`) both carry a `dir` resolved against the project config dir.
-  for (const blockName of ['cache', 'index'] as const) {
+  // The Glob index cache root (`index.dir`) carries a `dir` resolved against
+  // the project config dir.
+  for (const blockName of ['index'] as const) {
     const block = parsed[blockName];
     if (block === null || typeof block !== 'object' || Array.isArray(block)) {
       continue;

@@ -93,7 +93,7 @@ export const queryField: FieldDescriptor = {
     {
       spec: '--query <sparql>',
       description:
-        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes BOTH sides identically. Required for SPARQL endpoint targets; otherwise optional. Lowers to an anonymous, uncached view per side. Mutually exclusive with --query-file.',
+        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes BOTH sides identically. Required for SPARQL endpoint targets; otherwise optional. Runs as an inline query per side (never persisted). Mutually exclusive with --query-file.',
     },
   ],
 };
@@ -117,7 +117,7 @@ export const leftQueryField: FieldDescriptor = {
     {
       spec: '--left-query <sparql>',
       description:
-        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the LEFT side. Required for SPARQL endpoint targets on that side; otherwise optional. Lowers to an anonymous, uncached view. Mutually exclusive with --left-query-file and with the symmetric --query/--query-file.',
+        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the LEFT side. Required for SPARQL endpoint targets on that side; otherwise optional. Runs as an inline query (never persisted). Mutually exclusive with --left-query-file and with the symmetric --query/--query-file.',
     },
   ],
 };
@@ -141,7 +141,7 @@ export const rightQueryField: FieldDescriptor = {
     {
       spec: '--right-query <sparql>',
       description:
-        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the RIGHT side. Required for SPARQL endpoint targets on that side; otherwise optional. Lowers to an anonymous, uncached view. Mutually exclusive with --right-query-file and with the symmetric --query/--query-file.',
+        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the RIGHT side. Required for SPARQL endpoint targets on that side; otherwise optional. Runs as an inline query (never persisted). Mutually exclusive with --right-query-file and with the symmetric --query/--query-file.',
     },
   ],
 };

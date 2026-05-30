@@ -65,15 +65,12 @@ export interface DescribeResult {
 @Injectable()
 export class DescribeService {
   private readonly config: DescribeConfig;
-  private readonly resolutionRegistry: ReadonlyArray<ParsedSource>;
 
   constructor(
     private readonly servedRegistry: ReadonlyArray<ParsedSource>,
     config: DescribeConfig = DEFAULT_DESCRIBE_CONFIG,
-    resolutionRegistry: ReadonlyArray<ParsedSource> = servedRegistry,
   ) {
     this.config = config;
-    this.resolutionRegistry = resolutionRegistry;
   }
 
   runDescribe(
@@ -241,9 +238,7 @@ export class DescribeService {
     if (target.kind === 'reference') {
       return errAsync({ kind: 'reference-source', id, ref: target.ref });
     }
-    return resolveSourceResult(target, {
-      registry: this.resolutionRegistry,
-    })
+    return resolveSourceResult(target)
       .mapErr((source: SourceError): DescribeError => ({ kind: 'source', source }))
       .andThen<{ quads: Quad[]; truncated: boolean }, DescribeError>(
         (resolved: QuerySources) => {

@@ -7,7 +7,6 @@ import {
   tabularDiff,
   type ParsedSource,
   type SelectShapeReport,
-  type SourceSpecInput,
 } from 'core';
 import { writeOutputToFile } from '../../output';
 import { DiffErrorSignal } from '../diff-error';
@@ -103,19 +102,16 @@ export async function runTabularDiff(args: RunTabularDiffArgs): Promise<void> {
 
   const leftUpstream = inlineQueryUpstream(leftTarget, 'left');
   const rightUpstream = inlineQueryUpstream(rightTarget, 'right');
-  const sourcesRegistry: SourceSpecInput[] = config.sources ?? [];
 
   const [left, right] = await Promise.all([
     resolveInlineSelectBindings({
       source: leftUpstream,
       query: leftInlineQuery,
-      registry: sourcesRegistry,
       logger,
     }),
     resolveInlineSelectBindings({
       source: rightUpstream,
       query: rightInlineQuery,
-      registry: sourcesRegistry,
       logger,
     }),
   ]);

@@ -66,8 +66,6 @@ export type DiffResponse =
 export class DiffService {
   constructor(
     private readonly engineMap: EngineMap,
-    // Walked for `from:` chains while resolving anonymous SELECTs.
-    private readonly resolutionRegistry: ReadonlyArray<ParsedSource> = [],
     private readonly logger?: SparqlyLogger,
   ) {}
 
@@ -91,13 +89,11 @@ export class DiffService {
         rightQuery: req.rightQuery as string,
         leftShape: dispatch.value.left,
         rightShape: dispatch.value.right,
-        registry: this.resolutionRegistry,
       });
     }
 
     return runGraph({
       engineMap: this.engineMap,
-      resolutionRegistry: this.resolutionRegistry,
       leftTarget: leftSel.value,
       rightTarget: rightSel.value,
       leftQuery: req.leftQuery,
@@ -155,7 +151,7 @@ function detectTabularDispatch(
     right = detectSelectShape(rightQuery);
   } catch {
     // Parse-error on either query: fall back to graph mode so the offending
-    // query is surfaced downstream as an anonymous-view-execution error
+    // query is surfaced downstream as an inline-query execution error
     // (per-side) rather than a top-level shape error here.
     return ok({ kind: 'graph-mode' });
   }
@@ -172,7 +168,6 @@ function detectTabularDispatch(
 
 interface RunGraphArgs {
   engineMap: EngineMap;
-  resolutionRegistry: ReadonlyArray<ParsedSource>;
   leftTarget: ParsedSource;
   rightTarget: ParsedSource;
   leftQuery: string | undefined;
@@ -190,7 +185,6 @@ async function runGraph(args: RunGraphArgs): Promise<DiffResponse> {
   const [left, right] = await Promise.all([
     resolveGraphSide(
       args.engineMap,
-      args.resolutionRegistry,
       args.leftTarget,
       args.leftQuery,
       'left',
@@ -198,7 +192,6 @@ async function runGraph(args: RunGraphArgs): Promise<DiffResponse> {
     ),
     resolveGraphSide(
       args.engineMap,
-      args.resolutionRegistry,
       args.rightTarget,
       args.rightQuery,
       'right',
@@ -236,7 +229,6 @@ async function runGraph(args: RunGraphArgs): Promise<DiffResponse> {
 
 function resolveGraphSide(
   engineMap: EngineMap,
-  resolutionRegistry: ReadonlyArray<ParsedSource>,
   target: ParsedSource,
   inlineQuery: string | undefined,
   side: 'left' | 'right',
@@ -269,17 +261,13 @@ function resolveGraphSide(
       });
     }
 
-    const sources = yield* loadSideSources(
-      engineMap,
-      resolutionRegistry,
-      target,
-    )
+    const sources = yield* loadSideSources(engineMap, target)
       .mapErr((source: SourceError): DiffError => ({ kind: 'source', side, source }))
       .safeUnwrap();
     if (sources.mode === 'pass-through') {
       // Unreachable: the raw-pass-through pre-check above rejects raw
-      // endpoint targets before this branch; view-over-endpoint resolves
-      // to a materialized store, not pass-through.
+      // endpoint targets before this branch; an inline query over an endpoint
+      // resolves to a materialized store, not pass-through.
       throw new Error(
         'resolveGraphSide: unexpected pass-through resolution after raw-target pre-check',
       );
@@ -314,7 +302,6 @@ interface RunTabularArgs {
   rightQuery: string;
   leftShape: SelectShapeReport;
   rightShape: SelectShapeReport;
-  registry: ReadonlyArray<ParsedSource>;
 }
 
 async function runTabular(args: RunTabularArgs): Promise<DiffResponse> {
@@ -345,10 +332,9 @@ async function runTabular(args: RunTabularArgs): Promise<DiffResponse> {
     return { kind: 'error', errors };
   }
 
-  const sources: SourceSpecInput[] = [...args.registry] as SourceSpecInput[];
   const [leftBindings, rightBindings] = await Promise.all([
-    resolveTabularSide(leftUpstream.value, args.leftQuery, sources, 'left'),
-    resolveTabularSide(rightUpstream.value, args.rightQuery, sources, 'right'),
+    resolveTabularSide(leftUpstream.value, args.leftQuery, 'left'),
+    resolveTabularSide(rightUpstream.value, args.rightQuery, 'right'),
   ]);
   if (leftBindings.isErr() || rightBindings.isErr()) {
     const errors: DiffErrorResponse['errors'] = {};
@@ -443,14 +429,12 @@ function rawPassThroughSource(
 function resolveTabularSide(
   upstream: SourceSpecInput,
   query: string,
-  registry: ReadonlyArray<SourceSpecInput>,
   side: 'left' | 'right',
 ): ResultAsyncT<{ rows: TabularRow[] }, DiffError> {
   return ResultAsync.fromPromise(
     resolveInlineSelectBindings({
       source: upstream,
       query,
-      registry: [...registry],
     }),
     (raw): DiffError => ({
       kind: 'anonymous-select-execution',

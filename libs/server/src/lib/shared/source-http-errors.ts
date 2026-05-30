@@ -11,9 +11,7 @@ import type { SourceError } from 'core';
  *   glob-load         500  file/glob load failure (treated as server-side filesystem fault)
  *   query-execution   502  SPARQL execution against a materialized store failed
  *   endpoint-fetch    502  remote SPARQL endpoint network/non-2xx
- *   view-validation   400  view query validation (user-input)
- *   view-reference    400  `from:` ref unknown/cycle/reference-upstream (user-input)
- *   cache-io          500  view cache read/write/parse (server-side)
+ *   inline-query-validation  400  inline query validation (user-input)
  *   transform-parse   400  invalid transform spec (user-input)
  *   git-pin           400  gitRef/--at resolution failure (user-input, ADR-0029)
  */
@@ -27,12 +25,8 @@ export function sourceErrorToStatus(error: SourceError): HttpStatus {
       return HttpStatus.BAD_GATEWAY;
     case 'endpoint-fetch':
       return HttpStatus.BAD_GATEWAY;
-    case 'view-validation':
+    case 'inline-query-validation':
       return HttpStatus.BAD_REQUEST;
-    case 'view-reference':
-      return HttpStatus.BAD_REQUEST;
-    case 'cache-io':
-      return HttpStatus.INTERNAL_SERVER_ERROR;
     case 'transform-parse':
       return HttpStatus.BAD_REQUEST;
     case 'git-pin':

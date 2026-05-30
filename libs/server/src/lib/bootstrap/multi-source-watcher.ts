@@ -27,16 +27,13 @@ type RefreshTrigger = { kind: 'file-change'; path: string };
 export interface MaybeStartWatcherOptions {
   /** Sources `serve` exposes — the ones we try to watch. */
   servedRegistry: ReadonlyArray<ParsedSource>;
-  /** Superset used to walk `from:` chains (e.g. a scoped `@view`'s upstreams). */
-  resolutionRegistry: ReadonlyArray<ParsedSource>;
   engineMap: EngineMap;
   graphMode?: GraphMode;
   /** NestJS logger — used for the `--watch:` skip warnings. */
   logger: Logger;
-  /** Boundary logger (ADR-0020) — carries the rebuild/freshness timing lines. */
+  /** Boundary logger (ADR-0020) — carries the rebuild timing lines. */
   boundaryLogger: SparqlyLogger;
   debounceMs: number;
-  pollMs: number;
   snippetAllowList: SnippetAllowList;
   /**
    * Cheap glob walkers (no parse, no Store build) used to keep the snippet
@@ -57,7 +54,7 @@ export interface MaybeStartWatcherOptions {
 export async function maybeStartWatcher(
   opts: MaybeStartWatcherOptions,
 ): Promise<WatcherHandle | undefined> {
-  const chain = buildWatcherChain(opts.servedRegistry, opts.resolutionRegistry);
+  const chain = buildWatcherChain(opts.servedRegistry);
 
   for (const skipped of chain.passThrough) {
     const id = (skipped as { id?: string }).id;
@@ -82,7 +79,6 @@ export async function maybeStartWatcher(
       plan,
       engineMap: opts.engineMap,
       target: source,
-      registry: opts.resolutionRegistry,
       onRebuiltFiles: (files) => {
         opts.engineMap.setFiles(sourceId, files);
         opts.snippetAllowList.update(opts.engineMap.allFiles());
@@ -111,7 +107,6 @@ export async function maybeStartWatcher(
     graphMode: opts.graphMode,
     boundaryLogger: opts.boundaryLogger,
     debounceMs: opts.debounceMs,
-    pollMs: opts.pollMs,
     metaChildrenCache: opts.metaChildrenCache,
   });
 }
@@ -133,7 +128,6 @@ interface WatchedSource {
     invalidate: (id: string) => boolean;
   };
   target: ParsedSource;
-  registry: ReadonlyArray<ParsedSource>;
   /**
    * Notification fired after every successful materialized rebuild with the
    * absolute paths the loader actually opened on this rebuild. Used to keep
@@ -155,7 +149,6 @@ interface MultiSourceWatcherDeps {
   graphMode?: GraphMode;
   boundaryLogger: SparqlyLogger;
   debounceMs: number;
-  pollMs: number;
   metaChildrenCache: MetaChildrenCache;
 }
 
@@ -247,7 +240,7 @@ function createSourceRunner(
   let queued: RefreshTrigger | undefined;
   // Set by dispose() (on server close). Guards every observable side effect so
   // a rebuild that is already in-flight or queued when the watcher tears down
-  // cannot emit `view-rebuilt` or mutate a storeRef after close — teardown is
+  // cannot emit `source-rebuilt` or mutate a storeRef after close — teardown is
   // deterministic, not best-effort.
   let disposed = false;
 
@@ -261,12 +254,6 @@ function createSourceRunner(
     try {
       if (disposed) return;
       const planId = target.plan.id;
-      // The `view` source kind (and its `from:` chain) is gone, so a refresh no
-      // longer fans out to chained view ids — the source rebuilds itself and the
-      // `view-rebuilt`/`view-invalidated` lines below carry the timing.
-      const logRefreshing = (): void => {
-        /* no chained views to announce */
-      };
       // #391: the snippet allow-list is eager main-owned machinery, orthogonal
       // to store residency. Re-walk the glob (no parse, no Store build) on every
       // FS change so a newly-matched file becomes readable via
@@ -287,33 +274,30 @@ function createSourceRunner(
       // here. `invalidate` returns false (and falls through) when the source is
       // non-worker or un-touched, preserving the ADR-0031 laziness below.
       if (planId !== undefined && target.engineMap.invalidate(planId)) {
-        logRefreshing();
-        deps.boundaryLogger.info('view-invalidated', {
+        deps.boundaryLogger.info('source-invalidated', {
           ...sourceField,
           trigger: trigger.kind,
         });
         return;
       }
       // ADR-0031: un-touched sources have no live storeRef. Don't load on
-      // their behalf in response to FS / TTL / freshness events — the next
+      // their behalf in response to FS events — the next
       // `ensure(id)` from a request will build the store fresh.
       const storeRef =
         planId !== undefined
           ? target.engineMap.getStoreRef(planId)
           : undefined;
       if (!storeRef) return;
-      logRefreshing();
       const start = Date.now();
       const refreshed = await resolveSource(target.target, {
         graphMode: deps.graphMode,
-        registry: target.registry,
         logger: deps.boundaryLogger,
       });
       if (disposed) return;
       if (refreshed.mode === 'materialized') {
         storeRef.current = refreshed.store;
         target.onRebuiltFiles?.(refreshed.files);
-        deps.boundaryLogger.info('view-rebuilt', {
+        deps.boundaryLogger.info('source-rebuilt', {
           ...sourceField,
           files: refreshed.files.length,
           quads: refreshed.store.size,

@@ -21,7 +21,7 @@ export interface WatcherChain {
    */
   passThrough: ReadonlyArray<ParsedSource>;
   /**
-   * Globs across every source's chain, deduped to base directories — drives a
+   * Globs across every watched source, deduped to base directories — drives a
    * single chokidar instance regardless of how many sources reference them.
    */
   globBases: ReadonlyArray<string>;
@@ -29,9 +29,6 @@ export interface WatcherChain {
 
 export function buildWatcherChain(
   servedRegistry: ReadonlyArray<ParsedSource>,
-  // Retained for call-site compatibility; with the `view` source kind removed
-  // there is no longer a `from:` chain to resolve across registries.
-  _resolutionRegistry: ReadonlyArray<ParsedSource> = servedRegistry,
 ): WatcherChain {
   const sources: WatcherSourcePlan[] = [];
   const passThrough: ParsedSource[] = [];

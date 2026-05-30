@@ -4,7 +4,7 @@ import { Store } from 'n3';
 import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import type { SparqlyLogger } from 'common';
 import { parseSourceSpec, type SourceSpecInput } from '../sources';
-import type { ViewValidationError } from '../sources/errors';
+import type { InlineQueryValidationError } from '../sources/errors';
 import {
   executeInlineQueryResult,
   type ExecuteInlineQueryError,
@@ -25,7 +25,7 @@ export type ResolveInlineQueryError = ExecuteInlineQueryError;
  * Primary `Result`-typed inline-query resolver. Parses the upstream source,
  * loads and validates the query, then runs it against the upstream and returns
  * the scoped {@link Store}. Surface failures (no/both `query`/`queryFile`, `@id`
- * reference upstream) become {@link ViewValidationError} variants (ADR-0024,
+ * reference upstream) become {@link InlineQueryValidationError} variants (ADR-0024,
  * ADR-0051).
  */
 export function resolveInlineQueryResult(
@@ -35,14 +35,14 @@ export function resolveInlineQueryResult(
   const hasQueryFile = input.queryFile !== undefined;
   if (hasQuery && hasQueryFile) {
     return errAsync({
-      kind: 'view-validation',
+      kind: 'inline-query-validation',
       message:
         '`query` and `queryFile` are mutually exclusive on an inline query',
     });
   }
   if (!hasQuery && !hasQueryFile) {
     return errAsync({
-      kind: 'view-validation',
+      kind: 'inline-query-validation',
       message: 'an inline query requires exactly one of `query` or `queryFile`',
     });
   }
@@ -50,7 +50,7 @@ export function resolveInlineQueryResult(
   const upstream = parseSourceSpec(input.source);
   if (upstream.kind === 'reference') {
     return errAsync({
-      kind: 'view-validation',
+      kind: 'inline-query-validation',
       message: 'inline query: `@id` reference upstreams are not supported here',
     });
   }
@@ -68,11 +68,11 @@ export function resolveInlineQueryResult(
 
 function loadQueryText(
   input: InlineQueryInput,
-): ResultAsync<string, ViewValidationError> {
+): ResultAsync<string, InlineQueryValidationError> {
   if (input.query !== undefined) return okAsync(input.query);
   const path = resolvePath(process.cwd(), input.queryFile as string);
   return ResultAsync.fromPromise(readFile(path, 'utf8'), (err) => ({
-    kind: 'view-validation' as const,
+    kind: 'inline-query-validation' as const,
     message: err instanceof Error ? err.message : String(err),
   }));
 }

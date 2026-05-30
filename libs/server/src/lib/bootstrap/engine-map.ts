@@ -46,8 +46,6 @@ export type { IndexingError, LoadedSources } from './engine-map-types';
 export { isIndexingError } from './engine-map-types';
 
 export interface EngineMapOptions {
-  // Superset of the served set used to walk `from:` chains. Defaults to served.
-  resolutionRegistry?: ReadonlyArray<ParsedSource>;
   logger?: SparqlyLogger;
   configDir?: string;
   sparqlyVersion?: string;
@@ -72,7 +70,6 @@ export interface EngineMapOptions {
 export class EngineMap {
   private constructor(
     private readonly entries: Map<string, Entry>,
-    private readonly resolutionRegistry: ReadonlyArray<ParsedSource>,
     private readonly logger: SparqlyLogger | undefined,
     private readonly configDir: string,
     private readonly sparqlyVersion: string | undefined,
@@ -94,7 +91,6 @@ export class EngineMap {
     servedRegistry: ReadonlyArray<ParsedSource>,
     options: EngineMapOptions = {},
   ): Promise<EngineMap> {
-    const resolutionRegistry = options.resolutionRegistry ?? servedRegistry;
     const entries = new Map<string, Entry>();
     for (const src of servedRegistry) {
       if (src.kind === 'reference') continue;
@@ -147,7 +143,6 @@ export class EngineMap {
     });
     return new EngineMap(
       entries,
-      resolutionRegistry,
       options.logger,
       configDir,
       options.sparqlyVersion,
@@ -172,12 +167,11 @@ export class EngineMap {
 
   /** Resolves a {@link QueryExecutor} for an *ad-hoc pinned* source (`@id:ref`)
    * that has no pre-built entry (#390). Delegates to {@link ensureAdHocExecutor}:
-   * in-memory pinned globs/views route through the worker keyed by resolved SHA,
+   * in-memory pinned globs route through the worker keyed by resolved SHA,
    * else a main-thread build (pass-through/disk-backed/no-worker). */
   ensureAdHoc(source: ParsedSource): ResultAsync<QueryExecutor, SourceError> {
     return ensureAdHocExecutor(source, {
       pool: this.queryPool,
-      resolutionRegistry: this.resolutionRegistry,
       configDir: this.configDir,
       sparqlyVersion: this.sparqlyVersion,
       indexCacheDir: this.indexCacheDir,
@@ -197,7 +191,6 @@ export class EngineMap {
     // the worker's resident copy. Endpoint/disk-backed keep the memoized path.
     if (entry && this.isWorkerInMemory(entry) && !isDiskBacked(entry.source)) {
       return resolveFreshWorkerSources(entry.source, {
-        registry: this.resolutionRegistry,
         logger: this.logger,
         configDir: this.configDir,
         sparqlyVersion: this.sparqlyVersion,
@@ -231,7 +224,6 @@ export class EngineMap {
 
   private workerResolveOptions(): WorkerResolveOptions {
     return {
-      resolutionRegistry: this.resolutionRegistry,
       configDir: this.configDir,
       sparqlyVersion: this.sparqlyVersion,
       indexCacheDir: this.indexCacheDir,
@@ -335,7 +327,6 @@ export class EngineMap {
     this.stateEmitter?.emit({ kind: 'load-start', sourceId });
     const start = Date.now();
     const resolved = await resolveSourceResult(src, {
-      registry: this.resolutionRegistry,
       logger: this.logger,
       configDir: this.configDir,
       sparqlyVersion: this.sparqlyVersion,

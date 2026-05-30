@@ -266,16 +266,16 @@ describe('resolveInlineSelectBindingsResult', () => {
     expect(result.value.rows).toHaveLength(2);
   });
 
-  it('returns Result.err with view-validation when neither query nor queryFile is supplied', async () => {
+  it('returns Result.err with inline-query-validation when neither query nor queryFile is supplied', async () => {
     const result = await resolveInlineSelectBindingsResult({
       source: { glob: 'whatever.ttl' },
     });
     expect(result.isErr()).toBe(true);
     if (!result.isErr()) throw new Error('unreachable');
-    expect(result.error.kind).toBe('view-validation');
+    expect(result.error.kind).toBe('inline-query-validation');
   });
 
-  it('returns Result.err with view-validation when both query and queryFile are supplied', async () => {
+  it('returns Result.err with inline-query-validation when both query and queryFile are supplied', async () => {
     const result = await resolveInlineSelectBindingsResult({
       source: { glob: 'whatever.ttl' },
       query: 'SELECT ?s WHERE { ?s ?p ?o }',
@@ -283,20 +283,20 @@ describe('resolveInlineSelectBindingsResult', () => {
     });
     expect(result.isErr()).toBe(true);
     if (!result.isErr()) throw new Error('unreachable');
-    expect(result.error.kind).toBe('view-validation');
+    expect(result.error.kind).toBe('inline-query-validation');
   });
 
-  it('returns Result.err with view-validation when the upstream is a `@id` reference', async () => {
+  it('returns Result.err with inline-query-validation when the upstream is a `@id` reference', async () => {
     const result = await resolveInlineSelectBindingsResult({
       source: '@some-id',
       query: 'SELECT ?s WHERE { ?s ?p ?o }',
     });
     expect(result.isErr()).toBe(true);
     if (!result.isErr()) throw new Error('unreachable');
-    expect(result.error.kind).toBe('view-validation');
+    expect(result.error.kind).toBe('inline-query-validation');
   });
 
-  it('returns Result.err with view-validation when the query is ASK/DESCRIBE/UPDATE', async () => {
+  it('returns Result.err with inline-query-validation when the query is ASK/DESCRIBE/UPDATE', async () => {
     const a = join(dataDir, 'a.ttl');
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
     const result = await resolveInlineSelectBindingsResult({
@@ -305,7 +305,7 @@ describe('resolveInlineSelectBindingsResult', () => {
     });
     expect(result.isErr()).toBe(true);
     if (!result.isErr()) throw new Error('unreachable');
-    expect(result.error.kind).toBe('view-validation');
+    expect(result.error.kind).toBe('inline-query-validation');
   });
 
   /**

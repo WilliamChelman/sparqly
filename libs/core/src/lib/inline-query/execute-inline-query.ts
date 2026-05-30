@@ -17,8 +17,8 @@ import type {
   EndpointFetchError,
   GlobLoadError,
   QueryExecutionError,
+  InlineQueryValidationError,
   TransformParseError,
-  ViewValidationError,
 } from '../sources/errors';
 import { resolveDiskBackedIndexHandleResult } from './disk-backed-index-handle';
 import {
@@ -30,7 +30,7 @@ import {
 export type InlineQueryUpstream = Exclude<ParsedSource, { kind: 'reference' }>;
 
 export type ExecuteInlineQueryError =
-  | ViewValidationError
+  | InlineQueryValidationError
   | EndpointFetchError
   | QueryExecutionError
   | GlobLoadError
@@ -196,7 +196,7 @@ async function runInMemoryQuery(
     }
     emitQueryEvent(meta.logger, {
       source: meta.source,
-      mode: 'view',
+      mode: 'materialized',
       query,
       type,
       ms: Date.now() - started,
@@ -206,7 +206,7 @@ async function runInMemoryQuery(
   } catch (err) {
     emitQueryEvent(meta.logger, {
       source: meta.source,
-      mode: 'view',
+      mode: 'materialized',
       query,
       type,
       ms: Date.now() - started,

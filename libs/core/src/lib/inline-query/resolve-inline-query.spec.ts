@@ -83,16 +83,16 @@ describe('resolveInlineQueryResult', () => {
     expect(result.value.size).toBe(1);
   });
 
-  it('returns Result.err with a view-validation variant when neither query nor queryFile is supplied', async () => {
+  it('returns Result.err with a inline-query-validation variant when neither query nor queryFile is supplied', async () => {
     const result = await resolveInlineQueryResult({
       source: { glob: 'whatever.ttl' },
     });
     expect(result.isErr()).toBe(true);
     if (!result.isErr()) throw new Error('unreachable');
-    expect(result.error.kind).toBe('view-validation');
+    expect(result.error.kind).toBe('inline-query-validation');
   });
 
-  it('returns Result.err with a view-validation variant when both query and queryFile are supplied', async () => {
+  it('returns Result.err with a inline-query-validation variant when both query and queryFile are supplied', async () => {
     const result = await resolveInlineQueryResult({
       source: { glob: 'whatever.ttl' },
       query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
@@ -100,16 +100,16 @@ describe('resolveInlineQueryResult', () => {
     });
     expect(result.isErr()).toBe(true);
     if (!result.isErr()) throw new Error('unreachable');
-    expect(result.error.kind).toBe('view-validation');
+    expect(result.error.kind).toBe('inline-query-validation');
   });
 
-  it('returns Result.err with a view-validation variant when the upstream is a `@id` reference', async () => {
+  it('returns Result.err with a inline-query-validation variant when the upstream is a `@id` reference', async () => {
     const result = await resolveInlineQueryResult({
       source: '@some-id',
       query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
     });
     expect(result.isErr()).toBe(true);
     if (!result.isErr()) throw new Error('unreachable');
-    expect(result.error.kind).toBe('view-validation');
+    expect(result.error.kind).toBe('inline-query-validation');
   });
 });

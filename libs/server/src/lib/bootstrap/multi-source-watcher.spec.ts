@@ -229,7 +229,7 @@ describe('createServer — multi-source watcher lifecycle', () => {
       expect(loadedUntouched).toEqual([]);
       const rebuiltUntouched = rec.entries.filter(
         (e) =>
-          e.msg === 'view-rebuilt' &&
+          e.msg === 'source-rebuilt' &&
           (e.fields as { source?: string } | undefined)?.source === 'untouched',
       );
       expect(rebuiltUntouched).toEqual([]);
@@ -262,7 +262,7 @@ describe('createServer — multi-source watcher lifecycle', () => {
 
     const rebuilt = await waitFor(
       (e) =>
-        e.msg === 'view-rebuilt' &&
+        e.msg === 'source-rebuilt' &&
         (e.fields as { source?: string } | undefined)?.source === 'files',
     );
     expect(rebuilt.fields?.['files']).toBe(3);
@@ -274,7 +274,7 @@ describe('createServer — multi-source watcher lifecycle', () => {
     ]);
 
     const rebuildsBeforeClose = entries.filter(
-      (e) => e.msg === 'view-rebuilt',
+      (e) => e.msg === 'source-rebuilt',
     ).length;
     expect(rebuildsBeforeClose).toBe(1);
 
@@ -287,7 +287,7 @@ describe('createServer — multi-source watcher lifecycle', () => {
     );
     await new Promise((r) => setTimeout(r, 100));
     expect(
-      entries.filter((e) => e.msg === 'view-rebuilt').length,
+      entries.filter((e) => e.msg === 'source-rebuilt').length,
     ).toBe(rebuildsBeforeClose);
   });
 });

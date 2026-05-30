@@ -12,7 +12,6 @@ describe('resolveServeScope — no --source', () => {
     const scope = resolveServeScope(registry);
 
     expect(scope.servedRegistry).toEqual(registry);
-    expect(scope.resolutionRegistry).toEqual(registry);
   });
 });
 
@@ -28,7 +27,6 @@ describe('resolveServeScope — --source @id', () => {
     expect(scope.servedRegistry).toEqual([
       { kind: 'endpoint', id: 'live', endpoint: 'https://example.com/sparql' },
     ]);
-    expect(scope.resolutionRegistry).toEqual(registry);
     expect(scope.defaultId).toBe('live');
   });
 
@@ -60,7 +58,6 @@ describe('resolveServeScope — empty registry', () => {
     const scope = resolveServeScope([]);
 
     expect(scope.servedRegistry).toEqual([]);
-    expect(scope.resolutionRegistry).toEqual([]);
     expect(scope.defaultId).toBeUndefined();
   });
 });
@@ -107,17 +104,6 @@ describe('resolveServeScope — inline glob/URL', () => {
       { kind: 'glob', glob: 'adhoc/*.ttl', id: 'default', default: true },
     ]);
     expect(scope.defaultId).toBe('default');
-    expect(scope.resolutionRegistry).toContainEqual({
-      kind: 'glob',
-      glob: 'adhoc/*.ttl',
-      id: 'default',
-      default: true,
-    });
-    expect(scope.resolutionRegistry).toContainEqual({
-      kind: 'glob',
-      id: 'files',
-      glob: 'data/*.ttl',
-    });
   });
 
   it('synthesizes a single @default pass-through endpoint entry for an inline URL', () => {
@@ -146,7 +132,6 @@ describe('resolveServeScope — lone id-less source', () => {
     expect(scope.servedRegistry).toEqual([
       { kind: 'glob', glob: 'data/*.ttl', id: 'default', default: true },
     ]);
-    expect(scope.resolutionRegistry).toEqual(scope.servedRegistry);
     expect(scope.defaultId).toBe('default');
   });
 

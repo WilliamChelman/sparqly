@@ -33,8 +33,8 @@ describe('sparqly config — auto-discovery (walk-up from CWD)', () => {
   it('loads ancestor sparqly.config.yaml when invoked from a subdirectory', async () => {
     const configPath = join(projectRoot, 'sparqly.config.yaml');
     await writeFile(configPath, dedent`
-      cache:
-        dir: .sparqly-cache
+      index:
+        dir: .sparqly-index
     ` + '\n');
 
     const sub = join(projectRoot, 'pkg', 'src');
@@ -52,8 +52,8 @@ describe('sparqly config — auto-discovery (walk-up from CWD)', () => {
   it('--no-config skips auto-discovery even when a project config is present', async () => {
     const configPath = join(projectRoot, 'sparqly.config.yaml');
     await writeFile(configPath, dedent`
-      cache:
-        dir: .sparqly-cache
+      index:
+        dir: .sparqly-index
     ` + '\n');
 
     const result = await runCli(
@@ -75,8 +75,8 @@ describe('sparqly config — auto-discovery (walk-up from CWD)', () => {
   it('SPARQLY_CONFIG="" skips auto-discovery (mirrors --no-config)', async () => {
     const configPath = join(projectRoot, 'sparqly.config.yaml');
     await writeFile(configPath, dedent`
-      cache:
-        dir: .sparqly-cache
+      index:
+        dir: .sparqly-index
     ` + '\n');
 
     const result = await runCli(
@@ -91,11 +91,11 @@ describe('sparqly config — auto-discovery (walk-up from CWD)', () => {
   it('errors clearly when two sparqly config extensions coexist in the same dir', async () => {
     await writeFile(
       join(projectRoot, 'sparqly.config.yaml'),
-      'cache:\n  dir: .a\n',
+      'index:\n  dir: .a\n',
     );
     await writeFile(
       join(projectRoot, 'sparqly.config.json'),
-      '{"cache":{"dir":".b"}}',
+      '{"index":{"dir":".b"}}',
     );
 
     const result = await runCli(

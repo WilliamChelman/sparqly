@@ -18,7 +18,7 @@ describe('resolveSide — no pass-through boundary warn (view chain removed, ADR
     ];
     const logger = captureLogger();
 
-    await resolveSide(registry[0], {}, undefined, 'left', logger, registry).catch(
+    await resolveSide(registry[0], {}, undefined, 'left', logger).catch(
       () => undefined,
     );
 
@@ -30,7 +30,7 @@ describe('resolveSide — no pass-through boundary warn (view chain removed, ADR
     expect(boundaryWarns).toEqual([]);
   });
 
-  it('emits zero warns when an inline query is provided (anonymous-view path bypasses the pass-through chain check)', async () => {
+  it('emits zero warns when an inline query is provided (inline-query path bypasses the pass-through check)', async () => {
     const target: ParsedSource = {
       kind: 'endpoint',
       id: 'live',
@@ -44,7 +44,6 @@ describe('resolveSide — no pass-through boundary warn (view chain removed, ADR
       'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
       'left',
       logger,
-      [target],
     ).catch(() => undefined);
 
     expect(logger.warn).not.toHaveBeenCalled();

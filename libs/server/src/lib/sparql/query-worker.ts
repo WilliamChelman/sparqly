@@ -183,7 +183,6 @@ export function runQueryWorker(
 const defaultBuildStore: StoreBuilder = async (request) => {
   const { source } = request;
   const resolved = await resolveSourceResult(source, {
-    registry: request.resolveOptions.resolutionRegistry,
     configDir: request.resolveOptions.configDir,
     sparqlyVersion: request.resolveOptions.sparqlyVersion,
     indexCacheDir: request.resolveOptions.indexCacheDir,

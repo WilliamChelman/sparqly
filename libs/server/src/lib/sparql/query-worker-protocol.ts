@@ -17,7 +17,6 @@ import type {
  * A serializable projection of `EngineMap`'s resolve options — the logger is
  * dropped (not cloneable); the worker logs to its own boundary. */
 export interface WorkerResolveOptions {
-  resolutionRegistry: ReadonlyArray<ParsedSource>;
   configDir: string;
   sparqlyVersion: string | undefined;
   indexCacheDir: string | undefined;

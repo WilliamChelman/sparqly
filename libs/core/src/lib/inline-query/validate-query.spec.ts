@@ -17,7 +17,7 @@ function expectErr(
   const result = validateInlineQueryResult(query, mode ? { mode } : undefined);
   expect(result.isErr()).toBe(true);
   if (!result.isErr()) throw new Error('unreachable');
-  expect(result.error.kind).toBe('view-validation');
+  expect(result.error.kind).toBe('inline-query-validation');
   expect(result.error.message).toMatch(pattern);
 }
 
@@ -93,7 +93,7 @@ describe('validateInlineQueryResult — rejected query types', () => {
     const result = validateInlineQueryResult('not a query');
     expect(result.isErr()).toBe(true);
     if (!result.isErr()) throw new Error('unreachable');
-    expect(result.error.kind).toBe('view-validation');
+    expect(result.error.kind).toBe('inline-query-validation');
     expect(result.error.message.length).toBeGreaterThan(0);
   });
 });

@@ -34,7 +34,7 @@ async function buildSvc(
   logger?: { debug: (event: string, data: unknown) => void },
 ): Promise<{ svc: DiffService; engineMap: EngineMap }> {
   const engineMap = await EngineMap.create(registry, { logger });
-  const svc = new DiffService(engineMap, registry);
+  const svc = new DiffService(engineMap);
   return { svc, engineMap };
 }
 
@@ -373,7 +373,7 @@ describe('DiffService — pinned `@id:ref` address (ADR-0029)', () => {
       { id: 'foaf', glob: join(repo, 'foaf.ttl') },
     ]);
     const engineMap = await EngineMap.create(registry);
-    const svc = new DiffService(engineMap, registry);
+    const svc = new DiffService(engineMap);
 
     const out = await svc.runDiff({
       left: '@nope:v1.2.0',
@@ -403,7 +403,7 @@ describe('DiffService — pinned `@id:ref` address (ADR-0029)', () => {
       { walkGlob: defaultGlobWalker },
     );
     const engineMap = await EngineMap.create(expanded);
-    const svc = new DiffService(engineMap, expanded);
+    const svc = new DiffService(engineMap);
 
     // Working tree currently holds v1.3.0 content. Left = working (no pin),
     // right = pinned at the v1.2.0 tag — should surface the change between
@@ -432,7 +432,7 @@ describe('DiffService — pinned `@id:ref` address (ADR-0029)', () => {
       { id: 'foaf', glob: join(repo, 'foaf.ttl') },
     ]);
     const engineMap = await EngineMap.create(registry);
-    const svc = new DiffService(engineMap, registry);
+    const svc = new DiffService(engineMap);
 
     const out = await svc.runDiff({
       left: '@foaf:v1.2.0',
@@ -475,7 +475,7 @@ describe('DiffService — pass-through boundary warn (ADR-0047, #376)', () => {
       ]);
       const engineMap = await EngineMap.create(registry);
       const logger = captureLogger();
-      const svc = new DiffService(engineMap, registry, logger);
+      const svc = new DiffService(engineMap, logger);
 
       await svc.runDiff({ left: '@alpha', right: '@beta' });
 

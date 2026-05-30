@@ -4,9 +4,7 @@ export type SourceError =
   | GlobLoadError
   | QueryExecutionError
   | EndpointFetchError
-  | ViewValidationError
-  | ViewReferenceError
-  | CacheIoError
+  | InlineQueryValidationError
   | TransformParseError
   | GitPinError
   | RawPassThroughTargetError;
@@ -37,26 +35,9 @@ export interface EndpointFetchError {
   message: string;
 }
 
-/** Failure validating a view query. */
-export interface ViewValidationError {
-  kind: 'view-validation';
-  viewId?: string;
-  message: string;
-}
-
-/** Failure resolving a view's `from:` reference (unknown, cycle, or reference upstream). */
-export interface ViewReferenceError {
-  kind: 'view-reference';
-  viewId: string;
-  ref: string;
-  reason: 'unknown' | 'cycle' | 'reference-upstream';
-  message: string;
-}
-
-/** Failure reading, writing, parsing, or evicting a view cache entry. */
-export interface CacheIoError {
-  kind: 'cache-io';
-  cachePath: string;
+/** Failure validating an inline query. */
+export interface InlineQueryValidationError {
+  kind: 'inline-query-validation';
   message: string;
 }
 
@@ -99,14 +80,8 @@ export function formatSourceError(error: SourceError): string {
       return `query execution failed: ${error.message}`;
     case 'endpoint-fetch':
       return `endpoint ${error.endpoint}: ${error.message}`;
-    case 'view-validation':
-      return error.viewId !== undefined
-        ? `view "${error.viewId}": ${error.message}`
-        : error.message;
-    case 'view-reference':
-      return `view "${error.viewId}": ${error.message}`;
-    case 'cache-io':
-      return `cache ${error.cachePath}: ${error.message}`;
+    case 'inline-query-validation':
+      return error.message;
     case 'transform-parse':
       return `\`${error.transformKey}\`: ${error.message}`;
     case 'git-pin':

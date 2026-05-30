@@ -96,7 +96,7 @@ const queryField: FieldDescriptor = {
     {
       spec: '--query <sparql>',
       description:
-        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the target source. Required for SPARQL endpoint targets; otherwise optional. Lowers to an anonymous, uncached view. Mutually exclusive with --query-file.',
+        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the target source. Required for SPARQL endpoint targets; otherwise optional. Runs as an inline query against the target (never persisted). Mutually exclusive with --query-file.',
     },
   ],
 };
@@ -120,7 +120,7 @@ const compareWithQueryField: FieldDescriptor = {
     {
       spec: '--compare-with-query <sparql>',
       description:
-        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the --compare-with side. Required for SPARQL endpoint targets on that side; otherwise optional. Lowers to an anonymous, uncached view. Mutually exclusive with --compare-with-query-file. Requires --compare-with.',
+        'Inline SPARQL CONSTRUCT or SELECT-{?s,?p,?o[,?g]} that scopes the --compare-with side. Required for SPARQL endpoint targets on that side; otherwise optional. Runs as an inline query against the target (never persisted). Mutually exclusive with --compare-with-query-file. Requires --compare-with.',
     },
   ],
 };
@@ -270,15 +270,9 @@ export const hashSpec: CommandSpec<HashConfig> = {
           resolveCompareTargetResult(compareSpec, registry).asyncAndThen(
             (secondaryTarget) =>
               ResultAsync.combine([
-                hashTargetResult(
-                  primaryTarget,
-                  registry,
-                  inlineQuery,
-                  logger,
-                ),
+                hashTargetResult(primaryTarget, inlineQuery, logger),
                 hashTargetResult(
                   secondaryTarget,
-                  registry,
                   compareInlineQuery,
                   logger,
                 ),
@@ -307,7 +301,7 @@ export const hashSpec: CommandSpec<HashConfig> = {
     const single = await resolveHashTargetResult(config, registry)
       .map((target) => applyAtOverride(target, config.at))
       .asyncAndThen<{ source: string; hash: string }, SourceError | TargetError>(
-        (target) => hashTargetResult(target, registry, inlineQuery, logger),
+        (target) => hashTargetResult(target, inlineQuery, logger),
       );
 
     await single.match(
@@ -355,7 +349,6 @@ function targetLabel(target: ParsedSource): string {
 
 function hashTargetResult(
   target: ParsedSource,
-  registry: ReadonlyArray<ParsedSource>,
   inlineQuery: string | undefined,
   logger: SparqlyLogger,
 ): ResultAsync<{ source: string; hash: string }, SourceError> {
@@ -364,6 +357,10 @@ function hashTargetResult(
 
   if (inlineQuery !== undefined) {
     const upstreamSpec = inlineQueryUpstream(target);
+    const upstreamMode =
+      target.kind === 'endpoint' || storageTier(target) === 'disk'
+        ? 'pass-through'
+        : 'materialized';
     return resolveInlineQueryResult({
       source: upstreamSpec,
       query: inlineQuery,
@@ -371,7 +368,7 @@ function hashTargetResult(
     })
       .map((store) => {
         logger.debug('source-loaded', {
-          mode: 'view',
+          mode: upstreamMode,
           source: label,
           quads: store.size,
           ms: Date.now() - start,
@@ -392,7 +389,6 @@ function hashTargetResult(
   if (rawRejection) return errAsync(rawRejection);
 
   return resolveSourceResult(target, {
-    registry,
     logger,
     configDir: process.cwd(),
   }).andThen<{ source: string; hash: string }, SourceError>((sources) => {

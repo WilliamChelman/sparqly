@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { formatSourceError, type SourceError } from './errors';
 
 describe('formatSourceError', () => {
-  it('passes through verbatim messages for no-match glob-load and view-validation', () => {
+  it('passes through verbatim messages for no-match glob-load and inline-query-validation', () => {
     expect(
       formatSourceError({
         kind: 'glob-load',
@@ -27,12 +27,7 @@ describe('formatSourceError', () => {
       { kind: 'glob-load', glob: ['x'], file: 'y', message: 'm' },
       { kind: 'query-execution', query: 'SELECT', message: 'm' },
       { kind: 'endpoint-fetch', endpoint: 'http://e', message: 'm' },
-      { kind: 'view-validation', message: 'm' },
-      { kind: 'view-validation', viewId: 'v', message: 'm' },
-      { kind: 'view-reference', viewId: 'v', ref: 'r', reason: 'unknown', message: 'm' },
-      { kind: 'view-reference', viewId: 'v', ref: 'r', reason: 'cycle', message: 'm' },
-      { kind: 'view-reference', viewId: 'v', ref: 'r', reason: 'reference-upstream', message: 'm' },
-      { kind: 'cache-io', cachePath: '/c', message: 'm' },
+      { kind: 'inline-query-validation', message: 'm' },
       { kind: 'transform-parse', transformKey: 'graphName', message: 'm' },
       { kind: 'transform-parse', transformKey: 'annotateSource', message: 'm' },
       {

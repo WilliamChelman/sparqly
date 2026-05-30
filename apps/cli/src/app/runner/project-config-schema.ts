@@ -7,7 +7,6 @@ const serveBlockSchema = z
     mutable: z.boolean(),
     watch: z.boolean(),
     watchDebounce: z.number().int(),
-    watchPoll: z.number().int(),
   })
   .partial()
   .strict();
@@ -23,13 +22,6 @@ const contextBlockSchema = z
   .object({
     prefixes: z.record(z.string(), z.string()),
     base: z.string(),
-  })
-  .partial()
-  .strict();
-
-const cacheBlockSchema = z
-  .object({
-    dir: z.string(),
   })
   .partial()
   .strict();
@@ -104,12 +96,10 @@ const ROOT_KEY_DESTINATIONS: Record<string, string> = {
   port: 'serve.port',
   watch: 'serve.watch',
   watchDebounce: 'serve.watchDebounce',
-  watchPoll: 'serve.watchPoll',
   mutable: 'serve.mutable',
   prefixes: 'context.prefixes',
   base: 'context.base',
   objectAnchoredPredicates: 'format.objectAnchoredPredicates',
-  cacheDir: 'cache.dir',
 };
 
 const FORMAT_BLOCK_REDIRECTS: Record<string, string> = {
@@ -121,7 +111,6 @@ const KNOWN_TOP_LEVEL = new Set([
   'sources',
   'serve',
   'format',
-  'cache',
   'context',
   'describe',
   'savedQueries',
@@ -138,7 +127,6 @@ const baseProjectSchema = z
     sources: projectSourcesSchema.optional(),
     serve: serveBlockSchema.optional(),
     format: formatBlockSchema.optional(),
-    cache: cacheBlockSchema.optional(),
     context: contextBlockSchema.optional(),
     describe: describeBlockSchema.optional(),
     savedQueries: savedQueriesBlockSchema.optional(),

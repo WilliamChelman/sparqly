@@ -175,7 +175,7 @@ describe('makeFileLoader — whole-project schema', () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it('accepts a valid whole-project config (sources + serve + format + cache + context) and returns blocks intact', async () => {
+  it('accepts a valid whole-project config (sources + serve + format + context) and returns blocks intact', async () => {
     const path = join(dir, 'sparqly.config.yaml');
     await writeFile(
       path,
@@ -188,12 +188,9 @@ describe('makeFileLoader — whole-project schema', () => {
         '  mutable: false',
         '  watch: true',
         '  watchDebounce: 250',
-        '  watchPoll: 1000',
         'format:',
         '  objectAnchoredPredicates:',
         '    - rdfs:label',
-        'cache:',
-        '  dir: .sparqly-cache',
         'context:',
         '  prefixes:',
         '    ex: http://example.org/',
@@ -213,12 +210,10 @@ describe('makeFileLoader — whole-project schema', () => {
         mutable: false,
         watch: true,
         watchDebounce: 250,
-        watchPoll: 1000,
       },
       format: {
         objectAnchoredPredicates: ['rdfs:label'],
       },
-      cache: { dir: join(dir, '.sparqly-cache') },
       context: {
         prefixes: { ex: 'http://example.org/' },
         base: 'http://example.org/',
@@ -329,7 +324,6 @@ describe('makeFileLoader — whole-project schema', () => {
     ['port', 'port: 3000', 'serve.port'],
     ['watch', 'watch: true', 'serve.watch'],
     ['watchDebounce', 'watchDebounce: 250', 'serve.watchDebounce'],
-    ['watchPoll', 'watchPoll: 1000', 'serve.watchPoll'],
     ['mutable', 'mutable: false', 'serve.mutable'],
     ['prefixes', 'prefixes:\n  ex: http://example.org/', 'context.prefixes'],
     ['base', 'base: http://example.org/', 'context.base'],
@@ -338,7 +332,6 @@ describe('makeFileLoader — whole-project schema', () => {
       'objectAnchoredPredicates:\n  - rdfs:label',
       'format.objectAnchoredPredicates',
     ],
-    ['cacheDir', 'cacheDir: .cache', 'cache.dir'],
   ])(
     'rejects misplaced root key %s, naming destination %s',
     async (key, line, destination) => {

@@ -33,7 +33,6 @@ import {
   SPARQL_DIFF_SERVICE,
   SPARQL_ENGINE_MAP,
   SPARQL_META_CHILDREN_CACHE,
-  SPARQL_RESOLUTION_REGISTRY,
   SPARQL_SAVED_QUERIES_CONFIG,
   SPARQL_SAVED_QUERIES_SERVICE,
   SPARQL_SERVED_REGISTRY,
@@ -49,8 +48,6 @@ import {
 export interface ServerModuleOptions {
   engineMap: EngineMap;
   servedRegistry: ReadonlyArray<ParsedSource>;
-  /** Superset of `servedRegistry` used to walk `from:` chains. */
-  resolutionRegistry: ReadonlyArray<ParsedSource>;
   metaChildrenCache: MetaChildrenCache;
   /** `@id` the unparameterized `/api/sparql` forwards to. */
   defaultId: string | undefined;
@@ -92,23 +89,14 @@ export class ServerModule {
         { provide: SPARQL_DEFAULT_ID, useValue: options.defaultId },
         { provide: SPARQL_SERVED_REGISTRY, useValue: options.servedRegistry },
         {
-          provide: SPARQL_RESOLUTION_REGISTRY,
-          useValue: options.resolutionRegistry,
-        },
-        {
           provide: SPARQL_DIFF_SERVICE,
-          useValue: new DiffService(
-            options.engineMap,
-            options.resolutionRegistry,
-            options.logger,
-          ),
+          useValue: new DiffService(options.engineMap, options.logger),
         },
         {
           provide: SPARQL_DESCRIBE_SERVICE,
           useValue: new DescribeService(
             options.servedRegistry,
             options.describe,
-            options.resolutionRegistry,
           ),
         },
         { provide: SNIPPET_READER, useValue: createDefaultSnippetReader() },

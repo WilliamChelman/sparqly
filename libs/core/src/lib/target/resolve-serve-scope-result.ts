@@ -10,8 +10,6 @@ import type { UnknownRefError } from './errors';
 export interface ServeScope {
   /** Sources `serve` routes (`/api/sparql/<id>`) and lists via `/api/config`. */
   servedRegistry: ParsedSource[];
-  /** Sources available for `from:` chain resolution; a superset of the served set. */
-  resolutionRegistry: ParsedSource[];
   /** `@id` the unparameterized `/api/sparql` forwards to, or `undefined` if none. */
   defaultId: string | undefined;
 }
@@ -28,23 +26,18 @@ export function resolveServeScopeResult(
       if (entry.isErr()) return err(entry.error);
       return ok({
         servedRegistry: [entry.value],
-        resolutionRegistry: [...registry],
         defaultId: recomputeDefault([entry.value]),
       });
     }
     const synthesized = withDefaultId(parseSourceSpec(source));
     return ok({
       servedRegistry: [synthesized],
-      resolutionRegistry: [synthesized, ...registry],
       defaultId: 'default',
     });
   }
   const served = normalizeLoneIdLess(candidates);
-  const resolutionRegistry =
-    served === candidates ? [...registry] : [...served];
   return ok({
     servedRegistry: [...served],
-    resolutionRegistry,
     defaultId: recomputeDefault(served),
   });
 }

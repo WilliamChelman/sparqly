@@ -29,7 +29,6 @@ interface ServeConfig {
   readOnly?: boolean;
   watch?: boolean;
   watchDebounce?: number;
-  watchPoll?: number;
   prefixes?: Record<string, string>;
   base?: string;
   perSourceSoftLimit?: number;
@@ -88,7 +87,7 @@ const watchField: FieldDescriptor = {
     {
       spec: '--watch',
       description:
-        "Watch the target's chain (globs and any `cache.ttl`/`cache.freshness` views) and rebuild on change. Default: off.",
+        "Watch the served sources' glob/file inputs and rebuild on change. Default: off.",
     },
   ],
 };
@@ -101,19 +100,6 @@ const watchDebounceField: FieldDescriptor = {
     {
       spec: '--watch-debounce <ms>',
       description: 'Debounce window for --watch in milliseconds (default: 250)',
-    },
-  ],
-};
-
-const watchPollField: FieldDescriptor = {
-  key: 'watchPoll',
-  schema: coercedIntSchema,
-  default: 1000,
-  flags: [
-    {
-      spec: '--watch-poll <ms>',
-      description:
-        'Poll interval for cache freshness ASK probes under --watch in milliseconds (default: 1000)',
     },
   ],
 };
@@ -180,7 +166,6 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     readOnlyField,
     watchField,
     watchDebounceField,
-    watchPollField,
     contextPrefixesField,
     contextBaseField,
     describeSoftLimitField,
@@ -238,7 +223,6 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       webRootDir: WEB_BUNDLE_DIR,
       watch: config.watch === true,
       watchDebounceMs: config.watchDebounce,
-      watchPollMs: config.watchPoll,
       context: {
         prefixes: config.prefixes ?? {},
         base: config.base,

@@ -68,7 +68,7 @@ describe('serveSpec — single-target shape', () => {
     expect(serveSpec.exitCode(new Error('boom'))).toBe(1);
   });
 
-  it('env mirrors per ADR-0010: SPARQLY_PORT only on port; no env on watch/watchDebounce/watchPoll/mutable', () => {
+  it('env mirrors per ADR-0010: SPARQLY_PORT only on port; no env on watch/watchDebounce/mutable', () => {
     const envOf = (key: string): readonly string[] => {
       const f = serveSpec.fields.find((x) => x.key === key);
       if (!f?.env) return [];
@@ -77,7 +77,6 @@ describe('serveSpec — single-target shape', () => {
     expect(envOf('port')).toEqual(['SPARQLY_PORT']);
     expect(envOf('watch')).toEqual([]);
     expect(envOf('watchDebounce')).toEqual([]);
-    expect(envOf('watchPoll')).toEqual([]);
     expect(envOf('mutable')).toEqual([]);
   });
 });
