@@ -74,6 +74,9 @@ export interface CreateServerOptions {
   indexConcurrency?: number;
   /** Query worker pool size (`query.concurrency`, ADR-0050). Defaults to 2. */
   queryConcurrency?: number;
+  /** Cooperative→nuclear cancel cutover (`query.cancelGraceMs`, ADR-0050).
+   * Defaults to 250ms. */
+  queryCancelGraceMs?: number;
   /** Defaults to 15_000. */
   sseHeartbeatMs?: number;
   /** Defaults to 256. */
@@ -124,6 +127,7 @@ export async function createServer(
     ? new QueryWorkerPool({
         spawn: options.spawnQueryWorker,
         concurrency: options.queryConcurrency,
+        cancelGraceMs: options.queryCancelGraceMs,
       })
     : undefined;
   const engineMap = await EngineMap.create(scope.servedRegistry, {

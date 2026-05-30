@@ -40,6 +40,7 @@ interface ServeConfig {
   indexConcurrency?: number;
   queryConcurrency?: number;
   queryMaxResidentQuads?: number;
+  queryCancelGraceMs?: number;
   verbose?: boolean;
   quiet?: boolean;
   logFormat?: 'text' | 'json';
@@ -156,6 +157,11 @@ const queryMaxResidentQuadsField: FieldDescriptor = {
   schema: z.number().int().positive(),
 };
 
+const queryCancelGraceMsField: FieldDescriptor = {
+  key: 'queryCancelGraceMs',
+  schema: z.number().int().positive(),
+};
+
 export const serveSpec: CommandSpec<ServeConfig> = {
   name: 'serve',
   description:
@@ -179,6 +185,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     indexConcurrencyField,
     queryConcurrencyField,
     queryMaxResidentQuadsField,
+    queryCancelGraceMsField,
     ...verbosityFieldsFor('serve'),
   ],
   positionals: [{ field: 'source', name: 'glob' }],
@@ -238,6 +245,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       indexCacheDir: config.indexCacheDir,
       indexConcurrency: config.indexConcurrency,
       queryConcurrency: config.queryConcurrency,
+      queryCancelGraceMs: config.queryCancelGraceMs,
       spawnIndexBuild: makeSpawnIndexBuild({ cliEntry }),
       spawnQueryWorker: makeSpawnQueryWorker({
         cliEntry,

@@ -135,6 +135,62 @@ describe('EngineMap — worker routing (ADR-0050)', () => {
     }
   });
 
+  it('rebuilds a worker-owned store on the next touch after the worker is reclaimed mid-cancel', async () => {
+    const registry = parseSourceSpecs([{ id: 'alpha', glob: join(dir, '*.ttl') }]);
+    const workers: FakeWorker[] = [];
+    // Worker 0 loads fine but is "stuck": it answers neither query nor cancel.
+    // The respawn (index > 0) answers both, so the rebuilt store is queryable.
+    const spawn = (): FakeWorker => {
+      const index = workers.length;
+      const worker = new FakeWorker((request, reply) => {
+        if (request.type === 'load') {
+          reply({
+            type: 'load-success',
+            sourceId: request.sourceId,
+            quads: 5,
+            loadMs: 3,
+            files: ['a.ttl'],
+          });
+        } else if (request.type === 'query' && index > 0) {
+          reply({ type: 'query-result', requestId: request.requestId, ok: QUERY_OK });
+        }
+      });
+      workers.push(worker);
+      return worker;
+    };
+    const pool = new QueryWorkerPool({ spawn, concurrency: 1, cancelGraceMs: 10 });
+
+    const map = await EngineMap.create(registry, { queryPool: pool });
+    try {
+      const executor = (await map.ensure('alpha'))._unsafeUnwrap();
+      expect(workers).toHaveLength(1);
+      expect(workers[0].sent.filter((m) => m.type === 'load')).toHaveLength(1);
+
+      // Abort an in-flight query against the stuck worker → nuclear reclaim.
+      const controller = new AbortController();
+      const inflight = executor.executeResult('SELECT ?s WHERE { ?s ?p ?o }', {
+        format: 'json',
+        signal: controller.signal,
+      });
+      controller.abort();
+      expect((await inflight).isErr()).toBe(true);
+      expect(workers).toHaveLength(2); // respawned
+
+      // Next touch re-loads on the fresh worker and answers the query.
+      const reloaded = (await map.ensure('alpha'))._unsafeUnwrap();
+      const result = (
+        await reloaded.executeResult('SELECT ?s WHERE { ?s ?p ?o }', {
+          format: 'json',
+        })
+      )._unsafeUnwrap();
+      expect(result).toEqual(QUERY_OK);
+      // The replacement worker rebuilt the store from a fresh load.
+      expect(workers[1].sent.filter((m) => m.type === 'load')).toHaveLength(1);
+    } finally {
+      await map.close();
+    }
+  });
+
   it('surfaces a worker load failure as a typed SourceError and mirrors failed state', async () => {
     const registry = parseSourceSpecs([{ id: 'alpha', glob: join(dir, '*.ttl') }]);
     const worker = new FakeWorker((request, reply) => {

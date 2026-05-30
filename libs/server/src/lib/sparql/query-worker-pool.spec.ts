@@ -34,6 +34,7 @@ const RESOLVE_OPTS: WorkerResolveOptions = {
 class FakeWorker implements QueryWorkerHandle {
   private readonly messageListeners: Array<(m: WorkerMessage) => void> = [];
   readonly sent: WorkerRequest[] = [];
+  terminateCalls = 0;
 
   constructor(
     private readonly respond: (
@@ -58,6 +59,7 @@ class FakeWorker implements QueryWorkerHandle {
   }
 
   async terminate(): Promise<number> {
+    this.terminateCalls++;
     return 0;
   }
 
@@ -384,6 +386,129 @@ describe('QueryWorkerPool — load lifecycle', () => {
     expect(a._unsafeUnwrap()).toEqual({ quads: 1, loadMs: 1, files: ['a.ttl'] });
     expect(b._unsafeUnwrap()).toEqual({ quads: 1, loadMs: 1, files: ['a.ttl'] });
     expect(loadCount).toBe(1);
+    await pool.shutdown();
+  });
+});
+
+describe('QueryWorkerPool — hybrid cancellation (ADR-0050, #388)', () => {
+  it('posts a cancel to the owning worker and settles cooperatively, without terminating', async () => {
+    // The worker never answers the query directly; it only replies to a cancel
+    // (the cooperative path — it yielded and tore down its stream).
+    const { spawn, workers } = recordingSpawn((request, reply) => {
+      if (request.type === 'cancel') {
+        reply({
+          type: 'query-result',
+          requestId: request.requestId,
+          error: { kind: 'query-execution', query: 'Q', message: 'query cancelled' },
+        });
+      }
+    });
+    const controller = new AbortController();
+    const pool = new QueryWorkerPool({ spawn, concurrency: 1, cancelGraceMs: 1000 });
+
+    const pending = pool.query('alpha', 'Q', { signal: controller.signal });
+    controller.abort();
+    const result = await pending;
+
+    // The query settled as a typed error via the cooperative cancel reply.
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().kind).toBe('query-execution');
+    // A cancel carrying the query's requestId reached the worker.
+    const query = workers[0].sent.find((m) => m.type === 'query');
+    expect(workers[0].sent).toContainEqual(
+      expect.objectContaining({
+        type: 'cancel',
+        requestId: (query as { requestId: number }).requestId,
+      }),
+    );
+    // Cooperative: the worker was neither terminated nor respawned.
+    expect(workers[0].terminateCalls).toBe(0);
+    expect(workers).toHaveLength(1);
+    await pool.shutdown();
+  });
+
+  it('terminates and respawns a worker that ignores a cancel past the grace window', async () => {
+    // The worker is stuck in a synchronous stretch: it never replies to the
+    // query or the cancel.
+    const { spawn, workers } = recordingSpawn(() => undefined);
+    const controller = new AbortController();
+    const pool = new QueryWorkerPool({ spawn, concurrency: 1, cancelGraceMs: 10 });
+
+    const pending = pool.query('alpha', 'Q', { signal: controller.signal });
+    controller.abort();
+    const result = await pending;
+
+    // The abandoned query settles as a typed error rather than hanging.
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().kind).toBe('query-execution');
+    // Nuclear: the stuck worker was terminated and a replacement spawned.
+    expect(workers[0].terminateCalls).toBe(1);
+    expect(workers).toHaveLength(2);
+    await pool.shutdown();
+  });
+
+  it('fails co-located in-flight queries when their shared worker is terminated', async () => {
+    // Both sources hash to worker 0 and the worker answers nothing — cancelling
+    // one must reclaim the worker, which strands the other on the dead thread.
+    const { spawn, workers } = recordingSpawn(() => undefined);
+    const pool = new QueryWorkerPool({
+      spawn,
+      concurrency: 1,
+      cancelGraceMs: 10,
+      assignment: { assign: () => 0 },
+    });
+
+    const controller = new AbortController();
+    const cancelled = pool.query('a', 'Q1', { signal: controller.signal });
+    const colocated = pool.query('b', 'Q2', {});
+    controller.abort();
+
+    const [r1, r2] = await Promise.all([cancelled, colocated]);
+    expect(r1.isErr()).toBe(true);
+    // The co-located query is failed with a typed error too, not left hanging.
+    expect(r2.isErr()).toBe(true);
+    expect(r2._unsafeUnwrapErr().kind).toBe('query-execution');
+    // One termination reclaimed the worker for both.
+    expect(workers[0].terminateCalls).toBe(1);
+    await pool.shutdown();
+  });
+
+  it('routes a later query for the same source to the respawned worker, which answers promptly', async () => {
+    // The original worker is stuck (answers nothing); the respawn answers 'Q2'.
+    const { spawn, workers } = recordingSpawn((request, reply) => {
+      if (request.type === 'query' && request.query === 'Q2') {
+        reply({
+          type: 'query-result',
+          requestId: request.requestId,
+          ok: { body: 'fresh', format: 'json', contentType: 'x' },
+        });
+      }
+    });
+    const pool = new QueryWorkerPool({
+      spawn,
+      concurrency: 1,
+      cancelGraceMs: 10,
+      assignment: { assign: () => 0 },
+    });
+
+    const controller = new AbortController();
+    const stuck = pool.query('alpha', 'Q1', { signal: controller.signal });
+    controller.abort();
+    await stuck; // nuclear path terminates + respawns worker 0
+
+    // The sticky source routes to index 0 again — now the replacement worker.
+    const result = await pool.query('alpha', 'Q2', {});
+
+    expect(result.isOk()).toBe(true);
+    expect(result._unsafeUnwrap().body).toBe('fresh');
+    expect(workers).toHaveLength(2);
+    expect(workers[1].sent).toContainEqual(
+      expect.objectContaining({ type: 'query', query: 'Q2' }),
+    );
+    // The dead worker never saw the follow-up query.
+    expect(
+      workers[0].sent.find((m) => m.type === 'query' && m.query === 'Q2'),
+    ).toBeUndefined();
     await pool.shutdown();
   });
 });

@@ -124,6 +124,64 @@ describe('sparqly serve — off-main-thread in-memory queries (ADR-0050)', () =>
     );
   });
 
+  it('reclaims a single worker when an abandoned heavy query is disconnected, then serves the next query', async () => {
+    // One source pinned to one worker. A 4-way cross join over ~120 triples is a
+    // multi-minute synchronous Comunica stretch — effectively a hang. Without
+    // cancellation it would occupy the sole worker indefinitely, so the next
+    // query could never be answered. Hybrid cancellation must reclaim the worker.
+    const dataPath = join(dir, 'data.ttl');
+    const lines = ['@prefix ex: <http://example.org/> .'];
+    for (let i = 0; i < 120; i++) lines.push(`ex:s${i} ex:p ex:o${i} .`);
+    await writeFile(dataPath, lines.join('\n') + '\n');
+    const configPath = join(dir, 'sparqly.config.yaml');
+    await writeFile(
+      configPath,
+      dedent`
+        query:
+          concurrency: 1
+        sources:
+          - id: data
+            default: true
+            glob: "${dataPath}"
+      ` + '\n',
+    );
+    handle = await startServe(['--config', configPath]);
+    const base = handle.baseUrl;
+
+    // Warm the store so the disconnect targets a CPU-bound query, not the load.
+    await (
+      await fetch(`${base}/api/sparql/data?query=${encodeURIComponent('ASK { ?s ?p ?o }')}`)
+    ).arrayBuffer();
+
+    const heavy =
+      'SELECT (COUNT(*) AS ?n) WHERE { ?a ?b ?c . ?d ?e ?f . ?g ?h ?i . ?j ?k ?l }';
+    const ac = new AbortController();
+    const abandoned = fetch(
+      `${base}/api/sparql/data?query=${encodeURIComponent(heavy)}`,
+      { signal: ac.signal },
+    );
+    abandoned.catch(() => undefined); // the abort rejects this; swallow it.
+
+    // Let the worker enter its synchronous stretch, then disconnect the client.
+    await new Promise((r) => setTimeout(r, 150));
+    ac.abort();
+    await expect(abandoned).rejects.toThrow();
+
+    // The worker is reclaimed and the store rebuilt, so the next query against
+    // the same sticky source is answered correctly rather than hanging.
+    const res = await fetch(
+      `${base}/api/sparql/data?query=${encodeURIComponent(
+        'SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }',
+      )}`,
+      { headers: { accept: 'application/sparql-results+json' } },
+    );
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as {
+      results: { bindings: Array<{ n: { value: string } }> };
+    };
+    expect(json.results.bindings[0].n.value).toBe('120');
+  }, 60_000);
+
   it('does not block a concurrent request while a heavy query runs in the worker', async () => {
     // ~220 triples → a 3-way cross join enumerates ~10.6M solutions, seconds of
     // synchronous Comunica CPU — the exact "one query freezes everything" case.

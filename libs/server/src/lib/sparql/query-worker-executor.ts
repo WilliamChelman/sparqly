@@ -28,6 +28,7 @@ export class WorkerQueryExecutor implements QueryExecutor {
     return this.pool.query(this.sourceId, query, {
       format: options.format,
       mutable: options.mutable,
+      signal: options.signal,
     });
   }
 

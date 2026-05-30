@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ok, ResultAsync } from 'neverthrow';
+import { err, ok, ResultAsync } from 'neverthrow';
 import {
   parseSourceSpecs,
   QueryEngine,
@@ -257,6 +257,71 @@ describe('runQueryWorker — LRU residency (ADR-0050, #387)', () => {
     expect(result.ok?.body).toBe('a-result');
     // 'a' was never evicted, so it was never rebuilt.
     expect(counts.get('a')).toBe(1);
+  });
+
+  it('cancels an in-flight query on a cancel message, surfacing a typed error and keeping the store resident', async () => {
+    let buildCount = 0;
+    // An engine that hangs until either its signal aborts (→ typed error) or a
+    // 50ms fallback fires (→ ok). The cancel message must beat the fallback.
+    const build: StoreBuilder = async () => {
+      buildCount++;
+      return ok({
+        quads: 2,
+        files: [],
+        engine: {
+          execute: async () => executeResult('late-ok'),
+          executeResult: (query, options) =>
+            new ResultAsync(
+              new Promise((resolve) => {
+                const cancelled = err({
+                  kind: 'query-execution' as const,
+                  query,
+                  message: 'query cancelled',
+                });
+                // Match QueryEngine's contract: an already-aborted signal yields
+                // a typed error without running the query.
+                if (options?.signal?.aborted) {
+                  resolve(cancelled);
+                  return;
+                }
+                const timer = setTimeout(
+                  () => resolve(ok(executeResult('late-ok'))),
+                  50,
+                );
+                options?.signal?.addEventListener(
+                  'abort',
+                  () => {
+                    clearTimeout(timer);
+                    resolve(cancelled);
+                  },
+                  { once: true },
+                );
+              }),
+            ),
+        },
+      });
+    };
+    const port = new FakePort();
+    runQueryWorker(port, { buildStore: build });
+
+    port.send(loadReq('a'));
+    await port.next();
+
+    // Start a query that hangs, then cancel it before the fallback resolves.
+    port.send(queryReq(1, 'a'));
+    port.send({ type: 'cancel', requestId: 1 });
+
+    const cancelled = (await port.next()) as QueryResultMessage;
+    expect(cancelled.requestId).toBe(1);
+    expect(cancelled.error?.kind).toBe('query-execution');
+
+    // The store survives the cancel: a follow-up query is answered with no
+    // rebuild (the source was never evicted or dropped).
+    port.send(queryReq(2, 'a'));
+    const after = (await port.next()) as QueryResultMessage;
+    expect(after.requestId).toBe(2);
+    expect(after.ok?.body).toBe('late-ok');
+    expect(buildCount).toBe(1);
   });
 
   it('never evicts a small registry under the default budget (no behavior change)', async () => {

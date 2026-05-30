@@ -41,7 +41,14 @@ export interface QueryRequest {
   mutable: boolean | undefined;
 }
 
-export type WorkerRequest = LoadRequest | QueryRequest;
+/** main → worker: cancel an in-flight query by destroying its stream (ADR-0050).
+ * Unknown or already-settled `requestId`s are a no-op. */
+export interface CancelRequest {
+  type: 'cancel';
+  requestId: number;
+}
+
+export type WorkerRequest = LoadRequest | QueryRequest | CancelRequest;
 
 /** worker → main: the store finished building — carries the metrics the
  * Sources-page state mirror surfaces in `/api/sources`. */

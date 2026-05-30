@@ -49,6 +49,17 @@ const RDF_FORMATS: ReadonlySet<SparqlFormat> = new Set(['turtle', 'trig', 'nquad
 export interface ExecuteOptions {
   format?: SparqlFormat;
   mutable?: boolean;
+  /**
+   * Cooperative cancellation (ADR-0050): when this aborts, the engine destroys
+   * the stream it is consuming so the query collapses into a typed
+   * {@link QueryExecutionError}. A query stuck in a synchronous stretch never
+   * sees it — the worker pool's nuclear path reclaims that case.
+   */
+  signal?: AbortSignal;
+}
+
+function cancelledError(): Error {
+  return new Error('query cancelled');
 }
 
 export interface ExecuteResult {
@@ -147,6 +158,7 @@ export class QueryEngine implements QueryExecutor {
   async execute(query: string, options: ExecuteOptions = {}): Promise<ExecuteResult> {
     const queryType = detectQueryType(query);
     assertImmutable(queryType, { mutable: options.mutable });
+    if (options.signal?.aborted) throw cancelledError();
 
     const started = Date.now();
     try {
@@ -176,10 +188,16 @@ export class QueryEngine implements QueryExecutor {
       const mediaType = FORMAT_TO_MIME[format];
       const body = await this.wrapEndpointErrors(async () => {
         if (RDF_FORMATS.has(format) && resultType === 'bindings') {
-          return reifyBindingsToRdfString(result, query, format, mediaType);
+          return reifyBindingsToRdfString(
+            result,
+            query,
+            format,
+            mediaType,
+            options.signal,
+          );
         }
         const stringified = await this.engine.resultToString(result, mediaType);
-        return streamToString(stringified.data);
+        return streamToString(stringified.data, options.signal);
       });
       this.emitQueryEvent(query, queryType, Date.now() - started, {
         resultType,
@@ -282,9 +300,10 @@ async function reifyBindingsToRdfString(
   query: string,
   format: SparqlFormat,
   mediaType: string,
+  signal: AbortSignal | undefined,
 ): Promise<string> {
   const { variables } = detectSelectShape(query);
-  const rows = await collectBindingRows(result, variables);
+  const rows = await collectBindingRows(result, variables, signal);
   const quads = reifyTripleShapedBindings({ variables, bindings: rows });
   if (quads === null) {
     const projection = variables.length === 0 ? '(none)' : `?${variables.join(' ?')}`;
@@ -298,25 +317,31 @@ async function reifyBindingsToRdfString(
 async function collectBindingRows(
   result: Awaited<ReturnType<ComunicaQueryEngine['query']>>,
   variables: ReadonlyArray<string>,
+  signal: AbortSignal | undefined,
 ): Promise<Record<string, RDF.Term>[]> {
   if (result.resultType !== 'bindings') {
     throw new Error(
       `expected bindings result for reification, got ${result.resultType}`,
     );
   }
-  const stream = await result.execute();
-  const rows: Record<string, RDF.Term>[] = [];
-  for await (const b of stream as AsyncIterable<{
+  const stream = (await result.execute()) as AsyncIterable<{
     get(name: string): RDF.Term | undefined;
-  }>) {
-    const row: Record<string, RDF.Term> = {};
-    for (const v of variables) {
-      const term = b.get(v);
-      if (term !== undefined) row[v] = term;
+  }> & { destroy(error?: Error): void };
+  const detach = wireAbort(stream, signal);
+  try {
+    const rows: Record<string, RDF.Term>[] = [];
+    for await (const b of stream) {
+      const row: Record<string, RDF.Term> = {};
+      for (const v of variables) {
+        const term = b.get(v);
+        if (term !== undefined) row[v] = term;
+      }
+      rows.push(row);
     }
-    rows.push(row);
+    return rows;
+  } finally {
+    detach();
   }
-  return rows;
 }
 
 async function writeQuadsToString(
@@ -333,12 +358,42 @@ async function writeQuadsToString(
   });
 }
 
-async function streamToString(stream: NodeJS.ReadableStream): Promise<string> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of stream) {
-    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+async function streamToString(
+  stream: NodeJS.ReadableStream,
+  signal?: AbortSignal,
+): Promise<string> {
+  const detach = wireAbort(
+    stream as NodeJS.ReadableStream & { destroy(error?: Error): void },
+    signal,
+  );
+  try {
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+    }
+    return Buffer.concat(chunks).toString('utf8');
+  } finally {
+    detach();
   }
-  return Buffer.concat(chunks).toString('utf8');
+}
+
+/**
+ * Destroys `stream` when `signal` aborts so the `for await` consuming it throws
+ * {@link cancelledError} (ADR-0050). Returns a detach fn for the caller's
+ * `finally`, so a settled query leaves no listener on a long-lived signal.
+ */
+function wireAbort(
+  stream: { destroy(error?: Error): void },
+  signal: AbortSignal | undefined,
+): () => void {
+  if (!signal) return () => undefined;
+  if (signal.aborted) {
+    stream.destroy(cancelledError());
+    return () => undefined;
+  }
+  const onAbort = (): void => stream.destroy(cancelledError());
+  signal.addEventListener('abort', onAbort, { once: true });
+  return () => signal.removeEventListener('abort', onAbort);
 }
 
 export type { ComunicaEndpointContext };

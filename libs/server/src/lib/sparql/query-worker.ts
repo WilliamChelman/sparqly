@@ -75,10 +75,15 @@ export function runQueryWorker(
   const buildStore = options.buildStore ?? defaultBuildStore;
   // The recipe outlives the built store: an evicted source rebuilds from here.
   const recipes = new Map<string, LoadRequest>();
+  // In-flight queries by requestId so a cancel aborts exactly one (ADR-0050).
+  const inFlight = new Map<number, AbortController>();
 
   port.on('message', (request) => {
     if (request.type === 'load') {
       void handleLoad(request);
+    } else if (request.type === 'cancel') {
+      // No-op for an unknown or already-settled query.
+      inFlight.get(request.requestId)?.abort();
     } else {
       void handleQuery(request);
     }
@@ -106,25 +111,35 @@ export function runQueryWorker(
 
   async function handleQuery(request: QueryRequest): Promise<void> {
     const { requestId, sourceId, query } = request;
-    const resolved = await ensureResident(request);
-    if (resolved.isErr()) {
-      port.postMessage({ type: 'query-result', requestId, error: resolved.error });
-      return;
-    }
-    // Pin for the lifetime of the query so a concurrent over-budget load on this
-    // worker can never evict the store this query is reading.
-    resident.pin(sourceId);
+    // Register the canceller synchronously, before the first `await`, so a
+    // cancel that races in ahead of the store resolve is never dropped — the
+    // signal is simply already aborted by the time the query runs.
+    const cancel = new AbortController();
+    inFlight.set(requestId, cancel);
     try {
-      const result = await resolved.value.engine.executeResult(query, {
-        format: request.format,
-        mutable: request.mutable,
-      });
-      result.match(
-        (ok) => port.postMessage({ type: 'query-result', requestId, ok }),
-        (error) => port.postMessage({ type: 'query-result', requestId, error }),
-      );
+      const resolved = await ensureResident(request);
+      if (resolved.isErr()) {
+        port.postMessage({ type: 'query-result', requestId, error: resolved.error });
+        return;
+      }
+      // Pin for the lifetime of the query so a concurrent over-budget load on
+      // this worker can never evict the store this query is reading.
+      resident.pin(sourceId);
+      try {
+        const result = await resolved.value.engine.executeResult(query, {
+          format: request.format,
+          mutable: request.mutable,
+          signal: cancel.signal,
+        });
+        result.match(
+          (ok) => port.postMessage({ type: 'query-result', requestId, ok }),
+          (error) => port.postMessage({ type: 'query-result', requestId, error }),
+        );
+      } finally {
+        resident.unpin(sourceId);
+      }
     } finally {
-      resident.unpin(sourceId);
+      inFlight.delete(requestId);
     }
   }
 
