@@ -1,3 +1,22 @@
+## [0.34.0](https://github.com/WilliamChelman/sparqly/compare/v0.33.0...v0.34.0) (2026-05-30)
+
+### Features
+
+* **server:** bounded query worker pool with hash-sticky assignment (ADR-0050) ([1ceadb8](https://github.com/WilliamChelman/sparqly/commit/1ceadb80072da67d66088822ae458f0ee055dc49)), closes [#385](https://github.com/WilliamChelman/sparqly/issues/385) [#386](https://github.com/WilliamChelman/sparqly/issues/386)
+* **server:** contain query-worker OOM via resourceLimits + respawn (ADR-0050) ([aa521d8](https://github.com/WilliamChelman/sparqly/commit/aa521d8e3c762953704b4bcf5c8f9e03905c7513)), closes [#389](https://github.com/WilliamChelman/sparqly/issues/389)
+* **server:** hybrid query cancellation on client disconnect (ADR-0050) ([2cd1dc1](https://github.com/WilliamChelman/sparqly/commit/2cd1dc15cf3e61cea11c0982532279b457ee5458))
+* **server:** per-worker LRU-bounded query residency (query.maxResidentQuads, ADR-0050) ([940a267](https://github.com/WilliamChelman/sparqly/commit/940a26794634637e7dabe59b74cfdc0e16c563d9)), closes [#387](https://github.com/WilliamChelman/sparqly/issues/387)
+* **server:** refresh snippet allow-list on --watch for lazy/worker sources ([#391](https://github.com/WilliamChelman/sparqly/issues/391)) ([9eec05d](https://github.com/WilliamChelman/sparqly/commit/9eec05dd171ed5606e0ac98729483846a5b56f8f))
+* **server:** route --watch/Reload/Unload invalidation to the owning worker (ADR-0050) ([2acecd9](https://github.com/WilliamChelman/sparqly/commit/2acecd90b88a2af549f6dc79ecf0744498d8a74d)), closes [#391](https://github.com/WilliamChelman/sparqly/issues/391)
+* **server:** route pinned/ad-hoc source queries through the worker pool (ADR-0050) ([cbbb494](https://github.com/WilliamChelman/sparqly/commit/cbbb494c7a5ceb0461df5dcdd431d20ba00929d7)), closes [#390](https://github.com/WilliamChelman/sparqly/issues/390)
+* **server:** run in-memory queries off the main thread (ADR-0050) ([687b83d](https://github.com/WilliamChelman/sparqly/commit/687b83d108f933836f826d5619eac9bebcbd52f7)), closes [#385](https://github.com/WilliamChelman/sparqly/issues/385) [#391](https://github.com/WilliamChelman/sparqly/issues/391) [#391](https://github.com/WilliamChelman/sparqly/issues/391) [#385](https://github.com/WilliamChelman/sparqly/issues/385)
+
+### Bug Fixes
+
+* **core:** resolve relative IRIs and guard degenerate empty IRIs in canonicalization ([f4a9ed6](https://github.com/WilliamChelman/sparqly/commit/f4a9ed60714e66bce9c4b9de5d4438c7757ee9ea))
+* **server:** discard a worker reload that completes after an Unload (ADR-0050) ([828ff72](https://github.com/WilliamChelman/sparqly/commit/828ff723e503767fff2164fe53e73be8ea352399))
+* **server:** reflect split-glob parent-union state on the Sources row ([3250bb7](https://github.com/WilliamChelman/sparqly/commit/3250bb702ff32f8c025cd0d836497007a9acc90f))
+
 ## [0.33.0](https://github.com/WilliamChelman/sparqly/compare/v0.32.1...v0.33.0) (2026-05-29)
 
 ### Features
