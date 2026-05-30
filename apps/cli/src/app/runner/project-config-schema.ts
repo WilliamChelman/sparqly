@@ -65,6 +65,12 @@ const queryBlockSchema = z
     // Grace window (ms) before a cancelled query whose worker hasn't torn down
     // its stream is reclaimed by terminate + respawn (ADR-0050). Defaults to 250.
     cancelGraceMs: z.number().int().positive(),
+    // Per-worker V8 old-generation ceiling (MB) set as
+    // `resourceLimits.maxOldGenerationSizeMb` (ADR-0050). An over-budget query
+    // trips a catchable `ERR_WORKER_OUT_OF_MEMORY` that kills only that worker —
+    // the hard backstop under the soft `maxResidentQuads` LRU governor. Omitted
+    // leaves Node's default (effectively unbounded) heap.
+    maxOldGenerationSizeMb: z.number().int().positive(),
   })
   .partial()
   .strict();

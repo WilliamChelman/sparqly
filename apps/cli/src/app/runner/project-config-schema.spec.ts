@@ -71,6 +71,27 @@ describe('validateProjectConfig — query block', () => {
     }
   });
 
+  it('accepts a query block with a per-worker old-generation OOM ceiling', () => {
+    const result = validateProjectConfig({
+      sources: ['data/*.ttl'],
+      query: { maxOldGenerationSizeMb: 256 },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.query?.maxOldGenerationSizeMb).toBe(256);
+    }
+  });
+
+  it('rejects a non-positive-integer query maxOldGenerationSizeMb', () => {
+    for (const maxOldGenerationSizeMb of [0, -1, 2.5]) {
+      const result = validateProjectConfig({
+        sources: ['data/*.ttl'],
+        query: { maxOldGenerationSizeMb },
+      });
+      expect(result.ok).toBe(false);
+    }
+  });
+
   it('accepts an empty query block', () => {
     const result = validateProjectConfig({
       sources: ['data/*.ttl'],

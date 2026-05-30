@@ -1,4 +1,4 @@
-import { Worker } from 'node:worker_threads';
+import { Worker, type WorkerOptions } from 'node:worker_threads';
 import type { QueryWorkerHandle } from 'server';
 
 export interface SpawnQueryWorkerOptions {
@@ -9,8 +9,14 @@ export interface SpawnQueryWorkerOptions {
    * Travels in `workerData` so the worker enforces it on its own thread; omitted
    * means the worker's built-in default applies. */
   maxResidentQuads?: number;
+  /** Per-worker V8 old-generation ceiling in MB (`query.maxOldGenerationSizeMb`,
+   * ADR-0050). Set as `resourceLimits.maxOldGenerationSizeMb` so an over-budget
+   * query throws a catchable `ERR_WORKER_OUT_OF_MEMORY` that kills only this
+   * worker — the hard backstop under the soft per-worker LRU governor. Omitted
+   * means Node's default (effectively unbounded) heap applies. */
+  maxOldGenerationSizeMb?: number;
   /** Injectable for tests; defaults to a real `worker_threads.Worker`. */
-  createWorker?: (entry: string) => QueryWorkerHandle;
+  createWorker?: (entry: string, options: WorkerOptions) => QueryWorkerHandle;
 }
 
 /**
@@ -24,12 +30,18 @@ export function makeSpawnQueryWorker(
 ): () => QueryWorkerHandle {
   const create =
     options.createWorker ??
-    ((entry: string): QueryWorkerHandle =>
-      new Worker(entry, {
-        workerData: {
-          sparqlyRole: 'query-worker',
-          maxResidentQuads: options.maxResidentQuads,
-        },
-      }) as unknown as QueryWorkerHandle);
-  return () => create(options.cliEntry);
+    ((entry: string, workerOptions: WorkerOptions): QueryWorkerHandle =>
+      new Worker(entry, workerOptions) as unknown as QueryWorkerHandle);
+  const workerOptions: WorkerOptions = {
+    workerData: {
+      sparqlyRole: 'query-worker',
+      maxResidentQuads: options.maxResidentQuads,
+    },
+  };
+  if (options.maxOldGenerationSizeMb !== undefined) {
+    workerOptions.resourceLimits = {
+      maxOldGenerationSizeMb: options.maxOldGenerationSizeMb,
+    };
+  }
+  return () => create(options.cliEntry, workerOptions);
 }

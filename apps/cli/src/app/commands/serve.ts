@@ -41,6 +41,7 @@ interface ServeConfig {
   queryConcurrency?: number;
   queryMaxResidentQuads?: number;
   queryCancelGraceMs?: number;
+  queryMaxOldGenerationSizeMb?: number;
   verbose?: boolean;
   quiet?: boolean;
   logFormat?: 'text' | 'json';
@@ -162,6 +163,11 @@ const queryCancelGraceMsField: FieldDescriptor = {
   schema: z.number().int().positive(),
 };
 
+const queryMaxOldGenerationSizeMbField: FieldDescriptor = {
+  key: 'queryMaxOldGenerationSizeMb',
+  schema: z.number().int().positive(),
+};
+
 export const serveSpec: CommandSpec<ServeConfig> = {
   name: 'serve',
   description:
@@ -186,6 +192,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     queryConcurrencyField,
     queryMaxResidentQuadsField,
     queryCancelGraceMsField,
+    queryMaxOldGenerationSizeMbField,
     ...verbosityFieldsFor('serve'),
   ],
   positionals: [{ field: 'source', name: 'glob' }],
@@ -250,6 +257,7 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       spawnQueryWorker: makeSpawnQueryWorker({
         cliEntry,
         maxResidentQuads: config.queryMaxResidentQuads,
+        maxOldGenerationSizeMb: config.queryMaxOldGenerationSizeMb,
       }),
       logger: boundaryLog,
     });

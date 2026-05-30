@@ -198,7 +198,9 @@ function projectFileLayer(
                   ? 'queryMaxResidentQuads'
                   : blockName === 'query' && k === 'cancelGraceMs'
                     ? 'queryCancelGraceMs'
-                    : k;
+                    : blockName === 'query' && k === 'maxOldGenerationSizeMb'
+                      ? 'queryMaxOldGenerationSizeMb'
+                      : k;
       if (fieldKeys.has(fieldKey)) out[fieldKey] = v;
     }
   }

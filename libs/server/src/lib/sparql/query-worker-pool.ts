@@ -124,6 +124,9 @@ export class QueryWorkerPool {
   /** In-flight loads keyed by source id — concurrent touches coalesce here. */
   private readonly loads = new Map<string, PendingLoad>();
   private nextRequestId = 1;
+  /** Set once `shutdown` begins so the `exit` events its `terminate`s provoke
+   * aren't mistaken for crashes and respawned. */
+  private shuttingDown = false;
 
   constructor(options: QueryWorkerPoolOptions) {
     this.spawn = options.spawn;
@@ -145,11 +148,34 @@ export class QueryWorkerPool {
     sources.add(sourceId);
     let worker = this.workers.get(index);
     if (worker === undefined) {
-      worker = this.spawn();
-      worker.on('message', (message) => this.onMessage(message));
-      this.workers.set(index, worker);
+      worker = this.install(index);
     }
     return worker;
+  }
+
+  /** Spawns a worker, wires its listeners, and records it at `index`. The
+   * `error`/`exit` pair drives OOM containment (ADR-0050): a `resourceLimits`
+   * OOM emits `error` then a non-zero `exit`, and the `error` listener also keeps
+   * an unhandled worker error from taking down the main thread. */
+  private install(index: number): QueryWorkerHandle {
+    const worker = this.spawn();
+    worker.on('message', (message) => this.onMessage(message));
+    worker.on('error', () => undefined);
+    worker.on('exit', () => this.onWorkerExit(index, worker));
+    this.workers.set(index, worker);
+    return worker;
+  }
+
+  /** A worker exited. A deliberate terminate (cancellation or shutdown) has
+   * already swapped in its replacement — so an exit whose worker is no longer the
+   * one recorded at `index`, or any exit during shutdown, is expected and
+   * ignored. Anything else is an unexpected death (an OOM over the
+   * `resourceLimits` ceiling, or a crash): reclaim the index so its in-flight
+   * work fails as typed errors and a fresh worker takes over. */
+  private onWorkerExit(index: number, worker: QueryWorkerHandle): void {
+    if (this.shuttingDown) return;
+    if (this.workers.get(index) !== worker) return;
+    this.reclaim(index, 'exited unexpectedly (out of memory or crash)');
   }
 
   /** Registers the callback the pool fires when a worker is reclaimed (terminated
@@ -248,22 +274,39 @@ export class QueryWorkerPool {
   }
 
   /** Nuclear path (ADR-0050): the worker is stuck in a synchronous stretch and
-   * ignored the cancel. Terminate it, respawn at the same index, and fail every
-   * query that was in flight on it. Idempotent if the worker is already replaced. */
+   * ignored the cancel. Terminate it, then reclaim the index. Idempotent if the
+   * worker is already replaced. */
   private terminateWorker(workerIndex: number): void {
     const worker = this.workers.get(workerIndex);
     if (worker === undefined) return;
     void worker.terminate();
-    const replacement = this.spawn();
-    replacement.on('message', (message) => this.onMessage(message));
-    this.workers.set(workerIndex, replacement);
+    this.reclaim(
+      workerIndex,
+      `terminated after ${this.cancelGraceMs}ms cancel grace window`,
+    );
+  }
+
+  /** Replaces the worker at `index` with a fresh one and fails everything that
+   * was in flight on the dead one as typed errors (ADR-0024): pending queries
+   * settle as a `query-execution` error (→ 502, not an uncaught 500). The
+   * replacement starts empty, so the orphaned sources' stores are gone — the
+   * front rebuilds them lazily on next touch via {@link onReset}. Shared by the
+   * cancellation nuclear path and unexpected-exit (OOM) containment. */
+  private reclaim(index: number, reason: string): void {
+    this.install(index);
     for (const [requestId, pending] of [...this.pending]) {
-      if (pending.workerIndex !== workerIndex) continue;
+      if (pending.workerIndex !== index) continue;
       this.pending.delete(requestId);
-      this.settle(pending, err(this.terminatedError(pending.query)));
+      this.settle(pending, err(this.workerLostError(pending.query, reason)));
     }
-    // The replacement starts empty — tell the front to rebuild these on next touch.
-    const orphaned = this.sourcesByWorker.get(workerIndex);
+    // A build interrupted by the death can't complete — fail it as a typed
+    // SourceError so the front surfaces a 5xx rather than waiting forever.
+    for (const [sourceId, load] of [...this.loads]) {
+      if (this.assignment.assign(sourceId) !== index) continue;
+      this.loads.delete(sourceId);
+      load.resolve(err(this.workerLostError('', reason)));
+    }
+    const orphaned = this.sourcesByWorker.get(index);
     if (orphaned !== undefined && orphaned.size > 0) {
       this.onWorkerReset?.([...orphaned]);
     }
@@ -280,15 +323,16 @@ export class QueryWorkerPool {
     pending.resolve(result);
   }
 
-  private terminatedError(query: string): QueryExecutionError {
+  private workerLostError(query: string, reason: string): QueryExecutionError {
     return {
       kind: 'query-execution',
       query,
-      message: `query worker terminated after ${this.cancelGraceMs}ms cancel grace window`,
+      message: `query worker ${reason}`,
     };
   }
 
   async shutdown(): Promise<void> {
+    this.shuttingDown = true;
     for (const pending of this.pending.values()) {
       if (pending.graceTimer !== undefined) clearTimeout(pending.graceTimer);
     }

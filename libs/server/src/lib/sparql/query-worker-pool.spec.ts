@@ -33,6 +33,8 @@ const RESOLVE_OPTS: WorkerResolveOptions = {
  */
 class FakeWorker implements QueryWorkerHandle {
   private readonly messageListeners: Array<(m: WorkerMessage) => void> = [];
+  private readonly errorListeners: Array<(err: Error) => void> = [];
+  private readonly exitListeners: Array<(code: number) => void> = [];
   readonly sent: WorkerRequest[] = [];
   terminateCalls = 0;
 
@@ -55,12 +57,23 @@ class FakeWorker implements QueryWorkerHandle {
   on(event: string, listener: (...args: never[]) => void): void {
     if (event === 'message') {
       this.messageListeners.push(listener as (m: WorkerMessage) => void);
+    } else if (event === 'error') {
+      this.errorListeners.push(listener as (err: Error) => void);
+    } else if (event === 'exit') {
+      this.exitListeners.push(listener as (code: number) => void);
     }
   }
 
   async terminate(): Promise<number> {
     this.terminateCalls++;
     return 0;
+  }
+
+  /** Simulates a worker OOM/unexpected death: `error` then a non-zero `exit`,
+   * the order Node emits for an uncaught error or `ERR_WORKER_OUT_OF_MEMORY`. */
+  crash(error = new Error('Worker terminated due to reaching memory limit')): void {
+    for (const listener of this.errorListeners) listener(error);
+    for (const listener of this.exitListeners) listener(1);
   }
 
   private emit(message: WorkerMessage): void {
@@ -213,6 +226,121 @@ describe('QueryWorkerPool — hash-sticky assignment', () => {
       'y',
     ]);
     await pool.shutdown();
+  });
+});
+
+describe('QueryWorkerPool — OOM containment (ADR-0050, #389)', () => {
+  it('rejects an in-flight query as a typed error and respawns when its worker crashes', async () => {
+    // The worker accepts the query but dies (OOM) before answering it.
+    const { spawn, workers } = recordingSpawn(() => undefined);
+    const resetIds: string[][] = [];
+    const pool = new QueryWorkerPool({
+      spawn,
+      concurrency: 1,
+      assignment: { assign: () => 0 },
+    });
+    pool.onReset((ids) => resetIds.push([...ids]));
+
+    const pending = pool.query('alpha', 'Q', {});
+    // Let the query post and register before the worker dies.
+    await Promise.resolve();
+    workers[0].crash();
+    const result = await pending;
+
+    // The abandoned query settles as a typed error (→ 502), not a hang or a 500.
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().kind).toBe('query-execution');
+    // A replacement worker was spawned at the same index.
+    expect(workers).toHaveLength(2);
+    // The front is told to rebuild the orphaned source's store lazily.
+    expect(resetIds).toContainEqual(['alpha']);
+    await pool.shutdown();
+  });
+
+  it('rejects an in-flight ensureLoaded with a typed SourceError when its worker crashes', async () => {
+    // The worker accepts the load but dies (OOM) before it finishes building.
+    const { spawn, workers } = recordingSpawn(() => undefined);
+    const pool = new QueryWorkerPool({
+      spawn,
+      concurrency: 1,
+      assignment: { assign: () => 0 },
+    });
+
+    const pending = pool.ensureLoaded(ALPHA, RESOLVE_OPTS);
+    await Promise.resolve();
+    workers[0].crash();
+    const result = await pending;
+
+    // The build fails as a typed SourceError (→ 5xx), not a hang.
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().kind).toBe('query-execution');
+    await pool.shutdown();
+  });
+
+  it('routes a query issued after a crash to the respawned worker, which answers', async () => {
+    // The first worker dies before answering 'Q1'; the respawn answers 'Q2'.
+    const { spawn, workers } = recordingSpawn((request, reply) => {
+      if (request.type === 'query' && request.query === 'Q2') {
+        reply({
+          type: 'query-result',
+          requestId: request.requestId,
+          ok: { body: 'fresh', format: 'json', contentType: 'x' },
+        });
+      }
+    });
+    const pool = new QueryWorkerPool({
+      spawn,
+      concurrency: 1,
+      assignment: { assign: () => 0 },
+    });
+
+    const stranded = pool.query('alpha', 'Q1', {});
+    await Promise.resolve();
+    workers[0].crash();
+    await stranded; // settles as a typed error; worker 0 respawned
+
+    const result = await pool.query('alpha', 'Q2', {});
+
+    expect(result.isOk()).toBe(true);
+    expect(result._unsafeUnwrap().body).toBe('fresh');
+    expect(workers).toHaveLength(2);
+    expect(workers[1].sent).toContainEqual(
+      expect.objectContaining({ type: 'query', query: 'Q2' }),
+    );
+    await pool.shutdown();
+  });
+
+  it('ignores a stale exit from an already-replaced worker (no extra respawn)', async () => {
+    const { spawn, workers } = recordingSpawn(() => undefined);
+    const pool = new QueryWorkerPool({
+      spawn,
+      concurrency: 1,
+      assignment: { assign: () => 0 },
+    });
+
+    pool.query('alpha', 'Q', {});
+    await Promise.resolve();
+    workers[0].crash(); // respawns worker[1] at index 0
+    workers[0].crash(); // the dead worker exits again — must be a no-op
+
+    expect(workers).toHaveLength(2);
+    await pool.shutdown();
+  });
+
+  it('does not respawn a worker whose exit arrives during shutdown', async () => {
+    const { spawn, workers } = recordingSpawn(() => undefined);
+    const pool = new QueryWorkerPool({
+      spawn,
+      concurrency: 1,
+      assignment: { assign: () => 0 },
+    });
+
+    pool.query('alpha', 'Q', {});
+    await Promise.resolve();
+    await pool.shutdown();
+    workers[0].crash(); // terminate-driven exit after shutdown — ignored
+
+    expect(workers).toHaveLength(1);
   });
 });
 
