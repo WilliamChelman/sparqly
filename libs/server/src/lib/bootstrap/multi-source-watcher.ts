@@ -9,6 +9,7 @@ import {
   type ParsedSource,
   type ParsedViewSource,
   resolveSource,
+  walkGlobPaths,
 } from 'core';
 import type { EngineMap } from './engine-map';
 import type { MetaChildrenCache } from './meta-children-cache';
@@ -44,6 +45,14 @@ export interface MaybeStartWatcherOptions {
   pollMs: number;
   snippetAllowList: SnippetAllowList;
   /**
+   * Cheap glob walkers (no parse, no Store build) used to keep the snippet
+   * allow-list in sync on FS changes — even for lazy (never-queried) or
+   * worker-owned sources whose store is never rebuilt on the main thread
+   * (#391). Mirror the boot-time seeding in `create-server`.
+   */
+  walkGlob: Parameters<typeof walkGlobPaths>[1]['walkGlob'];
+  walkGitGlob: Parameters<typeof walkGlobPaths>[1]['walkGitGlob'];
+  /**
    * Per-meta children cache for `splitByFile: true` globs (ADR-0027). The
    * watcher calls `invalidate(parentId)` on add/unlink events inside a
    * split-glob's pattern so the next `/api/config` re-walks the meta.
@@ -74,15 +83,26 @@ export async function maybeStartWatcher(
   for (const plan of chain.sources) {
     if (plan.id === undefined) continue;
     const sourceId = plan.id;
+    const source = plan.source;
     targets.push({
       plan,
       engineMap: opts.engineMap,
-      target: plan.source,
+      target: source,
       registry: opts.resolutionRegistry,
       onRebuiltFiles: (files) => {
         opts.engineMap.setFiles(sourceId, files);
         opts.snippetAllowList.update(opts.engineMap.allFiles());
       },
+      // Only glob sources can gain/lose matched files; a `file:` source's path
+      // is fixed. Enumerate without parsing so the refresh stays cheap (#391).
+      resolveAllowListFiles:
+        source.kind === 'glob'
+          ? () =>
+              walkGlobPaths(source, {
+                walkGlob: opts.walkGlob,
+                walkGitGlob: opts.walkGitGlob,
+              })
+          : undefined,
     });
   }
 
@@ -127,6 +147,14 @@ interface WatchedSource {
    * matched files become readable and removed files stop being readable.
    */
   onRebuiltFiles?: (files: ReadonlyArray<string>) => void;
+  /**
+   * Cheap glob enumeration (no parse) for this source, when it is a glob.
+   * Drives the eager snippet allow-list refresh on FS changes regardless of
+   * whether the store is rebuilt on main — for lazy or worker-owned sources
+   * the legacy main-thread rebuild below never runs, so this is the only path
+   * that lets a newly-matched file become readable (#391).
+   */
+  resolveAllowListFiles?: () => Promise<ReadonlyArray<string>>;
 }
 
 interface MultiSourceWatcherDeps {
@@ -271,6 +299,21 @@ function createSourceRunner(
           });
         }
       };
+      // #391: the snippet allow-list is eager main-owned machinery, orthogonal
+      // to store residency. Re-walk the glob (no parse, no Store build) on every
+      // FS change so a newly-matched file becomes readable via
+      // `/api/source-snippet` — and a removed one stops being — even when the
+      // store is lazy (never queried) or worker-owned and the legacy
+      // main-thread rebuild below never runs.
+      if (
+        trigger.kind === 'file-change' &&
+        target.resolveAllowListFiles &&
+        target.onRebuiltFiles
+      ) {
+        const files = await target.resolveAllowListFiles();
+        if (disposed) return;
+        target.onRebuiltFiles(files);
+      }
       // ADR-0050 (#391): a worker owns this source's store. Drop its resident
       // copy so the *next* query rebuilds it from disk — main does no rebuild
       // here. `invalidate` returns false (and falls through) when the source is
