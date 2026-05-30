@@ -1,15 +1,9 @@
-import { parseSourceAddress } from './address';
 import { TRANSFORM_REGISTRY } from './transform-registry';
 import {
   parseTransformList,
   type ParsedTransform,
   type TransformDefinition,
 } from './transform-spec';
-import {
-  parseViewCache,
-  type ParsedViewCache,
-  type ViewCacheInput,
-} from './view-cache-spec';
 import {
   pickEndpointHttp,
   rejectEndpointOnlyFields,
@@ -105,25 +99,10 @@ export interface ParsedEmptySource
   id: string;
 }
 
-export interface ParsedViewSource extends DefaultMarkerField {
-  kind: 'view';
-  id: string;
-  from: string;
-  /**
-   * Set when `from:` was given as `@<id>:<ref>`. Propagated to the upstream
-   * glob at view-resolution time; non-glob upstreams reject it then.
-   */
-  fromGitRef?: string;
-  query?: string;
-  queryFile?: string;
-  cache?: ParsedViewCache;
-}
-
 export type ParsedSource =
   | ParsedGlobSource
   | ParsedEndpointSource
   | ParsedReferenceSource
-  | ParsedViewSource
   | ParsedEmptySource
   | ParsedFileSource;
 
@@ -132,11 +111,9 @@ export interface SourceSpecObjectInput
     EndpointHttpFields {
   glob?: string;
   endpoint?: string;
-  from?: string;
   empty?: true;
-  query?: string;
-  queryFile?: string;
-  cache?: ViewCacheInput;
+  /** Removed view-source field, retained only to reject it with an ADR-0051 message. */
+  from?: string;
   default?: true;
   transforms?: ReadonlyArray<unknown>;
   splitByFile?: true;
@@ -185,12 +162,32 @@ function pickSplitByFile(
 
 function rejectSplitByFileOn(
   input: SourceSpecObjectInput,
-  kind: 'endpoint' | 'view' | 'empty',
+  kind: 'endpoint' | 'empty',
 ): void {
   if (input.splitByFile !== undefined) {
     throw new Error(
       `\`splitByFile\` is only valid on glob sources (got a ${kind} source)`,
     );
+  }
+}
+
+const REMOVED_VIEW_FIELDS = ['from', 'query', 'queryFile', 'cache'] as const;
+
+/**
+ * The `view` source kind was removed (ADR-0051). A config still declaring any of
+ * its fields fails fast with a pointer to the replacement (an inline query at
+ * command time, or a baked file declared as a glob source).
+ */
+function rejectRemovedViewFields(input: SourceSpecObjectInput): void {
+  for (const key of REMOVED_VIEW_FIELDS) {
+    if ((input as Record<string, unknown>)[key] !== undefined) {
+      throw new Error(
+        `\`${key}\` is no longer a valid source field: the \`view\` source kind was ` +
+          'removed (ADR-0051). Derive data with an inline `--query`/`--query-file` over ' +
+          'a source at command time, or bake the result to a file and declare a glob ' +
+          'source over it.',
+      );
+    }
   }
 }
 
@@ -245,37 +242,22 @@ export function parseSourceSpec(
     }
     return { kind: 'glob', glob: input };
   }
+  rejectRemovedViewFields(input);
   const hasGlob = input.glob !== undefined;
   const hasEndpoint = input.endpoint !== undefined;
-  const hasFrom = input.from !== undefined;
   const hasEmpty = input.empty === true;
-  const setCount = [hasGlob, hasEndpoint, hasFrom, hasEmpty].filter(
-    Boolean,
-  ).length;
+  const setCount = [hasGlob, hasEndpoint, hasEmpty].filter(Boolean).length;
   if (setCount !== 1) {
     throw new Error(
-      'source-spec object must declare exactly one of `glob:`, `endpoint:`, `from:`, or `empty:`',
+      'source-spec object must declare exactly one of `glob:`, `endpoint:`, or `empty:`',
     );
   }
   if (input.id !== undefined) validateSourceId(input.id);
-  if (hasFrom) {
-    rejectTransformsOn(input, 'view');
-    rejectSplitByFileOn(input, 'view');
-    rejectUnionDefaultGraphOn(input, 'view');
-    rejectStorageOn(input, 'view');
-    rejectGitRefOn(input, 'view');
-    return parseView(input);
-  }
   if (hasEmpty) {
     rejectSplitByFileOn(input, 'empty');
     rejectUnionDefaultGraphOn(input, 'empty');
     rejectStorageOn(input, 'empty');
     return parseEmpty(input);
-  }
-  if (input.cache !== undefined) {
-    throw new Error(
-      '`cache` is only valid on view sources (`from:` blocks); see PRD #78',
-    );
   }
   const common = pickCommon(input);
   const defaultMarker = pickDefault(input);
@@ -322,7 +304,7 @@ export function parseSourceSpec(
 
 function rejectTransformsOn(
   input: SourceSpecObjectInput,
-  kind: 'endpoint' | 'view' | 'empty',
+  kind: 'endpoint' | 'empty',
 ): void {
   if (input.transforms !== undefined) {
     throw new Error(
@@ -336,9 +318,6 @@ const EMPTY_FORBIDDEN_KEYS = [
   'auth',
   'headers',
   'timeoutMs',
-  'query',
-  'queryFile',
-  'cache',
   'transforms',
   'gitRef',
   'gitRoot',
@@ -357,56 +336,6 @@ function parseEmpty(input: SourceSpecObjectInput): ParsedEmptySource {
   }
   const defaultMarker = pickDefault(input);
   return { kind: 'empty', id: input.id, ...defaultMarker };
-}
-
-function parseView(input: SourceSpecObjectInput): ParsedViewSource {
-  if (input.id === undefined) {
-    throw new Error('view source: `id` is required');
-  }
-  if (Array.isArray(input.from)) {
-    throw new Error(
-      'view source: `from:` must be a single `@id` ref string; multi-source composition is expressed in SPARQL via `SERVICE` clauses inside the view query',
-    );
-  }
-  if (typeof input.from !== 'string') {
-    throw new Error(
-      'view source: `from` must be a `@id` ref string (e.g. `@my-source`)',
-    );
-  }
-  const addr = parseSourceAddress(input.from);
-  if (addr.isErr()) {
-    throw new Error(
-      `view source: \`from\` entry ${JSON.stringify(input.from)} must be a \`@id\` ref (e.g. \`@my-source\`)`,
-    );
-  }
-  const ref = addr.value.id;
-  const fromGitRef = addr.value.ref;
-  const hasQuery = input.query !== undefined;
-  const hasQueryFile = input.queryFile !== undefined;
-  if (hasQuery && hasQueryFile) {
-    throw new Error(
-      'view source: `query` and `queryFile` are mutually exclusive',
-    );
-  }
-  if (!hasQuery && !hasQueryFile) {
-    throw new Error(
-      'view source: must declare exactly one of `query` or `queryFile`',
-    );
-  }
-  const out: ParsedViewSource = {
-    kind: 'view',
-    id: input.id,
-    from: ref,
-  };
-  if (fromGitRef !== undefined) out.fromGitRef = fromGitRef;
-  if (hasQuery) out.query = input.query;
-  if (hasQueryFile) out.queryFile = input.queryFile;
-  if (input.cache !== undefined) {
-    out.cache = parseViewCache(input.id, input.cache);
-  }
-  const defaultMarker = pickDefault(input);
-  if (defaultMarker.default) out.default = true;
-  return out;
 }
 
 export interface ParseSourceSpecsContext extends ParseSourceSpecContext {

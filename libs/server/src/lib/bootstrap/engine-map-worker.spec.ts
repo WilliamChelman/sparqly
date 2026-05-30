@@ -334,58 +334,6 @@ describe('EngineMap — worker routing (ADR-0050)', () => {
     }
   });
 
-  it('routes an ad-hoc pinned view query through the worker keyed by its leaf glob SHA (#390)', async () => {
-    // A view pinned via `@view:ref` carries `fromGitRef`, which propagates down
-    // the (linear) from-chain to the leaf glob. The routing key is the leaf's
-    // resolved SHA so the pinned view runs off the main loop too.
-    const registry = parseSourceSpecs([
-      { id: 'alpha', glob: join(dir, '*.ttl') },
-      { id: 'myview', from: '@alpha', query: 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }' },
-    ]);
-    const view = registry.find((s) => s.id === 'myview');
-    if (view === undefined) throw new Error('view fixture missing');
-    const PINNED_SHA = 'b'.repeat(40);
-    const fakeGitPort: GitPort = {
-      resolveRefToSha: async () => PINNED_SHA,
-      getRefObjectType: async () => 'commit',
-      readFileAtSha: async () => null,
-      listFilesAtSha: async () => [],
-      // eslint-disable-next-line require-yield
-      readManyAtSha: async function* () {
-        return;
-      },
-    };
-    const worker = loadingWorker();
-    const pool = new QueryWorkerPool({ spawn: () => worker });
-    const map = await EngineMap.create(registry, {
-      queryPool: pool,
-      gitPort: fakeGitPort,
-      repoDiscovery: { hasGitDir: () => true },
-    });
-    try {
-      const pinned = { ...view, fromGitRef: 'release' };
-      const executor = (await map.ensureAdHoc(pinned))._unsafeUnwrap();
-      const result = (
-        await executor.executeResult('SELECT ?s WHERE { ?s ?p ?o }', {
-          format: 'json',
-        })
-      )._unsafeUnwrap();
-      expect(result).toEqual(QUERY_OK);
-
-      const routeId = `myview@${PINNED_SHA}`;
-      const loads = worker.sent.filter(
-        (m): m is LoadRequest => m.type === 'load',
-      );
-      const queries = worker.sent.filter(
-        (m): m is QueryRequest => m.type === 'query',
-      );
-      expect(loads.map((m) => m.sourceId)).toEqual([routeId]);
-      expect(queries.map((m) => m.sourceId)).toEqual([routeId]);
-    } finally {
-      await map.close();
-    }
-  });
-
   it('keys ad-hoc residency by resolved SHA so distinct commits route apart and a repeat pin reuses the slot (#390)', async () => {
     const [alpha] = parseSourceSpecs([{ id: 'alpha', glob: join(dir, '*.ttl') }]);
     const SHA = { v1: '1'.repeat(40), v2: '2'.repeat(40) } as const;

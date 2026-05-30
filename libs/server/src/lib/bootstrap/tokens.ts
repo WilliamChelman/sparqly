@@ -45,7 +45,7 @@ export interface SavedQueriesServerConfig {
   writable: boolean;
 }
 
-export type SourceKind = 'glob' | 'endpoint' | 'empty' | 'view' | 'file';
+export type SourceKind = 'glob' | 'endpoint' | 'empty' | 'file';
 
 // Mirrors `SourceRow.mode` (ADR-0044); used by the diff page's ADR-0047 gate.
 export type SourceListingMode = 'in-memory' | 'disk-backed' | 'endpoint';

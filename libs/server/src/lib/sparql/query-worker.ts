@@ -201,7 +201,7 @@ const defaultBuildStore: StoreBuilder = async (request) => {
       store,
       {
         id: source.id as string,
-        mode: source.kind === 'view' ? 'view' : 'materialized',
+        mode: 'materialized',
       },
       { unionDefaultGraph: unionDefaultGraphEnabled(source) },
     ),

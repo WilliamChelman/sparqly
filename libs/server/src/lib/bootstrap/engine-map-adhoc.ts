@@ -4,13 +4,11 @@ import {
   QueryEngine,
   resolveGlobPinShaResult,
   resolveSourceResult,
-  resolveViewPinShaResult,
   storageTier,
   unionDefaultGraphEnabled,
   type GitPort,
   type ParsedGlobSource,
   type ParsedSource,
-  type ParsedViewSource,
   type QueryExecutor,
   type RepoDiscoveryDeps,
   type SourceError,
@@ -45,12 +43,11 @@ export function adHocRouteId(id: string, sha: string): string {
  * Resolves a {@link QueryExecutor} for an *ad-hoc pinned* source — a pin the
  * served registry doesn't carry (`@id:ref`), so it never gets a pre-built
  * EngineMap entry (#390). When a query worker is wired, an in-memory pinned glob
- * (keyed by its resolved SHA) or a pinned view (keyed by its leaf glob's SHA) is
- * routed through the pool: the worker builds and holds the store under
- * `${id}@${sha}`, so it runs off the main loop and resides apart from (and never
- * collides with) the unpinned `@id` variant. Anything the pool can't host — no
- * worker, an endpoint pass-through, or a disk-backed glob — falls back to the
- * legacy main-thread resolve+build.
+ * (keyed by its resolved SHA) is routed through the pool: the worker builds and
+ * holds the store under `${id}@${sha}`, so it runs off the main loop and resides
+ * apart from (and never collides with) the unpinned `@id` variant. Anything the
+ * pool can't host — no worker, an endpoint pass-through, or a disk-backed glob —
+ * falls back to the legacy main-thread resolve+build.
  */
 export function ensureAdHocExecutor(
   source: ParsedSource,
@@ -75,27 +72,6 @@ export function ensureAdHocExecutor(
       const routeId = adHocRouteId(glob.id as string, sha);
       return pool
         .ensureLoaded(glob, deps.workerResolveOptions, routeId)
-        .map<QueryExecutor>(() => new WorkerQueryExecutor(pool, routeId));
-    });
-  }
-  if (
-    pool !== undefined &&
-    source.kind === 'view' &&
-    source.fromGitRef !== undefined
-  ) {
-    const view: ParsedViewSource = source;
-    return resolveViewPinShaResult(view, deps.resolutionRegistry, {
-      configDir: deps.configDir,
-      gitPort: deps.gitPort,
-      repoDiscovery: deps.repoDiscovery,
-      logger: deps.logger,
-    }).andThen<QueryExecutor, SourceError>((sha) => {
-      // No leaf glob to pin (e.g. an endpoint-backed view) → keep the exact
-      // legacy main-thread behavior instead of forcing it through the worker.
-      if (sha === undefined) return resolveAdHocOnMain(view, deps);
-      const routeId = adHocRouteId(view.id as string, sha);
-      return pool
-        .ensureLoaded(view, deps.workerResolveOptions, routeId)
         .map<QueryExecutor>(() => new WorkerQueryExecutor(pool, routeId));
     });
   }

@@ -32,21 +32,6 @@ describe('resolveServeScope — --source @id', () => {
     expect(scope.defaultId).toBe('live');
   });
 
-  it('keeps a view`s `from:` upstream resolvable but unserved', () => {
-    const registry = parseSourceSpecs([
-      { id: 'upstream', glob: 'data/*.ttl' },
-      { id: 'view', from: '@upstream', query: 'SELECT * WHERE { ?s ?p ?o }' },
-    ]);
-
-    const scope = resolveServeScope(registry, '@view');
-
-    expect(scope.servedRegistry.map((s) => s.id)).toEqual(['view']);
-    expect(scope.resolutionRegistry.map((s) => s.id)).toEqual([
-      'upstream',
-      'view',
-    ]);
-  });
-
   it('throws listing the available ids when the ref matches nothing', () => {
     const registry = parseSourceSpecs([
       { id: 'files', glob: 'data/*.ttl' },

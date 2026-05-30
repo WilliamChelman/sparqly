@@ -1,13 +1,13 @@
 # sparqly
 
-A CLI for querying, hashing, diffing, formatting, and serving RDF, built around declarative source specs that compose globs of files, remote SPARQL endpoints, and views that scope upstreams via SPARQL queries.
+A CLI for querying, hashing, diffing, formatting, and serving RDF, built around declarative source specs over globs of files, remote SPARQL endpoints, and on-disk indexes. Derivation is expressed as an inline query at command time, never as a persisted source.
 
 ## Language
 
 ### Sources
 
 **Source**:
-A declared input that produces RDF. One of glob, file, endpoint, empty, view, or reference; file sources are never user-declared and exist only as children of a **split glob**.
+A declared input that produces RDF. One of glob, file, endpoint, empty, or reference; file sources are never user-declared and exist only as children of a **split glob**. There is no derived source — derivation is an **inline query** at command time, never a persisted source.
 
 **Glob source**:
 A **Source** that matches RDF files on disk via a glob pattern; an empty match yields an empty store with a warning, not an error.
@@ -28,20 +28,15 @@ _Avoid_: "indexed glob", "big glob", "external source", conflating with **Endpoi
 A **Source** whose value is the URL of a remote SPARQL HTTP endpoint.
 
 **Empty source**:
-A **Source** that produces no triples of its own, intended to host a view whose query composes data via `SERVICE` clauses across endpoints that do not themselves support `SERVICE`.
-
-**View**:
-A **Source** that scopes exactly one **Upstream** with a SPARQL query, whose shape must be `CONSTRUCT` or a **triple-shaped SELECT**. Cross-source composition is expressed with `SERVICE` clauses inside the query, not multiple upstreams.
+A **Source** that produces no triples of its own, used as a neutral target for an **inline query** that composes data via `SERVICE` clauses across endpoints that do not themselves support `SERVICE`. Earmarked to become a writable on-disk store in a future slice.
 
 **Triple-shaped SELECT**:
-A `SELECT` query whose projection is exactly `?s ?p ?o` or `?s ?p ?o ?g` (position-independent). A valid query shape for a **View** and for the `query` command when an RDF output format is explicitly requested — in the latter case the result rows are reified as triples or quads for serialization. Rows with an unbound `?g` are promoted to the default graph rather than dropped.
+A `SELECT` query whose projection is exactly `?s ?p ?o` or `?s ?p ?o ?g` (position-independent). A valid query shape for an **Inline query** that must produce triples, and for the `query` command when an RDF output format is explicitly requested — in the latter case the result rows are reified as triples or quads for serialization. Rows with an unbound `?g` are promoted to the default graph rather than dropped.
 _Avoid_: "SPO query", "graph-shaped SELECT", "triple SELECT"
 
-**Anonymous view**:
-A **View** synthesized at command time from an inline query on `hash` or `diff`; never persisted to the registry and never cached. On `diff`, an anonymous view may project an arbitrary `SELECT` tuple, which selects **tabular diff** over **graph diff**.
-
-**Upstream**:
-The single **Source** a **View** references. May be any source kind except a reference — including a **File source** child of a **Split glob**.
+**Inline query**:
+A SPARQL query passed directly to `query`, `hash`, or `diff` and run against the **target source** — the only derivation sparqly performs, since there is no derived **Source**. On `diff`, an arbitrary `SELECT` tuple selects **tabular diff** over **graph diff**; `hash` and graph-`diff` require a query that produces triples (`CONSTRUCT` or a **triple-shaped SELECT**). Never persisted, never `@id`-addressable.
+_Avoid_: "anonymous view", "ad-hoc view", "view"
 
 ### Registries & targets
 
@@ -56,13 +51,13 @@ _Avoid_: "selected source", "active source"
 The single registry entry flagged as the implicit target when no source is named — the **target source** for single-target commands and the pre-selected entry for `serve`. At most one per registry.
 
 **Served registry** (`serve`):
-The subset of the **source registry** that `serve` exposes; by default every non-reference source. Sources reached only through a **View**'s upstream chain remain resolvable but are not themselves served.
+The subset of the **source registry** that `serve` exposes; by default every non-reference source.
 _Avoid_: "registry mode", "single-source mode"
 
 ### Resolution
 
 **Materialized resolution**:
-The resolution path that loads a **Source**'s upstream into a local in-memory store and runs the view query against that store; the default for in-memory glob, empty, and view upstreams.
+The resolution path that loads a **Source** into a local in-memory store and runs the command's **inline query** against it; the default for in-memory glob and **File source** targets.
 _Avoid_: "in-memory mode", "fetch-then-query"
 
 **Pass-through resolution**:
@@ -115,12 +110,6 @@ _Avoid_: "provenance triple", "lineage record"
 The per-source mapping from each asserted triple to its **Source records**, produced by the loader and carried alongside the loaded store through resolution. Independent of any RDF-star projection of the same records into the store.
 _Avoid_: "annotation sidecar", "provenance map"
 
-### Caching
-
-**Result cache**:
-The store of a **View**'s query _result_, bounded by the query's projection rather than the size of the upstream.
-_Avoid_: "upstream cache", "endpoint cache"
-
 ### Canonicalization & diff
 
 **Canonicalization**:
@@ -169,8 +158,8 @@ _Avoid_: conflating with **Source records**, "from-graph annotation"
 ### Saved queries
 
 **Saved query**:
-A named SPARQL query persisted in the **Saved-query sidecar** as webapp-scoped state. Not a **Source** — never in the **source registry**, never `@id`-resolvable, never an **Upstream**; the durable, source-bound, config-declared counterpart is a **View**.
-_Avoid_: "snippet", "bookmark", conflating with **View**
+A named SPARQL query persisted in the **Saved-query sidecar** as webapp-scoped state. Not a **Source** — never in the **source registry**, never `@id`-resolvable. It is the only named query artifact; sparqly has no config-declared query source.
+_Avoid_: "snippet", "bookmark"
 
 **Saved-query authoring surface**:
 The webapp's queries page — the single surface on which **Saved query** entries are created, edited, parameter-declared, renamed, and deleted. Collapses to browse-and-run under `serve --read-only`.
@@ -219,7 +208,7 @@ The webapp end-to-end suite under `apps/web-e2e`, exercised by `pnpm run e2e:web
 _Avoid_: bare "e2e" (means cli-e2e), "webapp integration test", "ui test"
 
 **DOM-free spec**:
-A webapp unit spec that tests the *logic*, not the *rendering*. May use `TestBed`, dependency injection, `HttpTestingController`, and may instantiate a component (e.g. `TestBed.createComponent`) to drive its signals and methods through its public surface. Must not call `fixture.detectChanges()` (or any equivalent that flushes the template), query the rendered DOM, or assert on rendered HTML, classes, or attributes. The canonical home for non-trivial derived state — services, signal-only classes, page/component classes read through their public surface, and pure helpers. If the assertion needs a rendered template, it belongs in **Web e2e**.
+A webapp unit spec that tests the _logic_, not the _rendering_. May use `TestBed`, dependency injection, `HttpTestingController`, and may instantiate a component (e.g. `TestBed.createComponent`) to drive its signals and methods through its public surface. Must not call `fixture.detectChanges()` (or any equivalent that flushes the template), query the rendered DOM, or assert on rendered HTML, classes, or attributes. The canonical home for non-trivial derived state — services, signal-only classes, page/component classes read through their public surface, and pure helpers. If the assertion needs a rendered template, it belongs in **Web e2e**.
 _Avoid_: "unit test" (too generic), "logic spec", "headless spec"
 
 **Accessible selector**:
@@ -231,47 +220,37 @@ _Avoid_: "test id" as a default selector, "test hook"
 
 ## Relationships
 
-- A **View** has exactly one **Upstream** source via `from:`.
-- An **Upstream** is itself a **Source** (glob, endpoint, empty, or view; reference is rejected).
-- A **View** whose `from:` is an **Endpoint source** or a **Disk-backed glob** resolves via **pass-through**; in-memory glob, empty, and view upstreams resolve via **materialized**.
-- A **View** with `cache:` declared writes to the **Result cache** after resolution.
+- A **Source** resolves by its own kind — there is no `from:` chain and no derived source. **Inline queries** reshape a target at command time but never become sources themselves.
 - **`query`** picks one **target source** from the **source registry** and resolves it: **pass-through** when the target is an endpoint or a **Disk-backed glob**, **materialized** otherwise. When an RDF output format (`turtle`, `trig`, `nquads`) is requested and the query is a **triple-shaped SELECT**, the result rows are reified as triples or quads before serialization; a non-triple-shaped SELECT with an RDF format is a hard error. Extension inference applies: `.trig` → TriG, `.nq`/`.nquads` → N-Quads.
 - **`serve`** exposes the **served registry**; resolution per source follows the same rules as `query`.
-- **`hash`** picks one **target source** and always **canonicalizes** the resolved Store; it refuses any raw **pass-through** target (endpoint or **Disk-backed glob** — must be wrapped in a view or scoped with an inline query) and refuses arbitrary-SELECT views.
+- **`hash`** picks one **target source** and always **canonicalizes** the resolved Store; it refuses any raw **pass-through** target (endpoint or **Disk-backed glob** — must be scoped with an **inline query**) and refuses an arbitrary-SELECT **inline query**.
 - **`diff`** picks one **target source** per side and dispatches by query shape: **graph diff** when both sides produce triples; **tabular diff** when both sides project arbitrary SELECT tuples with matching variable names. Mixed-shape pairs are rejected. Both modes refuse a raw **pass-through** target (endpoint or **Disk-backed glob**) on either side.
-- A **Disk-backed glob** rejects the **Annotate-source transformation** (the **Glob index** cannot persist RDF-star quoted triples) and carries no **Source record sidecar**; `hash` and `diff` accept it only via the **pass-through** path (the user supplies a scoping query — inline or via a wrapping view — and the query runs against the **Glob index**). A declared **Graph-name transformation** mode is baked into the **Glob index** at build time.
+- A **Disk-backed glob** rejects the **Annotate-source transformation** (the **Glob index** cannot persist RDF-star quoted triples) and carries no **Source record sidecar**; `hash` and `diff` accept it only via the **pass-through** path (the user supplies a scoping **inline query**, which runs against the **Glob index**). A declared **Graph-name transformation** mode is baked into the **Glob index** at build time.
 - The disk-backed storage selector is valid only on glob and file sources; a **Split glob**'s synthesized **File source** children inherit it and are indexed independently of the meta and of each other.
 - A **Pinned source** is a **Glob source** resolved against a git revision; the glob's transform pipeline applies unchanged, and when the glob is also a **Split glob**, the meta enumerates files from the git tree at the resolved SHA (not the working tree). Synthesized **File source** children inherit the pin alongside the transform pipeline.
-- A **Pinned source**'s **Result cache** keys on the resolved SHA, never the user-facing ref string. A **Pinned ref** is reproducible across fetches; a **Floating ref** is not, and the resolved SHA is what surfaces in any source records or diff reports.
-- Pinning a **View** target (e.g. `@my-view:v1.2`) leaves the view's query unchanged and propagates the ref down the `from:` chain until it reaches a glob (recursing through intermediate views). Reaching an endpoint or empty source on the way down is a hard error reported at expand time. Cross-source `SERVICE` clauses inside the query are not affected — they reference endpoints by URL, not by `from:`, and remain unpinned.
+- A **Pinned source** keys on the resolved SHA, never the user-facing ref string. A **Pinned ref** is reproducible across fetches; a **Floating ref** is not, and the resolved SHA is what surfaces in any source records or diff reports.
+- Pinning applies directly to a **Glob source** (e.g. `@data:v1.2`); there is no chain to propagate a ref through. Cross-source `SERVICE` clauses in an **inline query** reference endpoints by URL and are never pinned.
 - A **Glob source** may declare a **Source transformation pipeline**; transforms run in array order at load time before the Store is exposed to resolution. A **Split glob**'s synthesized **File source** children inherit the pipeline.
-- A **Glob source**'s **Union default graph** setting is applied as a query-context option at every SPARQL execution against its materialized Store — including a **View**'s own query when `from:` resolves to that glob — but never propagated to a view's output Store. It is orthogonal to the **Graph-name transformation**: `flatten` destructively drops graph names, whereas **Union default graph** is a non-destructive query-time option that leaves named graphs addressable.
-- A **Split glob** is targetable as the union (`@meta`) and as any of its children (`@meta/<relative-path>`); a child may serve as a CLI target, an `@id` in `view.from:`, or a selection in the webapp picker. The single-target rule is preserved — both the meta and any one child are single targets; the picker remains single-select on `query`/`hash`/`diff`.
-- The **Annotate-source transformation** projects **Source records** as RDF-star into the glob's loaded Store for SPARQL queryability; the projection does not propagate through a downstream **View** unless that view's query explicitly references it, and it is stripped by **Canonicalization**. The projection is independent of the **Source record sidecar** that `diff` consumes.
-- `diff` (in **graph-diff** mode) consumes the per-side **Source record sidecar** carried by every in-memory glob/file target; a side resolved via **pass-through** (endpoint or a view whose `from:` chain reaches a **Disk-backed glob**) carries no sidecar, so diff runs but emits one boundary-log `warn` per such side and the `html` format's **Source-file snippet** sections render empty. Explicit **Annotate-source transformations** in the user's config emit RDF-star into the Store independently and do not feed diff. Source records are surfaced across every graph output format.
+- A **Glob source**'s **Union default graph** setting is applied as a query-context option at every SPARQL execution against its materialized Store — including an **inline query**'s execution against that glob. It is orthogonal to the **Graph-name transformation**: `flatten` destructively drops graph names, whereas **Union default graph** is a non-destructive query-time option that leaves named graphs addressable.
+- A **Split glob** is targetable as the union (`@meta`) and as any of its children (`@meta/<relative-path>`); a child may serve as a CLI target or a selection in the webapp picker. The single-target rule is preserved — both the meta and any one child are single targets; the picker remains single-select on `query`/`hash`/`diff`.
+- The **Annotate-source transformation** projects **Source records** as RDF-star into the glob's loaded Store for SPARQL queryability; an **inline query** sees the projection only if it references those RDF-star triples, and **Canonicalization** strips them. The projection is independent of the **Source record sidecar** that `diff` consumes.
+- `diff` (in **graph-diff** mode) consumes the per-side **Source record sidecar** carried by every in-memory glob/file target; a side resolved via **pass-through** (endpoint or a **Disk-backed glob**) carries no sidecar, so diff runs but emits one boundary-log `warn` per such side and the `html` format's **Source-file snippet** sections render empty. Explicit **Annotate-source transformations** in the user's config emit RDF-star into the Store independently and do not feed diff. Source records are surfaced across every graph output format.
 - Every command that renders IRIs reads the project-config `context:` block under one rule: prefix map = built-in defaults ∪ `context.prefixes` (config wins); base = `context.base` as strict fallback after prefix match.
-- The **Describe page** runs **describe** against the registry, which dispatches per source kind: `glob`/`view` targets materialize and run the full describe fixpoint; `endpoint` targets fetch depth-0 only, with deeper expansion driven by **describe expansion paths**; `empty` is rejected as a top-level describe target; `reference` is rejected.
+- The **Describe page** runs **describe** against the registry, which dispatches per source kind: `glob` targets materialize and run the full describe fixpoint; `endpoint` targets fetch depth-0 only, with deeper expansion driven by **describe expansion paths**; `empty` is rejected as a top-level describe target; `reference` is rejected.
 - A describe request is best-effort multi-origin: one source failing does not fail the request. **Describe provenance** annotations are stripped by the webapp renderer and surfaced as UI badges; they never conflate with user-authored RDF-star or with **Source records**.
-- A **Saved query** is webapp-scoped state: it is _not_ a **Source**, never appears in the **source registry**, never resolvable via `@id`, and never reachable through `from:`. The durable, source-bound, config-declared counterpart is a **View**. A **Templated saved query** carries a `parameters:` list (one entry per **Parameter declaration**); at run time the webapp builds a `VALUES` clause from the user-supplied values and prepends it to the body via client-side substitution, then runs the substituted SPARQL through the server as ordinary query — `serve` does not learn about templates.
+- A **Saved query** is webapp-scoped state: it is _not_ a **Source**, never appears in the **source registry**, and never resolvable via `@id`. There is no config-declared query counterpart — a **Saved query** is the only named query artifact, and it is webapp-scoped. A **Templated saved query** carries a `parameters:` list (one entry per **Parameter declaration**); at run time the webapp builds a `VALUES` clause from the user-supplied values and prepends it to the body via client-side substitution, then runs the substituted SPARQL through the server as ordinary query — `serve` does not learn about templates.
 - Reading and writing the **Saved-query sidecar** is the **only** path by which `serve` mutates project files. Writes use optimistic concurrency, so concurrent edits from two browsers surface as visible conflicts rather than silent data loss. Under `serve --read-only`, the library is loadable but immutable, and the **Sources page**'s per-entry admin triggers are likewise refused.
 - The webapp deep-links **Saved query** loads via a URL slug parameter plus per-parameter binding keys (multi-cardinality values supplied as repeated keys). This is mutually exclusive with the inline-SPARQL URL form — editing a loaded saved-query body on a **Saved-query run surface** transitions the URL to the inline form. Persisting the edit requires opening the slug on the **Saved-query authoring surface**; run surfaces carry no Save, Save-as, or "modified from `<slug>`" affordance.
-- Loading a **Saved query** is source-agnostic: the user's currently-selected source is untouched, and the artifact persists no `lastUsedSource` or `intendedSource` field. A user who wants a query durably bound to a specific source declares a **View** instead — the same axis along which a **Saved query** and a **View** already differ (transient/UI vs. durable/config) extends to source binding.
+- Loading a **Saved query** is source-agnostic: the user's currently-selected source is untouched, and the artifact persists no `lastUsedSource` or `intendedSource` field.
 - The **Saved-query authoring surface** is the single write surface for the **Saved-query sidecar**; the **Saved-query run surfaces** are read-only against it. `serve --read-only` collapses the authoring surface to browse-and-run without changing the run surfaces (which never write to begin with).
 - Webapp test layers are exclusive and exhaustive: every behavior worth covering lives in exactly one of (1) a pure-function unit spec on extracted logic, (2) a **DOM-free spec** — including page/component classes read through their public surface — or (3) **Web e2e** when the assertion needs a rendered template. Specs that render a fixture (call `detectChanges`) and assert on the rendered DOM are not a layer — they collapse into (3).
 - **Web e2e** runs against a real `serve` booted on a fixture project config; it does not stub HTTP, SSE, or the saved-query sidecar. The **E2E** lane (cli) and **Web e2e** lane are independent processes with independent fixtures and independent CI targets.
 - **Accessible selectors** are the default for **Web e2e**; the **Test escape hatch** (`data-testid`) is allowed only when no accessible selector disambiguates the target, and each surviving use is reviewed against fixing the markup first.
 
-## Example dialogue
-
-> **Dev:** "We're hashing a 50M-triple **endpoint** with `--query` to scope to a tiny subset, but the process OOMs."
-> **Maintainer:** "It was resolving as **materialized** — pulling the whole endpoint into a local Store before applying the query. Single-endpoint **anonymous views** now use **pass-through**, so your query reaches the endpoint and only the result comes back."
-> **Dev:** "Will the **result cache** save the next run?"
-> **Maintainer:** "Yes — the cache stores the query's _result_, not the upstream. Either resolution path produces the same cached entry, keyed on the same fields."
-
 ## Flagged ambiguities
 
-- **"Materialize"** had been used to mean both "load upstream into a Store" and "produce the final result"; resolved — **materialized** refers only to the upstream-loading resolution path. A view's output is "produced" or "computed", never "materialized".
-- **"Cache the upstream"** confused users who expected the cache to grow with endpoint size; resolved — the **result cache** stores the view's _output_, bounded by the view query.
+- **"Materialize"** had been used to mean both "load a target into a Store" and "produce the final result"; resolved — **materialized** refers only to the resolution path that loads a target into an in-memory Store. An **inline query**'s output is "produced" or "computed", never "materialized".
+- **"View"** was a first-class **Source** kind that scoped an upstream via a SPARQL query, with chains, a result cache, and pin-propagation; resolved — removed entirely. Derivation is now an **inline query** at command time (over globs, persist by baking to a disk store); the SERVICE-composition case runs against an **Empty source**.
 - **"Pushdown"** appeared informally as a synonym for **pass-through**; resolved — the canonical term is **pass-through**.
 - **"`annotate` transform"** (legacy name) was renamed to **`annotateSource`** to disambiguate from a hypothetical future "annotate by inference" or "annotate by SHACL"; resolved — only `annotateSource` parses.
 - **"Source record"** had been defined as the RDF-star blank-node structure emitted by the `annotateSource` transform, but the diff command (which never wrote SPARQL queries against it) was the only first-class consumer. Resolved — the canonical referent is the in-memory `{file, line, …}` struct carried as a **Source record sidecar** by the loader; the RDF-star form is now described as a _projection_ authored by the **Annotate-source transformation** for SPARQL queryability and is independent of the sidecar.

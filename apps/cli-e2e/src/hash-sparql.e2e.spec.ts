@@ -36,7 +36,7 @@ describe('sparqly hash — raw SPARQL endpoint sources are rejected', () => {
     const result = await runCli(['hash', '--quiet', endpoint.url]);
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toMatch(/view/i);
+    expect(result.stderr).toMatch(/--query/i);
     expect(result.stderr).toContain(endpoint.url);
     expect(endpoint.requestCount()).toBe(0);
   });
@@ -57,7 +57,7 @@ describe('sparqly hash — raw SPARQL endpoint sources are rejected', () => {
     ]);
 
     expect(result.exitCode).toBe(40);
-    expect(result.stderr).toMatch(/view/i);
+    expect(result.stderr).toMatch(/--query/i);
     expect(result.stderr).toContain(endpoint.url);
     expect(endpoint.requestCount()).toBe(0);
   });

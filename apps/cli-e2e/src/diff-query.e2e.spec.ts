@@ -317,7 +317,7 @@ describe('sparqly diff — inline scoping query: error matrix', () => {
       ]);
 
       expect(result.exitCode).toBe(41);
-      expect(result.stderr).toMatch(/view/i);
+      expect(result.stderr).toMatch(/--query/i);
       expect(result.stderr).toContain(endpoint.url);
       expect(endpoint.requestCount()).toBe(0);
     } finally {

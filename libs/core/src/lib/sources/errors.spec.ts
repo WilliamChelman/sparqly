@@ -63,7 +63,7 @@ describe('formatSourceError', () => {
 });
 
 describe('formatRawPassThroughRejection', () => {
-  it('names the endpoint URL and lists the three affordances (wrap-in-view, --query/--query-file, pipe sparqly query --format=turtle)', async () => {
+  it('names the endpoint URL and lists the inline-query affordances (--query/--query-file, pipe sparqly query --format=turtle)', async () => {
     const { formatRawPassThroughRejection } = await import('./errors');
     const text = formatRawPassThroughRejection({
       kind: 'endpoint',
@@ -71,13 +71,12 @@ describe('formatRawPassThroughRejection', () => {
     });
     expect(text).toContain('https://example.org/sparql');
     expect(text).toMatch(/endpoint/i);
-    expect(text).toMatch(/wrap.*view/i);
     expect(text).toMatch(/--query/);
     expect(text).toMatch(/--query-file/);
     expect(text).toMatch(/sparqly query --format=turtle/);
   });
 
-  it('names the disk-backed glob label and lists the same three affordances', async () => {
+  it('names the disk-backed glob label and lists the same affordances', async () => {
     const { formatRawPassThroughRejection } = await import('./errors');
     const text = formatRawPassThroughRejection({
       kind: 'disk-backed-glob',
@@ -85,7 +84,6 @@ describe('formatRawPassThroughRejection', () => {
     });
     expect(text).toContain('@data');
     expect(text).toMatch(/disk-backed glob/i);
-    expect(text).toMatch(/wrap.*view/i);
     expect(text).toMatch(/--query/);
     expect(text).toMatch(/--query-file/);
     expect(text).toMatch(/sparqly query --format=turtle/);

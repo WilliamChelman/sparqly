@@ -60,7 +60,7 @@ describe('sparqly hash — disk-backed glob rejection (#343, ADR-0041 / ADR-0047
     expect(result.stderr).toContain('@data');
     expect(result.stderr).toMatch(/cannot be hashed/i);
     expect(result.stderr).toMatch(/canonicaliz/i);
-    expect(result.stderr).toMatch(/wrap it in a `view`/i);
+    expect(result.stderr).toMatch(/--query-file/i);
   });
 
   it('leaves an in-memory glob unaffected: hash succeeds', async () => {

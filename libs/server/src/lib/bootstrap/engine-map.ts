@@ -390,7 +390,7 @@ export class EngineMap {
           () => ref.current,
           {
             id: sourceId,
-            mode: src.kind === 'view' ? 'view' : 'materialized',
+            mode: 'materialized',
             logger: this.logger,
           },
           { unionDefaultGraph: unionDefaultGraphEnabled(src) },

@@ -2,9 +2,8 @@ import { parseSourceAddress, type ParsedSource } from 'core';
 
 /**
  * Thrown when `--at <ref>` is supplied alongside a target it cannot pin —
- * endpoints, empty sources, references, or split-glob file children. Glob
- * targets desugar onto `gitRef` and view targets desugar onto `fromGitRef`,
- * which propagates down the `from:` chain (ADR-0029).
+ * endpoints, empty sources, references, or split-glob file children. Only glob
+ * targets desugar onto `gitRef` (ADR-0029).
  */
 export class AtOverrideError extends Error {
   constructor(target: ParsedSource) {
@@ -18,9 +17,7 @@ export class AtOverrideError extends Error {
 /**
  * Apply the invocation-time `--at <ref>` override to a resolved target. Returns
  * the target unchanged when `at` is absent; sets `gitRef` on a glob target;
- * sets `fromGitRef` on a view target so the resolver walks the `from:` chain
- * down to the leaf glob (ADR-0029); throws {@link AtOverrideError} for any
- * other kind.
+ * throws {@link AtOverrideError} for any other kind (ADR-0029).
  */
 export function applyAtOverride(
   target: ParsedSource,
@@ -28,7 +25,6 @@ export function applyAtOverride(
 ): ParsedSource {
   if (at === undefined) return target;
   if (target.kind === 'glob') return { ...target, gitRef: at };
-  if (target.kind === 'view') return { ...target, fromGitRef: at };
   throw new AtOverrideError(target);
 }
 

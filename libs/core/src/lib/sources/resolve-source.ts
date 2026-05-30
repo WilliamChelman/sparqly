@@ -1,8 +1,8 @@
 import type * as RDF from '@rdfjs/types';
 import type { Store } from 'n3';
+import type { SparqlyLogger } from 'common';
 import type { GraphMode } from '../engine';
 import type { ParsedEndpointSource, ParsedSource } from './source-spec';
-import type { ResolveViewOptions } from '../views';
 import {
   formatSourceError,
   resolveSourceResult,
@@ -36,12 +36,9 @@ export interface ResolveSourceOptions {
   // Default `graphName` mode applied when a glob target has no `transforms`
   // declared. Sources that already declare `transforms` pass through unchanged.
   graphMode?: GraphMode;
-  // Required when the target is a view, so its `from:` chain can be walked.
+  // Sibling sources, used when resolving relative pins across a registry.
   registry?: ReadonlyArray<ParsedSource>;
-  cacheDir?: ResolveViewOptions['cacheDir'];
-  now?: ResolveViewOptions['now'];
-  engine?: ResolveViewOptions['engine'];
-  logger?: ResolveViewOptions['logger'];
+  logger?: SparqlyLogger;
 }
 
 /** @deprecated Use `resolveSourceResult`. Throw-wrapping adapter. */

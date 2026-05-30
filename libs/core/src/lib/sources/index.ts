@@ -3,7 +3,6 @@ export * from './source-spec-git';
 export * from './union-default-graph';
 export * from './glob-storage';
 export * from './address';
-export * from './view-cache-spec';
 export * from './transform-registry';
 export * from './transform-spec';
 export * from './transform-pipeline';

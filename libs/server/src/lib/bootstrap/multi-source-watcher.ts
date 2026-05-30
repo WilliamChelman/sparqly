@@ -1,13 +1,10 @@
 import { sep } from 'node:path';
 import * as chokidar from 'chokidar';
 import { Logger } from '@nestjs/common';
-import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
-import { Store } from 'n3';
 import type { SparqlyLogger } from 'common';
 import {
   type GraphMode,
   type ParsedSource,
-  type ParsedViewSource,
   resolveSource,
   walkGlobPaths,
 } from 'core';
@@ -25,10 +22,7 @@ export interface WatcherHandle {
   close: () => Promise<void>;
 }
 
-type RefreshTrigger =
-  | { kind: 'file-change'; path: string }
-  | { kind: 'ttl'; viewId: string }
-  | { kind: 'freshness'; viewId: string };
+type RefreshTrigger = { kind: 'file-change'; path: string };
 
 export interface MaybeStartWatcherOptions {
   /** Sources `serve` exposes — the ones we try to watch. */
@@ -74,7 +68,7 @@ export async function maybeStartWatcher(
       );
     } else {
       opts.logger.warn(
-        `--watch: skipping @${id}; chain has no glob source and no \`cache.ttl\`/\`cache.freshness\` views to refresh.`,
+        `--watch: skipping @${id}; source has no glob/file to watch.`,
       );
     }
   }
@@ -108,7 +102,7 @@ export async function maybeStartWatcher(
 
   if (targets.length === 0) {
     opts.logger.warn(
-      '--watch: nothing to refresh — no glob source in any served chain and no `cache.ttl`/`cache.freshness` views. SPARQL endpoints are not auto-refreshed; restart the process to pick up upstream changes.',
+      '--watch: nothing to refresh — no glob source to watch. SPARQL endpoints are not auto-refreshed; restart the process to pick up upstream changes.',
     );
     return undefined;
   }
@@ -228,29 +222,9 @@ async function startMultiSourceWatcher(
     watcher.on('unlink', (p) => onFileEvent(p, true));
   }
 
-  // Per-source TTL + freshness handles.
-  const ttlHandles: ScheduledHandle[] = [];
-  const freshnessHandles: ScheduledHandle[] = [];
-  for (const t of targets) {
-    const runner = sourceRunners.get(t);
-    if (!runner) continue;
-    ttlHandles.push(startTtlTimers(t.plan.cachedViews, runner.schedule));
-    freshnessHandles.push(
-      startFreshnessPolls(
-        t.plan.cachedViews,
-        t.plan.chain,
-        deps.pollMs,
-        deps.boundaryLogger,
-        runner.schedule,
-      ),
-    );
-  }
-
   return {
     close: async () => {
       for (const runner of sourceRunners.values()) runner.dispose();
-      for (const h of ttlHandles) h.stop();
-      for (const h of freshnessHandles) h.stop();
       if (watcher) await watcher.close();
     },
   };
@@ -265,7 +239,6 @@ function createSourceRunner(
   target: WatchedSource,
   deps: MultiSourceWatcherDeps,
 ): SourceRunner {
-  const inChainViewIds = target.plan.views.map((v) => v.id);
   const sourceField: { source?: string } =
     target.plan.id !== undefined ? { source: target.plan.id } : {};
 
@@ -288,16 +261,11 @@ function createSourceRunner(
     try {
       if (disposed) return;
       const planId = target.plan.id;
-      const refreshedIds =
-        trigger.kind === 'file-change' ? inChainViewIds : [trigger.viewId];
+      // The `view` source kind (and its `from:` chain) is gone, so a refresh no
+      // longer fans out to chained view ids — the source rebuilds itself and the
+      // `view-rebuilt`/`view-invalidated` lines below carry the timing.
       const logRefreshing = (): void => {
-        for (const id of refreshedIds) {
-          deps.boundaryLogger.info('view-refreshing', {
-            ...sourceField,
-            view: id,
-            trigger: trigger.kind,
-          });
-        }
+        /* no chained views to announce */
       };
       // #391: the snippet allow-list is eager main-owned machinery, orthogonal
       // to store residency. Re-walk the glob (no parse, no Store build) on every
@@ -410,107 +378,3 @@ function pathBelongsToPlan(
   return false;
 }
 
-interface ScheduledHandle {
-  stop: () => void;
-}
-
-function startTtlTimers(
-  views: ReadonlyArray<ParsedViewSource>,
-  schedule: (trigger: RefreshTrigger) => void,
-): ScheduledHandle {
-  const timers: NodeJS.Timeout[] = [];
-  for (const view of views) {
-    if (view.cache?.strategy !== 'ttl') continue;
-    const ttlMs = view.cache.ttlMs;
-    const tick = (): void => {
-      schedule({ kind: 'ttl', viewId: view.id });
-    };
-    const t = setInterval(tick, ttlMs);
-    timers.push(t);
-  }
-  return {
-    stop: () => {
-      for (const t of timers) clearInterval(t);
-    },
-  };
-}
-
-function startFreshnessPolls(
-  views: ReadonlyArray<ParsedViewSource>,
-  registry: ReadonlyArray<ParsedSource>,
-  pollMs: number,
-  boundaryLogger: SparqlyLogger,
-  schedule: (trigger: RefreshTrigger) => void,
-): ScheduledHandle {
-  const timers: NodeJS.Timeout[] = [];
-  for (const view of views) {
-    if (view.cache?.strategy !== 'freshness') continue;
-    const askQuery = view.cache.freshness;
-    let lastResult = true;
-    const probe = async (): Promise<void> => {
-      const start = Date.now();
-      try {
-        const result = await runAskAgainstUpstream(view, registry, askQuery);
-        boundaryLogger.debug('freshness-probe', {
-          view: view.id,
-          upstream: view.from,
-          fresh: result,
-          ms: Date.now() - start,
-        });
-        if (lastResult && !result) {
-          schedule({ kind: 'freshness', viewId: view.id });
-        }
-        lastResult = result;
-      } catch (err) {
-        boundaryLogger.error('freshness-probe-failed', {
-          view: view.id,
-          upstream: view.from,
-          error: err instanceof Error ? err.message : String(err),
-          ms: Date.now() - start,
-        });
-      }
-    };
-    const t = setInterval(() => void probe(), pollMs);
-    timers.push(t);
-  }
-  return {
-    stop: () => {
-      for (const t of timers) clearInterval(t);
-    },
-  };
-}
-
-async function runAskAgainstUpstream(
-  view: ParsedViewSource,
-  registry: ReadonlyArray<ParsedSource>,
-  askQuery: string,
-): Promise<boolean> {
-  const byId = new Map<string, ParsedSource>();
-  for (const src of registry) {
-    if (src.kind === 'reference' || src.id === undefined) continue;
-    byId.set(src.id, src);
-  }
-  const upstream = byId.get(view.from);
-  if (!upstream) {
-    throw new Error(
-      `freshness watch: view "${view.id}" upstream "@${view.from}" is missing from the registry`,
-    );
-  }
-  if (upstream.kind !== 'endpoint' && upstream.kind !== 'empty') {
-    throw new Error(
-      `freshness watch supports endpoint or empty upstreams; view "${view.id}" upstream is ${upstream.kind}`,
-    );
-  }
-  const engine = new ComunicaQueryEngine();
-  const source =
-    upstream.kind === 'endpoint'
-      ? { type: 'sparql', value: upstream.endpoint }
-      : new Store();
-  const result = await engine.query(askQuery, { sources: [source] });
-  if (result.resultType !== 'boolean') {
-    throw new Error(
-      `cache.freshness query must be an ASK; got ${String(result.resultType)}`,
-    );
-  }
-  return (await result.execute()) as boolean;
-}

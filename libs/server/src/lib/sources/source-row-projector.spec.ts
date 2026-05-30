@@ -38,12 +38,6 @@ const diskChild: ParsedSource = {
   storage: 'disk',
 };
 
-const view: ParsedSource = {
-  kind: 'view',
-  id: 'view-a',
-  from: '@docs',
-};
-
 const empty: ParsedSource = {
   kind: 'empty',
   id: 'blank',
@@ -71,7 +65,7 @@ const DISK_BACKED_STATES: DiskBackedState[] = [
 
 describe('projectSourceRow — Layer 1 (identity & state)', () => {
   describe('in-memory mode', () => {
-    for (const source of [inMemoryGlob, splitChild, view, empty]) {
+    for (const source of [inMemoryGlob, splitChild, empty]) {
       for (const state of IN_MEMORY_STATES) {
         it(`projects ${source.kind} '${source.id}' with state '${state}'`, () => {
           const runtime: SourceRuntime = { mode: 'in-memory', state };
@@ -79,7 +73,7 @@ describe('projectSourceRow — Layer 1 (identity & state)', () => {
           const expected: SourceRow = {
             mode: 'in-memory',
             id: source.id as string,
-            kind: source.kind as 'glob' | 'file' | 'view' | 'empty',
+            kind: source.kind as 'glob' | 'file' | 'empty',
             state,
           };
           // File sources are split-glob children (CONTEXT.md, **File source**)

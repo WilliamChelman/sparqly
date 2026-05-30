@@ -1,66 +1,32 @@
+import { readFile } from 'node:fs/promises';
+import { resolve as resolvePath } from 'node:path';
 import { Store } from 'n3';
-import { ResultAsync, errAsync } from 'neverthrow';
+import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import type { SparqlyLogger } from 'common';
+import { parseSourceSpec, type SourceSpecInput } from '../sources';
+import type { ViewValidationError } from '../sources/errors';
 import {
-  parseSourceSpec,
-  type ParsedSource,
-  type ParsedViewSource,
-  type SourceSpecInput,
-} from '../sources';
-import type {
-  CacheIoError,
-  EndpointFetchError,
-  GitPinError,
-  GlobLoadError,
-  QueryExecutionError,
-  TransformParseError,
-  ViewReferenceError,
-  ViewValidationError,
-} from '../sources/errors';
-import { resolveViewResult } from '../views/view-resolver';
+  executeInlineQueryResult,
+  type ExecuteInlineQueryError,
+} from './execute-inline-query';
+import { validateInlineQueryResult } from './validate-query';
 
 export interface InlineQueryInput {
   source: SourceSpecInput;
   query?: string;
   queryFile?: string;
-  /** Forwarded to view resolution so the SPARQL run emits a `query` event. */
+  /** Forwarded to query execution so the SPARQL run emits a `query` event. */
   logger?: SparqlyLogger;
 }
 
-export type ResolveInlineQueryError =
-  | ViewValidationError
-  | ViewReferenceError
-  | CacheIoError
-  | EndpointFetchError
-  | QueryExecutionError
-  | GlobLoadError
-  | TransformParseError
-  | GitPinError;
-
-const SYNTHETIC_UPSTREAM_ID = '__sparqly_inline_upstream__';
-const SYNTHETIC_VIEW_ID = '__sparqly_inline_query__';
-
-function syntheticViewLabel(upstream: ParsedSource): string {
-  const label =
-    upstream.kind === 'glob'
-      ? upstream.glob
-      : upstream.kind === 'file'
-        ? upstream.path
-        : upstream.kind === 'endpoint'
-          ? upstream.endpoint
-          : (upstream.id ?? SYNTHETIC_VIEW_ID);
-  // Keep the synthetic view id distinct from its upstream's so cycle
-  // detection on the `from:` chain never false-positives.
-  return label === (upstream.id ?? SYNTHETIC_UPSTREAM_ID)
-    ? SYNTHETIC_VIEW_ID
-    : label;
-}
+export type ResolveInlineQueryError = ExecuteInlineQueryError;
 
 /**
- * Primary `Result`-typed inline-query resolver. Surface failures (no/both
- * `query`/`queryFile`, `@id` reference upstream) become {@link ViewValidationError}
- * variants; downstream view-resolution failures pass through unchanged
- * (ADR-0024).
+ * Primary `Result`-typed inline-query resolver. Parses the upstream source,
+ * loads and validates the query, then runs it against the upstream and returns
+ * the scoped {@link Store}. Surface failures (no/both `query`/`queryFile`, `@id`
+ * reference upstream) become {@link ViewValidationError} variants (ADR-0024,
+ * ADR-0051).
  */
 export function resolveInlineQueryResult(
   input: InlineQueryInput,
@@ -88,22 +54,27 @@ export function resolveInlineQueryResult(
       message: 'inline query: `@id` reference upstreams are not supported here',
     });
   }
-  const upstreamId = upstream.id ?? SYNTHETIC_UPSTREAM_ID;
-  const upstreamWithId: ParsedSource = { ...upstream, id: upstreamId };
 
-  const view: ParsedViewSource = {
-    kind: 'view',
-    id: syntheticViewLabel(upstream),
-    from: upstreamId,
-    ...(hasQuery ? { query: input.query } : {}),
-    ...(hasQueryFile ? { queryFile: input.queryFile } : {}),
-  };
+  return loadQueryText(input).andThen<Store, ResolveInlineQueryError>((query) =>
+    validateInlineQueryResult(query)
+      .map(() => query)
+      .asyncAndThen<Store, ResolveInlineQueryError>((validQuery) =>
+        executeInlineQueryResult(upstream, validQuery, {
+          logger: input.logger,
+        }),
+      ),
+  );
+}
 
-  return resolveViewResult({
-    view,
-    registry: [upstreamWithId, view],
-    logger: input.logger,
-  });
+function loadQueryText(
+  input: InlineQueryInput,
+): ResultAsync<string, ViewValidationError> {
+  if (input.query !== undefined) return okAsync(input.query);
+  const path = resolvePath(process.cwd(), input.queryFile as string);
+  return ResultAsync.fromPromise(readFile(path, 'utf8'), (err) => ({
+    kind: 'view-validation' as const,
+    message: err instanceof Error ? err.message : String(err),
+  }));
 }
 
 /**

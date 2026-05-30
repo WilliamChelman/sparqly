@@ -212,6 +212,6 @@ describe('sparqly serve — POST /api/diff raw pass-through rejection (#374, ADR
     expect(json.source?.label).toBe('@disk-data');
     expect(json.message).toMatch(/disk-backed glob @disk-data/);
     expect(json.message).toMatch(/on the left side/);
-    expect(json.message).toMatch(/wrap it in a `view`/i);
+    expect(json.message).toMatch(/--query-file/i);
   });
 });

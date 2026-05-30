@@ -12,7 +12,7 @@ export function pickUnionDefaultGraph(
 
 export function rejectUnionDefaultGraphOn(
   input: SourceSpecObjectInput,
-  kind: 'endpoint' | 'view' | 'empty',
+  kind: 'endpoint' | 'empty',
 ): void {
   if (input.unionDefaultGraph !== undefined) {
     throw new Error(

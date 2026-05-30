@@ -168,31 +168,6 @@ describe('RegistrySparqlController — /api/sparql alias', () => {
     expect(json.availableIds).toEqual(expect.arrayContaining(['alpha', 'beta']));
   });
 
-  it('surfaces a first-touch lazy-load SourceError as a 4xx with a structured body (not a 500) when the underlying error is user-input — #290', async () => {
-    // A view whose SELECT projection does not match the view's expected
-    // shape fails at lazy-load with a `view-validation` SourceError; the
-    // pre-#290 path turned every load throw into a blanket 500.
-    server = await createServer({
-      sources: [
-        { id: 'alpha', glob: join(dirA, '*.ttl'), default: true },
-        { id: 'bad-view', from: '@alpha', query: 'SELECT ?nope WHERE {}' },
-      ],
-      port: 0,
-    });
-    const resp = await fetch(
-      `http://localhost:${server.port}/api/sparql/bad-view?query=${encodeURIComponent(
-        SELECT_S,
-      )}`,
-    );
-    expect(resp.status).toBe(400);
-    const json = (await resp.json()) as {
-      kind?: string;
-      message?: string;
-    };
-    expect(json.kind).toBe('view-validation');
-    expect(typeof json.message).toBe('string');
-  });
-
   it('returns 503 with a structured indexing body for the first request to a not-yet-indexed disk-backed glob (ADR-0041 / #340)', async () => {
     server = await createServer({
       sources: [{ id: 'big', glob: join(dirA, '*.ttl'), storage: 'disk' }],

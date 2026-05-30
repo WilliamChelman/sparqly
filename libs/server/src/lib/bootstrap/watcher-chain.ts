@@ -1,30 +1,23 @@
 import { isAbsolute, resolve } from 'node:path';
-import type { ParsedSource, ParsedViewSource } from 'core';
+import type { ParsedSource } from 'core';
 
 export interface WatcherSourcePlan {
   /** Source `@id`. `undefined` for inline single-source targets without an id. */
   id: string | undefined;
-  /** The source itself (root of this chain). */
+  /** The source itself. */
   source: ParsedSource;
-  /** Glob patterns reachable from this source through the `from:` chain. */
+  /** Glob/file patterns this source loads from. */
   globs: ReadonlyArray<string>;
   /** Deduped chokidar base directories for this source's globs. */
   globBases: ReadonlyArray<string>;
-  /** All views in this source's chain (root included if it is a view). */
-  views: ReadonlyArray<ParsedViewSource>;
-  /** Views whose `cache.ttl`/`cache.freshness` timers/probes should run under `--watch`. */
-  cachedViews: ReadonlyArray<ParsedViewSource>;
-  /** Registry slice covering this source's chain — sufficient for freshness probes. */
-  chain: ReadonlyArray<ParsedSource>;
 }
 
 export interface WatcherChain {
   /** Per-source watch plans for sources that have something to watch. */
   sources: ReadonlyArray<WatcherSourcePlan>;
   /**
-   * Sources that have nothing to watch (raw endpoints, views-on-endpoint
-   * without a TTL/freshness cache, everlasting-cached views, bare empty
-   * sources). The caller emits the per-source `--watch ignored` warning.
+   * Sources that have nothing to watch (raw endpoints, bare empty sources).
+   * The caller emits the per-source `--watch ignored` warning.
    */
   passThrough: ReadonlyArray<ParsedSource>;
   /**
@@ -36,20 +29,16 @@ export interface WatcherChain {
 
 export function buildWatcherChain(
   servedRegistry: ReadonlyArray<ParsedSource>,
-  resolutionRegistry: ReadonlyArray<ParsedSource> = servedRegistry,
+  // Retained for call-site compatibility; with the `view` source kind removed
+  // there is no longer a `from:` chain to resolve across registries.
+  _resolutionRegistry: ReadonlyArray<ParsedSource> = servedRegistry,
 ): WatcherChain {
-  const byId = new Map<string, ParsedSource>();
-  for (const src of resolutionRegistry) {
-    if (src.kind === 'reference' || src.id === undefined) continue;
-    byId.set(src.id, src);
-  }
-
   const sources: WatcherSourcePlan[] = [];
   const passThrough: ParsedSource[] = [];
 
   for (const src of servedRegistry) {
     if (src.kind === 'reference') continue;
-    const plan = buildSourcePlan(src, byId);
+    const plan = buildSourcePlan(src);
     if (planNeedsWatching(plan)) {
       sources.push(plan);
     } else {
@@ -64,40 +53,10 @@ export function buildWatcherChain(
   return { sources, passThrough, globBases };
 }
 
-function buildSourcePlan(
-  source: ParsedSource,
-  byId: ReadonlyMap<string, ParsedSource>,
-): WatcherSourcePlan {
-  const chain: ParsedSource[] = [];
+function buildSourcePlan(source: ParsedSource): WatcherSourcePlan {
   const globs: string[] = [];
-  const views: ParsedViewSource[] = [];
-  const cachedViews: ParsedViewSource[] = [];
-  const seen = new Set<ParsedSource>();
-
-  const visit = (node: ParsedSource): void => {
-    if (seen.has(node)) return;
-    seen.add(node);
-    chain.push(node);
-    if (node.kind === 'glob') {
-      globs.push(node.glob);
-      return;
-    }
-    if (node.kind === 'file') {
-      globs.push(node.path);
-      return;
-    }
-    if (node.kind === 'view') {
-      views.push(node);
-      const cache = node.cache;
-      if (cache?.strategy === 'ttl' || cache?.strategy === 'freshness') {
-        cachedViews.push(node);
-      }
-      const upstream = byId.get(node.from);
-      if (upstream !== undefined) visit(upstream);
-    }
-  };
-
-  visit(source);
+  if (source.kind === 'glob') globs.push(source.glob);
+  else if (source.kind === 'file') globs.push(source.path);
 
   const globBases = dedupeBases(globs.map(globBase));
 
@@ -106,14 +65,11 @@ function buildSourcePlan(
     source,
     globs,
     globBases,
-    views,
-    cachedViews,
-    chain,
   };
 }
 
 function planNeedsWatching(plan: WatcherSourcePlan): boolean {
-  return plan.globs.length > 0 || plan.cachedViews.length > 0;
+  return plan.globs.length > 0;
 }
 
 function dedupeBases(bases: ReadonlyArray<string>): string[] {

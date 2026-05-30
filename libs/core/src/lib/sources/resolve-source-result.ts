@@ -1,13 +1,13 @@
 import * as nodePath from 'node:path';
 import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import { Store } from 'n3';
+import type { SparqlyLogger } from 'common';
 import {
   loadRdfResult,
   parseRdfFileResult,
   type GraphMode,
   type LoadResult,
 } from '../engine';
-import { resolveViewResult, type ResolveViewOptions } from '../views';
 import type { SourceError } from './errors';
 import { effectiveTransforms } from './graph-name-transform';
 import {
@@ -20,7 +20,6 @@ import type {
   ParsedFileSource,
   ParsedGlobSource,
   ParsedSource,
-  ParsedViewSource,
 } from './source-spec';
 import { storageTier } from './glob-storage';
 import { applyTransformPipeline } from './transform-pipeline';
@@ -34,7 +33,6 @@ import {
   PinnedFileMissingError,
   type PinnedGlob,
 } from './git/pin-glob-source';
-import { normalizeRegistryPinsResult } from './git/normalize-registry-pins';
 import { walkGitTree, type WalkGitTreeError } from './git/walk-git-tree';
 import {
   buildSourceRecordSidecar,
@@ -56,10 +54,7 @@ export {
 export interface ResolveSourceResultOptions {
   graphMode?: GraphMode;
   registry?: ReadonlyArray<ParsedSource>;
-  cacheDir?: ResolveViewOptions['cacheDir'];
-  now?: ResolveViewOptions['now'];
-  engine?: ResolveViewOptions['engine'];
-  logger?: ResolveViewOptions['logger'];
+  logger?: SparqlyLogger;
   /** Resolution root for `gitRoot:` relative overrides; defaults to `process.cwd()`. */
   configDir?: string;
   gitPort?: GitPort;
@@ -99,41 +94,11 @@ export function resolveSourceResult(
     }
     return loadGlobIntoStore(target, transforms, options).map(materializeLoad);
   }
-  if (target.kind === 'file') {
-    const transforms = target.transforms ?? [];
-    if (storageTier(target) === 'disk') {
-      return resolveDiskBackedFile(target, transforms, options);
-    }
-    return loadFileIntoStore(target, transforms, options).map(materializeLoad);
+  const transforms = target.transforms ?? [];
+  if (storageTier(target) === 'disk') {
+    return resolveDiskBackedFile(target, transforms, options);
   }
-  return resolveViewTargetResult(target, options);
-}
-
-function resolveViewTargetResult(
-  view: ParsedViewSource,
-  options: ResolveSourceResultOptions,
-): ResultAsync<QuerySources, SourceError> {
-  const registry = options.registry ?? [view];
-  return normalizeRegistryPinsResult(registry, {
-    configDir: options.configDir ?? process.cwd(),
-    port: options.gitPort ?? new GitCliPort(),
-    repoDiscovery: options.repoDiscovery ?? defaultRepoDiscovery,
-    logger: options.logger,
-  })
-    .mapErr<SourceError>((e) => e)
-    .andThen<QuerySources, SourceError>((normalizedRegistry) =>
-      resolveViewResult({
-        view,
-        registry: normalizedRegistry,
-        cacheDir: options.cacheDir,
-        now: options.now,
-        engine: options.engine,
-        logger: options.logger,
-        configDir: options.configDir ?? process.cwd(),
-        gitPort: options.gitPort ?? new GitCliPort(),
-        repoDiscovery: options.repoDiscovery ?? defaultRepoDiscovery,
-      }).map((store) => materialized(store, [], {})),
-    );
+  return loadFileIntoStore(target, transforms, options).map(materializeLoad);
 }
 
 interface MaterializedLoadResult extends LoadResult {

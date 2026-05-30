@@ -79,7 +79,7 @@ describe('selectTarget — ambiguous registry', () => {
     const registry = parseSourceSpecs([
       { id: 'files', glob: 'data/*.ttl' },
       { id: 'live', endpoint: 'https://example.com/sparql' },
-      { id: 'snap', from: '@live', query: 'SELECT * WHERE { ?s ?p ?o }' },
+      { id: 'snap', glob: 'snap/*.ttl' },
     ]);
 
     expect(() => selectTarget(registry)).toThrow(

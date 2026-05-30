@@ -1,6 +1,5 @@
 import { err, ok, type Result } from 'neverthrow';
 import {
-  resolveViewLeafGlob,
   storageTier,
   type ParsedGlobSource,
   type ParsedSource,
@@ -21,7 +20,7 @@ export interface RefsSourceResolution {
   filePath?: string;
 }
 
-/** Walks views down through `from:` and files up through `parentId` to find the backing glob. */
+/** Walks files up through `parentId` to find the backing glob. */
 export function resolveRefsSource(
   id: string,
   registry: ReadonlyArray<ParsedSource>,
@@ -40,15 +39,6 @@ function resolve(
   }
   if (source.kind === 'glob') {
     return guardPinSupport(source as ParsedGlobSource & { id: string }, filePath);
-  }
-  if (source.kind === 'view') {
-    const leaf = resolveViewLeafGlob(source, registry);
-    if (leaf.isOk()) return guardPinSupport(leaf.value, filePath);
-    const failure = leaf.error;
-    if (failure.kind === 'view-chain-unknown-upstream') {
-      return err({ kind: 'no-git-repo', terminatingKind: 'view' });
-    }
-    return err({ kind: 'no-git-repo', terminatingKind: failure.terminatingKind });
   }
   if (source.kind === 'file') {
     const parent = registry.find((s) => s.id === source.parentId);

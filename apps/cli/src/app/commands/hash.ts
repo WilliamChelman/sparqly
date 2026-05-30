@@ -350,7 +350,6 @@ function targetLabel(target: ParsedSource): string {
   if (target.kind === 'file') return target.path;
   if (target.kind === 'endpoint') return target.endpoint;
   if (target.kind === 'empty') return `@${target.id ?? 'empty'}`;
-  if (target.kind === 'view') return `@${target.id}`;
   return '<unknown>';
 }
 

@@ -226,10 +226,7 @@ export class RegistrySparqlController {
   private isAdHocPin(target: ParsedSource): boolean {
     const registered = this.engineMap.getSource(target.id as string);
     if (!registered) return false;
-    return (
-      pinOf(target).gitRef !== pinOf(registered).gitRef ||
-      pinOf(target).fromGitRef !== pinOf(registered).fromGitRef
-    );
+    return pinOf(target).gitRef !== pinOf(registered).gitRef;
   }
 }
 
@@ -289,15 +286,9 @@ function toRef(id: string | string[]): string {
   return joined.startsWith('@') ? joined : `@${joined}`;
 }
 
-function pinOf(source: ParsedSource): {
-  gitRef: string | undefined;
-  fromGitRef: string | undefined;
-} {
-  const s = source as {
-    gitRef?: string;
-    fromGitRef?: string;
-  };
-  return { gitRef: s.gitRef, fromGitRef: s.fromGitRef };
+function pinOf(source: ParsedSource): { gitRef: string | undefined } {
+  const s = source as { gitRef?: string };
+  return { gitRef: s.gitRef };
 }
 
 function pickFormat(accept: string | undefined): SparqlFormat | undefined {

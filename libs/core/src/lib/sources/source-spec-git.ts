@@ -26,7 +26,7 @@ export function pickGitFields(
 
 export function rejectGitRefOn(
   input: SourceSpecObjectInput,
-  kind: 'endpoint' | 'view' | 'empty',
+  kind: 'endpoint' | 'empty',
 ): void {
   if (input.gitRef !== undefined) {
     throw new Error(

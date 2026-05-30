@@ -308,7 +308,6 @@ function isSupportedKind(src: ParsedSource): boolean {
     src.kind === 'glob' ||
     src.kind === 'file' ||
     src.kind === 'endpoint' ||
-    src.kind === 'view' ||
     src.kind === 'empty' ||
     src.kind === 'reference'
   );

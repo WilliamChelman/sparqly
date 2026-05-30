@@ -21,7 +21,7 @@ export function pickStorage(
 
 export function rejectStorageOn(
   input: SourceSpecObjectInput,
-  kind: 'endpoint' | 'view' | 'empty',
+  kind: 'endpoint' | 'empty',
 ): void {
   if (input.storage !== undefined) {
     throw new Error(

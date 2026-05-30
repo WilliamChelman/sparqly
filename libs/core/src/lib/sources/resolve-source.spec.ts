@@ -4,11 +4,7 @@ import { join } from 'node:path';
 import { Store } from 'n3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolveSource } from './resolve-source';
-import {
-  parseSourceSpec,
-  parseSourceSpecs,
-  type ParsedFileSource,
-} from './source-spec';
+import { parseSourceSpec, type ParsedFileSource } from './source-spec';
 import type { TransformDefinition } from './transform-spec';
 import {
   startFakeSparqlEndpoint,
@@ -341,85 +337,5 @@ describe('resolveSource — empty target', () => {
     if (result.mode !== 'materialized') throw new Error('unreachable');
     expect(result.store.size).toBe(0);
     expect(result.files).toEqual([]);
-  });
-});
-
-describe('resolveSource — view target', () => {
-  let dir: string;
-
-  beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'sparqly-resolve-source-'));
-  });
-
-  afterEach(async () => {
-    await rm(dir, { recursive: true, force: true });
-  });
-
-  it('walks the from: chain and materializes the view query result', async () => {
-    await writeFile(
-      join(dir, 'a.ttl'),
-      [
-        '@prefix ex: <http://example.org/> .',
-        'ex:a ex:p ex:b .',
-        'ex:c ex:p ex:d .',
-      ].join('\n'),
-    );
-
-    const registry = parseSourceSpecs([
-      { id: 'raw', glob: join(dir, '*.ttl') },
-      {
-        id: 'derived',
-        from: '@raw',
-        query:
-          'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:r ?o } WHERE { ?s ex:p ?o }',
-      },
-    ]);
-    const target = registry.find((s) => s.id === 'derived');
-    if (!target) throw new Error('derived view missing from registry');
-
-    const result = await resolveSource(target, { registry });
-
-    expect(result.mode).toBe('materialized');
-    if (result.mode !== 'materialized') throw new Error('unreachable');
-    const predicates = new Set(
-      result.store.getQuads(null, null, null, null).map((q) => q.predicate.value),
-    );
-    expect(predicates.has('http://example.org/r')).toBe(true);
-  });
-
-  it('does not open or fetch sibling registry entries unrelated to the target', async () => {
-    let siblingHits = 0;
-    const sibling = await startFakeSparqlEndpoint(() => {
-      siblingHits++;
-      return {
-        contentType: 'application/sparql-results+json',
-        body: SPARQL_JSON_TWO_BINDINGS,
-      };
-    });
-    try {
-      await writeFile(
-        join(dir, 'a.ttl'),
-        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
-      );
-
-      const registry = parseSourceSpecs([
-        { id: 'prod-A', endpoint: sibling.url },
-        { id: 'raw', glob: join(dir, '*.ttl') },
-        {
-          id: 'stats',
-          from: '@raw',
-          query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-        },
-      ]);
-      const target = registry.find((s) => s.id === 'stats');
-      if (!target) throw new Error('stats view missing from registry');
-
-      const result = await resolveSource(target, { registry });
-
-      expect(result.mode).toBe('materialized');
-      expect(siblingHits).toBe(0);
-    } finally {
-      await sibling.close();
-    }
   });
 });

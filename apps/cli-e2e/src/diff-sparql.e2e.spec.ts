@@ -28,7 +28,7 @@ describe('sparqly diff — raw SPARQL endpoint sources are rejected on either si
     ]);
 
     expect(result.exitCode).toBe(41);
-    expect(result.stderr).toMatch(/view/i);
+    expect(result.stderr).toMatch(/--query/i);
     expect(result.stderr).toContain(endpoint.url);
     expect(endpoint.requestCount()).toBe(0);
   });
@@ -47,7 +47,7 @@ describe('sparqly diff — raw SPARQL endpoint sources are rejected on either si
     ]);
 
     expect(result.exitCode).toBe(41);
-    expect(result.stderr).toMatch(/view/i);
+    expect(result.stderr).toMatch(/--query/i);
     expect(result.stderr).toContain(endpoint.url);
     expect(endpoint.requestCount()).toBe(0);
   });

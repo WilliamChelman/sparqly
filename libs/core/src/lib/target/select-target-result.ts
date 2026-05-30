@@ -64,7 +64,6 @@ function resolveRef(
 
 function applyAddressPin(entry: ParsedSource, ref: string): ParsedSource {
   if (entry.kind === 'glob') return { ...entry, gitRef: ref };
-  if (entry.kind === 'view') return { ...entry, fromGitRef: ref };
   return entry;
 }
 

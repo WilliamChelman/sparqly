@@ -119,7 +119,7 @@ describe('selectTargetResult — err variants', () => {
     const registry = parseSourceSpecs([
       { id: 'files', glob: 'data/*.ttl' },
       { id: 'live', endpoint: 'https://example.com/sparql' },
-      { id: 'snap', from: '@live', query: 'SELECT * WHERE { ?s ?p ?o }' },
+      { id: 'snap', glob: 'snap/*.ttl' },
     ]);
 
     const result = selectTargetResult(registry);

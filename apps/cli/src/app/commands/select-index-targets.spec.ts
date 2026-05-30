@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type {
+  ParsedEndpointSource,
   ParsedGlobSource,
   ParsedSource,
-  ParsedViewSource,
 } from 'core';
 import { selectIndexTargets } from './select-index-targets';
 
@@ -17,11 +17,10 @@ const MEMORY_GLOB: ParsedGlobSource = {
   id: 'small',
   glob: 'other/*.ttl',
 };
-const VIEW: ParsedViewSource = {
-  kind: 'view',
+const ENDPOINT: ParsedEndpointSource = {
+  kind: 'endpoint',
   id: 'people',
-  from: 'big',
-  query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
+  endpoint: 'https://example.org/sparql',
 };
 
 /**
@@ -31,7 +30,7 @@ const VIEW: ParsedViewSource = {
  */
 describe('selectIndexTargets', () => {
   it('with no ids, returns every disk-backed source and skips the rest', () => {
-    const registry: ParsedSource[] = [DISK_GLOB, MEMORY_GLOB, VIEW];
+    const registry: ParsedSource[] = [DISK_GLOB, MEMORY_GLOB, ENDPOINT];
     expect(selectIndexTargets(registry, [])).toEqual([DISK_GLOB]);
   });
 
@@ -47,7 +46,7 @@ describe('selectIndexTargets', () => {
   });
 
   it('rejects an explicit id that is not a disk-backed source', () => {
-    const registry: ParsedSource[] = [DISK_GLOB, MEMORY_GLOB, VIEW];
+    const registry: ParsedSource[] = [DISK_GLOB, MEMORY_GLOB, ENDPOINT];
     expect(() => selectIndexTargets(registry, ['@small'])).toThrow(
       /@small.*storage: disk/,
     );

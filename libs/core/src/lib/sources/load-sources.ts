@@ -9,9 +9,6 @@ export const NOT_SUPPORTED_TRACKING_URL =
 export interface LoadSourcesOptions {
   graphMode?: GraphMode;
   registry?: ResolveSourceOptions['registry'];
-  cacheDir?: ResolveSourceOptions['cacheDir'];
-  now?: ResolveSourceOptions['now'];
-  engine?: ResolveSourceOptions['engine'];
 }
 
 /**
@@ -41,9 +38,6 @@ export async function loadSources(
   const sources = await resolveSource(target, {
     graphMode: options.graphMode,
     registry: options.registry,
-    cacheDir: options.cacheDir,
-    now: options.now,
-    engine: options.engine,
   });
   if (sources.mode === 'pass-through') {
     // Defensive: resolveSource only returns pass-through for endpoint targets,
