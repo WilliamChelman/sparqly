@@ -364,6 +364,121 @@ describe('GET /api/sources/stream — Sources page SSE (#354)', () => {
     }
   });
 
+  it('projects a split-glob parent-union load as a meta row carrying children, reaching loaded (broker parity with snapshot)', async () => {
+    // Querying `?source=docs` loads the parent union (distinct from the per-file
+    // children). The broker must publish the *meta* row — children folded in,
+    // parent-union state winning — identical to the snapshot, so the Sources
+    // page flips to `loaded` live instead of lingering on `not-loaded`.
+    const dir = await mkdtemp(join(tmpdir(), 'sparqly-sources-sse-split-'));
+    try {
+      await writeFile(
+        join(dir, 'a.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+      await writeFile(
+        join(dir, 'b.ttl'),
+        '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .',
+      );
+      Logger.overrideLogger(false);
+      const server = await createServer({
+        sources: [{ id: 'docs', glob: join(dir, '*.ttl'), splitByFile: true }],
+        port: 0,
+        sseHeartbeatMs: 5_000,
+      });
+      const controller = new AbortController();
+      try {
+        const base = `http://localhost:${server.port}`;
+        const resp = await fetch(`${base}/api/sources/stream`, {
+          signal: controller.signal,
+          headers: { Accept: 'text/event-stream' },
+        });
+        void fetch(
+          `${base}/api/sparql/docs?query=${encodeURIComponent('SELECT * WHERE { ?s ?p ?o }')}`,
+        );
+        const rows: { id: string; data: SourceRow }[] = [];
+        for await (const ev of readSseEvents(resp.body!)) {
+          if (ev.event === 'heartbeat') continue;
+          if (ev.id === undefined || ev.data === undefined) continue;
+          rows.push({ id: ev.id, data: JSON.parse(ev.data) as SourceRow });
+          if (rows.length >= 2) break;
+        }
+        expect(rows).toHaveLength(2);
+        // Every emitted row is the `docs` meta — never an orphan child row.
+        expect(rows.map((r) => r.data.id)).toEqual(['docs', 'docs']);
+        const last = rows[1].data;
+        if (last.mode !== 'in-memory') throw new Error('expected in-memory row');
+        expect(last.state).toBe('loaded');
+        // Children are folded into the live meta row, as in the snapshot.
+        expect((last.children ?? []).map((c) => c.id).sort()).toEqual([
+          'docs/a.ttl',
+          'docs/b.ttl',
+        ]);
+      } finally {
+        controller.abort();
+        await server.close();
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('routes a split-glob child transition to its parent meta row (no orphan child row)', async () => {
+    // Loading a single child (`?source=docs/a.ttl`) must refresh the `docs`
+    // meta, not publish a top-level `docs/a.ttl` row the snapshot never emits.
+    const dir = await mkdtemp(join(tmpdir(), 'sparqly-sources-sse-child-'));
+    try {
+      await writeFile(
+        join(dir, 'a.ttl'),
+        '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+      );
+      await writeFile(
+        join(dir, 'b.ttl'),
+        '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .',
+      );
+      Logger.overrideLogger(false);
+      const server = await createServer({
+        sources: [{ id: 'docs', glob: join(dir, '*.ttl'), splitByFile: true }],
+        port: 0,
+        sseHeartbeatMs: 5_000,
+      });
+      const controller = new AbortController();
+      try {
+        const base = `http://localhost:${server.port}`;
+        const resp = await fetch(`${base}/api/sources/stream`, {
+          signal: controller.signal,
+          headers: { Accept: 'text/event-stream' },
+        });
+        void fetch(
+          `${base}/api/sparql/${encodeURIComponent('docs/a.ttl')}?query=${encodeURIComponent('SELECT * WHERE { ?s ?p ?o }')}`,
+        );
+        const rows: SourceRow[] = [];
+        for await (const ev of readSseEvents(resp.body!)) {
+          if (ev.event === 'heartbeat') continue;
+          if (ev.id === undefined || ev.data === undefined) continue;
+          rows.push(JSON.parse(ev.data) as SourceRow);
+          if (rows.length >= 2) break;
+        }
+        // Both transitions surface as the parent meta, never `docs/a.ttl`.
+        expect(rows.map((r) => r.id)).toEqual(['docs', 'docs']);
+        const last = rows[1];
+        if (last.mode !== 'in-memory') throw new Error('expected in-memory row');
+        // Parent union itself untouched → children aggregation: one loaded, one
+        // not → 'mixed', with the loaded child reflected in the breakdown.
+        expect(last.state).toBe('mixed');
+        const loadedChild = (last.children ?? []).find(
+          (c) => c.id === 'docs/a.ttl',
+        );
+        if (loadedChild?.mode !== 'in-memory') throw new Error('narrow child');
+        expect(loadedChild.state).toBe('loaded');
+      } finally {
+        controller.abort();
+        await server.close();
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('remains available without sources.allowAdminActions (stream is never gated — ADR-0045)', async () => {
     harness = await startHarness([{ id: 'blank', empty: true }], {
       readOnly: true,

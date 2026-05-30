@@ -662,14 +662,15 @@ describe('projectSplitGlobMeta — Split glob disclosure (#361)', () => {
     expect(row.children).toEqual(childRows);
   });
 
-  it("carries state 'mixed' when children disagree", () => {
+  it("carries state 'mixed' when children disagree (parent union untouched)", () => {
     const childRows: SourceRow[] = [
       projectSourceRow(childA, { mode: 'in-memory', state: 'loaded' }),
       projectSourceRow(childB, { mode: 'in-memory', state: 'not-loaded' }),
     ];
+    // Parent union not directly queried, so the per-file children drive the row.
     const row = projectSplitGlobMeta(
       splitMeta,
-      { mode: 'in-memory', state: 'loaded' },
+      { mode: 'in-memory', state: 'not-loaded' },
       childRows,
     );
     if (row.mode !== 'in-memory') throw new Error('narrow');
@@ -693,9 +694,11 @@ describe('projectSplitGlobMeta — Split glob disclosure (#361)', () => {
         metrics: { quads: 250, files: 1, loadedAt: 1_700_000_100_000, loadMs: 20 },
       }),
     ];
+    // Children loaded individually (per-file workflow); the parent union itself
+    // was never directly queried, so it stays not-loaded and the children win.
     const row = projectSplitGlobMeta(
       splitMeta,
-      { mode: 'in-memory', state: 'loaded' },
+      { mode: 'in-memory', state: 'not-loaded' },
       childRows,
     );
     expect(row).toMatchObject({
@@ -737,7 +740,7 @@ describe('projectSplitGlobMeta — Split glob disclosure (#361)', () => {
     ];
     const row = projectSplitGlobMeta(
       splitMeta,
-      { mode: 'in-memory', state: 'loaded' },
+      { mode: 'in-memory', state: 'not-loaded' },
       childRows,
     );
     expect(row).toMatchObject({ quads: 42, files: 1, loadedAt: 1 });
@@ -766,5 +769,97 @@ describe('projectSplitGlobMeta — Split glob disclosure (#361)', () => {
     );
     expect(row).toMatchObject({ files: 1, loadedAt: 1 });
     expect('quads' in row).toBe(false);
+  });
+
+  // The split-glob parent is itself a queryable union (`?source=<id>`), a
+  // residency distinct from its per-file children. When that union is directly
+  // loaded the meta must reflect it as `loaded` — otherwise a parent-union query
+  // leaves the Sources row reading `not-loaded` while the store is resident and
+  // serving instant queries (the reported worker-era symptom; pre-existing).
+  describe('parent-union residency (parent state wins when loaded)', () => {
+    it("surfaces 'loaded' with the parent's union metrics even when no child has been individually loaded", () => {
+      const childRows: SourceRow[] = [
+        projectSourceRow(childA, { mode: 'in-memory', state: 'not-loaded' }),
+        projectSourceRow(childB, { mode: 'in-memory', state: 'not-loaded' }),
+      ];
+      const row = projectSplitGlobMeta(
+        splitMeta,
+        {
+          mode: 'in-memory',
+          state: 'loaded',
+          metrics: { quads: 500, files: 2, loadedAt: 1_700_000_200_000, loadMs: 7 },
+        },
+        childRows,
+      );
+      if (row.mode !== 'in-memory') throw new Error('narrow');
+      expect(row.state).toBe('loaded');
+      // The union's own metrics win — not the (empty) child summary.
+      expect(row).toMatchObject({
+        quads: 500,
+        files: 2,
+        loadedAt: 1_700_000_200_000,
+        loadMs: 7,
+      });
+      // Children stay as the per-file breakdown.
+      expect(row.children).toEqual(childRows);
+    });
+
+    it("stays 'loaded' when the parent union is loaded alongside some loaded children", () => {
+      const childRows: SourceRow[] = [
+        projectSourceRow(childA, {
+          mode: 'in-memory',
+          state: 'loaded',
+          metrics: { quads: 100, files: 1, loadedAt: 1, loadMs: 1 },
+        }),
+        projectSourceRow(childB, { mode: 'in-memory', state: 'not-loaded' }),
+      ];
+      const row = projectSplitGlobMeta(
+        splitMeta,
+        {
+          mode: 'in-memory',
+          state: 'loaded',
+          metrics: { quads: 500, files: 2, loadedAt: 9, loadMs: 7 },
+        },
+        childRows,
+      );
+      if (row.mode !== 'in-memory') throw new Error('narrow');
+      // Parent union wins over the mixed children that would otherwise be 'mixed'.
+      expect(row.state).toBe('loaded');
+      expect(row).toMatchObject({ quads: 500, files: 2 });
+    });
+
+    it("surfaces 'loading' while the parent union is mid-load, not the children's not-loaded", () => {
+      const childRows: SourceRow[] = [
+        projectSourceRow(childA, { mode: 'in-memory', state: 'not-loaded' }),
+        projectSourceRow(childB, { mode: 'in-memory', state: 'not-loaded' }),
+      ];
+      const row = projectSplitGlobMeta(
+        splitMeta,
+        { mode: 'in-memory', state: 'loading' },
+        childRows,
+      );
+      if (row.mode !== 'in-memory') throw new Error('narrow');
+      expect(row.state).toBe('loading');
+      expect(row.children).toEqual(childRows);
+    });
+
+    it("surfaces 'failed' (with the error) when the parent union load fails", () => {
+      const childRows: SourceRow[] = [
+        projectSourceRow(childA, { mode: 'in-memory', state: 'not-loaded' }),
+        projectSourceRow(childB, { mode: 'in-memory', state: 'not-loaded' }),
+      ];
+      const row = projectSplitGlobMeta(
+        splitMeta,
+        {
+          mode: 'in-memory',
+          state: 'failed',
+          error: { kind: 'glob-load', message: 'parse blew up' },
+        },
+        childRows,
+      );
+      if (row.mode !== 'in-memory') throw new Error('narrow');
+      expect(row.state).toBe('failed');
+      expect(row.error).toEqual({ kind: 'glob-load', message: 'parse blew up' });
+    });
   });
 });

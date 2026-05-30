@@ -26,8 +26,7 @@ import {
 } from '../bootstrap/tokens';
 import { probeEndpoint, type ProbeResult } from './endpoint-probe';
 import {
-  projectSourceRow,
-  projectSplitGlobMeta,
+  projectTopLevelRow,
   type SourceRow,
 } from './source-row-projector';
 import type {
@@ -72,19 +71,13 @@ export class SourcesController {
       if (source.id === undefined) continue;
       // Children are projected under their meta below, not as top-level rows.
       if (source.kind === 'file' && source.parentId !== undefined) continue;
-      const runtime = await this.engineMap.readState(source.id);
-      const splitChildren = childrenByParent.get(source.id);
-      if (splitChildren !== undefined) {
-        const childRows: SourceRow[] = [];
-        for (const child of splitChildren) {
-          if (child.id === undefined) continue;
-          const childRuntime = await this.engineMap.readState(child.id);
-          childRows.push(projectSourceRow(child, childRuntime));
-        }
-        rows.push(projectSplitGlobMeta(source, runtime, childRows));
-      } else {
-        rows.push(projectSourceRow(source, runtime));
-      }
+      rows.push(
+        await projectTopLevelRow(
+          source,
+          childrenByParent.get(source.id) ?? [],
+          (id) => this.engineMap.readState(id),
+        ),
+      );
     }
     return rows;
   }

@@ -207,6 +207,31 @@ function applyLayer5(
     : { kind: error.kind, message: error.message };
 }
 
+/**
+ * Projects one top-level Sources row, folding a split-glob meta's per-file
+ * children under it. `children` is the meta's synthesized **File source**
+ * children (empty for a non-split source). Shared by the snapshot controller
+ * and the SSE broker so a live row and a freshly-fetched snapshot row are
+ * projected identically — including a split-glob meta's `children` array and
+ * its parent-union state (see {@link projectSplitGlobMeta}).
+ */
+export async function projectTopLevelRow(
+  source: ParsedSource,
+  children: ReadonlyArray<ParsedSource>,
+  readState: (id: string) => Promise<SourceRuntime>,
+): Promise<SourceRow> {
+  const runtime = await readState(source.id as string);
+  if (children.length === 0) {
+    return projectSourceRow(source, runtime);
+  }
+  const childRows: SourceRow[] = [];
+  for (const child of children) {
+    if (child.id === undefined) continue;
+    childRows.push(projectSourceRow(child, await readState(child.id)));
+  }
+  return projectSplitGlobMeta(source, runtime, childRows);
+}
+
 export function projectSplitGlobMeta(
   meta: ParsedSource,
   metaRuntime: SourceRuntime,
@@ -217,6 +242,15 @@ export function projectSplitGlobMeta(
     throw new Error(
       `projectSplitGlobMeta: split-glob meta cannot be endpoint kind (id '${row.id}')`,
     );
+  }
+  // The split-glob parent is itself a queryable union (`?source=<id>`), a
+  // residency distinct from its per-file children. Once that union has been
+  // directly touched (loading / loaded / failed), *it* is what serves queries —
+  // surface the parent's own state, union metrics, and failure, keeping the
+  // children as a breakdown. Only an untouched union (`not-loaded`) defers to
+  // the children summary (the per-file load workflow).
+  if (row.mode === 'in-memory' && row.state !== 'not-loaded') {
+    return { ...row, children };
   }
   const aggregatedState = aggregateChildState(children, row.state);
   // Drop the meta's own metrics so a stale meta-runtime value can't leak

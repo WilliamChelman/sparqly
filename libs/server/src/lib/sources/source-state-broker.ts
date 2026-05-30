@@ -3,7 +3,7 @@ import { map, take } from 'rxjs/operators';
 import type { ParsedSource } from 'core';
 import type { EngineMap } from '../bootstrap/engine-map';
 import {
-  projectSourceRow,
+  projectTopLevelRow,
   type SourceRow,
 } from './source-row-projector';
 import {
@@ -35,6 +35,11 @@ export class SourceStateBroker {
   private readonly closed$ = new Subject<void>();
   private readonly unsubscribeEmitter: () => void;
   private readonly sourcesById: Map<string, ParsedSource>;
+  /** Split-glob meta id → its synthesized File-source children. */
+  private readonly childrenByParent: Map<string, ParsedSource[]>;
+  /** Split-glob child id → its meta id, so a child transition refreshes the
+   * parent's (children-folding) meta row rather than emitting an orphan row. */
+  private readonly parentOf: Map<string, string>;
   private readonly heartbeatMs: number;
   /** Tail of the serial projection queue — guarantees per-emit ordering. */
   private projectionTail: Promise<void> = Promise.resolve();
@@ -49,10 +54,18 @@ export class SourceStateBroker {
     this.ringBuffer = new SourceStateRingBuffer({ capacity: options.capacity });
     this.heartbeatMs = options.heartbeatMs ?? 15_000;
     this.sourcesById = new Map();
+    this.childrenByParent = new Map();
+    this.parentOf = new Map();
     for (const source of servedRegistry) {
       if (source.kind === 'reference') continue;
       if (source.id === undefined) continue;
       this.sourcesById.set(source.id, source);
+      if (source.kind === 'file' && source.parentId !== undefined) {
+        const siblings = this.childrenByParent.get(source.parentId) ?? [];
+        siblings.push(source);
+        this.childrenByParent.set(source.parentId, siblings);
+        this.parentOf.set(source.id, source.parentId);
+      }
     }
     this.unsubscribeEmitter = emitter.subscribe((transition) =>
       this.enqueue(transition),
@@ -116,20 +129,26 @@ export class SourceStateBroker {
   }
 
   private async project(transition: SourceTransition): Promise<void> {
-    const source = this.sourcesById.get(transition.sourceId);
+    // A split-glob child is disclosed nested under its meta, never as its own
+    // top-level row — so a child transition refreshes the parent meta. Route to
+    // the parent (or self for a non-child) so the live row is projected exactly
+    // as the snapshot would project it, children folded in.
+    const topLevelId =
+      this.parentOf.get(transition.sourceId) ?? transition.sourceId;
+    const source = this.sourcesById.get(topLevelId);
     if (source === undefined) return; // reference / unknown — silently drop
     let row: SourceRow;
     try {
-      const runtime = await this.engineMap.readState(transition.sourceId);
-      row = projectSourceRow(source, runtime);
+      row = await projectTopLevelRow(
+        source,
+        this.childrenByParent.get(topLevelId) ?? [],
+        (id) => this.engineMap.readState(id),
+      );
     } catch {
       // Skip — next snapshot fetch re-baselines the client.
       return;
     }
-    const event = this.ringBuffer.append({
-      sourceId: transition.sourceId,
-      row,
-    });
+    const event = this.ringBuffer.append({ sourceId: topLevelId, row });
     this.live$.next(event);
   }
 
