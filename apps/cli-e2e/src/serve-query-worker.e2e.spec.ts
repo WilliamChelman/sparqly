@@ -183,9 +183,10 @@ describe('sparqly serve — off-main-thread in-memory queries (ADR-0050)', () =>
   }, 60_000);
 
   it('does not block a concurrent request while a heavy query runs in the worker', async () => {
-    // ~220 triples → a 3-way cross join enumerates ~10.6M solutions, seconds of
-    // synchronous Comunica CPU — the exact "one query freezes everything" case.
-    const configPath = await writeConfig(220);
+    // ~130 triples → a 3-way cross join enumerates ~2.2M solutions, several
+    // seconds of synchronous Comunica CPU — the exact "one query freezes
+    // everything" case, sized to stay well under the timeout under suite load.
+    const configPath = await writeConfig(130);
     handle = await startServe(['--config', configPath]);
     const base = handle.baseUrl;
 
