@@ -2,8 +2,9 @@ import type { SparqlyLogger } from 'common';
 import {
   detectSelectShape,
   formatDiffSummaryLine,
+  formatSourceError,
   formatTabularDiff,
-  resolveInlineSelectBindings,
+  resolveInlineSelectBindingsResult,
   tabularDiff,
   type ParsedSource,
   type SelectShapeReport,
@@ -103,18 +104,34 @@ export async function runTabularDiff(args: RunTabularDiffArgs): Promise<void> {
   const leftUpstream = inlineQueryUpstream(leftTarget, 'left');
   const rightUpstream = inlineQueryUpstream(rightTarget, 'right');
 
-  const [left, right] = await Promise.all([
-    resolveInlineSelectBindings({
+  const [leftResult, rightResult] = await Promise.all([
+    resolveInlineSelectBindingsResult({
       source: leftUpstream,
       query: leftInlineQuery,
       logger,
     }),
-    resolveInlineSelectBindings({
+    resolveInlineSelectBindingsResult({
       source: rightUpstream,
       query: rightInlineQuery,
       logger,
     }),
   ]);
+  if (leftResult.isErr()) {
+    throw new DiffErrorSignal({
+      kind: 'anonymous-select-execution',
+      side: 'left',
+      message: formatSourceError(leftResult.error),
+    });
+  }
+  if (rightResult.isErr()) {
+    throw new DiffErrorSignal({
+      kind: 'anonymous-select-execution',
+      side: 'right',
+      message: formatSourceError(rightResult.error),
+    });
+  }
+  const left = leftResult.value;
+  const right = rightResult.value;
 
   const tabResult = tabularDiff(left.rows, right.rows, [
     ...rightShape.variables,

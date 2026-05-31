@@ -5,9 +5,10 @@ import {
   diffStores,
   extractAnnotationPredicates,
   formatRawPassThroughRejection,
+  formatSourceError,
   groupRdfDiffByEntity,
-  resolveInlineSelectBindings,
-  resolveInlineQuery,
+  resolveInlineQueryResult,
+  resolveInlineSelectBindingsResult,
   storageTier,
   tabularDiff,
   type DiffError,
@@ -22,7 +23,6 @@ import {
   type TabularRow,
 } from 'core';
 import {
-  ResultAsync,
   err,
   ok,
   safeTry,
@@ -285,12 +285,11 @@ function resolveInlineQueryAsync(
   query: string,
   side: 'left' | 'right',
 ): ResultAsyncT<Store, DiffError> {
-  return ResultAsync.fromPromise(
-    resolveInlineQuery({ source: upstream, query }),
-    (raw): DiffError => ({
+  return resolveInlineQueryResult({ source: upstream, query }).mapErr(
+    (err): DiffError => ({
       kind: 'anonymous-view-execution',
       side,
-      message: raw instanceof Error ? raw.message : String(raw),
+      message: formatSourceError(err),
     }),
   );
 }
@@ -431,16 +430,14 @@ function resolveTabularSide(
   query: string,
   side: 'left' | 'right',
 ): ResultAsyncT<{ rows: TabularRow[] }, DiffError> {
-  return ResultAsync.fromPromise(
-    resolveInlineSelectBindings({
-      source: upstream,
-      query,
-    }),
-    (raw): DiffError => ({
-      kind: 'anonymous-select-execution',
-      side,
-      message: raw instanceof Error ? raw.message : String(raw),
-    }),
-  ).map((result) => ({ rows: result.rows }));
+  return resolveInlineSelectBindingsResult({ source: upstream, query })
+    .mapErr(
+      (err): DiffError => ({
+        kind: 'anonymous-select-execution',
+        side,
+        message: formatSourceError(err),
+      }),
+    )
+    .map((result) => ({ rows: result.rows }));
 }
 

@@ -2,10 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  resolveInlineSelectBindings,
-  resolveInlineSelectBindingsResult,
-} from './resolve-inline-select-bindings';
+import { resolveInlineSelectBindingsResult } from './resolve-inline-select-bindings';
 import { resolveSourceResult } from '../sources/resolve-source-result';
 import { parseSourceSpec } from '../sources/source-spec';
 import {
@@ -13,7 +10,7 @@ import {
   type FakeSparqlEndpoint,
 } from '../test/fake-sparql-endpoint';
 
-describe('resolveInlineSelectBindings', () => {
+describe('resolveInlineSelectBindingsResult — bindings behavior', () => {
   let dataDir: string;
   let cwdSandbox: string;
   let originalCwd: string;
@@ -41,12 +38,14 @@ describe('resolveInlineSelectBindings', () => {
         'ex:p2 ex:id "2" .',
       ].join('\n'),
     );
-    const result = await resolveInlineSelectBindings({
+    const result = await resolveInlineSelectBindingsResult({
       source: { glob: a },
       query: 'PREFIX ex: <http://example.org/> SELECT ?id WHERE { ?p ex:id ?id }',
     });
-    expect(result.variables).toEqual(['id']);
-    const ids = result.rows
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.variables).toEqual(['id']);
+    const ids = result.value.rows
       .map((r) => r['id']?.value)
       .sort();
     expect(ids).toEqual(['1', '2']);
@@ -62,14 +61,16 @@ describe('resolveInlineSelectBindings', () => {
         'ex:p2 ex:id "2" ; ex:status "closed" .',
       ].join('\n'),
     );
-    const result = await resolveInlineSelectBindings({
+    const result = await resolveInlineSelectBindingsResult({
       source: { glob: a },
       query:
         'PREFIX ex: <http://example.org/> SELECT ?id ?status WHERE { ?p ex:id ?id ; ex:status ?status }',
     });
-    expect(result.variables).toEqual(['id', 'status']);
-    expect(result.rows).toHaveLength(2);
-    for (const row of result.rows) {
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.variables).toEqual(['id', 'status']);
+    expect(result.value.rows).toHaveLength(2);
+    for (const row of result.value.rows) {
       expect(row['id']).toBeDefined();
       expect(row['status']).toBeDefined();
     }
@@ -86,13 +87,15 @@ describe('resolveInlineSelectBindings', () => {
         'ex:p3 ex:status "closed" .',
       ].join('\n'),
     );
-    const result = await resolveInlineSelectBindings({
+    const result = await resolveInlineSelectBindingsResult({
       source: { glob: a },
       query:
         'PREFIX ex: <http://example.org/> SELECT ?status WHERE { ?p ex:status ?status }',
     });
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
     const counts = new Map<string, number>();
-    for (const row of result.rows) {
+    for (const row of result.value.rows) {
       const v = row['status']?.value ?? '<unbound>';
       counts.set(v, (counts.get(v) ?? 0) + 1);
     }
@@ -101,12 +104,14 @@ describe('resolveInlineSelectBindings', () => {
   });
 
   it('runs against an empty source upstream (executes whatever the query supplies, e.g. VALUES)', async () => {
-    const result = await resolveInlineSelectBindings({
+    const result = await resolveInlineSelectBindingsResult({
       source: { id: 'sink', empty: true },
       query: 'SELECT ?x WHERE { VALUES ?x { "a" "b" } }',
     });
-    expect(result.variables).toEqual(['x']);
-    const xs = result.rows.map((r) => r['x']?.value).sort();
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.variables).toEqual(['x']);
+    const xs = result.value.rows.map((r) => r['x']?.value).sort();
     expect(xs).toEqual(['a', 'b']);
   });
 
@@ -144,10 +149,12 @@ describe('resolveInlineSelectBindings', () => {
       const QUERY =
         'PREFIX ex: <http://example.org/> SELECT ?id ?status WHERE { ?p ex:id ?id ; ex:status ?status }';
 
-      const result = await resolveInlineSelectBindings({
+      const result = await resolveInlineSelectBindingsResult({
         source: endpoint.url,
         query: QUERY,
       });
+      expect(result.isOk()).toBe(true);
+      if (!result.isOk()) throw new Error('unreachable');
 
       expect(captured.length).toBeGreaterThan(0);
       // The endpoint received the user's projection (?id ?status), not a
@@ -158,8 +165,8 @@ describe('resolveInlineSelectBindings', () => {
         true,
       );
 
-      expect(result.variables).toEqual(['id', 'status']);
-      const ids = result.rows
+      expect(result.value.variables).toEqual(['id', 'status']);
+      const ids = result.value.rows
         .map((r) => `${r['id']?.value}|${r['status']?.value}`)
         .sort();
       expect(ids).toEqual(['1|open', '2|closed']);
@@ -178,7 +185,7 @@ describe('resolveInlineSelectBindings', () => {
         };
       });
 
-      await resolveInlineSelectBindings({
+      await resolveInlineSelectBindingsResult({
         source: {
           id: 'live',
           endpoint: endpoint.url,
@@ -190,7 +197,7 @@ describe('resolveInlineSelectBindings', () => {
       expect(observedAuth).toBe('Bearer tk-1');
     });
 
-    it('wraps endpoint errors with the `endpoint <url>: <message>` prefix', async () => {
+    it('surfaces a structured endpoint-fetch error (carrying endpoint + message) when the upstream fails', async () => {
       endpoint = await startFakeSparqlEndpoint(() => ({
         status: 500,
         contentType: 'text/plain',
@@ -198,40 +205,19 @@ describe('resolveInlineSelectBindings', () => {
       }));
       const url = endpoint.url;
 
-      await expect(
-        resolveInlineSelectBindings({
-          source: url,
-          query: 'SELECT ?id WHERE { ?p ?q ?id }',
-        }),
-      ).rejects.toThrow(new RegExp(`^endpoint ${escapeRegExp(url)}:`));
+      const result = await resolveInlineSelectBindingsResult({
+        source: url,
+        query: 'SELECT ?id WHERE { ?p ?q ?id }',
+      });
+      expect(result.isErr()).toBe(true);
+      if (!result.isErr()) throw new Error('unreachable');
+      expect(result.error.kind).toBe('endpoint-fetch');
+      if (result.error.kind !== 'endpoint-fetch') {
+        throw new Error('unreachable');
+      }
+      expect(result.error.endpoint).toBe(url);
+      expect(result.error.message.length).toBeGreaterThan(0);
     });
-  });
-
-  it('rejects ASK/DESCRIBE/UPDATE under the tabular-anon validator', async () => {
-    const a = join(dataDir, 'a.ttl');
-    await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
-    await expect(
-      resolveInlineSelectBindings({
-        source: { glob: a },
-        query: 'ASK { ?s ?p ?o }',
-      }),
-    ).rejects.toThrow(/ASK/);
-  });
-
-  function escapeRegExp(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-
-  it('errors when both query and queryFile are supplied', async () => {
-    const a = join(dataDir, 'a.ttl');
-    await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
-    await expect(
-      resolveInlineSelectBindings({
-        source: { glob: a },
-        query: 'SELECT ?s WHERE { ?s ?p ?o }',
-        queryFile: 'q.rq',
-      }),
-    ).rejects.toThrow(/mutually exclusive/);
   });
 });
 

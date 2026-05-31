@@ -76,17 +76,3 @@ function loadQueryText(
     message: err instanceof Error ? err.message : String(err),
   }));
 }
-
-/**
- * @deprecated Use {@link resolveInlineQueryResult} (ADR-0024). Retained as a
- * thin throw-based adapter for callers that have not migrated yet.
- */
-export async function resolveInlineQuery(
-  input: InlineQueryInput,
-): Promise<Store> {
-  const result = await resolveInlineQueryResult(input);
-  if (result.isErr()) {
-    throw new Error(result.error.message);
-  }
-  return result.value;
-}
