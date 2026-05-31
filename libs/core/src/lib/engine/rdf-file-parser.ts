@@ -151,7 +151,7 @@ export function parseRdfFileResult(
   path: string,
   options: ParseRdfFileOptions = {},
 ): ResultAsync<ParseFileResult, GlobLoadError> {
-  return ResultAsync.fromPromise(parseRdfFile(path, options), (err) => ({
+  return ResultAsync.fromPromise(parseRdfFileImpl(path, options), (err) => ({
     kind: 'glob-load' as const,
     glob: [path],
     file: path,
@@ -159,8 +159,10 @@ export function parseRdfFileResult(
   }));
 }
 
-/** @deprecated Use {@link parseRdfFileResult}. Thin throw-based adapter. */
-export async function parseRdfFile(
+// Format-dispatch core for {@link parseRdfFileResult}. The internal `throw`s of
+// parseWithN3 / parseWithRdfParse are caught at the ResultAsync boundary above
+// and surface as a GlobLoadError — never as a public throwing API (ADR-0024).
+async function parseRdfFileImpl(
   path: string,
   options: ParseRdfFileOptions = {},
 ): Promise<ParseFileResult> {

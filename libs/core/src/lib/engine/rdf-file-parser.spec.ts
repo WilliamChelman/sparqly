@@ -4,13 +4,9 @@ import { join } from 'node:path';
 import dedent from 'dedent';
 import type { Quad } from 'n3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  parseRdfFile,
-  parseRdfFileResult,
-  streamRdfFileQuads,
-} from './rdf-file-parser';
+import { parseRdfFileResult, streamRdfFileQuads } from './rdf-file-parser';
 
-describe('parseRdfFile', () => {
+describe('parseRdfFileResult parse behavior', () => {
   let dir: string;
 
   beforeEach(async () => {
@@ -27,7 +23,7 @@ describe('parseRdfFile', () => {
       file,
       '<http://example.org/a> <http://example.org/p> <http://example.org/b> .\n',
     );
-    const { records } = await parseRdfFile(file);
+    const { records } = (await parseRdfFileResult(file))._unsafeUnwrap();
     expect(records).toHaveLength(1);
     expect(records[0].quad.predicate.value).toBe('http://example.org/p');
     expect(records[0].line).toBe(1);
@@ -44,7 +40,7 @@ describe('parseRdfFile', () => {
       '@prefix dct: <http://purl.org/dc/terms/> .\n' +
         '<http://example.org/a> dct:source <> .\n',
     );
-    const { records } = await parseRdfFile(file);
+    const { records } = (await parseRdfFileResult(file))._unsafeUnwrap();
     expect(records).toHaveLength(1);
     const object = records[0].quad.object;
     expect(object.termType).toBe('NamedNode');
@@ -63,7 +59,7 @@ describe('parseRdfFile', () => {
           ex:p3 ex:o3 .
       ` + '\n',
     );
-    const { records } = await parseRdfFile(file);
+    const { records } = (await parseRdfFileResult(file))._unsafeUnwrap();
     expect(records).toHaveLength(3);
     const linesByPredicate = Object.fromEntries(
       records.map((r) => [r.quad.predicate.value, r.line]),
@@ -85,7 +81,7 @@ describe('parseRdfFile', () => {
                       "three@example.com" .
       ` + '\n',
     );
-    const { records } = await parseRdfFile(file);
+    const { records } = (await parseRdfFileResult(file))._unsafeUnwrap();
     expect(records).toHaveLength(3);
     const linesByObject = Object.fromEntries(
       records.map((r) => [r.quad.object.value, r.line]),
@@ -109,7 +105,7 @@ describe('parseRdfFile', () => {
         ) .
       ` + '\n',
     );
-    const { records } = await parseRdfFile(file);
+    const { records } = (await parseRdfFileResult(file))._unsafeUnwrap();
     // List expansion produces 7 quads: 3 rdf:first + 3 rdf:rest + 1 ex:items.
     const firstQuads = records.filter(
       (r) =>
@@ -139,7 +135,7 @@ describe('parseRdfFile', () => {
         .
       ` + '\n',
     );
-    const { records } = await parseRdfFile(file);
+    const { records } = (await parseRdfFileResult(file))._unsafeUnwrap();
     // Closing paren is on line 6. It is pure syntax, not a triple location, so
     // no record — neither the rdf:rest -> rdf:nil terminator nor the parent
     // ex:items triple — should carry line 6.
@@ -156,7 +152,7 @@ describe('parseRdfFile', () => {
         <http://example.org/c> <http://example.org/p2> <http://example.org/d> .
       ` + '\n',
     );
-    const { records } = await parseRdfFile(file);
+    const { records } = (await parseRdfFileResult(file))._unsafeUnwrap();
     expect(records).toHaveLength(2);
     expect(records[0].quad.predicate.value).toBe('http://example.org/p1');
     expect(records[0].line).toBe(1);
@@ -173,7 +169,7 @@ describe('parseRdfFile', () => {
         <http://example.org/c> <http://example.org/p2> <http://example.org/d> .
       ` + '\n',
     );
-    const { records } = await parseRdfFile(file);
+    const { records } = (await parseRdfFileResult(file))._unsafeUnwrap();
     expect(records).toHaveLength(2);
     expect(records[0].line).toBe(1);
     expect(records[0].quad.graph.value).toBe('http://example.org/g');
@@ -193,7 +189,7 @@ describe('parseRdfFile', () => {
         }
       ` + '\n',
     );
-    const { records } = await parseRdfFile(file);
+    const { records } = (await parseRdfFileResult(file))._unsafeUnwrap();
     expect(records).toHaveLength(2);
     expect(records[0].quad.predicate.value).toBe('http://example.org/p1');
     expect(records[0].line).toBe(3);
@@ -213,7 +209,7 @@ describe('parseRdfFile', () => {
         'ex:p': { '@id': 'ex:b' },
       }),
     );
-    const { records } = await parseRdfFile(file);
+    const { records } = (await parseRdfFileResult(file))._unsafeUnwrap();
     expect(records).toHaveLength(1);
     expect(records[0].quad).toBeDefined();
     expect(records[0].quad.predicate.value).toBe('http://example.org/p');
@@ -233,7 +229,7 @@ describe('parseRdfFile', () => {
         </rdf:RDF>
       ` + '\n',
     );
-    const { records } = await parseRdfFile(file);
+    const { records } = (await parseRdfFileResult(file))._unsafeUnwrap();
     expect(records).toHaveLength(1);
     expect(records[0].quad.predicate.value).toBe('http://example.org/p');
     expect(records[0].line).toBeUndefined();
@@ -249,17 +245,11 @@ describe('parseRdfFile', () => {
         ex:a ex:p ex:b .
       `,
     );
-    const { prefixes } = await parseRdfFile(file);
+    const { prefixes } = (await parseRdfFileResult(file))._unsafeUnwrap();
     expect(prefixes).toEqual({
       ex: 'http://example.org/',
       dct: 'http://purl.org/dc/terms/',
     });
-  });
-
-  it('throws on unsupported file extensions', async () => {
-    const file = join(dir, 'a.unknown');
-    await writeFile(file, 'irrelevant');
-    await expect(parseRdfFile(file)).rejects.toThrow(/unsupported file extension/i);
   });
 
   it('emits `endLine = startLine + N - 1` for a triple-quoted literal that spans N source lines', async () => {
@@ -275,7 +265,7 @@ describe('parseRdfFile', () => {
         }""" .
       ` + '\n',
     );
-    const { records } = await parseRdfFile(file);
+    const { records } = (await parseRdfFileResult(file))._unsafeUnwrap();
     expect(records).toHaveLength(1);
     // Opening """ is on line 3, closing """ is on line 6.
     expect(records[0].line).toBe(3);
@@ -288,7 +278,7 @@ describe('parseRdfFile', () => {
       file,
       '@prefix ex: <http://example.org/> .\n\nex:a ex:p "foo\\nbar" .\n',
     );
-    const { records } = await parseRdfFile(file);
+    const { records } = (await parseRdfFileResult(file))._unsafeUnwrap();
     expect(records).toHaveLength(1);
     expect(records[0].line).toBe(3);
     expect(records[0].endLine).toBeUndefined();
@@ -308,7 +298,7 @@ describe('parseRdfFile', () => {
         ) .
       ` + '\n',
     );
-    const { records } = await parseRdfFile(file);
+    const { records } = (await parseRdfFileResult(file))._unsafeUnwrap();
     // Locate the parent triple (predicate = ex:items).
     const parent = records.find(
       (r) => r.quad.predicate.value === 'http://example.org/items',
@@ -339,7 +329,7 @@ describe('parseRdfFile', () => {
         ] .
       ` + '\n',
     );
-    const { records } = await parseRdfFile(file);
+    const { records } = (await parseRdfFileResult(file))._unsafeUnwrap();
     const parent = records.find(
       (r) => r.quad.predicate.value === 'http://example.org/property',
     );
@@ -355,7 +345,7 @@ describe('parseRdfFile', () => {
       file,
       '@prefix ex: <http://example.org/> .\nex:a ex:items ( ex:one ex:two ) .\n',
     );
-    const { records } = await parseRdfFile(file);
+    const { records } = (await parseRdfFileResult(file))._unsafeUnwrap();
     const parent = records.find(
       (r) => r.quad.predicate.value === 'http://example.org/items',
     );
@@ -383,7 +373,7 @@ describe('parseRdfFile', () => {
       await handle.close();
     }
 
-    const { records } = await parseRdfFile(file);
+    const { records } = (await parseRdfFileResult(file))._unsafeUnwrap();
     expect(records).toHaveLength(totalLines);
     expect(records[0].quad.subject.value).toBe('http://example.org/s1');
     expect(records[0].line).toBe(1);
@@ -493,7 +483,7 @@ describe('streamRdfFileQuads', () => {
     expect(quads[0].graph.value).toBe('http://example.org/g');
   });
 
-  // Regression: same empty-IRI hazard as the buffered path (see parseRdfFile).
+  // Regression: same empty-IRI hazard as the buffered path (see parseRdfFileResult).
   it('resolves a relative empty IRI <> against the file base', async () => {
     const file = join(dir, 'rel.ttl');
     await writeFile(
