@@ -5,7 +5,7 @@ import { diffCanonicalStatements, diffStores } from './diff';
 import type { RdfDiffWithSourcesResult } from './diff';
 import { groupRdfDiffByEntity } from './group-rdf-diff-by-entity';
 import type { Hunk } from './group-rdf-diff-by-entity';
-import { parseRdfFile } from '../engine';
+import { parseRdfFileResult } from '../engine';
 import {
   buildSourceRecord,
   buildSourceRecordSidecar,
@@ -553,8 +553,8 @@ describe('groupRdfDiffByEntity — RDF list compaction edge cases', () => {
     // spine triple as its entry point (which would yield `rdf:rest ( ... )`).
     const leftPath = resolve(__dirname, '../../../../../test/data/diffs/diff-01.ttl');
     const rightPath = resolve(__dirname, '../../../../../test/data/diffs/diff-02.ttl');
-    const left = await parseRdfFile(leftPath);
-    const right = await parseRdfFile(rightPath);
+    const left = (await parseRdfFileResult(leftPath))._unsafeUnwrap();
+    const right = (await parseRdfFileResult(rightPath))._unsafeUnwrap();
     const leftStore = new Store();
     leftStore.addQuads(left.records.map((r) => r.quad));
     const rightStore = new Store();
