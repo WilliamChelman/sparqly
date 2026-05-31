@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createServer, type CreatedServer } from '../bootstrap';
+import { createTestServer, type CreatedServer } from '../bootstrap/create-test-server';
 import type { SourceRow } from './source-row-projector';
 import type { BuildChild, SpawnIndexBuild } from '../bootstrap/index-build-pool';
 import { ensureGlobIndex, diskBackedIndexIdentity, globIndexDir, parseSourceSpecs } from 'core';
@@ -21,7 +21,7 @@ async function startHarness(
 ): Promise<Harness> {
   Logger.overrideLogger(false);
   const dir = await mkdtemp(join(tmpdir(), 'sparqly-sources-controller-'));
-  const server = await createServer({
+  const server = await createTestServer({
     sources: sources as Parameters<typeof createServer>[0]['sources'],
     port: 0,
     readOnly: options.readOnly,
@@ -209,7 +209,7 @@ describe('GET /api/sources — Sources page snapshot (#353)', () => {
         '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .',
       );
       Logger.overrideLogger(false);
-      const server = await createServer({
+      const server = await createTestServer({
         sources: [
           { id: 'docs', glob: join(dir, '*.ttl'), splitByFile: true },
         ],
@@ -258,7 +258,7 @@ describe('GET /api/sources — Sources page snapshot (#353)', () => {
         '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
       );
       Logger.overrideLogger(false);
-      const server = await createServer({
+      const server = await createTestServer({
         sources: [{ id: 'docs', glob: join(dir, '*.ttl') }],
         port: 0,
       });
@@ -316,7 +316,7 @@ describe('GET /api/sources/stream — Sources page SSE (#354)', () => {
         '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
       );
       Logger.overrideLogger(false);
-      const server = await createServer({
+      const server = await createTestServer({
         sources: [{ id: 'docs', glob: join(dir, '*.ttl') }],
         port: 0,
         sseHeartbeatMs: 5_000, // long enough not to interleave
@@ -380,7 +380,7 @@ describe('GET /api/sources/stream — Sources page SSE (#354)', () => {
         '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .',
       );
       Logger.overrideLogger(false);
-      const server = await createServer({
+      const server = await createTestServer({
         sources: [{ id: 'docs', glob: join(dir, '*.ttl'), splitByFile: true }],
         port: 0,
         sseHeartbeatMs: 5_000,
@@ -436,7 +436,7 @@ describe('GET /api/sources/stream — Sources page SSE (#354)', () => {
         '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .',
       );
       Logger.overrideLogger(false);
-      const server = await createServer({
+      const server = await createTestServer({
         sources: [{ id: 'docs', glob: join(dir, '*.ttl'), splitByFile: true }],
         port: 0,
         sseHeartbeatMs: 5_000,
@@ -519,7 +519,7 @@ describe('GET /api/sources/stream — Sources page SSE (#354)', () => {
         '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
       );
       Logger.overrideLogger(false);
-      const server = await createServer({
+      const server = await createTestServer({
         sources: [{ id: 'docs', glob: join(dir, '*.ttl') }],
         port: 0,
         sseHeartbeatMs: 5_000,
@@ -597,7 +597,7 @@ describe('GET /api/sources/stream — Sources page SSE (#354)', () => {
         '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .',
       );
       Logger.overrideLogger(false);
-      const server = await createServer({
+      const server = await createTestServer({
         sources: [
           { id: 'a', glob: join(dir, 'a.ttl') },
           { id: 'b', glob: join(dir, 'b.ttl') },
@@ -730,7 +730,7 @@ describe('In-memory admin actions — POST /api/sources/:id/{load,reload,unload}
       join(dir, 'data.ttl'),
       '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
     );
-    const server = await createServer({
+    const server = await createTestServer({
       sources: [{ id: 'docs', glob: join(dir, '*.ttl') }],
       port: 0,
       readOnly: options.readOnly,
@@ -902,7 +902,7 @@ describe('Disk-backed (Re)build / Cancel — POST and DELETE /api/sources/:id/in
       }
       return child;
     };
-    const server = await createServer({
+    const server = await createTestServer({
       sources: [{ id: 'big', glob: join(dir, '*.ttl'), storage: 'disk' }],
       port: 0,
       readOnly: options.readOnly,
@@ -1020,7 +1020,7 @@ describe('Disk-backed (Re)build / Cancel — POST and DELETE /api/sources/:id/in
         join(dir, 'a.ttl'),
         '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
       );
-      const server = await createServer({
+      const server = await createTestServer({
         sources: [{ id: 'mem', glob: join(dir, '*.ttl') }],
         port: 0,
       });
@@ -1101,7 +1101,7 @@ describe('Endpoint Test connection — POST /api/sources/:id/test-connection (#3
     const ep = await startFakeEndpoint('ok');
     cleanup.push(ep.close);
     Logger.overrideLogger(false);
-    const server = await createServer({
+    const server = await createTestServer({
       sources: [{ id: 'remote', endpoint: ep.url }],
       port: 0,
     });
@@ -1127,7 +1127,7 @@ describe('Endpoint Test connection — POST /api/sources/:id/test-connection (#3
     const ep = await startFakeEndpoint('fail');
     cleanup.push(ep.close);
     Logger.overrideLogger(false);
-    const server = await createServer({
+    const server = await createTestServer({
       sources: [{ id: 'remote', endpoint: ep.url }],
       port: 0,
     });
@@ -1157,7 +1157,7 @@ describe('Endpoint Test connection — POST /api/sources/:id/test-connection (#3
     const ep = await startFakeEndpoint('ok');
     cleanup.push(ep.close);
     Logger.overrideLogger(false);
-    const server = await createServer({
+    const server = await createTestServer({
       sources: [{ id: 'remote', endpoint: ep.url }],
       port: 0,
       readOnly: true,
@@ -1176,7 +1176,7 @@ describe('Endpoint Test connection — POST /api/sources/:id/test-connection (#3
     const ep = await startFakeEndpoint('ok');
     cleanup.push(ep.close);
     Logger.overrideLogger(false);
-    const server = await createServer({
+    const server = await createTestServer({
       sources: [{ id: 'remote', endpoint: ep.url }],
       port: 0,
     });
@@ -1199,7 +1199,7 @@ describe('Endpoint Test connection — POST /api/sources/:id/test-connection (#3
       '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
     );
     Logger.overrideLogger(false);
-    const server = await createServer({
+    const server = await createTestServer({
       sources: [{ id: 'mem', glob: join(dir, '*.ttl') }],
       port: 0,
     });

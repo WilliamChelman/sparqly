@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createServer, type CreatedServer } from '../bootstrap';
+import { createTestServer, type CreatedServer } from '../bootstrap/create-test-server';
 
 interface Harness {
   server: CreatedServer;
@@ -22,7 +22,7 @@ async function startHarness(
   if (initialSidecarContents !== undefined) {
     await writeFile(sidecarPath, initialSidecarContents, 'utf8');
   }
-  const server = await createServer({
+  const server = await createTestServer({
     sources: [{ id: 'blank', empty: true }],
     port: 0,
     savedQueriesPath: sidecarPath,

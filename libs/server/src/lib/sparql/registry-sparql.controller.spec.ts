@@ -3,11 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  createServer,
-  type CreatedServer,
-  type SpawnIndexBuild,
-} from '../bootstrap';
+import { type CreatedServer, type SpawnIndexBuild } from '../bootstrap';
+import { createTestServer } from '../bootstrap/create-test-server';
 
 const SAMPLE_A = '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n';
 const SAMPLE_B = '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .\n';
@@ -55,7 +52,7 @@ describe('RegistrySparqlController — /api/sparql alias', () => {
   });
 
   it('forwards GET /api/sparql to the `default: true` source', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'alpha', glob: join(dirA, '*.ttl') },
         { id: 'beta', glob: join(dirB, '*.ttl'), default: true },
@@ -77,7 +74,7 @@ describe('RegistrySparqlController — /api/sparql alias', () => {
   });
 
   it('forwards POST /api/sparql to the sole served source even without a default marker', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'alpha', glob: join(dirA, '*.ttl') }],
       port: 0,
     });
@@ -96,7 +93,7 @@ describe('RegistrySparqlController — /api/sparql alias', () => {
   });
 
   it('returns 400 with a structured no-default-multi body when 2+ sources are served with no default', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'alpha', glob: join(dirA, '*.ttl') },
         { id: 'beta', glob: join(dirB, '*.ttl') },
@@ -118,7 +115,7 @@ describe('RegistrySparqlController — /api/sparql alias', () => {
   });
 
   it('returns 502 with a structured query-execution body when the SPARQL query is malformed', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'alpha', glob: join(dirA, '*.ttl'), default: true }],
       port: 0,
     });
@@ -139,7 +136,7 @@ describe('RegistrySparqlController — /api/sparql alias', () => {
   });
 
   it('still routes /api/sparql/:id and returns 400 with a structured unknown-ref body for an unknown @id', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'alpha', glob: join(dirA, '*.ttl') },
         { id: 'beta', glob: join(dirB, '*.ttl') },
@@ -169,7 +166,7 @@ describe('RegistrySparqlController — /api/sparql alias', () => {
   });
 
   it('returns 503 with a structured indexing body for the first request to a not-yet-indexed disk-backed glob (ADR-0041 / #340)', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'big', glob: join(dirA, '*.ttl'), storage: 'disk' }],
       port: 0,
       configDir: cfgDir,
@@ -192,7 +189,7 @@ describe('RegistrySparqlController — /api/sparql alias', () => {
   });
 
   it('answers other registered sources normally while a disk-backed glob is still indexing', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'big', glob: join(dirA, '*.ttl'), storage: 'disk' },
         { id: 'small', glob: join(dirB, '*.ttl') },
@@ -225,7 +222,7 @@ describe('RegistrySparqlController — /api/sparql alias', () => {
   });
 
   it('accepts a path id that already carries the `@` address prefix without doubling it', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'alpha', glob: join(dirA, '*.ttl') }],
       port: 0,
     });

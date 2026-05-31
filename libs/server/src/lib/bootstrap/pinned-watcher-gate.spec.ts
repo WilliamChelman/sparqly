@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { SparqlyLogFields, SparqlyLogger } from 'common';
-import { createServer, type CreatedServer } from './create-server';
+import { createTestServer, type CreatedServer } from './create-test-server';
 
 const execFileAsync = promisify(execFile);
 
@@ -86,7 +86,7 @@ describe('watcher gate — pinned split-glob is never busted by FS events (ADR-0
 
   it('does not emit `split-children-invalidated` for a `gitRef`-pinned split-glob when a working-tree file changes', async () => {
     const { logger, entries } = recordingLogger();
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         {
           id: 'docs',

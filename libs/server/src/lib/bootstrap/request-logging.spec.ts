@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SparqlyLogFields, SparqlyLogger } from 'common';
-import { createServer, type CreatedServer } from '../bootstrap';
+import { createTestServer, type CreatedServer } from './create-test-server';
 
 interface RecordedLog {
   level: 'debug' | 'info' | 'warn' | 'error';
@@ -45,7 +45,7 @@ describe('serve — HTTP request logging interceptor', () => {
     await writeFile(join(dir, 'data.ttl'), SAMPLE);
     const rec = recordingLogger();
     entries = rec.entries;
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'files', glob: join(dir, '*.ttl'), default: true }],
       port: 0,
       logger: rec.logger,

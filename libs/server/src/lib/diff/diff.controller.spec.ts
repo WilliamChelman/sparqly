@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createServer, type CreatedServer } from '../bootstrap';
+import { createTestServer, type CreatedServer } from '../bootstrap/create-test-server';
 
 const SAMPLE_A =
   '@prefix ex: <http://example.org/> . ex:a ex:p ex:b . ex:a ex:p ex:c .\n';
@@ -25,7 +25,7 @@ describe('POST /api/diff', () => {
     dirB = await mkdtemp(join(tmpdir(), 'sparqly-diff-ctl-b-'));
     await writeFile(join(dirA, 'a.ttl'), SAMPLE_A);
     await writeFile(join(dirB, 'b.ttl'), SAMPLE_B);
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'alpha', glob: join(dirA, '*.ttl') },
         { id: 'beta', glob: join(dirB, '*.ttl'), default: true },
@@ -208,7 +208,7 @@ describe('POST /api/diff — single served source', () => {
     Logger.overrideLogger(false);
     dir = await mkdtemp(join(tmpdir(), 'sparqly-diff-single-'));
     await writeFile(join(dir, 'a.ttl'), SAMPLE_A);
-    server = await createServer({
+    server = await createTestServer({
       sources: join(dir, '*.ttl'),
       port: 0,
     });

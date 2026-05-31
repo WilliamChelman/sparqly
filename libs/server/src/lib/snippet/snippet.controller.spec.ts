@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Logger } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createServer, type CreatedServer } from '../bootstrap';
+import { createTestServer, type CreatedServer } from '../bootstrap/create-test-server';
 
 const SAMPLE_TTL = [
   '@prefix ex: <http://example.org/> .',
@@ -36,7 +36,7 @@ describe('GET /api/source-snippet', () => {
     dir = await mkdtemp(join(tmpdir(), 'sparqly-snippet-'));
     dataPath = join(dir, 'data.ttl');
     await writeFile(dataPath, SAMPLE_TTL);
-    server = await createServer({
+    server = await createTestServer({
       sources: join(dir, '*.ttl'),
       port: 0,
     });
@@ -182,7 +182,7 @@ describe('GET /api/source-snippet', () => {
     const goneDir = await mkdtemp(join(tmpdir(), 'sparqly-snippet-gone-'));
     const gonePath = join(goneDir, 'gone.ttl');
     await writeFile(gonePath, SAMPLE_TTL);
-    const goneServer = await createServer({
+    const goneServer = await createTestServer({
       sources: join(goneDir, '*.ttl'),
       port: 0,
     });
@@ -226,7 +226,7 @@ describe('GET /api/source-snippet — --watch rebuild refreshes the allow-list',
       join(dir, 'a.ttl'),
       '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
     );
-    server = await createServer({
+    server = await createTestServer({
       sources: join(dir, '*.ttl'),
       port: 0,
       watch: true,

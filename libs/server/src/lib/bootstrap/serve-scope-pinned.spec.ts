@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { SparqlyLogFields, SparqlyLogger } from 'common';
-import { createServer, type CreatedServer } from './create-server';
+import { createTestServer, type CreatedServer } from './create-test-server';
 
 interface RecordedLog {
   level: 'debug' | 'info' | 'warn' | 'error';
@@ -83,7 +83,7 @@ describe('createServer — `--source @id:ref` scopes to a pinned variant (ADR-00
   });
 
   it('serves only the pinned variant and returns content from the git tree at the ref', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'foaf', glob: join(repo, 'foaf.ttl') }],
       scope: '@foaf:v1.2.0',
       port: 0,
@@ -110,7 +110,7 @@ describe('createServer — `--source @id:ref` scopes to a pinned variant (ADR-00
   });
 
   it('GET /api/sparql/<id>:<ref> resolves an on-demand pinned variant alongside the unpinned route', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'foaf', glob: join(repo, 'foaf.ttl') }],
       port: 0,
     });
@@ -144,7 +144,7 @@ describe('createServer — `--source @id:ref` scopes to a pinned variant (ADR-00
 
   it('logs `<ref> → <sha>` at boot for every floating-ref pinned source', async () => {
     const { logger, entries } = recordingLogger();
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'foaf', glob: join(repo, 'foaf.ttl'), gitRef: 'main' }],
       port: 0,
       logger,
@@ -159,7 +159,7 @@ describe('createServer — `--source @id:ref` scopes to a pinned variant (ADR-00
   });
 
   it('keeps floating-ref source content stable across requests even when the working-tree file changes', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'foaf', glob: join(repo, 'foaf.ttl'), gitRef: 'main' }],
       port: 0,
     });

@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { z } from 'zod';
-import type { SourceSpecInput } from 'core';
+import { formatTargetError, type SourceSpecInput } from 'core';
 import { createServer } from 'server';
 import { configureLogger } from '../logging';
 import { printServeSplash } from './serve-splash';
@@ -205,16 +205,10 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       scope = typeof config.source === 'string' ? config.source : undefined;
     }
 
-    if (sources.length === 0 && scope === undefined) {
-      throw new Error(
-        'No sources configured. Pass a positional/--source, or define `sources:` in your config.',
-      );
-    }
-
     // `main.ts` overwrites `process.argv[1]` with the bare program name.
     const cliEntry = require.main?.filename ?? __filename;
 
-    const created = await createServer({
+    const result = await createServer({
       sources,
       scope,
       port,
@@ -246,12 +240,20 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       logger: boundaryLog,
     });
 
-    const shutdown = makeShutdownHandler({
-      close: () => created.close(),
-      exit: (code) => process.exit(code),
-      logger: boundaryLog,
-    });
-    process.once('SIGINT', shutdown);
-    process.once('SIGTERM', shutdown);
+    result.match(
+      (created) => {
+        const shutdown = makeShutdownHandler({
+          close: () => created.close(),
+          exit: (code) => process.exit(code),
+          logger: boundaryLog,
+        });
+        process.once('SIGINT', shutdown);
+        process.once('SIGTERM', shutdown);
+      },
+      (error) => {
+        process.stderr.write(`error: ${formatTargetError(error)}\n`);
+        process.exit(1);
+      },
+    );
   },
 };

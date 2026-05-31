@@ -59,6 +59,82 @@ describe('resolveServeScopeResult — ok paths', () => {
     expect(scope.servedRegistry).toEqual([]);
     expect(scope.defaultId).toBeUndefined();
   });
+
+  it('never serves a `kind: reference` alias', () => {
+    const registry = parseSourceSpecs([
+      { id: 'files', glob: 'data/*.ttl' },
+      '@files',
+    ]);
+
+    const scope = resolveServeScopeResult(registry)._unsafeUnwrap();
+
+    expect(scope.servedRegistry).toEqual([
+      { kind: 'glob', id: 'files', glob: 'data/*.ttl' },
+    ]);
+  });
+
+  it('synthesizes a single @default pass-through endpoint entry for an inline URL', () => {
+    const registry = parseSourceSpecs([{ id: 'files', glob: 'data/*.ttl' }]);
+
+    const scope = resolveServeScopeResult(
+      registry,
+      'https://example.com/other',
+    )._unsafeUnwrap();
+
+    expect(scope.servedRegistry).toEqual([
+      {
+        kind: 'endpoint',
+        endpoint: 'https://example.com/other',
+        id: 'default',
+        default: true,
+      },
+    ]);
+    expect(scope.defaultId).toBe('default');
+  });
+
+  it('leaves a single source that already has an id untouched', () => {
+    const registry = parseSourceSpecs([{ id: 'files', glob: 'data/*.ttl' }]);
+
+    const scope = resolveServeScopeResult(registry)._unsafeUnwrap();
+
+    expect(scope.servedRegistry).toEqual(registry);
+    expect(scope.defaultId).toBe('files');
+  });
+});
+
+describe('resolveServeScopeResult — default recompute', () => {
+  it('keeps the surviving `default: true` marker as the default', () => {
+    const registry = parseSourceSpecs([
+      { id: 'a', glob: 'a/*.ttl', default: true },
+      { id: 'b', glob: 'b/*.ttl' },
+    ]);
+
+    expect(resolveServeScopeResult(registry)._unsafeUnwrap().defaultId).toBe(
+      'a',
+    );
+  });
+
+  it('falls back to the sole served entry when the default marker is filtered away', () => {
+    const registry = parseSourceSpecs([
+      { id: 'a', glob: 'a/*.ttl', default: true },
+      { id: 'b', glob: 'b/*.ttl' },
+    ]);
+
+    expect(
+      resolveServeScopeResult(registry, '@b')._unsafeUnwrap().defaultId,
+    ).toBe('b');
+  });
+
+  it('has no default with two-plus served sources and no marker', () => {
+    const registry = parseSourceSpecs([
+      { id: 'a', glob: 'a/*.ttl' },
+      { id: 'b', glob: 'b/*.ttl' },
+    ]);
+
+    expect(
+      resolveServeScopeResult(registry)._unsafeUnwrap().defaultId,
+    ).toBeUndefined();
+  });
 });
 
 describe('resolveServeScopeResult — err variants', () => {

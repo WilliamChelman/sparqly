@@ -5,7 +5,7 @@ import { HttpException, Logger } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { errAsync, okAsync } from 'neverthrow';
 import type { DescribeTopLevelError } from 'core';
-import { createServer, type CreatedServer } from '../bootstrap';
+import { createTestServer, type CreatedServer } from '../bootstrap/create-test-server';
 import { DescribeController } from './describe.controller';
 import type {
   DescribeResult,
@@ -27,7 +27,7 @@ describe('POST /api/describe — tracer-bullet (single glob source)', () => {
     Logger.overrideLogger(false);
     dir = await mkdtemp(join(tmpdir(), 'sparqly-describe-ctl-'));
     await writeFile(join(dir, 'data.ttl'), SAMPLE);
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'alpha', glob: join(dir, '*.ttl') }],
       port: 0,
     });
