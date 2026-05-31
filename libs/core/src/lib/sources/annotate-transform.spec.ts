@@ -2,7 +2,6 @@ import { DataFactory, Store } from 'n3';
 import { describe, expect, it } from 'vitest';
 import {
   ANNOTATE_SOURCE_TRANSFORM,
-  parseAnnotateTransform,
   parseAnnotateTransformResult,
 } from './annotate-transform';
 import { DEFAULT_ANNOTATION_PREDICATE_IRIS } from './source-record-builder';
@@ -20,52 +19,68 @@ function storeOf(records: ReadonlyArray<RdfRecord>): Store {
   return s;
 }
 
-describe('parseAnnotateTransform — schema', () => {
+/** Parse an `annotateSource` spec and unwrap its apply fn (valid-spec helper). */
+function applyOf(raw: unknown) {
+  return parseAnnotateTransformResult(raw)._unsafeUnwrap().apply;
+}
+
+/** Assert a spec is rejected with an `annotateSource` transform-parse variant. */
+function expectParseErr(raw: unknown, re: RegExp) {
+  const result = parseAnnotateTransformResult(raw);
+  expect(result.isErr()).toBe(true);
+  if (!result.isErr()) throw new Error('unreachable');
+  expect(result.error.kind).toBe('transform-parse');
+  expect(result.error.transformKey).toBe('annotateSource');
+  expect(result.error.message).toMatch(re);
+}
+
+describe('parseAnnotateTransformResult — schema', () => {
   it('accepts null/undefined as "all defaults"', () => {
-    expect(typeof parseAnnotateTransform(undefined)).toBe('function');
-    expect(typeof parseAnnotateTransform(null)).toBe('function');
+    expect(typeof applyOf(undefined)).toBe('function');
+    expect(typeof applyOf(null)).toBe('function');
   });
 
   it('accepts an empty object as "all defaults"', () => {
-    expect(typeof parseAnnotateTransform({})).toBe('function');
+    expect(typeof applyOf({})).toBe('function');
   });
 });
 
-describe('parseAnnotateTransform — schema rejections', () => {
+describe('parseAnnotateTransformResult — schema rejections', () => {
   it('rejects unknown fields with a stable named error', () => {
-    expect(() =>
-      parseAnnotateTransform({ bogus: 'x' } as unknown),
-    ).toThrow(/annotateSource.*unknown key.*bogus.*source.*file.*line/);
+    expectParseErr(
+      { bogus: 'x' } as unknown,
+      /annotateSource.*unknown key.*bogus.*source.*file.*line/,
+    );
   });
 
   it('rejects non-object non-null values', () => {
-    expect(() => parseAnnotateTransform(42 as unknown)).toThrow(
-      /annotateSource.*omitted.*null.*object/,
-    );
-    expect(() => parseAnnotateTransform([] as unknown)).toThrow(
-      /annotateSource.*omitted.*null.*object/,
-    );
-    expect(() => parseAnnotateTransform('forceAll' as unknown)).toThrow(
+    expectParseErr(42 as unknown, /annotateSource.*omitted.*null.*object/);
+    expectParseErr([] as unknown, /annotateSource.*omitted.*null.*object/);
+    expectParseErr(
+      'forceAll' as unknown,
       /annotateSource.*omitted.*null.*object/,
     );
   });
 
   it('rejects empty-string IRI override on any of source/file/line', () => {
-    expect(() =>
-      parseAnnotateTransform({ source: '' } as unknown),
-    ).toThrow(/annotateSource.*`source`.*non-empty IRI/);
-    expect(() =>
-      parseAnnotateTransform({ file: '' } as unknown),
-    ).toThrow(/annotateSource.*`file`.*non-empty IRI/);
-    expect(() =>
-      parseAnnotateTransform({ line: '' } as unknown),
-    ).toThrow(/annotateSource.*`line`.*non-empty IRI/);
+    expectParseErr(
+      { source: '' } as unknown,
+      /annotateSource.*`source`.*non-empty IRI/,
+    );
+    expectParseErr(
+      { file: '' } as unknown,
+      /annotateSource.*`file`.*non-empty IRI/,
+    );
+    expectParseErr(
+      { line: '' } as unknown,
+      /annotateSource.*`line`.*non-empty IRI/,
+    );
   });
 });
 
 describe('annotate transform behaviour — apply', () => {
   it('throws when invoked without per-file context', () => {
-    const apply = parseAnnotateTransform({});
+    const apply = applyOf({});
     expect(() => apply(new Store())).toThrow(
       /annotateSource.*per-file context/,
     );
@@ -77,7 +92,7 @@ describe('annotate transform behaviour — apply', () => {
       line: 3,
     };
     const input = storeOf([r]);
-    const apply = parseAnnotateTransform({});
+    const apply = applyOf({});
     const out = apply(input, ctxOf({ '/abs/a.ttl': [r] }));
 
     // Original asserted quad survives.
@@ -115,7 +130,7 @@ describe('annotate transform behaviour — apply', () => {
       line: 1,
     };
     const input = storeOf([r]);
-    const apply = parseAnnotateTransform({});
+    const apply = applyOf({});
     apply(input, ctxOf({ '/abs/a.ttl': [r] }));
     expect(input.size).toBe(1);
   });
@@ -124,7 +139,7 @@ describe('annotate transform behaviour — apply', () => {
     const r: RdfRecord = {
       quad: quad(namedNode('urn:s'), namedNode('urn:p'), namedNode('urn:o')),
     };
-    const apply = parseAnnotateTransform({});
+    const apply = applyOf({});
     const out = apply(storeOf([r]), ctxOf({ '/abs/a.jsonld': [r] }));
     const lineQuads = out.getQuads(
       null,
@@ -142,7 +157,7 @@ describe('annotate transform — pin provenance (ADR-0029, #273)', () => {
       quad: quad(namedNode('urn:s'), namedNode('urn:p'), namedNode('urn:o')),
       line: 3,
     };
-    const apply = parseAnnotateTransform({});
+    const apply = applyOf({});
     const out = apply(storeOf([r]), {
       perFileRecords: new Map([['/abs/a.ttl', [r]]]),
       pin: {
@@ -177,7 +192,7 @@ describe('annotate transform — pin provenance (ADR-0029, #273)', () => {
       quad: quad(namedNode('urn:s'), namedNode('urn:p'), namedNode('urn:o')),
       line: 1,
     };
-    const apply = parseAnnotateTransform({});
+    const apply = applyOf({});
     const out = apply(
       storeOf([r]),
       { perFileRecords: new Map([['/abs/a.ttl', [r]]]) },
@@ -232,14 +247,6 @@ describe('parseAnnotateTransformResult — Result-typed primary impl', () => {
     if (!result.isErr()) throw new Error('unreachable');
     expect(result.error.kind).toBe('transform-parse');
     expect(result.error.message).toMatch(/`source`.*non-empty IRI/);
-  });
-});
-
-describe('parseAnnotateTransform — legacy throw-wrapping adapter', () => {
-  it('still throws on a bad field, preserving the legacy message shape', () => {
-    expect(() => parseAnnotateTransform({ bogus: 'x' } as unknown)).toThrow(
-      /unknown key.*bogus/,
-    );
   });
 });
 

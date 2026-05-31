@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { diffStores } from './diff';
 import { groupRdfDiffByEntity, type HunkedRdfDiff } from './group-rdf-diff-by-entity';
-import { loadRdf } from '../engine';
+import { loadRdfResult } from '../engine';
 
 const UPDATE = process.env['UPDATE_GOLDENS'] === '1';
 const FIXTURES = join(__dirname, '..', '__fixtures__', 'group-rdf-diff-by-entity');
@@ -25,12 +25,16 @@ function stableJson(value: HunkedRdfDiff): string {
 
 describe('groupRdfDiffByEntity — era-shapes 3.2.0 vs 3.2.2 golden', () => {
   it('produces a byte-identical HunkedRdfDiff over the real SHACL fixture pair, exercising bnode absorption + sh:path identity end-to-end', async () => {
-    const left = await loadRdf({
-      sources: join(ERA_SHAPES_DIR, 'era-shapes-3.2.0.ttl'),
-    });
-    const right = await loadRdf({
-      sources: join(ERA_SHAPES_DIR, 'era-shapes-3.2.2.ttl'),
-    });
+    const left = (
+      await loadRdfResult({
+        sources: join(ERA_SHAPES_DIR, 'era-shapes-3.2.0.ttl'),
+      })
+    )._unsafeUnwrap();
+    const right = (
+      await loadRdfResult({
+        sources: join(ERA_SHAPES_DIR, 'era-shapes-3.2.2.ttl'),
+      })
+    )._unsafeUnwrap();
     const diff = await diffStores(
       { store: left.store },
       { store: right.store },

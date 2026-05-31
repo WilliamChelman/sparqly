@@ -9,7 +9,6 @@ import {
 import type {
   ParsedTransform,
   ParsedTransformResult,
-  TransformApply,
   TransformContext,
   TransformDefinition,
 } from './transform-spec';
@@ -36,20 +35,6 @@ export function parseAnnotateTransformResult(
     apply: (store, ctx) => applyAnnotate(store, ctx, predicates),
     config: predicates,
   }));
-}
-
-/**
- * @deprecated Use {@link parseAnnotateTransformResult} (ADR-0024). Retained
- * as a thin throw-wrapping adapter for the `transform-spec.ts` registry path,
- * which still surfaces parse failures as throws (Surface B, out of scope for
- * the #243 conversion).
- */
-export function parseAnnotateTransform(raw: unknown): TransformApply {
-  const result = parseAnnotateTransformResult(raw);
-  if (result.isErr()) {
-    throw new Error(result.error.message);
-  }
-  return result.value.apply;
 }
 
 export const ANNOTATE_SOURCE_TRANSFORM: TransformDefinition = {
@@ -182,7 +167,7 @@ function applyAnnotate(
   const perFileRecords = ctx?.perFileRecords;
   if (!perFileRecords) {
     throw new Error(
-      `\`${KEY}\` requires per-file context from the loader; apply via the source pipeline (resolveSource/loadSources)`,
+      `\`${KEY}\` requires per-file context from the loader; apply via the source pipeline (resolveSource)`,
     );
   }
   const pin = ctx?.pin;

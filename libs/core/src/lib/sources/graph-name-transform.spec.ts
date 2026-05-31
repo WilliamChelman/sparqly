@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   GRAPH_NAME_TRANSFORM,
   graphNameQuadRewriter,
-  parseGraphNameTransform,
   parseGraphNameTransformResult,
 } from './graph-name-transform';
 import type { RdfRecord } from '../engine';
@@ -20,93 +19,96 @@ function storeOf(records: ReadonlyArray<RdfRecord>): Store {
   return s;
 }
 
-describe('parseGraphNameTransform — shorthand', () => {
+/** Parse a `graphName` spec and unwrap its apply fn (valid-spec helper). */
+function applyOf(raw: unknown) {
+  return parseGraphNameTransformResult(raw)._unsafeUnwrap().apply;
+}
+
+/** Assert a spec is rejected with a `graphName` transform-parse variant. */
+function expectParseErr(raw: unknown, re: RegExp) {
+  const result = parseGraphNameTransformResult(raw);
+  expect(result.isErr()).toBe(true);
+  if (!result.isErr()) throw new Error('unreachable');
+  expect(result.error.kind).toBe('transform-parse');
+  expect(result.error.transformKey).toBe('graphName');
+  expect(result.error.message).toMatch(re);
+}
+
+describe('parseGraphNameTransformResult — shorthand', () => {
   it.each(['preserve', 'fillDefault', 'forceAll', 'flatten'] as const)(
     'parses shorthand %s into an apply function',
     (mode) => {
-      const apply = parseGraphNameTransform(mode);
-      expect(typeof apply).toBe('function');
+      expect(typeof applyOf(mode)).toBe('function');
     },
   );
 
   it('rejects a string that is not a known mode with a stable named error', () => {
-    expect(() => parseGraphNameTransform('bogus')).toThrow(
+    expectParseErr(
+      'bogus',
       /graphName.*unknown mode "bogus".*preserve.*fillDefault.*forceAll.*flatten/,
     );
   });
 
   it('rejects a non-string non-object value with a stable named error', () => {
-    expect(() => parseGraphNameTransform(42 as unknown)).toThrow(
-      /graphName.*string.*object/,
-    );
-    expect(() => parseGraphNameTransform(null as unknown)).toThrow(
-      /graphName.*string.*object/,
-    );
-    expect(() => parseGraphNameTransform([] as unknown)).toThrow(
-      /graphName.*string.*object/,
-    );
+    expectParseErr(42 as unknown, /graphName.*string.*object/);
+    expectParseErr(null as unknown, /graphName.*string.*object/);
+    expectParseErr([] as unknown, /graphName.*string.*object/);
   });
 });
 
-describe('parseGraphNameTransform — long form', () => {
+describe('parseGraphNameTransformResult — long form', () => {
   it('parses { mode } long form for any mode', () => {
-    const apply = parseGraphNameTransform({ mode: 'forceAll' });
-    expect(typeof apply).toBe('function');
+    expect(typeof applyOf({ mode: 'forceAll' })).toBe('function');
   });
 
   it('parses { mode, graph } for forceAll', () => {
-    const apply = parseGraphNameTransform({
-      mode: 'forceAll',
-      graph: 'urn:my:graph',
-    });
-    expect(typeof apply).toBe('function');
+    expect(
+      typeof applyOf({ mode: 'forceAll', graph: 'urn:my:graph' }),
+    ).toBe('function');
   });
 
   it('parses { mode, graph } for fillDefault', () => {
-    const apply = parseGraphNameTransform({
-      mode: 'fillDefault',
-      graph: 'urn:my:graph',
-    });
-    expect(typeof apply).toBe('function');
+    expect(
+      typeof applyOf({ mode: 'fillDefault', graph: 'urn:my:graph' }),
+    ).toBe('function');
   });
 
   it('rejects { mode: preserve, graph } with a stable named error', () => {
-    expect(() =>
-      parseGraphNameTransform({ mode: 'preserve', graph: 'urn:g' }),
-    ).toThrow(/graphName.*`graph`.*preserve.*forceAll.*fillDefault/);
+    expectParseErr(
+      { mode: 'preserve', graph: 'urn:g' },
+      /graphName.*`graph`.*preserve.*forceAll.*fillDefault/,
+    );
   });
 
   it('rejects { mode: flatten, graph } with a stable named error', () => {
-    expect(() =>
-      parseGraphNameTransform({ mode: 'flatten', graph: 'urn:g' }),
-    ).toThrow(/graphName.*`graph`.*flatten.*forceAll.*fillDefault/);
+    expectParseErr(
+      { mode: 'flatten', graph: 'urn:g' },
+      /graphName.*`graph`.*flatten.*forceAll.*fillDefault/,
+    );
   });
 
   it('rejects long form missing mode', () => {
-    expect(() =>
-      parseGraphNameTransform({ graph: 'urn:g' } as unknown),
-    ).toThrow(/graphName.*`mode`.*required/);
+    expectParseErr({ graph: 'urn:g' } as unknown, /graphName.*`mode`.*required/);
   });
 
   it('rejects long form with unknown mode', () => {
-    expect(() =>
-      parseGraphNameTransform({ mode: 'bogus' } as unknown),
-    ).toThrow(/graphName.*unknown mode "bogus"/);
+    expectParseErr(
+      { mode: 'bogus' } as unknown,
+      /graphName.*unknown mode "bogus"/,
+    );
   });
 
   it('rejects long form with unknown extra keys', () => {
-    expect(() =>
-      parseGraphNameTransform({
-        mode: 'forceAll',
-        bogus: true,
-      } as unknown),
-    ).toThrow(/graphName.*unknown key.*bogus/);
+    expectParseErr(
+      { mode: 'forceAll', bogus: true } as unknown,
+      /graphName.*unknown key.*bogus/,
+    );
   });
 });
 
 describe('graphName transform behaviour — preserve', () => {
   it('returns the input store unchanged (identity) for shorthand `preserve`', () => {
-    const apply = parseGraphNameTransform('preserve');
+    const apply = applyOf('preserve');
     const r: RdfRecord = {
       quad: quad(namedNode('urn:s'), namedNode('urn:p'), namedNode('urn:o')),
     };
@@ -116,7 +118,7 @@ describe('graphName transform behaviour — preserve', () => {
   });
 
   it('preserves declared named graphs from quad-format files', () => {
-    const apply = parseGraphNameTransform('preserve');
+    const apply = applyOf('preserve');
     const declared = namedNode('http://example.org/g');
     const r: RdfRecord = {
       quad: quad(
@@ -134,7 +136,7 @@ describe('graphName transform behaviour — preserve', () => {
 
 describe('graphName transform behaviour — flatten', () => {
   it('rewrites all named graphs to the default graph', () => {
-    const apply = parseGraphNameTransform('flatten');
+    const apply = applyOf('flatten');
     const r1: RdfRecord = {
       quad: quad(
         namedNode('urn:s'),
@@ -159,7 +161,7 @@ describe('graphName transform behaviour — flatten', () => {
   });
 
   it('leaves default-graph quads in the default graph (idempotent)', () => {
-    const apply = parseGraphNameTransform('flatten');
+    const apply = applyOf('flatten');
     const r: RdfRecord = {
       quad: quad(
         namedNode('urn:s'),
@@ -176,7 +178,7 @@ describe('graphName transform behaviour — flatten', () => {
 
 describe('graphName transform behaviour — forceAll', () => {
   it('places triple-format default-graph quads in their own file:// graph', () => {
-    const apply = parseGraphNameTransform('forceAll');
+    const apply = applyOf('forceAll');
     const file = '/abs/a.ttl';
     const r: RdfRecord = {
       quad: quad(namedNode('urn:s'), namedNode('urn:p'), namedNode('urn:o')),
@@ -188,7 +190,7 @@ describe('graphName transform behaviour — forceAll', () => {
   });
 
   it('rewrites declared named graphs from quad-format files to file:// per file', () => {
-    const apply = parseGraphNameTransform('forceAll');
+    const apply = applyOf('forceAll');
     const file = '/abs/a.nq';
     const r: RdfRecord = {
       quad: quad(
@@ -204,7 +206,7 @@ describe('graphName transform behaviour — forceAll', () => {
   });
 
   it('with override IRI rewrites every quad to that IRI', () => {
-    const apply = parseGraphNameTransform({
+    const apply = applyOf({
       mode: 'forceAll',
       graph: 'urn:my:graph',
     });
@@ -229,7 +231,7 @@ describe('graphName transform behaviour — forceAll', () => {
 
 describe('graphName transform behaviour — fillDefault', () => {
   it('places triple-format default-graph quads in file://', () => {
-    const apply = parseGraphNameTransform('fillDefault');
+    const apply = applyOf('fillDefault');
     const file = '/abs/a.ttl';
     const r: RdfRecord = {
       quad: quad(namedNode('urn:s'), namedNode('urn:p'), namedNode('urn:o')),
@@ -240,7 +242,7 @@ describe('graphName transform behaviour — fillDefault', () => {
   });
 
   it('preserves declared named graphs from quad-format files', () => {
-    const apply = parseGraphNameTransform('fillDefault');
+    const apply = applyOf('fillDefault');
     const file = '/abs/a.nq';
     const r: RdfRecord = {
       quad: quad(
@@ -256,7 +258,7 @@ describe('graphName transform behaviour — fillDefault', () => {
   });
 
   it('with override IRI substitutes the override for the synthetic file:// IRI', () => {
-    const apply = parseGraphNameTransform({
+    const apply = applyOf({
       mode: 'fillDefault',
       graph: 'urn:my:graph',
     });
@@ -312,12 +314,6 @@ describe('parseGraphNameTransformResult — Result-typed primary impl', () => {
     if (!result.isErr()) throw new Error('unreachable');
     expect(result.error.kind).toBe('transform-parse');
     expect(result.error.message).toMatch(/`graph`.*preserve/);
-  });
-});
-
-describe('parseGraphNameTransform — legacy throw-wrapping adapter', () => {
-  it('still throws on a bad mode, preserving the legacy message shape', () => {
-    expect(() => parseGraphNameTransform('bogus')).toThrow(/unknown mode/);
   });
 });
 

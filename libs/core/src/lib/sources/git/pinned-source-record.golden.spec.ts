@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { Store, Writer } from 'n3';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { parseAnnotateTransform } from '../annotate-transform';
+import { parseAnnotateTransformResult } from '../annotate-transform';
 import { resolveSourceResult } from '../resolve-source-result';
 import type { ParsedGlobSource } from '../source-spec';
 
@@ -80,7 +80,10 @@ describe('pinned-source N-Quads golden shape (ADR-0029, #273)', () => {
       id: 'foaf',
       gitRef,
       transforms: [
-        { key: 'annotateSource', apply: parseAnnotateTransform({}) },
+        {
+          key: 'annotateSource',
+          apply: parseAnnotateTransformResult({})._unsafeUnwrap().apply,
+        },
       ],
     };
   }

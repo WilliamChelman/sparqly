@@ -43,7 +43,7 @@ export interface LoadResult {
    * pipeline — transforms like `graphName` need per-quad file provenance that
    * cannot be recovered from the merged Store alone. Omitted by callers that
    * synthesize a `LoadResult` without a backing file load (e.g. endpoint
-   * loads in `loadSources`).
+   * loads in `resolveSource`).
    */
   perFileRecords?: ReadonlyMap<string, ReadonlyArray<RdfRecord>>;
 }
@@ -139,20 +139,4 @@ function parseFiles(
 
 function normalizeGlobs(sources: string | string[]): ReadonlyArray<string> {
   return Array.isArray(sources) ? [...sources] : [sources];
-}
-
-/**
- * @deprecated Use {@link loadRdfResult} (ADR-0024). Retained as a thin
- * throw-based adapter for callers that have not migrated yet.
- */
-export async function loadRdf(options: LoadOptions): Promise<LoadResult> {
-  const result = await loadRdfResult(options);
-  if (result.isErr()) {
-    const e = result.error;
-    if (e.file !== undefined) {
-      throw new Error(`Failed to parse ${e.file}: ${e.message}`);
-    }
-    throw new Error(e.message);
-  }
-  return result.value;
 }

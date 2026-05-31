@@ -79,16 +79,6 @@ export function effectiveTransforms(
   ]);
 }
 
-// @deprecated Use {@link parseGraphNameTransformResult}. Thin throw-wrapping
-// adapter for the registry path that still surfaces parse failures as throws.
-export function parseGraphNameTransform(raw: unknown): TransformApply {
-  const result = parseGraphNameTransformResult(raw);
-  if (result.isErr()) {
-    throw new Error(result.error.message);
-  }
-  return result.value.apply;
-}
-
 export const GRAPH_NAME_TRANSFORM: TransformDefinition = {
   key: KEY,
   parse: (raw) => {
@@ -191,7 +181,7 @@ function rewriteWithFileGraphs(
   const perFileRecords = ctx?.perFileRecords;
   if (!perFileRecords) {
     throw new Error(
-      `\`${KEY}\` mode "${spec.mode}" requires per-file context from the loader; apply the transform via the source pipeline (resolveSource/loadSources)`,
+      `\`${KEY}\` mode "${spec.mode}" requires per-file context from the loader; apply the transform via the source pipeline (resolveSource)`,
     );
   }
   const config = specToConfig(spec);

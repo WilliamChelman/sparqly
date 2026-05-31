@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  loadEndpointToStore,
-  loadEndpointToStoreResult,
-} from './endpoint-load';
+import { loadEndpointToStoreResult } from './endpoint-load';
 import { startFakeSparqlEndpoint } from '../test/fake-sparql-endpoint';
 
 describe('loadEndpointToStoreResult', () => {
@@ -53,22 +50,6 @@ describe('loadEndpointToStoreResult', () => {
       if (result.error.kind !== 'endpoint-fetch') throw new Error('unreachable');
       expect(result.error.endpoint).toBe(endpoint.url);
       expect(result.error.message.length).toBeGreaterThan(0);
-    } finally {
-      await endpoint.close();
-    }
-  });
-});
-
-describe('loadEndpointToStore (legacy adapter)', () => {
-  it('still throws with the legacy prefixed message for 5xx responses', async () => {
-    const endpoint = await startFakeSparqlEndpoint(() => ({
-      status: 500,
-      body: 'boom',
-    }));
-    try {
-      await expect(
-        loadEndpointToStore({ kind: 'endpoint', endpoint: endpoint.url }),
-      ).rejects.toThrow(new RegExp(`endpoint ${endpoint.url}`));
     } finally {
       await endpoint.close();
     }
