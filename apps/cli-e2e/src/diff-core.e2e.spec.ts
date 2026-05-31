@@ -164,7 +164,7 @@ describe('sparqly diff — core properties', () => {
   });
 
   describe('exit codes', () => {
-    it('exits 2 on a parse error in either side', async () => {
+    it('exits 32 (source: glob-load) on a parse error in either side', async () => {
       const bad = join(scratch, 'broken.ttl');
       await writeFile(bad, 'this is not valid turtle <<<');
 
@@ -175,19 +175,24 @@ describe('sparqly diff — core properties', () => {
         bad,
       ]);
 
-      expect(result.exitCode).toBe(2);
+      // ADR-0024 (#402): a side's source-resolution failure now surfaces through
+      // DiffErrorSignal (kind: source) with the stable per-variant exit code,
+      // not the generic exit 2 fallthrough.
+      expect(result.exitCode).toBe(32);
       expect(result.stdout).toBe('');
       expect(result.stderr).toMatch(/broken\.ttl/);
     });
 
-    it('exits 2 when only one positional argument is given (right side has no target)', async () => {
+    it('exits 51 (target: empty-registry) when only one positional argument is given (right side has no target)', async () => {
       const result = await runCli([
         'diff',
         '--quiet',
         diffFixture('domain.ttl'),
       ]);
 
-      expect(result.exitCode).toBe(2);
+      // ADR-0024 (#402): a target-selection failure now surfaces through
+      // DiffErrorSignal (kind: target) with the stable 50–53 exit code.
+      expect(result.exitCode).toBe(51);
       expect(result.stderr).toMatch(/registry is empty|no target source/i);
     });
 

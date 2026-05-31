@@ -81,7 +81,7 @@ export const sourceField: FieldDescriptor = {
 };
 
 // Legacy multi-source field, retained for `hash`, `serve`, `format`. New
-// commands should use `sourceField` + `selectTarget` + `resolveSource`.
+// commands should use `sourceField` + `selectTargetResult` + `resolveSourceResult`.
 export const sourcesField: FieldDescriptor = {
   key: 'sources',
   schema: z.union([sourceSpecInputSchema, z.array(sourceSpecInputSchema).min(1)]),

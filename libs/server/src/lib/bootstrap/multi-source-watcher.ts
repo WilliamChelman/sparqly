@@ -3,9 +3,10 @@ import * as chokidar from 'chokidar';
 import { Logger } from '@nestjs/common';
 import type { SparqlyLogger } from 'common';
 import {
+  formatSourceError,
   type GraphMode,
   type ParsedSource,
-  resolveSource,
+  resolveSourceResult,
   walkGlobPaths,
 } from 'core';
 import type { EngineMap } from './engine-map';
@@ -289,21 +290,33 @@ function createSourceRunner(
           : undefined;
       if (!storeRef) return;
       const start = Date.now();
-      const refreshed = await resolveSource(target.target, {
+      const refreshed = await resolveSourceResult(target.target, {
         graphMode: deps.graphMode,
         logger: deps.boundaryLogger,
       });
       if (disposed) return;
-      if (refreshed.mode === 'materialized') {
-        storeRef.current = refreshed.store;
-        target.onRebuiltFiles?.(refreshed.files);
-        deps.boundaryLogger.info('source-rebuilt', {
-          ...sourceField,
-          files: refreshed.files.length,
-          quads: refreshed.store.size,
-          ms: Date.now() - start,
-        });
-      }
+      refreshed.match(
+        (sources) => {
+          if (sources.mode !== 'materialized') return;
+          storeRef.current = sources.store;
+          target.onRebuiltFiles?.(sources.files);
+          deps.boundaryLogger.info('source-rebuilt', {
+            ...sourceField,
+            files: sources.files.length,
+            quads: sources.store.size,
+            ms: Date.now() - start,
+          });
+        },
+        (error) => {
+          // ADR-0024: source resolution now returns a typed Result. Preserve the
+          // existing swallow-and-log behavior — an FS-triggered rebuild failure
+          // must not throw out of the watcher.
+          deps.boundaryLogger.error('view-rebuild-failed', {
+            ...sourceField,
+            error: formatSourceError(error),
+          });
+        },
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       deps.boundaryLogger.error('view-rebuild-failed', {

@@ -8,8 +8,8 @@ import {
   formatSourceError,
   parseSourceSpecs,
   resolveInlineQueryResult,
-  resolveSource,
-  selectTarget,
+  resolveSourceResult,
+  selectTargetResult,
   storageTier,
   type AnnotationPredicateIris,
   type ParsedSource,
@@ -42,7 +42,11 @@ export function resolveDiffSide(
     return parseSourceSpecs([value])[0];
   }
   const { targetArg, positionalRef } = splitPositionalAddress(rawArg);
-  const target = selectTarget(effective, targetArg);
+  const selected = selectTargetResult(effective, targetArg);
+  if (selected.isErr()) {
+    throw new DiffErrorSignal({ kind: 'target', side, target: selected.error });
+  }
+  const target = selected.value;
   return positionalRef === undefined
     ? target
     : applyAtOverride(target, positionalRef);
@@ -97,9 +101,13 @@ export async function resolveSide(
     throw new DiffErrorSignal({ kind: 'source', side, source: rawRejection });
   }
 
-  const sources = await resolveSource(target, {
+  const resolved = await resolveSourceResult(target, {
     logger,
   });
+  if (resolved.isErr()) {
+    throw new DiffErrorSignal({ kind: 'source', side, source: resolved.error });
+  }
+  const sources = resolved.value;
   if (sources.mode === 'pass-through' || sources.mode === 'disk-backed') {
     // Unreachable in practice — the pre-check above blocks the only targets
     // that reach these resolution modes. Guard kept so the type narrowing

@@ -43,7 +43,7 @@ export interface LoadResult {
    * pipeline — transforms like `graphName` need per-quad file provenance that
    * cannot be recovered from the merged Store alone. Omitted by callers that
    * synthesize a `LoadResult` without a backing file load (e.g. endpoint
-   * loads in `resolveSource`).
+   * loads in `resolveSourceResult`).
    */
   perFileRecords?: ReadonlyMap<string, ReadonlyArray<RdfRecord>>;
 }

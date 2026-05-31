@@ -181,7 +181,7 @@ function rewriteWithFileGraphs(
   const perFileRecords = ctx?.perFileRecords;
   if (!perFileRecords) {
     throw new Error(
-      `\`${KEY}\` mode "${spec.mode}" requires per-file context from the loader; apply the transform via the source pipeline (resolveSource)`,
+      `\`${KEY}\` mode "${spec.mode}" requires per-file context from the loader; apply the transform via the source pipeline (resolveSourceResult)`,
     );
   }
   const config = specToConfig(spec);

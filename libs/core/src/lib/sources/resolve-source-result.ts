@@ -15,7 +15,7 @@ import {
   resolveDiskBackedGlob,
 } from './resolve-disk-backed-glob';
 import { parsePinnedFiles } from './parse-pinned-files';
-import type { QuerySources } from './resolve-source';
+import type { QuerySources } from './models';
 import type {
   ParsedFileSource,
   ParsedGlobSource,

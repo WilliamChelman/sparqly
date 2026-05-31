@@ -535,7 +535,7 @@ describe('DescribeService — multi-source aggregation', () => {
 
   describe('partial failure', () => {
     function registryWithBadSource(): DescribeService {
-      // `bad` points at a malformed turtle file, so resolveSource surfaces a
+      // `bad` points at a malformed turtle file, so resolveSourceResult surfaces a
       // real GlobLoadError. (Empty-glob is no longer a failure — ADR-0028.)
       const registry = parseSourceSpecs([
         { id: 'alpha', glob: paths.alphaTtl },

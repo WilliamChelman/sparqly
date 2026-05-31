@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ParsedSource } from 'core';
+import { DiffErrorSignal } from '../diff-error';
 import { resolveSide } from './side';
 
 function captureLogger() {
@@ -47,5 +48,26 @@ describe('resolveSide — no pass-through boundary warn (view chain removed, ADR
     ).catch(() => undefined);
 
     expect(logger.warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveSide — source-resolution errors route into a DiffErrorSignal', () => {
+  it('throws a DiffErrorSignal (kind: source) carrying the side when source resolution errs', async () => {
+    const target: ParsedSource = { kind: 'reference', ref: 'raw' };
+    const logger = captureLogger();
+
+    let caught: unknown;
+    try {
+      await resolveSide(target, {}, undefined, 'right', logger);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(DiffErrorSignal);
+    const { diffError } = caught as DiffErrorSignal;
+    expect(diffError.kind).toBe('source');
+    if (diffError.kind !== 'source') throw new Error('unreachable');
+    expect(diffError.side).toBe('right');
+    expect(diffError.source.kind).toBe('reference-target');
   });
 });

@@ -122,7 +122,7 @@ describe('EngineMap', () => {
     }
   });
 
-  it('two concurrent first-touch ensure() calls share one in-flight load (resolveSource runs exactly once)', async () => {
+  it('two concurrent first-touch ensure() calls share one in-flight load (resolveSourceResult runs exactly once)', async () => {
     await writeFile(
       join(dir, 'data.ttl'),
       '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',

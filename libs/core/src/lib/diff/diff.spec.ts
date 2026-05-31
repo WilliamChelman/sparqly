@@ -10,7 +10,7 @@ import {
   type RdfDiffResult,
 } from './diff';
 import { parseSourceSpec } from '../sources';
-import { resolveSource } from '../sources';
+import { resolveSourceResult } from '../sources';
 import { extractAnnotationPredicates } from '../sources';
 import type { SourceRecordSidecar } from '../sources';
 import type { Store } from 'n3';
@@ -23,7 +23,7 @@ interface ResolvedSide {
 
 async function resolveSide(spec: unknown): Promise<ResolvedSide> {
   const parsed = parseSourceSpec(spec as never);
-  const r = await resolveSource(parsed);
+  const r = (await resolveSourceResult(parsed))._unsafeUnwrap();
   if (r.mode !== 'materialized') throw new Error('expected materialized');
   return {
     store: r.store,
