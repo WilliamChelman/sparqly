@@ -323,8 +323,9 @@ describe('resolveDiffSide — selection precedence', () => {
     expect(target).toMatchObject({ kind: 'endpoint', id: 'live' });
   });
 
-  it('errors with the available `@ids` when the registry is ambiguous and no flag is given', () => {
-    expect(() =>
+  it('routes an ambiguous-registry target error into a DiffErrorSignal (kind: target) carrying the side', () => {
+    let caught: unknown;
+    try {
       resolveDiffSide(
         {
           sources: [
@@ -333,8 +334,18 @@ describe('resolveDiffSide — selection precedence', () => {
           ],
         },
         'left',
-      ),
-    ).toThrow(/@files.*@live/s);
+      );
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(DiffErrorSignal);
+    const { diffError } = caught as DiffErrorSignal;
+    expect(diffError.kind).toBe('target');
+    if (diffError.kind !== 'target') throw new Error('unreachable');
+    expect(diffError.side).toBe('left');
+    expect(diffError.target.kind).toBe('no-default-multi');
+    expect((caught as DiffErrorSignal).message).toMatch(/@files.*@live/s);
   });
 
   it('inline positional wins over a `default: true` entry', () => {

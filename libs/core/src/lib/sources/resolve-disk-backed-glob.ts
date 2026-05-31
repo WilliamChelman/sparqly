@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { type ResultAsync } from 'neverthrow';
 import { globIndexDir, openOrBuildGlobIndex } from '../glob-index';
 import type { SourceError } from './errors';
-import type { QuerySources } from './resolve-source';
+import type { QuerySources } from './models';
 import type { ResolveSourceResultOptions } from './resolve-source-result';
 import type { ParsedFileSource, ParsedGlobSource } from './source-spec';
 import type { ParsedTransform } from './transform-spec';

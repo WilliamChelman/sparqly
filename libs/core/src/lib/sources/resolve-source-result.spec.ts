@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Store } from 'n3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryEngine } from '../engine';
 import {
@@ -8,7 +9,25 @@ import {
   resolveSourceResult,
 } from './resolve-source-result';
 import { parseSourceSpec, type ParsedFileSource } from './source-spec';
+import type { TransformDefinition } from './transform-spec';
 import type { GitPort } from './git/git-port';
+import {
+  startFakeSparqlEndpoint,
+  type FakeSparqlEndpoint,
+} from '../test/fake-sparql-endpoint';
+
+const SPARQL_JSON_TWO_BINDINGS = JSON.stringify({
+  head: { vars: ['s', 'p', 'o'] },
+  results: {
+    bindings: [
+      {
+        s: { type: 'uri', value: 'http://example.org/a' },
+        p: { type: 'uri', value: 'http://example.org/p' },
+        o: { type: 'uri', value: 'http://example.org/b' },
+      },
+    ],
+  },
+});
 
 describe('resolveSourceResult — endpoint target', () => {
   it('returns Result.ok with pass-through mode for an endpoint target', async () => {
@@ -319,5 +338,296 @@ describe('resolveSourceResult — disk-backed file child (ADR-0041)', () => {
     expect(result.isOk()).toBe(true);
     if (!result.isOk()) throw new Error('unreachable');
     expect(result.value.mode).toBe('materialized');
+  });
+});
+
+// Folded from the deleted legacy `resolve-source.spec.ts` (ADR-0024 #402): the
+// behavioral cases below were unique to the throw-adapter spec and have no twin
+// above — preserving them avoids coverage loss when the adapter is removed.
+
+describe('resolveSourceResult — endpoint target preserves connection details', () => {
+  let endpoint: FakeSparqlEndpoint | undefined;
+
+  afterEach(async () => {
+    if (endpoint) await endpoint.close();
+    endpoint = undefined;
+  });
+
+  it('preserves auth/headers/timeoutMs on object-form endpoint targets and never contacts the endpoint', async () => {
+    endpoint = await startFakeSparqlEndpoint(() => ({
+      contentType: 'application/sparql-results+json',
+      body: SPARQL_JSON_TWO_BINDINGS,
+    }));
+
+    const target = parseSourceSpec({
+      endpoint: endpoint.url,
+      auth: { type: 'bearer', token: 'tk-1' },
+      headers: { 'X-Tenant': 'acme' },
+      timeoutMs: 1234,
+    });
+    const result = await resolveSourceResult(target);
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    expect(result.value.mode).toBe('pass-through');
+    if (result.value.mode !== 'pass-through') throw new Error('unreachable');
+    expect(result.value.endpoint.auth).toEqual({
+      type: 'bearer',
+      token: 'tk-1',
+    });
+    expect(result.value.endpoint.headers).toEqual({ 'X-Tenant': 'acme' });
+    expect(result.value.endpoint.timeoutMs).toBe(1234);
+    expect(endpoint.requestCount()).toBe(0);
+  });
+});
+
+describe('resolveSourceResult — transform pipeline threading on glob target', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-rsr-thread-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('threads the parsed transform pipeline through the glob loader', async () => {
+    await writeFile(
+      join(dir, 'a.ttl'),
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    // Stub transform: drop every loaded quad. Confirms the executor is wired in.
+    const dropAll = {
+      key: 'stubDropAll',
+      parse: () => () => new Store(),
+    };
+    const target = parseSourceSpec(
+      { glob: join(dir, '*.ttl'), transforms: [{ stubDropAll: true }] },
+      { transformRegistry: [dropAll] },
+    );
+    const result = await resolveSourceResult(target);
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    if (result.value.mode !== 'materialized') throw new Error('unreachable');
+    expect(result.value.store.size).toBe(0);
+    // Files list still reflects what was matched on disk; only the Store content changed.
+    expect(result.value.files).toHaveLength(1);
+  });
+});
+
+describe('resolveSourceResult — file target (synthesized split-glob child)', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-rsr-file-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('materializes a kind:file target into a Store with one file', async () => {
+    const file = join(dir, 'alice.ttl');
+    await writeFile(
+      file,
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const target: ParsedFileSource = {
+      kind: 'file',
+      id: 'docs/alice.ttl',
+      path: file,
+      parentId: 'docs',
+    };
+    const result = await resolveSourceResult(target);
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    if (result.value.mode !== 'materialized') throw new Error('unreachable');
+    expect(result.value.store.size).toBe(1);
+    expect(result.value.files).toEqual([file]);
+  });
+
+  it('applies the transforms pipeline to a kind:file target (mirroring the one-file glob path)', async () => {
+    const file = join(dir, 'alice.ttl');
+    await writeFile(
+      file,
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+
+    const dropAll: TransformDefinition = {
+      key: 'stubDropAll',
+      parse: () => () => new Store(),
+    };
+    // Build the file source by hand and stuff in a parsed transform; the
+    // expansion code will copy these from the parent meta at synthesis time.
+    const target: ParsedFileSource = {
+      kind: 'file',
+      id: 'docs/alice.ttl',
+      path: file,
+      parentId: 'docs',
+      transforms: [{ key: 'stubDropAll', apply: dropAll.parse(true) }],
+    };
+    const result = await resolveSourceResult(target);
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    if (result.value.mode !== 'materialized') throw new Error('unreachable');
+    expect(result.value.store.size).toBe(0);
+    expect(result.value.files).toEqual([file]);
+  });
+});
+
+describe('resolveSourceResult — annotateSource transform on glob target', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sparqly-rsr-annotate-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  function fileQuads(store: Store, predicateIri: string) {
+    return store.getQuads(
+      null,
+      { termType: 'NamedNode', value: predicateIri } as never,
+      null,
+      null,
+    );
+  }
+
+  async function materialize(target: ReturnType<typeof parseSourceSpec>) {
+    const result = await resolveSourceResult(target);
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    if (result.value.mode !== 'materialized') throw new Error('unreachable');
+    return result.value.store;
+  }
+
+  it('emits source records with file:// IRI and per-(p,o) line for a Turtle source', async () => {
+    const file = join(dir, 'a.ttl');
+    await writeFile(
+      file,
+      [
+        '@prefix ex: <http://example.org/> .',
+        '',
+        'ex:a ex:p1 ex:b ;',
+        '  ex:p2 ex:c .',
+        '',
+      ].join('\n'),
+    );
+    const target = parseSourceSpec({
+      glob: join(dir, '*.ttl'),
+      transforms: [{ annotateSource: {} }],
+    });
+    const store = await materialize(target);
+
+    const fileTriples = fileQuads(store, 'urn:sparqly:file');
+    expect(fileTriples).toHaveLength(2);
+    for (const q of fileTriples) {
+      expect(q.object.value).toBe(`file://${file}`);
+    }
+    const lineTriples = fileQuads(store, 'urn:sparqly:line');
+    const lineValues = lineTriples
+      .map((q) => Number(q.object.value))
+      .sort((a, b) => a - b);
+    expect(lineValues).toEqual([3, 4]);
+  });
+
+  it('emits file-only source records (no line) for JSON-LD sources', async () => {
+    const file = join(dir, 'a.jsonld');
+    await writeFile(
+      file,
+      JSON.stringify({
+        '@context': { ex: 'http://example.org/' },
+        '@id': 'ex:a',
+        'ex:p': { '@id': 'ex:b' },
+      }),
+    );
+    const target = parseSourceSpec({
+      glob: join(dir, '*.jsonld'),
+      transforms: [{ annotateSource: {} }],
+    });
+    const store = await materialize(target);
+
+    const fileTriples = fileQuads(store, 'urn:sparqly:file');
+    expect(fileTriples).toHaveLength(1);
+    expect(fileTriples[0].object.value).toBe(`file://${file}`);
+    expect(fileQuads(store, 'urn:sparqly:line')).toHaveLength(0);
+  });
+
+  it('emits no source records when annotateSource is not listed', async () => {
+    const file = join(dir, 'a.ttl');
+    await writeFile(
+      file,
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const target = parseSourceSpec(join(dir, '*.ttl'));
+    const store = await materialize(target);
+
+    expect(fileQuads(store, 'urn:sparqly:source')).toHaveLength(0);
+    expect(fileQuads(store, 'urn:sparqly:file')).toHaveLength(0);
+    expect(fileQuads(store, 'urn:sparqly:line')).toHaveLength(0);
+  });
+
+  it('emits two records under one quoted-triple subject when the same triple lives in two files (graphName: preserve)', async () => {
+    const a = join(dir, 'a.ttl');
+    const b = join(dir, 'b.ttl');
+    const triple = '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .';
+    await writeFile(a, triple);
+    await writeFile(b, triple);
+
+    const target = parseSourceSpec({
+      glob: join(dir, '*.ttl'),
+      transforms: [{ graphName: 'preserve' }, { annotateSource: {} }],
+    });
+    const store = await materialize(target);
+
+    const sourceTriples = fileQuads(store, 'urn:sparqly:source');
+    expect(sourceTriples).toHaveLength(2);
+    // Both source quads share the same quoted-triple subject term.
+    expect(sourceTriples[0].subject.equals(sourceTriples[1].subject)).toBe(true);
+    // The blank-node records differ.
+    expect(sourceTriples[0].object.equals(sourceTriples[1].object)).toBe(false);
+
+    // Each record points to its own file.
+    const fileIris = fileQuads(store, 'urn:sparqly:file')
+      .map((q) => q.object.value)
+      .sort();
+    expect(fileIris).toEqual([`file://${a}`, `file://${b}`]);
+  });
+
+  it('honours custom predicate IRI overrides end-to-end', async () => {
+    const file = join(dir, 'a.ttl');
+    await writeFile(
+      file,
+      '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
+    );
+    const target = parseSourceSpec({
+      glob: join(dir, '*.ttl'),
+      transforms: [
+        {
+          annotateSource: {
+            source: 'http://my/source',
+            file: 'http://my/file',
+            line: 'http://my/line',
+          },
+        },
+      ],
+    });
+    const store = await materialize(target);
+
+    expect(fileQuads(store, 'http://my/source')).toHaveLength(1);
+    expect(fileQuads(store, 'http://my/file')).toHaveLength(1);
+    expect(fileQuads(store, 'http://my/line')).toHaveLength(1);
+    // Defaults are not emitted when overridden.
+    expect(fileQuads(store, 'urn:sparqly:source')).toHaveLength(0);
+    expect(fileQuads(store, 'urn:sparqly:file')).toHaveLength(0);
+    expect(fileQuads(store, 'urn:sparqly:line')).toHaveLength(0);
   });
 });

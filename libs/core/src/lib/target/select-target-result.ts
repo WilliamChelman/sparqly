@@ -7,9 +7,8 @@ import {
 import type { TargetError } from './errors';
 
 /**
- * Primary `Result`-typed implementation of registry-target selection. The
- * legacy `selectTarget` is a thin throw-wrapping adapter around this function
- * (ADR-0024). Each err variant is exhaustively enumerated in `TargetError`.
+ * `Result`-typed registry-target selection (ADR-0024). Each err variant is
+ * exhaustively enumerated in `TargetError`.
  */
 export function selectTargetResult(
   registry: ReadonlyArray<ParsedSource>,

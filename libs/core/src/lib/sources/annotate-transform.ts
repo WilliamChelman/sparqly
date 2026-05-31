@@ -167,7 +167,7 @@ function applyAnnotate(
   const perFileRecords = ctx?.perFileRecords;
   if (!perFileRecords) {
     throw new Error(
-      `\`${KEY}\` requires per-file context from the loader; apply via the source pipeline (resolveSource)`,
+      `\`${KEY}\` requires per-file context from the loader; apply via the source pipeline (resolveSourceResult)`,
     );
   }
   const pin = ctx?.pin;

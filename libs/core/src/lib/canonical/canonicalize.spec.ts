@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { canonicalizeStore, type CanonicalizeStoreResult } from './canonicalize';
 import { loadRdfResult, type GraphMode } from '../engine';
 import { parseSourceSpec } from '../sources';
-import { resolveSource } from '../sources';
+import { resolveSourceResult } from '../sources';
 import { applyTransformPipeline } from '../sources';
 import { parseGraphNameTransformResult } from '../sources';
 import type { ParsedTransform } from '../sources';
@@ -45,7 +45,7 @@ async function hashOf(file: string, transforms?: ReadonlyArray<unknown>) {
   const spec = parseSourceSpec(
     transforms === undefined ? { glob: file } : { glob: file, transforms },
   );
-  const resolved = await resolveSource(spec);
+  const resolved = (await resolveSourceResult(spec))._unsafeUnwrap();
   if (resolved.mode !== 'materialized') throw new Error('expected materialized');
   const { canonicalText } = await canonicalizeStore(resolved.store, {
     annotationPredicates: extractAnnotationPredicates(
@@ -216,8 +216,8 @@ describe('canonicalize from sources (load → transform → canonicalize)', () =
       transforms: [{ annotateSource: {} }],
     });
 
-    const plain = await resolveSource(plainSpec);
-    const annotated = await resolveSource(annotatedSpec);
+    const plain = (await resolveSourceResult(plainSpec))._unsafeUnwrap();
+    const annotated = (await resolveSourceResult(annotatedSpec))._unsafeUnwrap();
     if (plain.mode !== 'materialized' || annotated.mode !== 'materialized') {
       throw new Error('expected materialized');
     }
@@ -319,8 +319,8 @@ describe('canonicalize from sources (load → transform → canonicalize)', () =
       transforms: [{ annotateSource: customPredicates }],
     });
 
-    const plain = await resolveSource(plainSpec);
-    const annotated = await resolveSource(annotatedSpec);
+    const plain = (await resolveSourceResult(plainSpec))._unsafeUnwrap();
+    const annotated = (await resolveSourceResult(annotatedSpec))._unsafeUnwrap();
     if (plain.mode !== 'materialized' || annotated.mode !== 'materialized') {
       throw new Error('expected materialized');
     }
@@ -344,7 +344,7 @@ describe('canonicalize from sources (load → transform → canonicalize)', () =
       ` + '\n',
     );
     const spec = parseSourceSpec({ glob: file });
-    const resolved = await resolveSource(spec);
+    const resolved = (await resolveSourceResult(spec))._unsafeUnwrap();
     if (resolved.mode !== 'materialized') throw new Error('expected materialized');
 
     const result = await canonicalizeStore(resolved.store);
