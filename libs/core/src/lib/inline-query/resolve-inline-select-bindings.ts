@@ -209,21 +209,6 @@ function executeSelectBindingsResult(
   });
 }
 
-/** @deprecated Use {@link resolveInlineSelectBindingsResult}. Throw-based adapter. */
-export async function resolveInlineSelectBindings(
-  input: InlineSelectBindingsInput,
-): Promise<InlineSelectBindingsResult> {
-  const result = await resolveInlineSelectBindingsResult(input);
-  if (result.isErr()) {
-    const err = result.error;
-    if (err.kind === 'endpoint-fetch') {
-      throw new Error(`endpoint ${err.endpoint}: ${err.message}`);
-    }
-    throw new Error(err.message);
-  }
-  return result.value;
-}
-
 // Variants the upstream resolver never actually produces here; collapse to
 // inline-query-validation so the caller's narrower union stays exhaustive.
 function narrowUpstreamError(

@@ -5,8 +5,9 @@ import type { SparqlyLogger } from 'common';
 import {
   extractAnnotationPredicates,
   formatRawPassThroughRejection,
+  formatSourceError,
   parseSourceSpecs,
-  resolveInlineQuery,
+  resolveInlineQueryResult,
   resolveSource,
   selectTarget,
   storageTier,
@@ -70,14 +71,21 @@ export async function resolveSide(
 ): Promise<SideResolved> {
   if (inlineQuery !== undefined) {
     const upstream = inlineQueryUpstream(target, side);
-    const store = await resolveInlineQuery({
+    const resolved = await resolveInlineQueryResult({
       source: upstream,
       query: inlineQuery,
       logger,
     });
+    if (resolved.isErr()) {
+      throw new DiffErrorSignal({
+        kind: 'anonymous-view-execution',
+        side,
+        message: formatSourceError(resolved.error),
+      });
+    }
     return {
       fileCount: 0,
-      store,
+      store: resolved.value,
       prefixes: {},
       annotationPredicates: extractAnnotationPredicates(undefined),
       annotated: false,

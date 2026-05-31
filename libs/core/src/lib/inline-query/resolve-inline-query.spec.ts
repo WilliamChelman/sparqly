@@ -2,12 +2,9 @@ import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  resolveInlineQuery,
-  resolveInlineQueryResult,
-} from './resolve-inline-query';
+import { resolveInlineQueryResult } from './resolve-inline-query';
 
-describe('resolveInlineQuery — cache bypass (regression for #83)', () => {
+describe('resolveInlineQueryResult — cache bypass (regression for #83)', () => {
   let dataDir: string;
   let cwdSandbox: string;
   let originalCwd: string;
@@ -35,12 +32,14 @@ describe('resolveInlineQuery — cache bypass (regression for #83)', () => {
         'ex:drop ex:p ex:v2 .',
       ].join('\n'),
     );
-    const store = await resolveInlineQuery({
+    const result = await resolveInlineQueryResult({
       source: { glob: a },
       query:
         'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o FILTER(?s = ex:keep) }',
     });
-    const subjects = store
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    const subjects = result.value
       .getQuads(null, null, null, null)
       .map((q) => q.subject.value);
     expect(subjects).toEqual(['http://example.org/keep']);
@@ -49,7 +48,7 @@ describe('resolveInlineQuery — cache bypass (regression for #83)', () => {
   it('does not create a .sparqly/cache directory under cwd', async () => {
     const a = join(dataDir, 'a.ttl');
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
-    await resolveInlineQuery({
+    await resolveInlineQueryResult({
       source: { glob: a },
       query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
     });
