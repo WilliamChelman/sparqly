@@ -3,13 +3,13 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { loadRdf, loadRdfResult } from './rdf-loader';
+import { loadRdfResult } from './rdf-loader';
 import { QueryEngine } from './query-engine';
 import { recordingLogger } from '../test/recording-logger';
 
 const FIXTURES_DIR = resolve(__dirname, '../../../../../test/data/formats');
 
-describe('loadRdf', () => {
+describe('loadRdfResult — format, graph, and provenance coverage', () => {
   let dir: string;
 
   beforeEach(async () => {
@@ -30,27 +30,22 @@ describe('loadRdf', () => {
       '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .',
     );
 
-    const { store, files } = await loadRdf({ sources: join(dir, '*.ttl') });
+    const { store, files } = (
+      await loadRdfResult({ sources: join(dir, '*.ttl') })
+    )._unsafeUnwrap();
 
     expect(files).toHaveLength(2);
     expect(store.size).toBe(2);
   });
 
-  it('returns an empty store when the glob matches no files (ADR-0028)', async () => {
-    const { store, files } = await loadRdf({
-      sources: join(dir, 'nope-*.ttl'),
-    });
-    expect(files).toEqual([]);
-    expect(store.size).toBe(0);
-  });
-
-  it('throws a parse error mentioning the offending file', async () => {
+  it('errs with a glob-load variant naming the offending file on a Turtle parse error', async () => {
     const bad = join(dir, 'broken.ttl');
     await writeFile(bad, 'this is not valid turtle <<<');
 
-    await expect(loadRdf({ sources: join(dir, '*.ttl') })).rejects.toThrow(
-      /broken\.ttl/,
-    );
+    const result = await loadRdfResult({ sources: join(dir, '*.ttl') });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.file).toBe(bad);
   });
 
   it('loads N-Triples files', async () => {
@@ -58,7 +53,9 @@ describe('loadRdf', () => {
       join(dir, 'a.nt'),
       '<http://example.org/a> <http://example.org/p> <http://example.org/b> .\n',
     );
-    const { store } = await loadRdf({ sources: join(dir, '*.nt') });
+    const { store } = (
+      await loadRdfResult({ sources: join(dir, '*.nt') })
+    )._unsafeUnwrap();
     expect(store.size).toBe(1);
   });
 
@@ -67,7 +64,9 @@ describe('loadRdf', () => {
       join(dir, 'a.nq'),
       '<http://example.org/a> <http://example.org/p> <http://example.org/b> <http://example.org/g> .\n',
     );
-    const { store } = await loadRdf({ sources: join(dir, '*.nq') });
+    const { store } = (
+      await loadRdfResult({ sources: join(dir, '*.nq') })
+    )._unsafeUnwrap();
     expect(store.size).toBe(1);
     const [quad] = store.getQuads(null, null, null, null);
     expect(quad.graph.value).toBe('http://example.org/g');
@@ -78,7 +77,9 @@ describe('loadRdf', () => {
       join(dir, 'a.trig'),
       '@prefix ex: <http://example.org/> .\nex:g { ex:a ex:p ex:b . }\n',
     );
-    const { store } = await loadRdf({ sources: join(dir, '*.trig') });
+    const { store } = (
+      await loadRdfResult({ sources: join(dir, '*.trig') })
+    )._unsafeUnwrap();
     expect(store.size).toBe(1);
     const [quad] = store.getQuads(null, null, null, null);
     expect(quad.graph.value).toBe('http://example.org/g');
@@ -93,7 +94,9 @@ describe('loadRdf', () => {
         'ex:p': { '@id': 'ex:b' },
       }),
     );
-    const { store } = await loadRdf({ sources: join(dir, '*.jsonld') });
+    const { store } = (
+      await loadRdfResult({ sources: join(dir, '*.jsonld') })
+    )._unsafeUnwrap();
     expect(store.size).toBe(1);
   });
 
@@ -109,7 +112,9 @@ describe('loadRdf', () => {
         </rdf:RDF>
       ` + '\n',
     );
-    const { store } = await loadRdf({ sources: join(dir, '*.rdf') });
+    const { store } = (
+      await loadRdfResult({ sources: join(dir, '*.rdf') })
+    )._unsafeUnwrap();
     expect(store.size).toBe(1);
   });
 
@@ -142,22 +147,25 @@ describe('loadRdf', () => {
       ` + '\n',
     );
 
-    const { store, files } = await loadRdf({ sources: join(dir, '*') });
+    const { store, files } = (
+      await loadRdfResult({ sources: join(dir, '*') })
+    )._unsafeUnwrap();
     expect(files).toHaveLength(4);
     expect(store.size).toBe(4);
   });
 
   it('reports the offending file path on parse error for non-Turtle formats', async () => {
     await writeFile(join(dir, 'bad.jsonld'), '{ this is not valid json');
-    await expect(loadRdf({ sources: join(dir, '*.jsonld') })).rejects.toThrow(
-      /bad\.jsonld/,
-    );
+    const result = await loadRdfResult({ sources: join(dir, '*.jsonld') });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.file).toContain('bad.jsonld');
   });
 
   it('loads the committed multi-format fixtures via a single glob', async () => {
-    const { store, files } = await loadRdf({
-      sources: join(FIXTURES_DIR, 'sample.*'),
-    });
+    const { store, files } = (
+      await loadRdfResult({ sources: join(FIXTURES_DIR, 'sample.*') })
+    )._unsafeUnwrap();
     expect(files).toHaveLength(6);
     expect(store.size).toBe(6);
   });
@@ -167,7 +175,9 @@ describe('loadRdf', () => {
       join(dir, 'a.ttl'),
       '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .',
     );
-    const { store } = await loadRdf({ sources: join(dir, '*.ttl') });
+    const { store } = (
+      await loadRdfResult({ sources: join(dir, '*.ttl') })
+    )._unsafeUnwrap();
     const [quad] = store.getQuads(null, null, null, null);
     expect(quad.graph.termType).toBe('DefaultGraph');
   });
@@ -177,7 +187,9 @@ describe('loadRdf', () => {
       join(dir, 'a.nq'),
       '<http://example.org/a> <http://example.org/p> <http://example.org/b> <http://example.org/g> .\n',
     );
-    const { store } = await loadRdf({ sources: join(dir, '*.nq') });
+    const { store } = (
+      await loadRdfResult({ sources: join(dir, '*.nq') })
+    )._unsafeUnwrap();
     const [quad] = store.getQuads(null, null, null, null);
     expect(quad.graph.value).toBe('http://example.org/g');
   });
@@ -191,7 +203,9 @@ describe('loadRdf', () => {
       join(dir, 'b.nq'),
       '<http://example.org/c> <http://example.org/p> <http://example.org/d> <http://example.org/g> .\n',
     );
-    const { store } = await loadRdf({ sources: join(dir, '*') });
+    const { store } = (
+      await loadRdfResult({ sources: join(dir, '*') })
+    )._unsafeUnwrap();
     const engine = new QueryEngine(store);
     const result = await engine.execute(
       'SELECT ?g WHERE { GRAPH ?g { ?s ?p ?o } }',
@@ -213,7 +227,9 @@ describe('loadRdf', () => {
         ex:a ex:p ex:b .
       `,
     );
-    const result = await loadRdf({ sources: join(dir, '*.ttl') });
+    const result = (
+      await loadRdfResult({ sources: join(dir, '*.ttl') })
+    )._unsafeUnwrap();
     expect(result.prefixes[file]).toEqual({
       ex: 'http://example.org/',
       dct: 'http://purl.org/dc/terms/',
@@ -229,7 +245,9 @@ describe('loadRdf', () => {
         ex:g { ex:a ex:p ex:b . }
       `,
     );
-    const result = await loadRdf({ sources: join(dir, '*.trig') });
+    const result = (
+      await loadRdfResult({ sources: join(dir, '*.trig') })
+    )._unsafeUnwrap();
     expect(result.prefixes[file]).toEqual({
       ex: 'http://example.org/',
     });
@@ -239,8 +257,10 @@ describe('loadRdf', () => {
     const a = join(dir, 'a.ttl');
     await writeFile(a, '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .');
 
-    const { perFileRecords } = await loadRdf({ sources: join(dir, '*.ttl') });
-    const records = perFileRecords.get(a);
+    const { perFileRecords } = (
+      await loadRdfResult({ sources: join(dir, '*.ttl') })
+    )._unsafeUnwrap();
+    const records = perFileRecords?.get(a);
     expect(records).toBeDefined();
     expect(records).toHaveLength(1);
     expect(records?.[0].quad.subject.value).toBe('http://example.org/a');

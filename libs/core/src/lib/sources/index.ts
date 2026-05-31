@@ -11,7 +11,6 @@ export * from './graph-name-transform';
 export * from './source-record-builder';
 export * from './source-record-sidecar';
 export * from './source-path-display';
-export * from './load-sources';
 export * from './resolve-source';
 export * from './resolve-source-result';
 export * from './resolve-disk-backed-glob';

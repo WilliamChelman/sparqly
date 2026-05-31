@@ -99,7 +99,7 @@ async function streamToString(stream: NodeJS.ReadableStream): Promise<string> {
  * Turtle), evaluating `SELECT`/`CONSTRUCT` via Comunica — `SELECT` answers in
  * `application/sparql-results+json`, `CONSTRUCT` (and the RDF-star post-pass) in
  * `serializeDescribeWire` N-Quads. Every query body is recorded on `queries` so
- * tests can assert what `describeEndpoint` actually sent.
+ * tests can assert what `describeEndpointResult` actually sent.
  */
 async function startSparqlEndpoint(
   turtle: string,
@@ -113,7 +113,7 @@ async function startSparqlEndpoint(
     req.on('data', (chunk) => (body += chunk));
     req.on('end', () => {
       // Comunica probes a `sparql` source first with a body-less GET service
-      // description request, then POSTs queries form-urlencoded; `describeEndpoint`
+      // description request, then POSTs queries form-urlencoded; `describeEndpointResult`
       // POSTs the raw query (`application/sparql-query`). Normalise all three.
       const ct = String(req.headers['content-type'] ?? '');
       const fromUrl =
@@ -132,7 +132,7 @@ async function startSparqlEndpoint(
             return;
           }
           // Comunica understands RDF 1.2 triple terms `<<( … )>>`, not the
-          // SPARQL 1.1-star `<< … >>` form `describeEndpoint` sends.
+          // SPARQL 1.1-star `<< … >>` form `describeEndpointResult` sends.
           const query = raw.replace(/<<\s+(.+?)\s+>>/g, '<<( $1 )>>');
           const result = await engine.query(query, { sources: [store] });
           if (result.resultType === 'quads') {
@@ -185,7 +185,7 @@ describe('DescribeService — expandedPaths (ADR-0019)', () => {
     await rm(paths.dir, { recursive: true, force: true });
   });
 
-  it("forwards a source's expandedPaths to that endpoint's describeEndpoint and unions the extra hop in", async () => {
+  it("forwards a source's expandedPaths to that endpoint's describeEndpointResult and unions the extra hop in", async () => {
     const PIN = 'http://example.org/list';
     const ep = await startSparqlEndpoint(
       [
@@ -649,7 +649,7 @@ describe('DescribeService — multi-source aggregation', () => {
   });
 
   describe('endpoint / empty / reference dispatch', () => {
-    it('dispatches an endpoint source through describeEndpoint', async () => {
+    it('dispatches an endpoint source through describeEndpointResult', async () => {
       const ep = await startSparqlEndpoint(
         '@prefix ex: <http://example.org/> .\nex:alice ex:knows ex:bob .\n',
       );

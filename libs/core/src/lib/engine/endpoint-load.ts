@@ -59,18 +59,3 @@ async function executeEndpointLoad(
   }
   return out;
 }
-
-/**
- * @deprecated Use {@link loadEndpointToStoreResult} (ADR-0024). Retained as a
- * thin throw-based adapter for callers that have not migrated yet.
- */
-export async function loadEndpointToStore(
-  source: ParsedEndpointSource,
-  engine: ComunicaQueryEngine = new ComunicaQueryEngine(),
-): Promise<Store> {
-  const result = await loadEndpointToStoreResult(source, engine);
-  if (result.isErr()) {
-    throw new Error(`endpoint ${source.endpoint}: ${result.error.message}`);
-  }
-  return result.value;
-}

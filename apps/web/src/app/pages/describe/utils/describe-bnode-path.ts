@@ -7,7 +7,7 @@ import type { PathStep } from 'common';
  * The describe page renders an in-place expand affordance on every *dangling*
  * blank node that came from an `endpoint` source. "Dangling" means the node
  * appears in the rendered result but has no quad with it in subject position —
- * `describeEndpoint` is depth-0, so the seed's blank-node neighbours come back
+ * `describeEndpointResult` is depth-0, so the seed's blank-node neighbours come back
  * unexpanded. Clicking the affordance walks that node one hop deeper by re-calling
  * `/api/describe` with the node's predicate-pinned path-from-the-seed appended to
  * `expandedPaths`.

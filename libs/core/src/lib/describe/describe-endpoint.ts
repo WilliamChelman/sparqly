@@ -71,12 +71,9 @@ export interface DescribeEndpointResult {
  * edge direction or path query failed, or any dangling blank node remains.
  */
 /**
- * Primary `Result`-typed implementation of {@link describeEndpoint}. The
- * legacy throw-flavored entry point is a thin `unwrapOrThrow` adapter around
- * this function (ADR-0024). Only the double-failure case (both outgoing and
- * incoming edge queries reject) produces an `err`; partial failures are
- * folded into `truncated: true` on the ok branch, matching pre-conversion
- * semantics.
+ * `Result`-typed endpoint describe (ADR-0024). Only the double-failure case
+ * (both outgoing and incoming edge queries reject) produces an `err`; partial
+ * failures are folded into `truncated: true` on the ok branch.
  */
 export function describeEndpointResult(
   options: DescribeEndpointOptions,
@@ -143,19 +140,6 @@ export function describeEndpointResult(
       })(),
     ),
   );
-}
-
-/**
- * @deprecated Use {@link describeEndpointResult}. Kept as a throw-wrapping
- * adapter so non-converted callers can migrate at their own pace (ADR-0024
- * coexistence rule).
- */
-export async function describeEndpoint(
-  options: DescribeEndpointOptions,
-): Promise<DescribeEndpointResult> {
-  const result = await describeEndpointResult(options);
-  if (result.isOk()) return result.value;
-  throw new Error(`endpoint ${result.error.endpoint}: ${result.error.message}`);
 }
 
 /** Build a quad from `SELECT` bindings, defaulting an unbound graph to the default graph. */

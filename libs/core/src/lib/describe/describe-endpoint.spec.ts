@@ -1,6 +1,6 @@
 import { DataFactory, Store } from 'n3';
 import { afterEach, describe, expect, it } from 'vitest';
-import { describeEndpoint } from './describe-endpoint';
+import { describeEndpointResult } from './describe-endpoint';
 import type { ParsedEndpointSource } from '../sources';
 import {
   startFakeSparqlEndpoint,
@@ -52,7 +52,13 @@ describe('describeEndpoint (depth-0, ADR-0019)', () => {
       kind: 'endpoint',
       endpoint: ep.url,
     };
-    return describeEndpoint({ endpoint, seed: namedNode(iri), perSourceLimit });
+    return (
+      await describeEndpointResult({
+        endpoint,
+        seed: namedNode(iri),
+        perSourceLimit,
+      })
+    )._unsafeUnwrap();
   }
 
   it('emits every quad where the seed appears as subject or object via two CONSTRUCT queries', async () => {
@@ -284,26 +290,30 @@ describe('describeEndpoint (depth-0, ADR-0019)', () => {
       };
     });
     const endpoint: ParsedEndpointSource = { kind: 'endpoint', endpoint: ep.url };
-    const result = await describeEndpoint({
-      endpoint,
-      seed: namedNode('http://example.org/alice'),
-      perSourceLimit: 10000,
-    });
+    const result = (
+      await describeEndpointResult({
+        endpoint,
+        seed: namedNode('http://example.org/alice'),
+        perSourceLimit: 10000,
+      })
+    )._unsafeUnwrap();
     expect(result.quads).toHaveLength(1);
     expect(result.quads[0].object.value).toBe('http://example.org/bob');
     expect(result.truncated).toBe(true);
   });
 
-  it('throws when both edge directions fail', async () => {
+  it('errs with an endpoint-describe variant when both edge directions fail', async () => {
     ep = await startFakeSparqlEndpoint(() => ({ status: 500, body: 'down' }));
     const endpoint: ParsedEndpointSource = { kind: 'endpoint', endpoint: ep.url };
-    await expect(
-      describeEndpoint({
-        endpoint,
-        seed: namedNode('http://example.org/alice'),
-        perSourceLimit: 10000,
-      }),
-    ).rejects.toThrow();
+    const result = await describeEndpointResult({
+      endpoint,
+      seed: namedNode('http://example.org/alice'),
+      perSourceLimit: 10000,
+    });
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) throw new Error('unreachable');
+    expect(result.error.kind).toBe('endpoint-describe');
+    expect(result.error.endpoint).toBe(ep.url);
   });
 
   it('with paths: [] behaves exactly as the depth-0 slice (two queries + post-pass)', async () => {
@@ -314,12 +324,14 @@ describe('describeEndpoint (depth-0, ADR-0019)', () => {
     `;
     ep = await startStoreBackedSparqlEndpoint(storeFrom(quads));
     const endpoint: ParsedEndpointSource = { kind: 'endpoint', endpoint: ep.url };
-    const result = await describeEndpoint({
-      endpoint,
-      seed: namedNode('http://example.org/alice'),
-      perSourceLimit: 10000,
-      paths: [],
-    });
+    const result = (
+      await describeEndpointResult({
+        endpoint,
+        seed: namedNode('http://example.org/alice'),
+        perSourceLimit: 10000,
+        paths: [],
+      })
+    )._unsafeUnwrap();
     expect(result.truncated).toBe(false);
     expect(result.quads).toHaveLength(2);
     expect(ep.requestCount()).toBe(3);
@@ -336,22 +348,26 @@ describe('describeEndpoint (depth-0, ADR-0019)', () => {
     `;
     ep = await startStoreBackedSparqlEndpoint(storeFrom(quads));
     const endpoint: ParsedEndpointSource = { kind: 'endpoint', endpoint: ep.url };
-    const baseline = await describeEndpoint({
-      endpoint,
-      seed: namedNode('http://example.org/alice'),
-      perSourceLimit: 10000,
-      paths: [],
-    });
+    const baseline = (
+      await describeEndpointResult({
+        endpoint,
+        seed: namedNode('http://example.org/alice'),
+        perSourceLimit: 10000,
+        paths: [],
+      })
+    )._unsafeUnwrap();
     const depth0Requests = ep.requestCount();
     expect(baseline.quads).toHaveLength(2); // ex:name "Alice", ex:list _:b1
 
     const beforeExpansion = ep.requestCount();
-    const result = await describeEndpoint({
-      endpoint,
-      seed: namedNode('http://example.org/alice'),
-      perSourceLimit: 10000,
-      paths: [[{ predicate: 'http://example.org/list', inverse: false }]],
-    });
+    const result = (
+      await describeEndpointResult({
+        endpoint,
+        seed: namedNode('http://example.org/alice'),
+        perSourceLimit: 10000,
+        paths: [[{ predicate: 'http://example.org/list', inverse: false }]],
+      })
+    )._unsafeUnwrap();
     // One hop further: _:b1's own quads (ex:value "head", ex:next _:b2). The
     // chain past _:b2 stays dangling.
     expect(result.quads).toHaveLength(4);
@@ -377,12 +393,14 @@ describe('describeEndpoint (depth-0, ADR-0019)', () => {
     ]);
     ep = await startStoreBackedSparqlEndpoint(ep2);
     const endpoint: ParsedEndpointSource = { kind: 'endpoint', endpoint: ep.url };
-    const result = await describeEndpoint({
-      endpoint,
-      seed: namedNode('http://example.org/alice'),
-      perSourceLimit: 10000,
-      paths: [[{ predicate: 'http://example.org/list', inverse: false }]],
-    });
+    const result = (
+      await describeEndpointResult({
+        endpoint,
+        seed: namedNode('http://example.org/alice'),
+        perSourceLimit: 10000,
+        paths: [[{ predicate: 'http://example.org/list', inverse: false }]],
+      })
+    )._unsafeUnwrap();
     const valueQuad = result.quads.find(
       (q) => q.predicate.value === 'http://example.org/value',
     );
@@ -407,12 +425,14 @@ describe('describeEndpoint (depth-0, ADR-0019)', () => {
       };
     });
     const endpoint: ParsedEndpointSource = { kind: 'endpoint', endpoint: ep.url };
-    const result = await describeEndpoint({
-      endpoint,
-      seed: namedNode('http://example.org/alice'),
-      perSourceLimit: 10000,
-      paths: [[{ predicate: 'http://example.org/knows', inverse: false }]],
-    });
+    const result = (
+      await describeEndpointResult({
+        endpoint,
+        seed: namedNode('http://example.org/alice'),
+        perSourceLimit: 10000,
+        paths: [[{ predicate: 'http://example.org/knows', inverse: false }]],
+      })
+    )._unsafeUnwrap();
     expect(result.quads).toHaveLength(1);
     expect(result.quads[0].object.value).toBe('http://example.org/bob');
     expect(result.truncated).toBe(true);

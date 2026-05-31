@@ -4,10 +4,42 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import dedent from 'dedent';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { canonicalizeRdf, canonicalizeStore } from './canonicalize';
+import { canonicalizeStore, type CanonicalizeStoreResult } from './canonicalize';
+import { loadRdfResult, type GraphMode } from '../engine';
 import { parseSourceSpec } from '../sources';
 import { resolveSource } from '../sources';
+import { applyTransformPipeline } from '../sources';
+import { parseGraphNameTransformResult } from '../sources';
+import type { ParsedTransform } from '../sources';
 import { extractAnnotationPredicates } from '../sources';
+
+/**
+ * Load → transform → canonicalize, composed from the same building blocks the
+ * (now-removed) `canonicalizeRdf` adapter wrapped. Lives in the spec because
+ * canonicalization-from-globs is exercised only by tests (ADR-0024 cleanup).
+ */
+async function canonicalizeSources(
+  sources: string | string[],
+  graphMode?: GraphMode,
+): Promise<CanonicalizeStoreResult> {
+  const loaded = (await loadRdfResult({ sources }))._unsafeUnwrap();
+  const transforms: ReadonlyArray<ParsedTransform> =
+    graphMode === undefined || graphMode === 'preserve'
+      ? []
+      : [
+          {
+            key: 'graphName',
+            apply: parseGraphNameTransformResult(graphMode)._unsafeUnwrap()
+              .apply,
+          },
+        ];
+  const transformed = applyTransformPipeline(loaded.store, transforms, {
+    perFileRecords: loaded.perFileRecords,
+  });
+  return canonicalizeStore(transformed, {
+    annotationPredicates: extractAnnotationPredicates(transforms),
+  });
+}
 
 async function hashOf(file: string, transforms?: ReadonlyArray<unknown>) {
   const spec = parseSourceSpec(
@@ -23,7 +55,7 @@ async function hashOf(file: string, transforms?: ReadonlyArray<unknown>) {
   return createHash('sha256').update(canonicalText).digest('hex');
 }
 
-describe('canonicalizeRdf', () => {
+describe('canonicalize from sources (load → transform → canonicalize)', () => {
   let dir: string;
 
   beforeEach(async () => {
@@ -61,8 +93,8 @@ describe('canonicalizeRdf', () => {
       '@prefix ex: <http://example.org/> . ex:e ex:r ex:f .\n',
     );
 
-    const a = await canonicalizeRdf({ sources: single });
-    const b = await canonicalizeRdf({ sources: join(partsDir, '*.ttl') });
+    const a = await canonicalizeSources(single);
+    const b = await canonicalizeSources(join(partsDir, '*.ttl'));
 
     expect(a.canonicalText).toBe(b.canonicalText);
     expect(a.canonicalStatements).toHaveLength(3);
@@ -91,8 +123,8 @@ describe('canonicalizeRdf', () => {
       ` + '\n',
     );
 
-    const resultA = await canonicalizeRdf({ sources: a });
-    const resultB = await canonicalizeRdf({ sources: b });
+    const resultA = await canonicalizeSources(a);
+    const resultB = await canonicalizeSources(b);
 
     expect(resultB.canonicalText).toBe(resultA.canonicalText);
   });
@@ -135,7 +167,7 @@ describe('canonicalizeRdf', () => {
     );
 
     for (const file of Object.values(files)) {
-      const result = await canonicalizeRdf({ sources: file });
+      const result = await canonicalizeSources(file);
       expect(result.canonicalStatements.length).toBeGreaterThan(0);
       expect(result.canonicalText.endsWith('\n')).toBe(true);
     }
@@ -161,11 +193,8 @@ describe('canonicalizeRdf', () => {
       ` + '\n',
     );
 
-    const fromTrig = await canonicalizeRdf({
-      sources: trig,
-      graphMode: 'flatten',
-    });
-    const fromTtl = await canonicalizeRdf({ sources: ttl });
+    const fromTrig = await canonicalizeSources(trig, 'flatten');
+    const fromTtl = await canonicalizeSources(ttl);
 
     expect(fromTrig.canonicalText).toBe(fromTtl.canonicalText);
   });
@@ -356,10 +385,8 @@ describe('canonicalizeRdf', () => {
       '@prefix ex: <http://example.org/> . ex:c ex:q ex:d .\n',
     );
 
-    const fromSingle = await canonicalizeRdf({ sources: single });
-    const fromGlob = await canonicalizeRdf({
-      sources: [join(partsDir, '*.ttl')],
-    });
+    const fromSingle = await canonicalizeSources(single);
+    const fromGlob = await canonicalizeSources([join(partsDir, '*.ttl')]);
 
     expect(fromGlob.canonicalText).toBe(fromSingle.canonicalText);
   });

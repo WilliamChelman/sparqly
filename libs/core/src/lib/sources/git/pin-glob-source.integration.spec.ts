@@ -7,7 +7,7 @@ import { DataFactory } from 'n3';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { resolveSourceResult } from '../resolve-source-result';
 import type { ParsedGlobSource } from '../source-spec';
-import { parseAnnotateTransform } from '../annotate-transform';
+import { parseAnnotateTransformResult } from '../annotate-transform';
 import { DEFAULT_ANNOTATION_PREDICATE_IRIS } from '../source-record-builder';
 
 const { namedNode } = DataFactory;
@@ -126,7 +126,7 @@ describe('resolveSourceResult — pinned glob (ADR-0029)', () => {
     const result = await resolveSourceResult(
       source({
         transforms: [
-          { key: 'annotateSource', apply: parseAnnotateTransform({}) },
+          { key: 'annotateSource', apply: parseAnnotateTransformResult({})._unsafeUnwrap().apply },
         ],
       }),
       { configDir: repo },
@@ -159,7 +159,7 @@ describe('resolveSourceResult — pinned glob (ADR-0029)', () => {
       source({
         gitRef: undefined,
         transforms: [
-          { key: 'annotateSource', apply: parseAnnotateTransform({}) },
+          { key: 'annotateSource', apply: parseAnnotateTransformResult({})._unsafeUnwrap().apply },
         ],
       }),
       { configDir: repo },
