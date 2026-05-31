@@ -8,7 +8,7 @@ describe('normalizeConfigPaths — idempotence', () => {
         index: { dir: '/etc/sparqly/index' },
         sources: [
           { id: 'data', glob: '/var/data/**/*.ttl' },
-          { id: 'view', from: '@data', queryFile: '/srv/queries/scope.rq' },
+          { id: 'remote', endpoint: 'https://example.com/sparql' },
         ],
       },
       '/home/me/proj',
@@ -17,7 +17,7 @@ describe('normalizeConfigPaths — idempotence', () => {
       index: { dir: '/etc/sparqly/index' },
       sources: [
         { id: 'data', glob: '/var/data/**/*.ttl' },
-        { id: 'view', from: '@data', queryFile: '/srv/queries/scope.rq' },
+        { id: 'remote', endpoint: 'https://example.com/sparql' },
       ],
     });
   });
@@ -41,7 +41,7 @@ describe('normalizeConfigPaths — non-path data untouched', () => {
         format: { prefixes: { ex: 'http://example.org/' } },
         sources: [
           { id: 'fedlex', endpoint: 'https://fedlex.data.admin.ch/sparqlendpoint' },
-          { id: 'view', from: '@fedlex', query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }' },
+          { id: 'docs', glob: '/abs/data/**/*.ttl', splitByFile: true },
         ],
       },
       '/home/me/proj',
@@ -51,7 +51,7 @@ describe('normalizeConfigPaths — non-path data untouched', () => {
       format: { prefixes: { ex: 'http://example.org/' } },
       sources: [
         { id: 'fedlex', endpoint: 'https://fedlex.data.admin.ch/sparqlendpoint' },
-        { id: 'view', from: '@fedlex', query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }' },
+        { id: 'docs', glob: '/abs/data/**/*.ttl', splitByFile: true },
       ],
     });
   });
@@ -98,17 +98,6 @@ describe('normalizeConfigPaths — sources[] path keys', () => {
     });
   });
 
-  it('absolutizes a relative queryFile on a sources[] entry against configDir', () => {
-    const out = normalizeConfigPaths(
-      { sources: [{ id: 'view', from: '@data', queryFile: 'queries/scope.rq' }] },
-      '/home/me/proj',
-    );
-    expect(out).toEqual({
-      sources: [
-        { id: 'view', from: '@data', queryFile: '/home/me/proj/queries/scope.rq' },
-      ],
-    });
-  });
 });
 
 describe('normalizeConfigPaths — index block', () => {

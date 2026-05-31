@@ -84,7 +84,7 @@ const compareWithField: FieldDescriptor = {
     {
       spec: '--compare-with <source>',
       description:
-        "Hash a second target source (an `@id` ref into the registry, or an inline glob/URL) with the same loader options and compare against the primary target. Exit 0 on match (stdout 'match: <hash>'), 1 on mismatch (stdout shows both labeled hashes), 30-53 on error per the per-variant source/target map in hash-error.ts. SPARQL endpoint targets are rejected on this side (use a `view` source kind to scope an endpoint, or pass --compare-with-query/--compare-with-query-file).",
+        "Hash a second target source (an `@id` ref into the registry, or an inline glob/URL) with the same loader options and compare against the primary target. Exit 0 on match (stdout 'match: <hash>'), 1 on mismatch (stdout shows both labeled hashes), 30-53 on error per the per-variant source/target map in hash-error.ts. SPARQL endpoint targets are rejected on this side; scope an endpoint by passing --compare-with-query/--compare-with-query-file.",
     },
   ],
 };
@@ -173,7 +173,7 @@ function resolveCompareTargetResult(
 export const hashSpec: CommandSpec<HashConfig> = {
   name: 'hash',
   description:
-    'Compute a stable SHA-256 over the canonicalized RDF content of a target source (an `@id` ref into the config registry, or an inline glob/URL). Materializes the *result*; for endpoint-backed views the query passes through to the endpoint. A SPARQL endpoint target is rejected as a raw input (wrap it in a `view` source kind to scope it, or pass `--query`/`--query-file` to scope it inline). Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL hash is only as deterministic as the endpoint.',
+    'Compute a stable SHA-256 over the canonicalized RDF content of a target source (an `@id` ref into the config registry, or an inline glob/URL). Materializes the *result*; an inline `--query`/`--query-file` over an endpoint passes through to the endpoint. A SPARQL endpoint target is rejected as a raw input; scope it inline with `--query`/`--query-file`. Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL hash is only as deterministic as the endpoint.',
   fields: [
     sourceField,
     sourcesRegistryField,

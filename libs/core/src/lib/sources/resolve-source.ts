@@ -17,7 +17,7 @@ export type QuerySources =
       store: Store;
       files: string[];
       prefixes: Record<string, Record<string, string>>;
-      // Absent for view, empty, and endpoint resolutions. Keys are
+      // Absent for empty and endpoint resolutions. Keys are
       // graph-agnostic triple-pattern strings; re-key by canonical N-Quads at
       // diff time via the canonicalizer's blank-node label map.
       sourceRecords?: SourceRecordSidecar;

@@ -25,11 +25,8 @@ const sourceObjectSchema = z
     id: z.string().optional(),
     glob: z.string().optional(),
     endpoint: z.string().optional(),
-    from: z.string().optional(),
     empty: z.literal(true).optional(),
     default: z.literal(true).optional(),
-    query: z.string().optional(),
-    queryFile: z.string().optional(),
     transforms: z.array(z.unknown()).optional(),
     auth: sparqlAuthSchema.optional(),
     headers: z.record(z.string(), z.string()).optional(),
@@ -47,7 +44,7 @@ const sourceSpecInputSchema = z.union([z.string(), sourceObjectSchema]);
 export const projectSourcesSchema = z.array(sourceSpecInputSchema);
 
 export const MULTI_SOURCE_REJECTION_MESSAGE =
-  'pass a single `--source`/positional value (an `@id` ref or an inline glob/URL); for multi-source composition use a single broader glob, or a `SERVICE` clause inside a view hosted on an `empty` source — see ADR-0005 (docs/adr/0005-single-target-source-at-command-boundary.md)';
+  'pass a single `--source`/positional value (an `@id` ref or an inline glob/URL); for multi-source composition use a single broader glob, or a `SERVICE` clause inside a query hosted on an `empty` source — see ADR-0005 (docs/adr/0005-single-target-source-at-command-boundary.md)';
 
 export const singleSourceSchema: z.ZodType = z
   .unknown()

@@ -2,18 +2,19 @@
 
 A **source** is a declared input that produces RDF. Sources are listed under `sources:` in [`sparqly.config.yaml`](./configuration.md) and selected as a command's target via positional `@id`, flag, or the `default: true` marker.
 
-There are four user-declarable kinds. The kind is inferred from which key is present:
+There are three user-declarable kinds. The kind is inferred from which key is present:
 
-| Has key       | Kind     | Meaning                                                                        |
+| Has key       | Kind     | Meaning                                                                         |
 | ------------- | -------- | ------------------------------------------------------------------------------ |
-| `glob:`       | glob     | RDF files on disk, matched by a glob pattern.                                  |
-| `endpoint:`   | endpoint | A remote SPARQL HTTP endpoint.                                                 |
-| `from:`       | view     | A SPARQL `CONSTRUCT` or `SELECT` that scopes another source (the "upstream").  |
-| `empty: true` | empty    | An in-memory store. Hosts a view whose query composes endpoints via `SERVICE`. |
+| `glob:`       | glob     | RDF files on disk, matched by a glob pattern.                                   |
+| `endpoint:`   | endpoint | A remote SPARQL HTTP endpoint.                                                  |
+| `empty: true` | empty    | An in-memory store. Hosts an inline query that composes endpoints via `SERVICE`. |
 
-Exactly one of those four keys must be present per entry; declaring more than one (or none) is a parse error.
+Exactly one of those three keys must be present per entry; declaring more than one (or none) is a parse error.
 
-A **source ID** matches `^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$` — alphanumeric, `_`, `-`, `.`; no leading dot, no leading `@`. IDs are required on `view` and `empty` sources, optional (but recommended) on `glob` and `endpoint`. Duplicate IDs across the registry are an error.
+> **Deriving data from another source.** There is no `view` source kind (removed in [ADR-0051](adr/0051-remove-view-source-kind.md)). Derivation is a *verb*, not a *noun*: scope a source at command time with an inline `--query`/`--query-file` (see [Resolution mode](#resolution-mode)), or bake the result to a file (`sparqly query … -o derived.nq`) and declare a glob source over it. The source fields `from:`, `query:`, `queryFile:`, and `cache:` are no longer accepted and are rejected as unknown keys.
+
+A **source ID** matches `^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$` — alphanumeric, `_`, `-`, `.`; no leading dot, no leading `@`. IDs are required on `empty` sources, optional (but recommended) on `glob` and `endpoint`. Duplicate IDs across the registry are an error.
 
 Within the registry, **at most one** entry may carry `default: true`. That entry is picked as the target when a command is run without an explicit positional or flag.
 
@@ -39,15 +40,29 @@ Two of those forms (glob, `http(s)://`) can work without a config file — `spar
     - graphName: flatten
 ```
 
-| Field               | Required | Notes                                                                 |
-| ------------------- | -------- | --------------------------------------------------------------------- |
-| `glob`              | yes      | Glob pattern. Resolved relative to the **config file's directory**.   |
-| `id`                | no       | Required if you want to reference it from a view's `from:`.           |
-| `default`           | no       | Must be literally `true` if present. At most one entry per registry.  |
-| `transforms`        | no       | Ordered pipeline applied at load time. See [Transforms](#transforms). |
-| `unionDefaultGraph` | no       | Boolean, defaults to `true`. See [Union default graph](#union-default-graph). |
+| Field               | Required | Notes                                                                          |
+| ------------------- | -------- | ------------------------------------------------------------------------------ |
+| `glob`              | yes      | Glob pattern. Resolved relative to the **config file's directory**.            |
+| `id`                | no       | Recommended so the source is addressable by `@id`.                             |
+| `default`           | no       | Must be literally `true` if present. At most one entry per registry.           |
+| `transforms`        | no       | Ordered pipeline applied at load time. See [Transforms](#transforms).          |
+| `splitByFile`       | no       | Must be literally `true`. See [Split by file](#split-by-file).                  |
+| `unionDefaultGraph` | no       | Boolean, defaults to `true`. See [Union default graph](#union-default-graph).  |
+| `storage`           | no       | `memory` (default) or `disk`. See [Storage tier](#storage-tier).               |
+| `gitRef`            | no       | Pin the matched files to a git ref. See [Git pinning](#git-pinning).           |
+| `gitRoot`           | no       | Repo-discovery override; requires `gitRef`. See [Git pinning](#git-pinning).   |
 
 Supported file formats: Turtle, N-Triples, N-Quads, TriG, JSON-LD, RDF/XML.
+
+### Split by file
+
+```yaml
+- id: docs
+  glob: 'data/**/*.ttl'
+  splitByFile: true
+```
+
+By default a glob source is the **union** of every matched file under one `@id`. `splitByFile: true` additionally exposes each matched file as its own child source addressable as `@docs/<relative-path>`, alongside `@docs` (the union). Drop it to keep the union only. Glob-only — rejected on endpoint and empty sources.
 
 ### Union default graph
 
@@ -60,8 +75,37 @@ semantics — only quads in the default graph match a plain pattern. Either way
 named graphs stay individually addressable via `GRAPH ?g { ... }`, and the
 materialized store is byte-identical: the flag changes query semantics only, not
 what is loaded. Split-glob (`splitByFile`) children inherit the parent's value.
-The field is rejected on endpoint, view, and empty sources. See
+The field is rejected on endpoint and empty sources. See
 [ADR-0040](adr/0040-union-default-graph-on-glob-sources.md).
+
+### Storage tier
+
+```yaml
+- id: big
+  glob: 'huge/**/*.ttl'
+  storage: disk
+```
+
+`storage` selects how `serve` holds the source's quads:
+
+| Value    | Behavior                                                                                                                                  |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `memory` | Default. The store is built in memory (lazily, per ADR-0031) and queried in the worker pool.                                            |
+| `disk`   | A persistent on-disk quad index is built (and refreshed when inputs change) under `index.dir`, so the dataset need not fit in RAM.       |
+
+Glob-only. Note that `hash` and `diff` materialize everything into memory, so they reject `storage: disk` sources; use a `memory` source (or an inline query) for those commands. The `index` command and `serve` build the disk indexes — see [`configuration.md`](./configuration.md#index) for `index.dir` / `index.concurrency`. `annotateSource` transforms are rejected on disk-backed globs.
+
+### Git pinning
+
+```yaml
+- id: ontology
+  glob: 'vocab/**/*.ttl'
+  gitRef: v3.2.0
+```
+
+`gitRef` pins the matched files to a git ref (full SHA, short SHA, or annotated tag) rather than the working tree. `gitRoot` overrides repo discovery (relative to the config-file directory) and requires `gitRef`. Glob-only; rejected on endpoint and empty sources. Pinning requires the glob to live inside a git repository.
+
+For a one-off pin without editing config, pass `--at <ref>` on `query` / `hash` (it overrides any declared `gitRef:` for that invocation). Only valid for glob targets.
 
 ## endpoint
 
@@ -77,7 +121,7 @@ The field is rejected on endpoint, view, and empty sources. See
 | Field       | Required | Notes                                                                      |
 | ----------- | -------- | -------------------------------------------------------------------------- |
 | `endpoint`  | yes      | URL of a SPARQL HTTP endpoint.                                             |
-| `id`        | no       | Required to reference from a view's `from:`.                               |
+| `id`        | no       | Recommended so the source is addressable by `@id`.                        |
 | `default`   | no       | Same rules as glob.                                                        |
 | `auth`      | no       | One of `{ type: bearer, token }` or `{ type: basic, username, password }`. |
 | `headers`   | no       | Extra HTTP headers as `Record<string, string>`.                            |
@@ -85,64 +129,23 @@ The field is rejected on endpoint, view, and empty sources. See
 
 Declaring both `auth` and an explicit `Authorization` header is an error (the two would collide on the wire).
 
-`transforms` and `cache` are rejected on endpoint sources. Apply scoping or per-source caching via a **view** with the endpoint as its upstream.
+`transforms`, `splitByFile`, `unionDefaultGraph`, `storage`, and `gitRef`/`gitRoot` are rejected on endpoint sources. To scope an endpoint, run an inline query against it (see below).
 
 ### Resolution mode
 
-`query` and `serve` against an endpoint target use **pass-through** resolution: the user's query is forwarded to the endpoint over the SPARQL protocol via Comunica federation. `hash` and `diff` always **materialize**, so they reject endpoint sources unless the materialization is bounded by a view (or anonymous view via `--query` / `--query-file`).
+`query` and `serve` against an endpoint target use **pass-through** resolution: the user's query is forwarded to the endpoint over the SPARQL protocol via Comunica federation. `hash` and `diff` always **materialize**, so they reject a raw endpoint target; scope it with an inline query so the materialization is bounded:
 
-## view
-
-```yaml
-- id: recent-acts
-  from: '@fedlex'
-  query: |
-    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-    CONSTRUCT { ?act ?p ?o }
-    WHERE    { ?act ?p ?o ; <http://schema.org/dateCreated> ?d
-               FILTER (?d > "2024-01-01"^^xsd:date) }
-  cache:
-    ttl: 1h
+```sh
+# Hash only a slice of a huge endpoint — the CONSTRUCT runs on the endpoint,
+# only the result is materialized and canonicalized locally.
+sparqly hash @fedlex \
+  --query 'CONSTRUCT { ?act ?p ?o } WHERE { ?act ?p ?o ; <http://schema.org/dateCreated> ?d
+                                            FILTER (?d > "2024-01-01"^^<http://www.w3.org/2001/XMLSchema#date>) }'
 ```
 
-| Field       | Required | Notes                                                                                |
-| ----------- | -------- | ------------------------------------------------------------------------------------ |
-| `id`        | yes      | View IDs are mandatory.                                                              |
-| `from`      | yes      | A single `@id` ref string. Multi-source composition uses `SERVICE` inside the query. |
-| `query`     | one of   | Inline SPARQL string. Mutually exclusive with `queryFile`.                           |
-| `queryFile` | one of   | Path to a `.rq` file. Resolved relative to the config file's directory.              |
-| `cache`     | no       | Result-cache strategy. See [View caching](#view-caching).                            |
-| `default`   | no       | Same rules as glob.                                                                  |
+The inline query (`--query` / `--query-file`, and `--left-query`/`--right-query` on `diff`) must produce triples — a `CONSTRUCT { ... }` or a `SELECT` with exactly `{?s, ?p, ?o}` or `{?s, ?p, ?o, ?g}`. The single exception is `diff`, where an arbitrary `SELECT` tuple on both sides switches it into **tabular diff** mode (bag-difference over result rows).
 
-### Accepted query shapes
-
-The view's query must produce triples — either a `CONSTRUCT { ... }` or a `SELECT` with exactly the variables `{?s, ?p, ?o}` or `{?s, ?p, ?o, ?g}`. This is what lets a view be substituted for any other RDF-producing source.
-
-The single exception: an **anonymous view** synthesized by `diff` from `--left-query` / `--right-query` may project an arbitrary `SELECT` tuple, which switches `diff` into **tabular diff** mode (bag-difference over result rows). Declared views remain triple-only.
-
-### Resolution mode
-
-A view's resolution mirrors its upstream:
-
-- Upstream is `glob` / `empty` / another view → **materialized**: load the upstream into an in-memory store, then run the view's query against that store.
-- Upstream is `endpoint` → **pass-through**: forward the view's query to the endpoint, which executes it.
-
-`SERVICE` clauses inside a pass-through view are evaluated by the upstream endpoint. If the endpoint can't federate, host the query on an `empty` source instead (see below).
-
-### View caching
-
-`cache:` declares exactly one strategy:
-
-| Strategy            | Field                 | Behavior                                                                                                                          |
-| ------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| TTL                 | `ttl: 1h` (or ms int) | Result is reused until the TTL expires. Duration units: `ms`, `s`, `m`, `h`, `d`.                                                 |
-| Freshness probe     | `freshness: <ASK>`    | On lookup, run the ASK against the upstream; reuse if it returns `true`. For an endpoint upstream the ASK is itself pass-through. |
-| Everlasting         | `everlasting: true`   | Cached result never invalidates. Manage manually with `sparqly cache clear`.                                                      |
-| (per-view override) | `cacheDir: <path>`    | Override the project's `cache.dir` for this view only.                                                                            |
-
-Cache keys compose `view.id + from + query + upstream-spec`, so a structural change to any of those invalidates the entry.
-
-`cache` is rejected on non-view sources.
+`SERVICE` clauses in a pass-through query are evaluated by the endpoint. If the endpoint can't federate, host the query on an `empty` source instead (see below).
 
 ## empty
 
@@ -151,18 +154,16 @@ Cache keys compose `view.id + from + query + upstream-spec`, so a structural cha
   empty: true
 ```
 
-```yaml
-- id: cross-endpoint
-  from: '@federated'
-  query: |
-    CONSTRUCT { ?s ?p ?o }
-    WHERE {
-      SERVICE <https://endpoint-a/sparql> { ?s ?p ?o }
-      SERVICE <https://endpoint-b/sparql> { ?s a <http://example.org/Thing> }
-    }
+```sh
+sparqly query @federated --query '
+  CONSTRUCT { ?s ?p ?o }
+  WHERE {
+    SERVICE <https://endpoint-a/sparql> { ?s ?p ?o }
+    SERVICE <https://endpoint-b/sparql> { ?s a <http://example.org/Thing> }
+  }'
 ```
 
-An empty source is a no-data placeholder whose only purpose is to host a view that reaches its data via `SERVICE` clauses. It exists because pass-through against an endpoint upstream evaluates `SERVICE` _on the upstream_, so cross-endpoint federation only works if that endpoint supports `SERVICE` itself. Wrapping the federated query in an empty-hosted view forces materialization-with-empty-store, and Comunica dispatches each `SERVICE` from your client.
+An empty source is a no-data placeholder whose only purpose is to host an inline query that reaches its data via `SERVICE` clauses. It exists because pass-through against an endpoint target evaluates `SERVICE` _on that endpoint_, so cross-endpoint federation only works if the endpoint supports `SERVICE` itself. Running the federated query against an empty source forces materialization-with-empty-store, and Comunica dispatches each `SERVICE` from your client.
 
 | Field     | Required | Notes                                                                              |
 | --------- | -------- | ---------------------------------------------------------------------------------- |
@@ -227,8 +228,8 @@ A command runs against exactly one **target source**, chosen by precedence:
 2. The registry entry marked `default: true`.
 3. The sole entry, when the registry has exactly one source.
 
-Otherwise the command errors and lists the available `@id`s. A `kind: 'reference'` alias is rejected as a target — references are upstream pointers, not data.
+Otherwise the command errors and lists the available `@id`s. A `kind: 'reference'` alias is rejected as a target — references are pointers, not data.
 
-Multi-source merging at the command boundary is intentionally not provided. Compose across sources with a view, optionally hosted on an `empty` source for federated `SERVICE` queries.
+Multi-source merging at the command boundary is intentionally not provided. Compose across sources with an inline query, optionally hosted on an `empty` source for federated `SERVICE` queries.
 
 Merging many files **inside a single source** (a glob) into one output file is a `query` recipe — see [docs/recipes.md](./recipes.md#merge-files-into-one-output).

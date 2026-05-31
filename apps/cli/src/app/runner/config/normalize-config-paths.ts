@@ -34,9 +34,6 @@ function normalizeSourceEntry(entry: unknown, configDir: string): unknown {
   if (typeof obj.glob === 'string') {
     next.glob = absolutize(obj.glob, configDir);
   }
-  if (typeof obj.queryFile === 'string') {
-    next.queryFile = absolutize(obj.queryFile, configDir);
-  }
   return next;
 }
 

@@ -157,7 +157,7 @@ const queryMaxOldGenerationSizeMbField: FieldDescriptor = {
 export const serveSpec: CommandSpec<ServeConfig> = {
   name: 'serve',
   description:
-    'Serve a W3C SPARQL Protocol endpoint. Exposes /api/sparql/<id> for every non-`reference` source, /api/sparql as an alias for the default source, plus /api/diff, /api/describe, /api/source-snippet, /api/config and the web playground. Pass a positional glob/URL or --source @id to scope the served set to one source (its `from:` deps stay resolvable but unlisted). Intended for single-user development; not hardened for concurrent users.',
+    'Serve a W3C SPARQL Protocol endpoint. Exposes /api/sparql/<id> for every non-`reference` source, /api/sparql as an alias for the default source, plus /api/diff, /api/describe, /api/source-snippet, /api/config and the web playground. Pass a positional glob/URL or --source @id to scope the served set to one source. Intended for single-user development; not hardened for concurrent users.',
   fields: [
     sourceField,
     sourcesRegistryField,

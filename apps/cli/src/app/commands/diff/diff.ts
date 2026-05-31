@@ -79,7 +79,7 @@ export class DiffPresentSignal extends Error {
 export const diffSpec: CommandSpec<DiffConfig> = {
   name: 'diff',
   description:
-    'Compute a semantic diff between two target sources via RDFC-1.0 canonicalization. Each side accepts an `@id` ref into the config registry or an inline glob/URL. Materializes the *result* on both sides; for endpoint-backed views the query passes through to the endpoint. Glob/file targets carry per-quad source records (file + line) attached by the loader, so HTML and other formats surface line numbers without ceremony. A SPARQL endpoint target is rejected as a raw input on either side (wrap it in a `view` source kind to scope it, or pass `--query`/`--query-file`/`--left-query`/`--right-query`). Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL diff is only as deterministic as the endpoint. Note: RDFC-1.0 does not normalize literal lexical forms.',
+    'Compute a semantic diff between two target sources via RDFC-1.0 canonicalization. Each side accepts an `@id` ref into the config registry or an inline glob/URL. Materializes the *result* on both sides; an inline query over an endpoint passes through to the endpoint. Glob/file targets carry per-quad source records (file + line) attached by the loader, so HTML and other formats surface line numbers without ceremony. A SPARQL endpoint target is rejected as a raw input on either side; scope it inline with `--query`/`--query-file`/`--left-query`/`--right-query`. Determinism caveat: a remote endpoint can return different data between runs, so a SPARQL diff is only as deterministic as the endpoint. Note: RDFC-1.0 does not normalize literal lexical forms.',
   fields: [
     leftField,
     rightField,

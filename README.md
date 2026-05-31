@@ -50,34 +50,33 @@ sparqly diff domain.ttl "parts/**/*.ttl"
 
 ## Sources
 
-A **source** is a declared input that produces RDF. Sparqly understands four kinds:
+A **source** is a declared input that produces RDF. Sparqly understands three kinds:
 
 - **glob** — files on disk (the quickstart examples above).
 - **endpoint** — a remote SPARQL HTTP endpoint.
-- **view** — a SPARQL `CONSTRUCT` or `SELECT` that scopes another source.
-- **empty** — an in-memory store, used to host a federated query that composes endpoints via `SERVICE` clauses (handy when the upstream endpoint can't federate itself).
+- **empty** — an in-memory store, used to host a federated query that composes endpoints via `SERVICE` clauses (handy when an endpoint can't federate itself).
 
-Sources are declared in `sparqly.config.yaml` and referenced by `@id` on the CLI. The kind is inferred from which key is present (`glob:`, `endpoint:`, `from:` + `query:`, or `empty: true`):
+Sources are declared in `sparqly.config.yaml` and referenced by `@id` on the CLI. The kind is inferred from which key is present (`glob:`, `endpoint:`, or `empty: true`):
 
 ```yaml
 # sparqly.config.yaml
 sources:
   - id: fedlex
     endpoint: https://fedlex.data.admin.ch/sparqlendpoint
-  - id: recent-acts
-    from: '@fedlex'
-    query: |
-      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-      CONSTRUCT { ?act ?p ?o }
-      WHERE    { ?act ?p ?o ; <http://schema.org/dateCreated> ?d
-                 FILTER (?d > "2024-01-01"^^xsd:date) }
+  - id: domain
+    glob: data/**/*.ttl
+    default: true
 ```
+
+Derivation is a verb, not a source kind: scope a source at command time with an inline query (`--query` / `--query-file`), which passes through to an endpoint when the target is one:
 
 ```sh
-sparqly query @recent-acts -q 'SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }'
+sparqly query @fedlex \
+  --query 'CONSTRUCT { ?act ?p ?o } WHERE { ?act ?p ?o ; <http://schema.org/dateCreated> ?d
+                                            FILTER (?d > "2024-01-01"^^<http://www.w3.org/2001/XMLSchema#date>) }'
 ```
 
-See [docs/sources.md](docs/sources.md) for the full source-spec reference — auth on endpoints, source transforms (`graphName`, `annotateSource`), view caching strategies, and the `empty` + `SERVICE` federation pattern.
+See [docs/sources.md](docs/sources.md) for the full source-spec reference — auth on endpoints, source transforms (`graphName`, `annotateSource`), disk-backed storage, git pinning, and the `empty` + `SERVICE` federation pattern.
 
 ## Next steps
 

@@ -2,7 +2,9 @@
 
 Project-stable settings live in a single `sparqly.config.{yaml,yml,json}` at the project root. The file declares the **source registry** plus settings that are stable across many invocations — per-invocation values (output paths, ad-hoc queries, format selection, comparison targets) belong on the CLI, not in the file.
 
-This page covers the file shape, discovery, the top-level blocks, environment variables, and `@id` resolution at the CLI. The source-spec reference (per-kind schema, transforms, view caching) lives in [`sources.md`](./sources.md).
+This page covers the file shape, discovery, the top-level blocks, environment variables, and `@id` resolution at the CLI. The source-spec reference (per-kind schema, transforms) lives in [`sources.md`](./sources.md).
+
+Generate a starter file with `sparqly init` — it writes a commented `sparqly.config.yaml` to the current directory.
 
 ## File layout
 
@@ -13,14 +15,27 @@ The schema is strict: only a fixed set of top-level keys is accepted, and unknow
 sources: # source registry (see sources.md)
 serve: # serve-command settings
 format: # format-command settings
-cache: # cache-block settings
 context: # shared IRI-display config (prefixes, base)
 describe: # describe-page defaults (serve's webapp)
-index: # disk-backed glob-index settings (serve)
+savedQueries: # saved-query sidecar path (serve's webapp)
+index: # disk-backed glob-index settings (serve, index)
 query: # in-memory query worker pool (serve)
 ```
 
-`context:` is the project-wide carve-out: every IRI-rendering command (`query`, `format`, `diff`, `serve`'s webapp) reads it. The other blocks follow the "block name = command name" convention: `serve` reads `sources` + `serve` + `context` + `describe`; `format` reads `sources` + `format` + `context`; `query` / `diff` read `sources` + `context`; `hash` reads `sources`; `cache list` / `cache clear` read `cache`. `query` has no command-scoped block — every flag it has is per-invocation.
+`context:` is the project-wide carve-out: every IRI-rendering command (`query`, `format`, `diff`, `serve`'s webapp) reads it. The other blocks follow the "block name = command name" convention, with `serve` reading the widest set:
+
+| Block          | Read by                                  |
+| -------------- | ---------------------------------------- |
+| `sources`      | `query`, `serve`, `hash`, `diff`, `format`, `index` |
+| `context`      | `query`, `serve`, `format`, `diff`       |
+| `serve`        | `serve`                                  |
+| `format`       | `format`                                 |
+| `describe`     | `serve`                                  |
+| `savedQueries` | `serve`                                  |
+| `index`        | `serve`, `index`                         |
+| `query`        | `serve` (the worker pool — **not** the `query` command) |
+
+The `query:` block configures the in-memory worker pool that `serve` runs; the name collides with the `query` command, but the command itself reads no command-scoped block — every flag it has is per-invocation.
 
 ## Discovery
 
@@ -30,11 +45,11 @@ Resolution precedence (highest to lowest): `--config <path>` → `SPARQLY_CONFIG
 
 ## Path resolution
 
-Paths inside the config file (`sources[].glob`, `sources[].queryFile`, `cache.dir`) resolve relative to the **config file's directory**. Paths from CLI flags or env vars resolve relative to **CWD**. The split keeps auto-discovery from silently breaking when you invoke from a subdirectory: `glob: data/*.ttl` declared in `~/proj/sparqly.config.yaml` always means `~/proj/data/*.ttl`, regardless of where you run `sparqly` from.
+Paths inside the config file (`sources[].glob`, `index.dir`) resolve relative to the **config file's directory**. Paths from CLI flags or env vars resolve relative to **CWD**. The split keeps auto-discovery from silently breaking when you invoke from a subdirectory: `glob: data/*.ttl` declared in `~/proj/sparqly.config.yaml` always means `~/proj/data/*.ttl`, regardless of where you run `sparqly` from.
 
 ## `sources:`
 
-The source registry. See [`sources.md`](./sources.md) for the full reference: the four user-declarable kinds (`glob`, `endpoint`, `view`, `empty`), their schemas, the `transforms:` pipeline, and view caching.
+The source registry. See [`sources.md`](./sources.md) for the full reference: the three user-declarable kinds (`glob`, `endpoint`, `empty`), their schemas, and the `transforms:` pipeline.
 
 ## `serve:`
 
@@ -43,21 +58,19 @@ serve:
   port: 3000
   watch: true
   watchDebounce: 250
-  watchPoll: 1000
   mutable: false
-  readOnly: false
 ```
 
-| Field           | Type    | Meaning                                                                                                                                                                                                                                                                                                                                                                                  |
-| --------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `port`          | integer | HTTP port the server binds to. Default `3000`. Override at runtime with `--port` or `SPARQLY_PORT`.                                                                                                                                                                                                                                                                                      |
-| `watch`         | boolean | Watch the target's chain (globs and any `cache.ttl` / `cache.freshness` views) and rebuild on change. Default `false`.                                                                                                                                                                                                                                                                   |
-| `watchDebounce` | integer | Debounce window for `--watch` rebuilds, in ms. Default `250`.                                                                                                                                                                                                                                                                                                                            |
-| `watchPoll`     | integer | Poll interval (ms) for cache-freshness ASK probes under `--watch`. Default `1000`.                                                                                                                                                                                                                                                                                                       |
-| `mutable`       | boolean | If true, the SPARQL endpoint accepts `INSERT` / `DELETE` against the in-memory store.                                                                                                                                                                                                                                                                                                    |
-| `readOnly`      | boolean | If true, refuse writes to the **saved-query sidecar** (`PUT` / `DELETE` return 405) and refuse Sources-page admin actions (Load / Reload / Unload / (Re)build index return 403). The webapp hides the corresponding affordances. Default `false`. Override at runtime with `--read-only`. Independent of `mutable`, which only gates SPARQL-protocol writes against the in-memory store. |
+| Field           | Type    | Meaning                                                                                                                                  |
+| --------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `port`          | integer | HTTP port the server binds to. Default `3000`. Override at runtime with `--port` or `SPARQLY_PORT`.                                      |
+| `watch`         | boolean | Watch the served sources' glob/file inputs and rebuild on change. Default `false`. Override at runtime with `--watch`.                   |
+| `watchDebounce` | integer | Debounce window for `--watch` rebuilds, in ms. Default `250`. Override at runtime with `--watch-debounce`.                               |
+| `mutable`       | boolean | If true, the SPARQL endpoint accepts mutating queries (`UPDATE`/`INSERT`/`DELETE`/`LOAD`) against the in-memory store. Default `false`.  |
 
 All fields are optional; unset fields fall back to their built-in defaults.
+
+`--read-only` is a serve flag only — it refuses writes to the **saved-query sidecar** (`PUT`/`DELETE` return 405) and Sources-page admin actions (Load / Reload / Unload / (Re)build index return 403), and the webapp hides the corresponding controls. It is not config-eligible: pass it on the command line. It is independent of `mutable`, which only gates SPARQL-protocol writes against the in-memory store.
 
 ## `format:`
 
@@ -113,22 +126,24 @@ describe:
 
 All fields are optional.
 
-## `cache:`
+## `savedQueries:`
+
+The saved-query sidecar that `serve`'s webapp reads and writes. Consumed by `serve` only.
 
 ```yaml
-cache:
-  dir: .sparqly-cache
+savedQueries:
+  path: shared/.sparqly-queries.yaml
 ```
 
-| Field | Type   | Meaning                                                                                    |
-| ----- | ------ | ------------------------------------------------------------------------------------------ |
-| `dir` | string | Directory holding view-cache entries. Override per-view with `cache.cacheDir` on the view. |
+| Field  | Type   | Meaning                                                                                                                       |
+| ------ | ------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `path` | string | Path to the sidecar YAML. Relative paths resolve against the config-file directory. `--read-only` makes the sidecar append-only from the webapp. |
 
-`SPARQLY_CACHE_DIR` overrides this at runtime (useful for switching between CI and dev cache locations).
+All fields are optional; omitting the block uses the built-in default location.
 
 ## `index:`
 
-Disk-backed glob-index settings. Consumed by `serve`, which builds and refreshes the on-disk quad indexes for `glob` sources in isolated child processes.
+Disk-backed glob-index settings. Consumed by `serve` (which builds and refreshes on-disk quad indexes for `storage: disk` glob sources in isolated child processes) and by the `index` command (which builds them ahead of time).
 
 ```yaml
 index:
@@ -137,15 +152,15 @@ index:
 ```
 
 | Field         | Type    | Meaning                                                                                                                     |
-| ------------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
+| ------------- | ------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `dir`         | string  | Glob-index cache root. Relative paths resolve against the config-file directory. Defaults to `<configDir>/.sparqly/index/`. |
-| `concurrency` | integer | Maximum number of parallel `sparqly index` child builds `serve` runs at once (the `IndexBuildPool` size). Default `2`.      |
+| `concurrency` | integer | Maximum number of parallel `sparqly index` child builds run at once (the `IndexBuildPool` size). Default `2`.              |
 
 All fields are optional.
 
 ## `query:`
 
-In-memory query worker settings. `serve` runs CPU-bound in-memory SPARQL queries off the main event loop in a bounded pool of worker threads, so one heavy query can't freeze other requests.
+In-memory query worker settings. `serve` runs CPU-bound in-memory SPARQL queries off the main event loop in a bounded pool of worker threads, so one heavy query can't freeze other requests. (This block configures `serve`; the `query` command runs a single query in-process and reads nothing here.)
 
 ```yaml
 query:
@@ -165,16 +180,16 @@ All fields are optional.
 
 ## Environment variables
 
-Sparqly exposes a small env surface — only knobs that vary by environment (CI vs dev, deploy port, secret credentials), not flag mirrors:
+Sparqly exposes a small env surface — only knobs that vary by environment (CI vs dev, deploy port), not flag mirrors:
 
-| Variable                                 | Purpose                                                         |
-| ---------------------------------------- | --------------------------------------------------------------- |
-| `SPARQLY_CONFIG`                         | Config-file path. Empty value opts out (same as `--no-config`). |
-| `SPARQLY_CACHE_DIR`                      | Override `cache.dir`.                                           |
-| `SPARQLY_PORT`                           | Override `serve.port` (Twelve-Factor / k8s convention).         |
-| `SPARQLY_VERBOSE` / `SPARQLY_QUIET`      | Logging toggles.                                                |
-| `${VAR}` inside `sources:`               | String substitution — see below.                                |
-| `SPARQLY_DEBUG_PAUSE_BEFORE_SNIPPETS_MS` | Dev backdoor for `diff` HTML rendering.                         |
+| Variable                                 | Purpose                                                              |
+| ---------------------------------------- | ------------------------------------------------------------------- |
+| `SPARQLY_CONFIG`                         | Config-file path. Empty value opts out (same as `--no-config`).     |
+| `SPARQLY_PORT`                           | Override `serve.port` (Twelve-Factor / k8s convention).             |
+| `SPARQLY_VERBOSE` / `SPARQLY_QUIET`      | Logging toggles (mirror `--verbose` / `--quiet`).                   |
+| `SPARQLY_LOG_FORMAT`                     | Log output format on stderr: `text` or `json` (mirrors `--log-format`). |
+| `${VAR}` inside `sources:`               | String substitution — see below.                                   |
+| `SPARQLY_DEBUG_PAUSE_BEFORE_SNIPPETS_MS` | Dev backdoor for `diff` HTML rendering.                             |
 
 ### Variable substitution inside `sources:`
 
@@ -189,7 +204,7 @@ sources:
 
 Rules:
 
-- **Scope.** Substitution applies only inside `sources:`. Other blocks (`serve:`, `format:`, `cache:`) are taken literally.
+- **Scope.** Substitution applies only inside `sources:`. Other blocks (`serve:`, `format:`, etc.) are taken literally.
 - **Missing variable.** A reference to an unset `${VAR}` is an error; the message points at the JSON-pointer location inside `sources:`. Sparqly fails closed rather than silently producing an empty endpoint URL.
 - **Empty variable.** A reference to `${VAR}=""` is also an error, for the same reason.
 - **Escaping.** Use `$${VAR}` to emit a literal `${VAR}` without expansion.
@@ -212,7 +227,7 @@ Target precedence (highest to lowest):
 3. The sole registry entry, when there is exactly one.
 4. Otherwise: error, listing available `@id`s.
 
-A `kind: 'reference'` alias (string-form `@id` declared inside `sources:`) is rejected as a target — references are pointers used inside `from:`, not data the command can run against.
+A `kind: 'reference'` alias (string-form `@id` declared inside `sources:`) is rejected as a target — references are pointers used inside the registry, not data the command can run against.
 
 ## Cross-command flags
 

@@ -120,18 +120,6 @@ describe('parseSourceSpec — empty source', () => {
     );
   });
 
-  it('rejects empty: true combined with the removed `from:` field (ADR-0051)', () => {
-    expect(() =>
-      parseSourceSpec({
-        id: 'mix',
-        // @ts-expect-error — `from` was removed with the view source kind
-        empty: true,
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      }),
-    ).toThrow(/no longer a valid source field/);
-  });
-
   it('requires an id on empty sources', () => {
     expect(() =>
       // @ts-expect-error — id is required on empty sources
@@ -168,63 +156,6 @@ describe('parseSourceSpec — empty source', () => {
       kind: 'reference',
       ref: 'empty',
     });
-  });
-});
-
-describe('parseSourceSpec — removed view fields (ADR-0051)', () => {
-  it('rejects an object declaring `from:`', () => {
-    expect(() =>
-      parseSourceSpec({
-        id: 'filtered',
-        // @ts-expect-error — `from` was removed with the view source kind
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      }),
-    ).toThrow(/no longer a valid source field/);
-    expect(() =>
-      parseSourceSpec({
-        id: 'filtered',
-        // @ts-expect-error — `from` was removed with the view source kind
-        from: '@raw',
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      }),
-    ).toThrow(/ADR-0051/);
-  });
-
-  it('rejects an object declaring `query:`', () => {
-    expect(() =>
-      parseSourceSpec({
-        id: 'filtered',
-        // @ts-expect-error — `query` was removed with the view source kind
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      }),
-    ).toThrow(/no longer a valid source field/);
-    expect(() =>
-      parseSourceSpec({
-        id: 'filtered',
-        // @ts-expect-error — `query` was removed with the view source kind
-        query: 'CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }',
-      }),
-    ).toThrow(/ADR-0051/);
-  });
-
-  it('rejects an object declaring `cache:` (on any source)', () => {
-    expect(() =>
-      parseSourceSpec({
-        id: 'cached',
-        glob: 'x.ttl',
-        // @ts-expect-error — `cache` was removed with the view source kind
-        cache: { ttl: '1h' },
-      }),
-    ).toThrow(/no longer a valid source field/);
-    expect(() =>
-      parseSourceSpec({
-        id: 'cached',
-        glob: 'x.ttl',
-        // @ts-expect-error — `cache` was removed with the view source kind
-        cache: { ttl: '1h' },
-      }),
-    ).toThrow(/ADR-0051/);
   });
 });
 

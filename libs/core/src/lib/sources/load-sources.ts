@@ -11,7 +11,7 @@ export interface LoadSourcesOptions {
 }
 
 /**
- * Load a single target source (and its `from:` chain, if any) into a Store.
+ * Load a single target source into a Store.
  *
  * This is the always-materialize variant of {@link resolveSource}: endpoint
  * targets are eagerly fetched into a Store rather than handed back as a

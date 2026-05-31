@@ -112,8 +112,6 @@ export interface SourceSpecObjectInput
   glob?: string;
   endpoint?: string;
   empty?: true;
-  /** Removed view-source field, retained only to reject it with an ADR-0051 message. */
-  from?: string;
   default?: true;
   transforms?: ReadonlyArray<unknown>;
   splitByFile?: true;
@@ -171,26 +169,6 @@ function rejectSplitByFileOn(
   }
 }
 
-const REMOVED_VIEW_FIELDS = ['from', 'query', 'queryFile', 'cache'] as const;
-
-/**
- * The `view` source kind was removed (ADR-0051). A config still declaring any of
- * its fields fails fast with a pointer to the replacement (an inline query at
- * command time, or a baked file declared as a glob source).
- */
-function rejectRemovedViewFields(input: SourceSpecObjectInput): void {
-  for (const key of REMOVED_VIEW_FIELDS) {
-    if ((input as Record<string, unknown>)[key] !== undefined) {
-      throw new Error(
-        `\`${key}\` is no longer a valid source field: the \`view\` source kind was ` +
-          'removed (ADR-0051). Derive data with an inline `--query`/`--query-file` over ' +
-          'a source at command time, or bake the result to a file and declare a glob ' +
-          'source over it.',
-      );
-    }
-  }
-}
-
 const LEGACY_GLOB_GRAPH_FIELD_KEYS = ['graphMode', 'graph'] as const;
 
 function validateSourceId(id: string): void {
@@ -242,7 +220,6 @@ export function parseSourceSpec(
     }
     return { kind: 'glob', glob: input };
   }
-  rejectRemovedViewFields(input);
   const hasGlob = input.glob !== undefined;
   const hasEndpoint = input.endpoint !== undefined;
   const hasEmpty = input.empty === true;
