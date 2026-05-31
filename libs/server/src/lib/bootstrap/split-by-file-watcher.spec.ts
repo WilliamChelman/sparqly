@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { SparqlyLogFields, SparqlyLogger } from 'common';
-import { createServer, type CreatedServer } from './create-server';
+import { createTestServer, type CreatedServer } from './create-test-server';
 
 const SAMPLE_A = '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n';
 const SAMPLE_B = '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .\n';
@@ -103,7 +103,7 @@ describe('multi-source watcher — split-glob children cache invalidation (ADR-0
 
   it('adds a new child to /api/config when a file appears inside a split-glob pattern', async () => {
     const { logger, waitFor } = recordingLogger();
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'docs', glob: join(dir, '*.ttl'), splitByFile: true },
       ],
@@ -142,7 +142,7 @@ describe('multi-source watcher — split-glob children cache invalidation (ADR-0
 
   it('removes a child from /api/config when a file disappears from a split-glob pattern', async () => {
     const { logger, waitFor } = recordingLogger();
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'docs', glob: join(dir, '*.ttl'), splitByFile: true },
       ],
@@ -171,7 +171,7 @@ describe('multi-source watcher — split-glob children cache invalidation (ADR-0
 
   it('does not synthesize file-kind children for non-splitByFile globs on file events', async () => {
     const { logger } = recordingLogger();
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'plain', glob: join(dir, '*.ttl') }],
       port: 0,
       watch: true,

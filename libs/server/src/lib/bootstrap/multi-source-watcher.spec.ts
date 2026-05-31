@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { SparqlyLogFields, SparqlyLogger } from 'common';
-import { createServer, type CreatedServer } from './create-server';
+import { createTestServer, type CreatedServer } from './create-test-server';
 import type {
   QueryWorkerHandle,
   WorkerMessage,
@@ -187,7 +187,7 @@ describe('createServer — multi-source watcher lifecycle', () => {
         '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .',
       );
       const rec = recordingLogger();
-      server = await createServer({
+      server = await createTestServer({
         sources: [
           { id: 'touched', glob: join(touchedDir, '*.ttl') },
           { id: 'untouched', glob: join(untouchedDir, '*.ttl') },
@@ -241,7 +241,7 @@ describe('createServer — multi-source watcher lifecycle', () => {
 
   it('starts the watcher, debounces a file change into a single rebuild, then stops cleanly on close', async () => {
     const { logger, entries, waitFor } = recordingLogger();
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'files', glob: join(dir, '*.ttl') }],
       port: 0,
       watch: true,
@@ -324,7 +324,7 @@ describe('createServer — watcher invalidation reaches the query worker (ADR-00
 
   it('a watched file change posts invalidate to the owning worker, and leaves an un-touched source alone', async () => {
     const worker = new FakeQueryWorker();
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'touched', glob: join(touchedDir, '*.ttl') },
         { id: 'untouched', glob: join(untouchedDir, '*.ttl') },

@@ -7,6 +7,7 @@ import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { noopLogger, type SparqlyLogger } from 'common';
+import { err, ok, type Result } from 'neverthrow';
 import {
   createGitTreeWalker,
   defaultGlobWalker,
@@ -14,8 +15,9 @@ import {
   type GraphMode,
   type ParsedSource,
   parseSourceSpecs,
-  resolveServeScope,
+  resolveServeScopeResult,
   type SourceSpecInput,
+  type TargetError,
   walkGlobPaths,
   warnIfOversizedGlob,
 } from 'core';
@@ -91,7 +93,7 @@ const DEFAULT_DEBOUNCE_MS = 250;
 
 export async function createServer(
   options: CreateServerOptions,
-): Promise<CreatedServer> {
+): Promise<Result<CreatedServer, TargetError>> {
   const logger = new Logger('sparqly');
   const boundaryLogger = options.logger ?? noopLogger;
   const parsedRegistry = await expandSplitGlobs(
@@ -105,11 +107,11 @@ export async function createServer(
       logger: boundaryLogger,
     },
   );
-  const scope = resolveServeScope(parsedRegistry, options.scope);
+  const scopeResult = resolveServeScopeResult(parsedRegistry, options.scope);
+  if (scopeResult.isErr()) return err(scopeResult.error);
+  const scope = scopeResult.value;
   if (scope.servedRegistry.length === 0) {
-    throw new Error(
-      'No sources configured. Pass a positional/--source, or define `sources:` in your config.',
-    );
+    return err({ kind: 'empty-registry' });
   }
 
   const startedAt = Date.now();
@@ -248,7 +250,7 @@ export async function createServer(
     );
   }
 
-  return {
+  return ok({
     port: listeningPort,
     close: async () => {
       if (watcher) await watcher.close();
@@ -266,7 +268,7 @@ export async function createServer(
       await closing;
       await engineMap.close();
     },
-  };
+  });
 }
 
 async function seedSnippetPaths(

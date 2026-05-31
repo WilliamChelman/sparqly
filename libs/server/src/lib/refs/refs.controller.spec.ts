@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createServer, type CreatedServer } from '../bootstrap';
+import { createTestServer, type CreatedServer } from '../bootstrap/create-test-server';
 
 const execFileAsync = promisify(execFile);
 
@@ -46,7 +46,7 @@ describe('GET /api/sources/:id/refs', () => {
   });
 
   it('returns the sectioned response shape for a glob source', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
       port: 0,
     });
@@ -69,7 +69,7 @@ describe('GET /api/sources/:id/refs', () => {
   });
 
   it('returns 404 { error: "no-git-repo", kind: "endpoint" } for an endpoint source', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'remote', endpoint: 'https://example.org/sparql' },
       ],
@@ -85,7 +85,7 @@ describe('GET /api/sources/:id/refs', () => {
   });
 
   it('returns 404 { error: "no-git-repo", kind: "empty" } for an empty source', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'blank', empty: true }],
       port: 0,
     });
@@ -99,7 +99,7 @@ describe('GET /api/sources/:id/refs', () => {
   });
 
   it('returns the parent glob refs for a split-glob file child', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'docs', glob: join(repo, '*.ttl'), splitByFile: true },
       ],
@@ -127,7 +127,7 @@ describe('GET /api/sources/:id/refs', () => {
     // with a typed `glob-load` error). Returning the ref list anyway would
     // train the UI to offer pin actions that always fail downstream — so
     // the endpoint must mirror the resolve-time refusal here.
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'docs', glob: join(repo, '*.ttl'), storage: 'disk' },
       ],
@@ -143,7 +143,7 @@ describe('GET /api/sources/:id/refs', () => {
   });
 
   it('returns 404 { error: "no-git-history" } for a glob pattern with zero history', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'docs', glob: join(repo, 'no-such-*.ttl') }],
       port: 0,
     });
@@ -161,7 +161,7 @@ describe('GET /api/sources/:id/refs', () => {
     await git(repo, ['commit', '-q', '-m', 'add gitignore']);
     await writeFile(join(repo, 'secret.ttl'), '@prefix : <#> . :s :p :o .\n');
 
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'docs', glob: join(repo, 'secret.ttl') }],
       port: 0,
     });
@@ -175,7 +175,7 @@ describe('GET /api/sources/:id/refs', () => {
 
   it('returns 404 { error: "no-git-history" } for an untracked-but-not-ignored file', async () => {
     await writeFile(join(repo, 'fresh.ttl'), '@prefix : <#> . :s :p :o .\n');
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'docs', glob: join(repo, 'fresh.ttl') }],
       port: 0,
     });
@@ -194,7 +194,7 @@ describe('GET /api/sources/:id/refs', () => {
     await git(repo, ['rm', '-q', 'doomed.ttl']);
     await git(repo, ['commit', '-q', '-m', 'remove doomed']);
 
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'docs', glob: join(repo, 'doomed.ttl') }],
       port: 0,
     });
@@ -205,7 +205,7 @@ describe('GET /api/sources/:id/refs', () => {
   });
 
   it('pin-unsupported takes precedence over no-git-history for a disk glob with no history', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'docs', glob: join(repo, 'no-such-*.ttl'), storage: 'disk' },
       ],
@@ -222,7 +222,7 @@ describe('GET /api/sources/:id/refs', () => {
 
   it('returns 404 no-git-history for a split-glob child whose resolved file has no history', async () => {
     await writeFile(join(repo, 'zzz.ttl'), '@prefix : <#> . :s :p :o .\n');
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'docs', glob: join(repo, '*.ttl'), splitByFile: true },
       ],
@@ -265,7 +265,7 @@ describe('GET /api/sources/:id/commits', () => {
   });
 
   it('returns { commits, nextBefore: null } for a glob with history', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
       port: 0,
     });
@@ -299,7 +299,7 @@ describe('GET /api/sources/:id/commits', () => {
   });
 
   it('returns 404 { error: "pin-unsupported", reason: "storage-disk" } for a disk-backed glob', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'docs', glob: join(repo, '*.ttl'), storage: 'disk' },
       ],
@@ -315,7 +315,7 @@ describe('GET /api/sources/:id/commits', () => {
   });
 
   it('returns 400 { error: "invalid-scope" } for a scope that is not HEAD, __all__, or a listed ref', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
       port: 0,
     });
@@ -328,7 +328,7 @@ describe('GET /api/sources/:id/commits', () => {
   });
 
   it('returns 400 { error: "invalid-scope" } for a 40-hex SHA scope value', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
       port: 0,
     });
@@ -347,7 +347,7 @@ describe('GET /api/sources/:id/commits', () => {
     await git(repo, ['add', '.']);
     await git(repo, ['commit', '-q', '-m', 'add b']);
 
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'docs', glob: join(repo, '*.ttl'), splitByFile: true },
       ],
@@ -381,7 +381,7 @@ describe('GET /api/sources/:id/commits', () => {
     const sideSha = await git(repo, ['rev-parse', 'HEAD']);
     await git(repo, ['checkout', '-q', 'main']);
 
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
       port: 0,
     });
@@ -408,7 +408,7 @@ describe('GET /api/sources/:id/commits', () => {
       shas.push(await git(repo, ['rev-parse', 'HEAD']));
     }
 
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
       port: 0,
     });
@@ -454,7 +454,7 @@ describe('GET /api/sources/:id/commits', () => {
   });
 
   it('defaults limit to 50 when the query param is omitted', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
       port: 0,
     });
@@ -472,7 +472,7 @@ describe('GET /api/sources/:id/commits', () => {
   });
 
   it('returns 400 { error: "invalid-before" } when before is not a 40-hex SHA', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
       port: 0,
     });
@@ -495,7 +495,7 @@ describe('GET /api/sources/:id/commits', () => {
     const sideSha = await git(repo, ['rev-parse', 'HEAD']);
     await git(repo, ['checkout', '-q', 'main']);
 
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
       port: 0,
     });
@@ -548,7 +548,7 @@ describe('POST /api/sources/:id/refs/fetch', () => {
   });
 
   it('returns the post-fetch RefsResponse shape for a glob source', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
       port: 0,
     });
@@ -572,7 +572,7 @@ describe('POST /api/sources/:id/refs/fetch', () => {
   });
 
   it('returns 404 { error: "no-git-repo", kind: "endpoint" } for an endpoint source', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'remote', endpoint: 'https://example.org/sparql' }],
       port: 0,
     });
@@ -587,7 +587,7 @@ describe('POST /api/sources/:id/refs/fetch', () => {
   });
 
   it('returns 404 { error: "no-git-repo", kind: "empty" } for an empty source', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'blank', empty: true }],
       port: 0,
     });
@@ -602,7 +602,7 @@ describe('POST /api/sources/:id/refs/fetch', () => {
   });
 
   it('fetches the parent glob refs for a split-glob file child', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'docs', glob: join(repo, '*.ttl'), splitByFile: true },
       ],
@@ -624,7 +624,7 @@ describe('POST /api/sources/:id/refs/fetch', () => {
   });
 
   it('returns 404 { error: "pin-unsupported", reason: "storage-disk" } on /fetch for a disk-backed glob', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'docs', glob: join(repo, '*.ttl'), storage: 'disk' },
       ],
@@ -668,7 +668,7 @@ describe('POST /api/sources/:id/refs/fetch — typed fetch failures', () => {
       'origin',
       join(tmpdir(), 'sparqly-refs-fetch-fail-missing-' + Date.now()),
     ]);
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
       port: 0,
     });
@@ -683,7 +683,7 @@ describe('POST /api/sources/:id/refs/fetch — typed fetch failures', () => {
   });
 
   it('surfaces a repo with no remotes as a typed `no-remote` HTTP error', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'alpha', glob: join(repo, '*.ttl') }],
       port: 0,
     });

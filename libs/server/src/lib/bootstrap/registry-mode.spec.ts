@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServer, type CreatedServer } from './create-server';
+import { createTestServer } from './create-test-server';
 
 const SAMPLE_A = '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .';
 const SAMPLE_B = '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .';
@@ -20,7 +21,7 @@ describe('createServer — served registry', () => {
     dirB = await mkdtemp(join(tmpdir(), 'sparqly-reg-b-'));
     await writeFile(join(dirA, 'a.ttl'), SAMPLE_A);
     await writeFile(join(dirB, 'b.ttl'), SAMPLE_B);
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         { id: 'alpha', glob: join(dirA, '*.ttl') },
         { id: 'beta', glob: join(dirB, '*.ttl'), default: true },
@@ -73,7 +74,7 @@ describe('createServer — served registry', () => {
 
   it('GET /api/config lists a disk-backed glob in the source picker without building its index (ADR-0041 / #340)', async () => {
     const cfgDir = await mkdtemp(join(tmpdir(), 'sparqly-reg-cfg-'));
-    const local = await createServer({
+    const local = await createTestServer({
       sources: [{ id: 'big', glob: join(dirA, '*.ttl'), storage: 'disk' }],
       port: 0,
       configDir: cfgDir,
@@ -97,7 +98,7 @@ describe('createServer — served registry', () => {
 
   it('GET /api/config tags every listed source with `mode` so the diff page can gate Run on raw pass-through (ADR-0047 / #375)', async () => {
     const cfgDir = await mkdtemp(join(tmpdir(), 'sparqly-reg-mode-'));
-    const local = await createServer({
+    const local = await createTestServer({
       sources: [
         { id: 'inmem', glob: join(dirA, '*.ttl') },
         { id: 'disk', glob: join(dirA, '*.ttl'), storage: 'disk' },
@@ -125,7 +126,7 @@ describe('createServer — served registry', () => {
   it('GET /api/config surfaces a configured `describe:` block, filling missing fields with defaults', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sparqly-reg-desc-'));
     await writeFile(join(dir, 'd.ttl'), SAMPLE_A);
-    const local = await createServer({
+    const local = await createTestServer({
       sources: [{ id: 'alpha', glob: join(dir, '*.ttl') }],
       port: 0,
       describe: { perSourceHardLimit: 42 },
@@ -229,7 +230,7 @@ describe('createServer — scope filter', () => {
   });
 
   it('scope `@id` narrows the served/listed set; filtered ids return 400 unknown-ref', async () => {
-    const server = await createServer({
+    const server = await createTestServer({
       sources: [
         { id: 'alpha', glob: join(dirA, '*.ttl') },
         { id: 'beta', glob: join(dirB, '*.ttl') },
@@ -255,13 +256,24 @@ describe('createServer — scope filter', () => {
     }
   });
 
-  it('rejects an `@id` scope that matches no source, listing the available ids', async () => {
-    await expect(
-      createServer({
-        sources: [{ id: 'alpha', glob: join(dirA, '*.ttl') }],
-        scope: '@nope',
-        port: 0,
-      }),
-    ).rejects.toThrow(/@nope[\s\S]*@alpha/);
+  it('errs `unknown-ref` for an `@id` scope that matches no source, listing the available ids', async () => {
+    const result = await createServer({
+      sources: [{ id: 'alpha', glob: join(dirA, '*.ttl') }],
+      scope: '@nope',
+      port: 0,
+    });
+
+    const error = result._unsafeUnwrapErr();
+    expect(error.kind).toBe('unknown-ref');
+    if (error.kind === 'unknown-ref') {
+      expect(error.ref).toBe('@nope');
+      expect(error.availableIds).toEqual(['alpha']);
+    }
+  });
+
+  it('errs `empty-registry` when no sources resolve into the served set', async () => {
+    const result = await createServer({ sources: [], port: 0 });
+
+    expect(result._unsafeUnwrapErr().kind).toBe('empty-registry');
   });
 });

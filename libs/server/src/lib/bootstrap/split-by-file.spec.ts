@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createServer, type CreatedServer } from './create-server';
+import { createTestServer, type CreatedServer } from './create-test-server';
 
 const SAMPLE_A = '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .\n';
 const SAMPLE_B = '@prefix ex: <http://example.org/> . ex:c ex:p ex:d .\n';
@@ -37,7 +37,7 @@ describe('createServer — splitByFile registry expansion (ADR-0027)', () => {
   });
 
   it('exposes the meta + one kind:file child per matched file in /api/config, with parentId on children only', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         {
           id: 'docs',
@@ -68,7 +68,7 @@ describe('createServer — splitByFile registry expansion (ADR-0027)', () => {
   });
 
   it('dispatches POST /api/sparql/<parent>/<file> to the child source', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [
         {
           id: 'docs',
@@ -97,7 +97,7 @@ describe('createServer — splitByFile registry expansion (ADR-0027)', () => {
   });
 
   it('still dispatches single-segment ids on the wildcard route (backwards-compatible)', async () => {
-    server = await createServer({
+    server = await createTestServer({
       sources: [{ id: 'alpha', glob: join(dir, 'a.ttl') }],
       port: 0,
     });
