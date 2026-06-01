@@ -132,11 +132,15 @@ export class SourceSnippetComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    // All records on this snippet share one side/file, hence one pin — read
+    // the blob at that SHA so the line numbers match the displayed content.
+    const gitSha = this.records().find((r) => r.gitSha !== undefined)?.gitSha;
     this.snippets
       .fetch(
         this.file(),
         { focalStart: this.focalStart(), focalEnd: this.focalEnd() },
         this.context(),
+        gitSha,
       )
       .subscribe((result) => {
         switch (result.kind) {

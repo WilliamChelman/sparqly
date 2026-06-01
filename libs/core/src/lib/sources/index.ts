@@ -23,3 +23,4 @@ export * from './git/git-tree-walker-factory';
 export * from './git/discover-repo';
 export * from './git/resolve-glob-pin-sha';
 export type { GitPort } from './git/git-port';
+export { GitCliPort } from './git/git-cli-port';

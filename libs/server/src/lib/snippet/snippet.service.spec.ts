@@ -11,10 +11,12 @@ function fakeReader(
     file: string,
     ranges: ReadonlyArray<FocalRange>,
     context: number,
+    gitSha: string | undefined,
   ) => SnippetReadResult[],
 ): SnippetReader {
   return {
-    readByFocalRanges: async (file, ranges, context) => fn(file, ranges, context),
+    readByFocalRanges: async (file, ranges, context, gitSha) =>
+      fn(file, ranges, context, gitSha),
   };
 }
 
@@ -161,5 +163,43 @@ describe('SnippetService.readSnippets', () => {
       ranges: [{ focalStart: 3, focalEnd: 3 }],
       context: 1,
     });
+  });
+
+  it('forwards gitSha to the reader so pinned sides read the blob, not the working tree', async () => {
+    let seenGitSha: string | undefined = 'unset';
+    const service = new SnippetService(
+      fakeReader((_file, _ranges, _context, gitSha) => {
+        seenGitSha = gitSha;
+        return [SAMPLE_SNIPPET];
+      }),
+    );
+
+    const result = await service.readSnippets({
+      file: '/abs/data.ttl',
+      rangeSpecs: ['3'],
+      context: 1,
+      gitSha: 'f924df91f23208fcbdbc5eae56ff3085b3fd201f',
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(seenGitSha).toBe('f924df91f23208fcbdbc5eae56ff3085b3fd201f');
+  });
+
+  it('passes undefined gitSha through for an unpinned working-tree read', async () => {
+    let seenGitSha: string | undefined = 'unset';
+    const service = new SnippetService(
+      fakeReader((_file, _ranges, _context, gitSha) => {
+        seenGitSha = gitSha;
+        return [SAMPLE_SNIPPET];
+      }),
+    );
+
+    await service.readSnippets({
+      file: '/abs/data.ttl',
+      rangeSpecs: ['3'],
+      context: 1,
+    });
+
+    expect(seenGitSha).toBeUndefined();
   });
 });

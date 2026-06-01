@@ -52,6 +52,8 @@ interface BatchEntry {
 interface Batch {
   file: string;
   context: number;
+  /** Commit SHA of the pinned side, or undefined for a working-tree read. */
+  gitSha: string | undefined;
   entries: BatchEntry[];
 }
 
@@ -84,11 +86,14 @@ export class SnippetService {
     file: string,
     range: SnippetFocalRange,
     context: number,
+    gitSha?: string,
   ): Observable<SnippetReadResult> {
-    const key = `${context} ${file}`;
+    // gitSha is part of the key: a pinned left and right share the same `file`
+    // but different blobs, so they must not coalesce into one request.
+    const key = `${context} ${gitSha ?? ''} ${file}`;
     let batch = this.pending.get(key);
     if (batch === undefined) {
-      batch = { file, context, entries: [] };
+      batch = { file, context, gitSha, entries: [] };
       this.pending.set(key, batch);
       queueMicrotask(() => this.flush(key));
     }
@@ -105,6 +110,9 @@ export class SnippetService {
     let params = new HttpParams()
       .set('file', batch.file)
       .set('snippetContext', String(batch.context));
+    if (batch.gitSha !== undefined) {
+      params = params.set('gitSha', batch.gitSha);
+    }
     for (const { range } of batch.entries) {
       params = params.append('range', rangeParam(range));
     }

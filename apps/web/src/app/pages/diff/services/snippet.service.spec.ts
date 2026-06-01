@@ -60,6 +60,45 @@ describe('SnippetService', () => {
     http.verify();
   });
 
+  it('includes the `gitSha` param when a pinned snippet is fetched', async () => {
+    const { service, http } = setup();
+    service
+      .fetch('file:///tmp/x.ttl', { focalStart: 3, focalEnd: 3 }, 2, 'f924df91f23208fcbdbc5eae56ff3085b3fd201f')
+      .subscribe();
+
+    await tick();
+
+    const req = snippetReq(http);
+    expect(req.request.params.get('gitSha')).toBe(
+      'f924df91f23208fcbdbc5eae56ff3085b3fd201f',
+    );
+    req.flush({ snippets: [{ kind: 'snippet', startLine: 3, focalStart: 3, focalEnd: 3, lines: ['L3'] }] });
+    http.verify();
+  });
+
+  it('does not coalesce same-file fetches that carry different gitShas (left vs right pin)', async () => {
+    const { service, http } = setup();
+    service
+      .fetch('file:///tmp/x.ttl', { focalStart: 3, focalEnd: 3 }, 0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+      .subscribe();
+    service
+      .fetch('file:///tmp/x.ttl', { focalStart: 3, focalEnd: 3 }, 0, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')
+      .subscribe();
+
+    await tick();
+
+    const reqs = http.match((r) => r.url.split('?')[0] === '/api/source-snippet');
+    expect(reqs.length).toBe(2);
+    expect(reqs.map((r) => r.request.params.get('gitSha')).sort()).toEqual([
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    ]);
+    for (const r of reqs) {
+      r.flush({ snippets: [{ kind: 'snippet', startLine: 3, focalStart: 3, focalEnd: 3, lines: ['L3'] }] });
+    }
+    http.verify();
+  });
+
   it('issues a separate GET per distinct file fetched in the same microtask', async () => {
     const { service, http } = setup();
     service.fetch('file:///a.ttl', { focalStart: 1, focalEnd: 1 }, 0).subscribe();

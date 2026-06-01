@@ -3,8 +3,82 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Logger } from '@nestjs/common';
+import { okAsync } from 'neverthrow';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestServer, type CreatedServer } from '../bootstrap/create-test-server';
+import { SnippetController } from './snippet.controller';
+import type { ReadSnippetsRequest, SnippetService } from './snippet.service';
+
+interface CapturedRes {
+  statusCode?: number;
+  body?: string;
+}
+
+function fakeRes(captured: CapturedRes) {
+  const res = {
+    status(code: number) {
+      captured.statusCode = code;
+      return res;
+    },
+    setHeader() {
+      return res;
+    },
+    send(body: string) {
+      captured.body = body;
+      return res;
+    },
+  };
+  return res;
+}
+
+describe('SnippetController gitSha forwarding', () => {
+  it('forwards a pinned `gitSha` query param through to the service', async () => {
+    let seen: ReadSnippetsRequest | undefined;
+    const service = {
+      readSnippets: (req: ReadSnippetsRequest) => {
+        seen = req;
+        return okAsync({ snippets: [] });
+      },
+    } as unknown as SnippetService;
+    const allowList = { has: () => true } as { has(p: string): boolean };
+    const controller = new SnippetController(allowList as never, service);
+
+    const captured: CapturedRes = {};
+    await controller.get(
+      {
+        file: 'file:///repo/data.ttl',
+        snippetContext: '1',
+        range: '3',
+        gitSha: 'f924df91f23208fcbdbc5eae56ff3085b3fd201f',
+      },
+      fakeRes(captured) as never,
+    );
+
+    expect(captured.statusCode).toBe(200);
+    expect(seen?.gitSha).toBe('f924df91f23208fcbdbc5eae56ff3085b3fd201f');
+  });
+
+  it('leaves gitSha undefined for an unpinned working-tree request', async () => {
+    let seen: ReadSnippetsRequest | undefined;
+    const service = {
+      readSnippets: (req: ReadSnippetsRequest) => {
+        seen = req;
+        return okAsync({ snippets: [] });
+      },
+    } as unknown as SnippetService;
+    const allowList = { has: () => true } as { has(p: string): boolean };
+    const controller = new SnippetController(allowList as never, service);
+
+    const captured: CapturedRes = {};
+    await controller.get(
+      { file: 'file:///repo/data.ttl', snippetContext: '1', range: '3' },
+      fakeRes(captured) as never,
+    );
+
+    expect(captured.statusCode).toBe(200);
+    expect(seen?.gitSha).toBeUndefined();
+  });
+});
 
 const SAMPLE_TTL = [
   '@prefix ex: <http://example.org/> .',

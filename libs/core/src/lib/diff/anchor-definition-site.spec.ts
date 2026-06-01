@@ -19,7 +19,10 @@ interface Entry {
   endLine?: number;
 }
 
-function buildSide(entries: ReadonlyArray<Entry>): {
+function buildSide(
+  entries: ReadonlyArray<Entry>,
+  pin?: { ref: string; sha: string },
+): {
   store: Store;
   sourceRecords: SourceRecordSidecar;
 } {
@@ -38,7 +41,7 @@ function buildSide(entries: ReadonlyArray<Entry>): {
     if (e.endLine !== undefined) rec.endLine = e.endLine;
     bucket.push(rec);
   }
-  return { store, sourceRecords: buildSourceRecordSidecar(perFile) };
+  return { store, sourceRecords: buildSourceRecordSidecar(perFile, pin) };
 }
 
 describe('anchorDefinitionSite', () => {
@@ -72,6 +75,24 @@ describe('anchorDefinitionSite', () => {
     ]);
     expect(anchorDefinitionSite(store, ex('Plain'), sourceRecords)).toEqual([
       { file: 'file:///x/a.ttl', line: 14 },
+    ]);
+  });
+
+  it('propagates the pin (gitRef/gitSha) so the definition-site snippet reads the blob, not the working tree', () => {
+    const { store, sourceRecords } = buildSide(
+      [
+        { s: 'Alice', p: 'name', o: 'AliceName', file: '/x/a.ttl', line: 7 },
+        { s: 'Alice', p: 'age', o: 'AliceAge', file: '/x/a.ttl', line: 5 },
+      ],
+      { ref: 'v3.3.0', sha: 'f924df91f23208fcbdbc5eae56ff3085b3fd201f' },
+    );
+    expect(anchorDefinitionSite(store, ex('Alice'), sourceRecords)).toEqual([
+      {
+        file: 'file:///x/a.ttl',
+        line: 5,
+        gitRef: 'v3.3.0',
+        gitSha: 'f924df91f23208fcbdbc5eae56ff3085b3fd201f',
+      },
     ]);
   });
 

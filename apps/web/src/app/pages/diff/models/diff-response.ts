@@ -11,6 +11,10 @@ export interface SourceRecord {
   file: string;
   line?: number;
   endLine?: number;
+  /** Pinned ref this record was loaded from (display only). */
+  gitRef?: string;
+  /** Commit SHA the line numbers were computed against; drives blob reads. */
+  gitSha?: string;
 }
 
 export interface BnodePathStep {

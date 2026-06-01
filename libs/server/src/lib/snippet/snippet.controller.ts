@@ -19,6 +19,13 @@ const SNIPPET_QUERY_SCHEMA = z
   .object({
     file: z.string().min(1),
     snippetContext: z.coerce.number().int().nonnegative(),
+    // Optional pin: the commit SHA the snippet's line numbers were computed
+    // against. When present, content is read from that git blob, not the
+    // working tree (ADR-0029 / ADR-0032).
+    gitSha: z
+      .string()
+      .regex(/^[0-9a-f]{40}$/, 'gitSha must be a 40-char lowercase hex SHA')
+      .optional(),
     range: z
       .union([z.string(), z.array(z.string())])
       .transform((raw, ctx): string[] => {
@@ -86,6 +93,7 @@ export class SnippetController {
       file: absPath,
       rangeSpecs: parsed.data.range,
       context: parsed.data.snippetContext,
+      gitSha: parsed.data.gitSha,
     });
 
     result.match(

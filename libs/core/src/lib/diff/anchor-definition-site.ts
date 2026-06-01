@@ -12,7 +12,10 @@ export function anchorDefinitionSite(
   sidecar: SourceRecordSidecar,
 ): SourceRecord[] {
   const subject = DataFactory.namedNode(anchorIri);
-  const byFile = new Map<string, { line?: number; endLine?: number }>();
+  const byFile = new Map<
+    string,
+    { line?: number; endLine?: number; gitRef?: string; gitSha?: string }
+  >();
 
   for (const q of store.getQuads(subject, null, null, null)) {
     const key = triplePatternKey(q.subject, q.predicate, q.object);
@@ -25,16 +28,26 @@ export function anchorDefinitionSite(
         (rec.line !== undefined &&
           (existing.line === undefined || rec.line < existing.line))
       ) {
-        byFile.set(rec.file, { line: rec.line, endLine: rec.endLine });
+        // gitRef/gitSha identify the pinned blob the line was computed
+        // against — carry them so the "defined here" snippet reads that blob,
+        // not the working tree (same pin for the whole file's load, ADR-0029).
+        byFile.set(rec.file, {
+          line: rec.line,
+          endLine: rec.endLine,
+          gitRef: rec.gitRef,
+          gitSha: rec.gitSha,
+        });
       }
     }
   }
 
   const out: SourceRecord[] = [];
-  for (const [file, { line, endLine }] of byFile) {
+  for (const [file, { line, endLine, gitRef, gitSha }] of byFile) {
     const record: SourceRecord = { file };
     if (line !== undefined) record.line = line;
     if (endLine !== undefined) record.endLine = endLine;
+    if (gitRef !== undefined) record.gitRef = gitRef;
+    if (gitSha !== undefined) record.gitSha = gitSha;
     out.push(record);
   }
   out.sort((a, b) =>

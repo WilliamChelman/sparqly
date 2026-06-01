@@ -1,8 +1,16 @@
+import { existsSync, statSync } from 'node:fs';
+import { dirname, relative } from 'node:path';
+import { join } from 'node:path';
 import { Inject, Injectable } from '@nestjs/common';
 import { errAsync, okAsync, ResultAsync } from 'neverthrow';
 import {
+  discoverRepoRoot,
+  GitCliPort,
+  readGitFileSnippets,
   readSourceSnippets,
   type FocalRange,
+  type GitPort,
+  type RepoDiscoveryDeps,
   type SnippetReadResult,
   type SourceSnippet,
 } from 'core';
@@ -12,6 +20,13 @@ export interface ReadSnippetsRequest {
   file: string;
   rangeSpecs: ReadonlyArray<string>;
   context: number;
+  /**
+   * Commit SHA of the pinned side this snippet belongs to (ADR-0029). When
+   * set, content is read from that git blob instead of the working tree so the
+   * recorded line numbers — computed against the pin — stay aligned with the
+   * displayed text. Absent for unpinned (working-tree) sources.
+   */
+  gitSha?: string;
 }
 
 export interface ReadSnippetsOk {
@@ -28,15 +43,61 @@ export interface SnippetReader {
     file: string,
     ranges: ReadonlyArray<FocalRange>,
     context: number,
+    /** When set, read the pinned git blob at this commit SHA, not disk. */
+    gitSha?: string,
   ): Promise<SnippetReadResult[]>;
 }
 
 export const SNIPPET_READER = Symbol('SNIPPET_READER');
 
-export function createDefaultSnippetReader(): SnippetReader {
+const repoDiscovery: RepoDiscoveryDeps = {
+  hasGitDir(dir: string): boolean {
+    const candidate = join(dir, '.git');
+    if (!existsSync(candidate)) return false;
+    try {
+      return statSync(candidate).isDirectory();
+    } catch {
+      return false;
+    }
+  },
+};
+
+/**
+ * Production reader. An unpinned request reads the working-tree file; a pinned
+ * request (`gitSha` set) reads the blob at that commit so the snippet's line
+ * numbers — computed against the pin — line up with the displayed text
+ * (otherwise a working-tree checkout that differs from the pin mis-highlights;
+ * see ADR-0029 / ADR-0032). The repo root is discovered by walking up from the
+ * file for a `.git`; if none is found we report `missing` rather than serve the
+ * mis-aligned working tree.
+ */
+export function createDefaultSnippetReader(
+  gitPort: GitPort = new GitCliPort(),
+): SnippetReader {
   return {
-    readByFocalRanges: (file, ranges, context) =>
-      readSourceSnippets(file, ranges, context),
+    readByFocalRanges: (file, ranges, context, gitSha) => {
+      if (gitSha === undefined) {
+        return readSourceSnippets(file, ranges, context);
+      }
+      const discovery = discoverRepoRoot(
+        { glob: file, configDir: dirname(file) },
+        repoDiscovery,
+      );
+      if (discovery.isErr()) {
+        return Promise.resolve(
+          ranges.map(() => ({ kind: 'unavailable', reason: 'missing' })),
+        );
+      }
+      const repoRoot = discovery.value;
+      return readGitFileSnippets(
+        gitPort,
+        repoRoot,
+        gitSha,
+        relative(repoRoot, file),
+        ranges,
+        context,
+      );
+    },
   };
 }
 
@@ -53,7 +114,12 @@ export class SnippetService {
     if (parsed.err !== undefined) return errAsync(parsed.err);
 
     return ResultAsync.fromSafePromise(
-      this.reader.readByFocalRanges(req.file, parsed.ranges, req.context),
+      this.reader.readByFocalRanges(
+        req.file,
+        parsed.ranges,
+        req.context,
+        req.gitSha,
+      ),
     ).andThen((results) => {
       const mapped = mapReaderResults(results, req.rangeSpecs, req.file);
       if (mapped.err !== undefined) return errAsync(mapped.err);

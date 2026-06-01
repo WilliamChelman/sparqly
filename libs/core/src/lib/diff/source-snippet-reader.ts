@@ -1,5 +1,6 @@
 import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
+import type { GitPort } from '../sources/git/git-port';
 
 /** A source-file snippet: focal range with context lines, read from disk. */
 export interface SourceSnippet {
@@ -143,6 +144,45 @@ export async function readSourceSnippets(
   } finally {
     stream.destroy();
   }
+}
+
+/**
+ * Yields the lines of an in-memory string, matching `readline`'s semantics:
+ * a single trailing newline does not produce a final empty line, so line
+ * numbering is identical to {@link readSourceSnippets}' disk read.
+ */
+async function* linesOfString(content: string): AsyncIterable<string> {
+  const parts = content.split('\n');
+  if (parts.length > 0 && parts[parts.length - 1] === '') parts.pop();
+  for (const line of parts) yield line;
+}
+
+/**
+ * Read source snippets from a pinned git blob instead of the working tree
+ * (ADR-0029 / ADR-0032). When a diff side is pinned to a ref, each
+ * {@link SourceRecord}'s line numbers were computed against that ref's blob —
+ * reading the working-tree file would mis-align the highlight whenever the
+ * checkout differs from the pin. Returns `unavailable: 'missing'` for every
+ * range when the blob is absent at `sha` (e.g. a shallow clone or gc'd object)
+ * rather than silently falling back to disk.
+ */
+export async function readGitFileSnippets(
+  gitPort: GitPort,
+  repoRoot: string,
+  sha: string,
+  repoRelPath: string,
+  ranges: ReadonlyArray<FocalRange>,
+  context: number,
+): Promise<SnippetReadResult[]> {
+  const bytes = await gitPort.readFileAtSha(repoRoot, sha, repoRelPath);
+  if (bytes === null) {
+    return ranges.map(() => ({ kind: 'unavailable', reason: 'missing' }));
+  }
+  return readSnippetsFromLines(
+    linesOfString(bytes.toString('utf8')),
+    ranges,
+    context,
+  );
 }
 
 /** Single-range convenience over {@link readSourceSnippets}. */

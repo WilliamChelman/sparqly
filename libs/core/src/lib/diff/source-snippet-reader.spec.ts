@@ -3,11 +3,29 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  readGitFileSnippets,
   readSnippetFromLines,
   readSnippetsFromLines,
   readSourceSnippet,
   readSourceSnippets,
 } from './source-snippet-reader';
+import type { GitPort } from '../sources/git/git-port';
+
+/** Minimal {@link GitPort} stub: only `readFileAtSha` is exercised by snippets. */
+function stubGitPort(
+  readFileAtSha: GitPort['readFileAtSha'],
+): GitPort {
+  const unused = () => {
+    throw new Error('not used by snippet reads');
+  };
+  return {
+    readFileAtSha,
+    resolveRefToSha: unused as unknown as GitPort['resolveRefToSha'],
+    getRefObjectType: unused as unknown as GitPort['getRefObjectType'],
+    listFilesAtSha: unused as unknown as GitPort['listFilesAtSha'],
+    readManyAtSha: unused as unknown as GitPort['readManyAtSha'],
+  };
+}
 
 let scratch: string;
 
@@ -305,5 +323,80 @@ describe('readSourceSnippets', () => {
     const path = await fixture('a.ttl', 'L1\nL2\nL3\n');
 
     expect(await readSourceSnippets(path, [], 2)).toEqual([]);
+  });
+});
+
+describe('readGitFileSnippets', () => {
+  it('slices lines from the git blob content, not from disk', async () => {
+    // On disk this path's line 2 would be `DISK`; the pinned blob has `BLOB`.
+    const onDisk = await fixture('a.ttl', 'X1\nDISK\nX3\n');
+    const gitPort = stubGitPort(async () =>
+      Buffer.from('B1\nBLOB\nB3\n', 'utf8'),
+    );
+
+    const out = await readGitFileSnippets(
+      gitPort,
+      '/repo',
+      'f924df91f23208fcbdbc5eae56ff3085b3fd201f',
+      'a.ttl',
+      [{ focalStart: 2, focalEnd: 2 }],
+      1,
+    );
+
+    expect(out).toEqual([
+      {
+        kind: 'snippet',
+        startLine: 1,
+        focalStart: 2,
+        focalEnd: 2,
+        lines: ['B1', 'BLOB', 'B3'],
+      },
+    ]);
+    // Guard against accidental disk reads regressing the fix.
+    expect(onDisk).toContain('a.ttl');
+  });
+
+  it('reports `missing` for every range when the blob is absent at the sha', async () => {
+    const gitPort = stubGitPort(async () => null);
+
+    const out = await readGitFileSnippets(
+      gitPort,
+      '/repo',
+      'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+      'gone.ttl',
+      [
+        { focalStart: 1, focalEnd: 1 },
+        { focalStart: 5, focalEnd: 5 },
+      ],
+      2,
+    );
+
+    expect(out).toEqual([
+      { kind: 'unavailable', reason: 'missing' },
+      { kind: 'unavailable', reason: 'missing' },
+    ]);
+  });
+
+  it('honors a single trailing newline so line numbers match the disk read', async () => {
+    const gitPort = stubGitPort(async () => Buffer.from('A\nB\nC\n', 'utf8'));
+
+    const out = await readGitFileSnippets(
+      gitPort,
+      '/repo',
+      'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+      'a.ttl',
+      [{ focalStart: 3, focalEnd: 3 }],
+      1,
+    );
+
+    expect(out).toEqual([
+      {
+        kind: 'snippet',
+        startLine: 2,
+        focalStart: 3,
+        focalEnd: 3,
+        lines: ['B', 'C'],
+      },
+    ]);
   });
 });
