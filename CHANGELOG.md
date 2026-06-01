@@ -1,3 +1,9 @@
+## [0.34.1](https://github.com/WilliamChelman/sparqly/compare/v0.34.0...v0.34.1) (2026-06-01)
+
+### Bug Fixes
+
+* **diff:** read snippet content from the pinned git blob, not the working tree ([f4c6233](https://github.com/WilliamChelman/sparqly/commit/f4c62337a5a03359d1051091d74606791218c81e))
+
 ## [0.34.0](https://github.com/WilliamChelman/sparqly/compare/v0.33.0...v0.34.0) (2026-05-30)
 
 ### Features
