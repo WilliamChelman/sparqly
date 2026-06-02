@@ -141,19 +141,16 @@ A path from a describe seed IRI to a dangling blank node, sent on a follow-up de
 _Avoid_: "depth parameter", conflating with the **describe-this affordance**
 
 **Describe page**:
-The webapp surface that runs **describe** against the **served registry** and renders the merged result, exposing a single-or-cleared source picker that scopes the describe to one source or to every served source.
+The webapp surface that runs **describe** against exactly one source and renders the result, split into **describe sections**. Exposes a mandatory single-select source picker mirroring the `query` and `diff` pages — it auto-selects the registry's **default source** on landing, falling back to the first listed source when none is marked default, and never offers a cleared or all-sources state. There is no cross-source merging: the page shows only the selected source's description.
+_Avoid_: "merged result", "single-or-cleared picker", "describe across the registry", "multi-source aggregation"
 
 **Describe section**:
-One of the two halves the **Describe page** splits the merged quads into — **outbound** (the seed is the subject) and **inbound** (the seed is the object).
+One of the two halves the **Describe page** splits the describe result into — **outbound** (the seed is the subject) and **inbound** (the seed is the object).
 _Avoid_: "outgoing"/"incoming", a separate "blank nodes" section
 
 **Describe-this affordance**:
-A click-through control rendered next to every named IRI in the webapp's structured RDF renderers that opens a new **Describe page** on the fully-expanded IRI, scoped to the calling surface's current source when one is set (cleared → merged view). The **tabular diff** surface carries two current sources and renders one affordance per side, collapsed to one when both sides resolve to the same source id. Attaches to named IRIs only.
+A click-through control rendered next to every named IRI in the webapp's structured RDF renderers that opens a new **Describe page** on the fully-expanded IRI, scoped to the calling surface's current source when one is set; when none is set, the Describe page falls back to the **default source**. The **tabular diff** surface carries two current sources and renders one affordance per side, collapsed to one when both sides resolve to the same source id. Attaches to named IRIs only.
 _Avoid_: "auto-expand"
-
-**Describe provenance**:
-A sparqly-injected RDF-star annotation recording per-quad **served registry** membership — which source returned the quad. Distinct from **Source records**, which record file authorship.
-_Avoid_: conflating with **Source records**, "from-graph annotation"
 
 ### Saved queries
 
@@ -236,8 +233,8 @@ _Avoid_: "test id" as a default selector, "test hook"
 - The **Annotate-source transformation** projects **Source records** as RDF-star into the glob's loaded Store for SPARQL queryability; an **inline query** sees the projection only if it references those RDF-star triples, and **Canonicalization** strips them. The projection is independent of the **Source record sidecar** that `diff` consumes.
 - `diff` (in **graph-diff** mode) consumes the per-side **Source record sidecar** carried by every in-memory glob/file target; a side resolved via **pass-through** (endpoint or a **Disk-backed glob**) carries no sidecar, so diff runs but emits one boundary-log `warn` per such side and the `html` format's **Source-file snippet** sections render empty. Explicit **Annotate-source transformations** in the user's config emit RDF-star into the Store independently and do not feed diff. Source records are surfaced across every graph output format.
 - Every command that renders IRIs reads the project-config `context:` block under one rule: prefix map = built-in defaults ∪ `context.prefixes` (config wins); base = `context.base` as strict fallback after prefix match.
-- The **Describe page** runs **describe** against the registry, which dispatches per source kind: `glob` targets materialize and run the full describe fixpoint; `endpoint` targets fetch depth-0 only, with deeper expansion driven by **describe expansion paths**; `empty` is rejected as a top-level describe target; `reference` is rejected.
-- A describe request is best-effort multi-origin: one source failing does not fail the request. **Describe provenance** annotations are stripped by the webapp renderer and surfaced as UI badges; they never conflate with user-authored RDF-star or with **Source records**.
+- The **Describe page** runs **describe** against exactly one selected source, which dispatches per source kind: `glob` targets materialize and run the full describe fixpoint; `endpoint` targets fetch depth-0 only, with deeper expansion driven by **describe expansion paths**; `empty` is rejected as a top-level describe target; `reference` is rejected.
+- A describe request targets a single source; when `source` is omitted on the wire it resolves to the registry's **default source**. A source that fails to describe errors the request as a typed `Result` error — there is no best-effort multi-origin aggregation, no per-source membership, and no per-quad provenance annotation.
 - A **Saved query** is webapp-scoped state: it is _not_ a **Source**, never appears in the **source registry**, and never resolvable via `@id`. There is no config-declared query counterpart — a **Saved query** is the only named query artifact, and it is webapp-scoped. A **Templated saved query** carries a `parameters:` list (one entry per **Parameter declaration**); at run time the webapp builds a `VALUES` clause from the user-supplied values and prepends it to the body via client-side substitution, then runs the substituted SPARQL through the server as ordinary query — `serve` does not learn about templates.
 - Reading and writing the **Saved-query sidecar** is the **only** path by which `serve` mutates project files. Writes use optimistic concurrency, so concurrent edits from two browsers surface as visible conflicts rather than silent data loss. Under `serve --read-only`, the library is loadable but immutable, and the **Sources page**'s per-entry admin triggers are likewise refused.
 - The webapp deep-links **Saved query** loads via a URL slug parameter plus per-parameter binding keys (multi-cardinality values supplied as repeated keys). This is mutually exclusive with the inline-SPARQL URL form — editing a loaded saved-query body on a **Saved-query run surface** transitions the URL to the inline form. Persisting the edit requires opening the slug on the **Saved-query authoring surface**; run surfaces carry no Save, Save-as, or "modified from `<slug>`" affordance.

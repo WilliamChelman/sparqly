@@ -50,4 +50,16 @@ describe('mapDescribeHttpError', () => {
     expect(ex.getStatus()).toBe(HttpStatus.BAD_REQUEST);
     expect(ex.getResponse()).toEqual({ kind: 'reference-target' });
   });
+
+  it('maps no-default-multi to 400 carrying the available source ids (ADR-0052)', () => {
+    const ex = mapDescribeHttpError({
+      kind: 'no-default-multi',
+      availableIds: ['alpha', 'beta'],
+    });
+    expect(ex.getStatus()).toBe(HttpStatus.BAD_REQUEST);
+    expect(ex.getResponse()).toEqual({
+      kind: 'no-default-multi',
+      availableIds: ['alpha', 'beta'],
+    });
+  });
 });

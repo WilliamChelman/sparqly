@@ -1,6 +1,7 @@
 ---
 status: accepted
 amends: 0005, 0011
+amended by: 0052
 ---
 
 # Webapp describe page with multi-source aggregation

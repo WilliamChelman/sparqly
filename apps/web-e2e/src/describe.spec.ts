@@ -22,7 +22,8 @@ test.describe('describe page · seed → outbound + inbound', () => {
       page.getByRole('heading', { level: 2, name: /^inbound/ }),
     ).toBeVisible();
 
-    // The total ticker reports the merged quad count from the merged response.
+    // With the picker cleared, the describe resolves to the default source
+    // (ADR-0052: `alpha`), which holds all three of bob's quads.
     await expect(page.getByText(/3 quad\(s\)\./)).toBeVisible();
 
     // The URL is rewritten with the fully-expanded seed on submit so the page
