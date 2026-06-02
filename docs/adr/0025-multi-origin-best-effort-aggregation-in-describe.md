@@ -1,3 +1,7 @@
+---
+status: superseded by ADR-0052
+---
+
 # Multi-origin best-effort aggregation in `/api/describe`
 
 `/api/describe` resolves a seed IRI across N selected sources and merges the results. Per the existing contract (CONTEXT.md, ADR-0015), one source failing must not fail the request — `perSource[id].error?` carries per-source failures and HTTP 502 fires only when *every* selected source failed. ADR-0024's default — one `Result<T, E>` per call — would force "partial failure" into the error channel and lose per-source attribution. We deliberately deviate: per-source failures travel as **data** inside the ok payload; only the all-failed terminal case errs the top-level `Result`.

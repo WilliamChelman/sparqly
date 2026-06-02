@@ -54,6 +54,7 @@ export type DescribeTopLevelError =
   | EmptyTargetError
   | SeedNotIriError
   | DescribeReferenceTargetError
+  | DescribeNoDefaultMultiError
   | ExpandedPathsWithoutSourceError
   | ExpandedPathsNonEndpointSourceError;
 
@@ -73,6 +74,16 @@ export interface SeedNotIriError {
 
 export interface DescribeReferenceTargetError {
   kind: 'reference-target';
+}
+
+/**
+ * `source` omitted on a registry with 2+ entries and no `default: true` marker.
+ * API misuse: the caller must name a source or mark a default (ADR-0052 reuses
+ * the ADR-0016 default-routing behind `/api/sparql`).
+ */
+export interface DescribeNoDefaultMultiError {
+  kind: 'no-default-multi';
+  availableIds: ReadonlyArray<string>;
 }
 
 export interface ExpandedPathsWithoutSourceError {
@@ -97,6 +108,8 @@ export function formatDescribeError(error: DescribeTopLevelError): string {
       return `describe: seed ${JSON.stringify(error.value)} is not an IRI`;
     case 'reference-target':
       return "describe: every selected source is a `reference` alias; describe an actual data source instead";
+    case 'no-default-multi':
+      return `describe: \`source\` omitted but the registry has multiple entries and no \`default: true\`; name a source. Available: ${error.availableIds.map((id) => `@${id}`).join(', ')}`;
     case 'expanded-paths-without-source':
       return 'describe: `expandedPaths` requires `source` to be set (paths apply to a single endpoint source per request)';
     case 'expanded-paths-non-endpoint-source':

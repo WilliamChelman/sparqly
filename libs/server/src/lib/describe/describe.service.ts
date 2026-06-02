@@ -5,6 +5,7 @@ import {
   describeStore,
   relabelBnodes,
   resolveSourceResult,
+  selectTargetResult,
   type DescribeEndpointResult,
   type DescribeError,
   type DescribeTopLevelError,
@@ -12,6 +13,7 @@ import {
   type ParsedSource,
   type QuerySources,
   type SourceError,
+  type TargetError,
 } from 'core';
 import { DataFactory, type NamedNode, type Quad, type Term } from 'n3';
 import {
@@ -37,7 +39,11 @@ export interface DescribeConfig {
 
 export interface DescribeRequest {
   iri: string;
-  /** Source id (optional leading `@`) or omit to fan out across the served registry. */
+  /**
+   * Source id (optional leading `@`). Omit to resolve the registry's default
+   * source (ADR-0052): a `default: true` marker, else the sole served entry,
+   * else a `no-default-multi` error.
+   */
   source?: string;
   withProvenance?: boolean;
   perSourceLimit?: number;
@@ -80,15 +86,22 @@ export class DescribeService {
     if (seedResult.isErr()) return errAsync(seedResult.error);
     const seed = seedResult.value;
 
+    // `expandedPaths` requires an explicit `source` (the paths apply to one
+    // endpoint per request). Checked before selection so it isn't shadowed by
+    // the no-default-multi resolution error on a multi-source registry.
+    const expandedPaths = req.expandedPaths;
+    const hasPaths = expandedPaths !== undefined && expandedPaths.length > 0;
+    if (hasPaths && req.source === undefined) {
+      return errAsync({ kind: 'expanded-paths-without-source' });
+    }
+
     const selection = this.selectSources(req.source);
     if (selection.isErr()) return errAsync(selection.error);
     const selected = selection.value;
 
-    const expandedPaths = req.expandedPaths;
-    if (expandedPaths !== undefined && expandedPaths.length > 0) {
-      if (req.source === undefined) {
-        return errAsync({ kind: 'expanded-paths-without-source' });
-      }
+    // `req.source` is defined here — the omitted case returned above. The
+    // explicit narrowing also lets `id` resolve to a `string`.
+    if (hasPaths && req.source !== undefined) {
       const target = selected[0];
       if (target.kind !== 'endpoint') {
         return errAsync({
@@ -272,21 +285,13 @@ export class DescribeService {
       if (match.kind === 'reference') return err({ kind: 'reference-target' });
       return ok([match]);
     }
-    const servedIds = new Set<string>();
-    for (const src of this.servedRegistry) {
-      if (src.id !== undefined) servedIds.add(src.id);
-    }
-    const out: ParsedSource[] = [];
-    for (const src of this.servedRegistry) {
-      if (!isSupportedKind(src)) continue;
-      if (src.id === undefined) continue;
-      if (src.kind === 'empty') continue;
-      if (src.kind === 'reference') continue;
-      if (src.kind === 'file' && servedIds.has(src.parentId)) continue;
-      out.push(src);
-    }
-    if (out.length === 0) return err({ kind: 'empty-target' });
-    return ok(out);
+    // Omitted `source` resolves to the registry's default source (ADR-0052),
+    // reusing the ADR-0016 default-routing behind `/api/sparql`: a `default: true`
+    // marker, else the sole served entry, else a no-default-multi error.
+    return selectTargetResult(this.servedRegistry).match(
+      (target) => ok([target]),
+      (error) => err(mapTargetError(error)),
+    );
   }
 }
 
@@ -295,6 +300,24 @@ interface SourceRun {
   quads: Quad[];
   truncated: boolean;
   error?: DescribeError;
+}
+
+/**
+ * Map the reused ADR-0016 `TargetError` (default-routing) onto describe's own
+ * top-level error vocabulary. Only the omitted-`source` branch calls this, so
+ * `unknown-ref` (an explicit-ref-only failure) cannot arise; it collapses to
+ * `empty-target` for exhaustiveness.
+ */
+function mapTargetError(error: TargetError): DescribeTopLevelError {
+  switch (error.kind) {
+    case 'no-default-multi':
+      return { kind: 'no-default-multi', availableIds: error.availableIds };
+    case 'ref-as-target':
+      return { kind: 'reference-target' };
+    case 'empty-registry':
+    case 'unknown-ref':
+      return { kind: 'empty-target' };
+  }
 }
 
 function isSupportedKind(src: ParsedSource): boolean {

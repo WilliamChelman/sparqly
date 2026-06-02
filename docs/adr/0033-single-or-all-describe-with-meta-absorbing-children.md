@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0052
 amends: 0015, 0019
 ---
 

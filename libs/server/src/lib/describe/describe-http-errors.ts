@@ -23,6 +23,11 @@ export function mapDescribeHttpError(
       });
     case 'reference-target':
       return new BadRequestException({ kind: 'reference-target' });
+    case 'no-default-multi':
+      return new BadRequestException({
+        kind: 'no-default-multi',
+        availableIds: [...error.availableIds],
+      });
     case 'expanded-paths-without-source':
       return new BadRequestException({ kind: 'expanded-paths-without-source' });
     case 'expanded-paths-non-endpoint-source':
