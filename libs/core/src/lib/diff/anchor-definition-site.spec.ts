@@ -108,4 +108,84 @@ describe('anchorDefinitionSite', () => {
     store.addQuad(quad(namedNode(ex('Alice')), namedNode(ex('name')), namedNode(ex('AliceName'))));
     expect(anchorDefinitionSite(store, ex('Alice'), new Map())).toEqual([]);
   });
+
+  it('anchors on a changed predicate line, not the earliest annotated line, when a changed-predicate set matches', () => {
+    const { store, sourceRecords } = buildSide([
+      { s: 'Prop', p: 'type', o: 'ObjectProperty', file: '/x/a.ttl', line: 5 },
+      { s: 'Prop', p: 'rule', o: 'ShapeRule', file: '/x/a.ttl', line: 12 },
+    ]);
+    expect(
+      anchorDefinitionSite(store, ex('Prop'), sourceRecords, new Set([ex('rule')])),
+    ).toEqual([{ file: 'file:///x/a.ttl', line: 12 }]);
+  });
+
+  it('emits one focal record per matched predicate at that predicate\'s earliest line', () => {
+    const { store, sourceRecords } = buildSide([
+      { s: 'Prop', p: 'type', o: 'ObjectProperty', file: '/x/a.ttl', line: 5 },
+      { s: 'Prop', p: 'rule', o: 'Rule2', file: '/x/a.ttl', line: 30 },
+      { s: 'Prop', p: 'rule', o: 'Rule1', file: '/x/a.ttl', line: 12 },
+      { s: 'Prop', p: 'label', o: 'Label', file: '/x/a.ttl', line: 20 },
+    ]);
+    expect(
+      anchorDefinitionSite(
+        store,
+        ex('Prop'),
+        sourceRecords,
+        new Set([ex('rule'), ex('label')]),
+      ),
+    ).toEqual([
+      { file: 'file:///x/a.ttl', line: 12 },
+      { file: 'file:///x/a.ttl', line: 20 },
+    ]);
+  });
+
+  it('falls back to the earliest annotated line when no direct predicate matches the changed set', () => {
+    const { store, sourceRecords } = buildSide([
+      { s: 'Prop', p: 'type', o: 'ObjectProperty', file: '/x/a.ttl', line: 5 },
+      { s: 'Prop', p: 'rule', o: 'ShapeRule', file: '/x/a.ttl', line: 12 },
+    ]);
+    expect(
+      anchorDefinitionSite(store, ex('Prop'), sourceRecords, new Set([ex('absent')])),
+    ).toEqual([{ file: 'file:///x/a.ttl', line: 5 }]);
+  });
+
+  it('falls back to the earliest annotated line when the changed set is empty', () => {
+    const { store, sourceRecords } = buildSide([
+      { s: 'Prop', p: 'type', o: 'ObjectProperty', file: '/x/a.ttl', line: 5 },
+      { s: 'Prop', p: 'rule', o: 'ShapeRule', file: '/x/a.ttl', line: 12 },
+    ]);
+    expect(
+      anchorDefinitionSite(store, ex('Prop'), sourceRecords, new Set()),
+    ).toEqual([{ file: 'file:///x/a.ttl', line: 5 }]);
+  });
+
+  it('falls back to the earliest annotated line when the matched predicate records carry no line', () => {
+    const { store, sourceRecords } = buildSide([
+      { s: 'Prop', p: 'type', o: 'ObjectProperty', file: '/x/a.ttl', line: 5 },
+      { s: 'Prop', p: 'rule', o: 'ShapeRule', file: '/x/a.ttl' },
+    ]);
+    expect(
+      anchorDefinitionSite(store, ex('Prop'), sourceRecords, new Set([ex('rule')])),
+    ).toEqual([{ file: 'file:///x/a.ttl', line: 5 }]);
+  });
+
+  it('carries the pin (gitRef/gitSha) on a focal record', () => {
+    const { store, sourceRecords } = buildSide(
+      [
+        { s: 'Prop', p: 'type', o: 'ObjectProperty', file: '/x/a.ttl', line: 5 },
+        { s: 'Prop', p: 'rule', o: 'ShapeRule', file: '/x/a.ttl', line: 12 },
+      ],
+      { ref: 'v3.3.0', sha: 'f924df91f23208fcbdbc5eae56ff3085b3fd201f' },
+    );
+    expect(
+      anchorDefinitionSite(store, ex('Prop'), sourceRecords, new Set([ex('rule')])),
+    ).toEqual([
+      {
+        file: 'file:///x/a.ttl',
+        line: 12,
+        gitRef: 'v3.3.0',
+        gitSha: 'f924df91f23208fcbdbc5eae56ff3085b3fd201f',
+      },
+    ]);
+  });
 });

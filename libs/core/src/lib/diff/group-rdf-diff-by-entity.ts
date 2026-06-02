@@ -173,13 +173,22 @@ export function groupRdfDiffByEntity(
       hunk.state =
         onLeft && !onRight ? 'removed' : !onLeft && onRight ? 'added' : 'changed';
       if (hunk.state === 'changed') {
+        // Direct (bnodePath-free) changed predicates per side. The definition
+        // site crosses: left's "defined here" anchors on what the right side
+        // changed, and vice versa (issue #405).
+        const addedPredicates = new Set<string>();
+        const removedPredicates = new Set<string>();
+        for (const l of hunk.lines) {
+          if (l.bnodePath !== undefined) continue;
+          (l.side === '+' ? addedPredicates : removedPredicates).add(l.predicate);
+        }
         const leftDef =
           hunk.sourceRecords.left.length === 0 && onLeft && left.sourceRecords !== undefined
-            ? anchorDefinitionSite(left.store, hunk.anchor, left.sourceRecords)
+            ? anchorDefinitionSite(left.store, hunk.anchor, left.sourceRecords, addedPredicates)
             : [];
         const rightDef =
           hunk.sourceRecords.right.length === 0 && onRight && right.sourceRecords !== undefined
-            ? anchorDefinitionSite(right.store, hunk.anchor, right.sourceRecords)
+            ? anchorDefinitionSite(right.store, hunk.anchor, right.sourceRecords, removedPredicates)
             : [];
         if (leftDef.length > 0 || rightDef.length > 0) {
           hunk.anchorSource = { left: leftDef, right: rightDef };
