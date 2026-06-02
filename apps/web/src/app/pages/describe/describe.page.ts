@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
   OnInit,
   signal,
@@ -65,8 +66,6 @@ type DescribeTab = 'table' | 'turtle';
         />
         <app-sources-picker
           label="source"
-          placeholder="All sources"
-          [allowEmpty]="true"
           [value]="initialSource()"
           (valueChange)="onSourceChange($event)"
         />
@@ -90,9 +89,7 @@ type DescribeTab = 'table' | 'turtle';
       @if (response(); as resp) {
         <app-source-errors [perSource]="resp.perSource" />
         <section class="flex flex-col gap-2">
-          <p class="text-sm text-foreground-muted">
-            {{ resp.total }} quad(s).
-          </p>
+          <p class="text-sm text-foreground-muted">{{ resp.total }} quad(s).</p>
           <nav
             app-eyebrow
             role="tablist"
@@ -104,7 +101,9 @@ type DescribeTab = 'table' | 'turtle';
               [attr.aria-selected]="activeTab() === 'table'"
               (click)="setTab('table')"
               class="cursor-pointer border-b border-transparent bg-transparent px-0 py-1 transition-colors duration-[180ms] hover:text-foreground-muted aria-selected:border-accent aria-selected:text-foreground"
-            >table</button>
+            >
+              table
+            </button>
             @if (serialization(); as ser) {
               <button
                 role="tab"
@@ -112,7 +111,9 @@ type DescribeTab = 'table' | 'turtle';
                 [attr.aria-selected]="activeTab() === 'turtle'"
                 (click)="setTab('turtle')"
                 class="cursor-pointer border-b border-transparent bg-transparent px-0 py-1 transition-colors duration-[180ms] hover:text-foreground-muted aria-selected:border-accent aria-selected:text-foreground"
-              >{{ ser }}</button>
+              >
+                {{ ser }}
+              </button>
             }
           </nav>
           @switch (activeTab()) {
@@ -153,20 +154,11 @@ export class DescribePage implements OnInit {
   readonly running = signal<boolean>(false);
   readonly response = signal<DescribeResponse | null>(null);
   readonly iriError = signal<string | null>(null);
-  // '' means "no override" — server fans out across the absorbed registry
-  // (ADR-0033). A non-empty id describes against that source only.
   readonly selectedSource = signal<string>('');
   readonly initialSource = signal<string>('');
   private prefixes: Record<string, string> = {};
   readonly displayContext = signal<DisplayContext>({ prefixes: {} });
-  /** Ids of every `endpoint` source in the served registry. */
   private readonly allEndpointSourceIds = signal<string[]>([]);
-  /**
-   * Endpoint-source ids that can be expanded right now. Under ADR-0033's
-   * single-or-cleared contract, expansion is scoped to the picker's selection
-   * — so the affordance is hidden when the picker is cleared or when the
-   * selected source isn't an endpoint.
-   */
   readonly endpointSourceIds = computed<readonly string[]>(() => {
     const selected = this.selectedSource();
     if (selected === '') return [];
@@ -199,7 +191,12 @@ export class DescribePage implements OnInit {
   readonly formatted = computed<FormattedResult | null>(() => {
     const quads = this.strippedResponse().quads;
     if (quads.length === 0) return null;
-    return resultToFormatted(quads as Quad[], {}, undefined, this.displayContext());
+    return resultToFormatted(
+      quads as Quad[],
+      {},
+      undefined,
+      this.displayContext(),
+    );
   });
 
   readonly serialization = computed<FormatSerialization | null>(
@@ -214,6 +211,15 @@ export class DescribePage implements OnInit {
       this.selectedSource.set(source);
       this.initialSource.set(source);
     }
+
+    effect(() => {
+      void this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { source: this.selectedSource() || null },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      });
+    });
   }
 
   ngOnInit(): void {
@@ -255,15 +261,10 @@ export class DescribePage implements OnInit {
     this.response.set(null);
     this._activeTab.set('table');
     const selected = this.selectedSource();
-    const queryParams: Record<string, string | null> = {
-      iri,
-      // Always write the key so a previously-selected source clears from the URL
-      // when the picker is back to "All sources".
-      source: selected === '' ? null : selected,
-    };
+
     void this.router.navigate([], {
       relativeTo: this.route,
-      queryParams,
+      queryParams: { iri },
       queryParamsHandling: 'merge',
       replaceUrl: true,
     });
@@ -304,7 +305,8 @@ export class DescribePage implements OnInit {
     if (current === null) return;
     const { sourceId, path } = target;
     const serialized = JSON.stringify(path);
-    if (this.expandedPaths.some((p) => JSON.stringify(p) === serialized)) return;
+    if (this.expandedPaths.some((p) => JSON.stringify(p) === serialized))
+      return;
     this.expandedPaths = [...this.expandedPaths, path];
     this.running.set(true);
     this.describeService
@@ -323,5 +325,4 @@ export class DescribePage implements OnInit {
         },
       });
   }
-
 }

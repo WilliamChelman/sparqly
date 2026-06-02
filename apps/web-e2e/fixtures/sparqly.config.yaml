@@ -1,8 +1,8 @@
 sources:
-  # ADR-0052: an omitted `source` on /api/describe resolves to the default
-  # source. The describe page lands with the picker cleared, so the registry
-  # needs a default for the cold-landing describe to resolve (else
-  # `no-default-multi`). alpha carries the seed `ex:bob` the describe e2e uses.
+  # ADR-0052: the describe page's mandatory picker auto-selects the registry's
+  # default source on landing, and the describe-this affordance lets the server
+  # resolve an omitted `source` to that same default. alpha carries the seed
+  # `ex:bob` the describe e2e uses.
   - id: alpha
     glob: ./data/alpha.ttl
     default: true
