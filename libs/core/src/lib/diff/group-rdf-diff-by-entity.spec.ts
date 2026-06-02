@@ -916,6 +916,85 @@ describe('groupRdfDiffByEntity — anchorSource (anchor definition site)', () =>
       right: [],
     });
   });
+
+  // Sidecar-only side (production path): no RDF-star annotations in the store.
+  function plainSide(entries: ReadonlyArray<AnnEntry>): {
+    store: Store;
+    sourceRecords: SourceRecordSidecar;
+  } {
+    const store = new Store();
+    const perFile = new Map<string, SidecarLoaderRecord[]>();
+    for (const e of entries) {
+      const asserted = quad(namedNode(ex(e.s)), namedNode(ex(e.p)), namedNode(ex(e.o)));
+      store.addQuad(asserted);
+      let bucket = perFile.get(e.file);
+      if (bucket === undefined) {
+        bucket = [];
+        perFile.set(e.file, bucket);
+      }
+      const rec: SidecarLoaderRecord = { quad: asserted };
+      if (e.line !== undefined) rec.line = e.line;
+      bucket.push(rec);
+    }
+    return { store, sourceRecords: buildSourceRecordSidecar(perFile) };
+  }
+
+  it("anchorSource.left anchors on the predicate that changed on the right side (cross-side), not the anchor's earliest line", async () => {
+    // Right adds a second `rule` value; left contributes no changed-line
+    // records, so its "defined here" anchors on left's `rule` line (12), not
+    // the earliest `type` line (5).
+    const left = plainSide([
+      { s: 'Prop', p: 'type', o: 'ObjectProperty', file: '/x/a.ttl', line: 5 },
+      { s: 'Prop', p: 'rule', o: 'Rule1', file: '/x/a.ttl', line: 12 },
+    ]);
+    const right = plainSide([
+      { s: 'Prop', p: 'type', o: 'ObjectProperty', file: '/x/a.ttl', line: 5 },
+      { s: 'Prop', p: 'rule', o: 'Rule1', file: '/x/a.ttl', line: 12 },
+      { s: 'Prop', p: 'rule', o: 'Rule2', file: '/x/a.ttl', line: 13 },
+    ]);
+    const diff = await diffStores(left, right);
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: left.store, sourceRecords: left.sourceRecords },
+      right: { store: right.store, sourceRecords: right.sourceRecords },
+    });
+
+    expect(hunked.hunks).toHaveLength(1);
+    const hunk = hunked.hunks[0];
+    expect(hunk.state).toBe('changed');
+    expect(hunk.sourceRecords.left).toEqual([]);
+    expect(hunk.anchorSource).toEqual({
+      left: [{ file: 'file:///x/a.ttl', line: 12 }],
+      right: [],
+    });
+  });
+
+  it('mirror: anchorSource.right anchors on the predicate that changed on the left side', async () => {
+    const left = plainSide([
+      { s: 'Prop', p: 'type', o: 'ObjectProperty', file: '/x/a.ttl', line: 5 },
+      { s: 'Prop', p: 'rule', o: 'Rule1', file: '/x/a.ttl', line: 12 },
+      { s: 'Prop', p: 'rule', o: 'Rule2', file: '/x/a.ttl', line: 13 },
+    ]);
+    const right = plainSide([
+      { s: 'Prop', p: 'type', o: 'ObjectProperty', file: '/x/a.ttl', line: 5 },
+      { s: 'Prop', p: 'rule', o: 'Rule1', file: '/x/a.ttl', line: 12 },
+    ]);
+    const diff = await diffStores(left, right);
+    const hunked = groupRdfDiffByEntity({
+      diff,
+      left: { store: left.store, sourceRecords: left.sourceRecords },
+      right: { store: right.store, sourceRecords: right.sourceRecords },
+    });
+
+    expect(hunked.hunks).toHaveLength(1);
+    const hunk = hunked.hunks[0];
+    expect(hunk.state).toBe('changed');
+    expect(hunk.sourceRecords.right).toEqual([]);
+    expect(hunk.anchorSource).toEqual({
+      left: [],
+      right: [{ file: 'file:///x/a.ttl', line: 12 }],
+    });
+  });
 });
 
 describe('groupRdfDiffByEntity — golden HunkedRdfDiff JSON on a small SHACL-style fixture', () => {
