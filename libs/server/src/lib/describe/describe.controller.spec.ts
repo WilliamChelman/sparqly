@@ -64,15 +64,14 @@ describe('POST /api/describe — tracer-bullet (single glob source)', () => {
       iri: string;
       quads: string;
       total: number;
-      perSource: Record<string, { count: number; truncated: boolean }>;
+      truncated: boolean;
     };
     expect(json.iri).toBe('http://example.org/alice');
     expect(typeof json.quads).toBe('string');
     // 2 quads with alice as subject + 1 with alice as object.
     expect(json.total).toBe(3);
-    expect(json.perSource).toHaveProperty('alpha');
-    expect(json.perSource.alpha.count).toBe(3);
-    expect(json.perSource.alpha.truncated).toBe(false);
+    expect(json.truncated).toBe(false);
+    expect(json).not.toHaveProperty('perSource');
     // N-Quads body carries the three quads in some order.
     expect(json.quads).toContain('http://example.org/alice');
     expect(json.quads).toContain('http://example.org/knows');
@@ -95,12 +94,10 @@ describe('POST /api/describe — tracer-bullet (single glob source)', () => {
     const json = (await resp.json()) as {
       quads: string;
       total: number;
-      perSource: Record<string, { count: number }>;
     };
     expect(json.quads).not.toContain('urn:sparqly:fromSource');
     // Same merged quad set as the provenance-on case (2 alice-subject + 1 alice-object).
     expect(json.total).toBe(3);
-    expect(json.perSource.alpha.count).toBe(3);
   });
 
   it('accepts the single-source `source` field and dispatches against that source only', async () => {
@@ -109,11 +106,7 @@ describe('POST /api/describe — tracer-bullet (single glob source)', () => {
       source: 'alpha',
     });
     expect(resp.status).toBe(200);
-    const json = (await resp.json()) as {
-      total: number;
-      perSource: Record<string, { count: number }>;
-    };
-    expect(json.perSource).toHaveProperty('alpha');
+    const json = (await resp.json()) as { total: number };
     expect(json.total).toBe(3);
   });
 
@@ -137,11 +130,11 @@ describe('POST /api/describe — tracer-bullet (single glob source)', () => {
       iri: string;
       quads: string;
       total: number;
-      perSource: Record<string, { count: number; truncated: boolean }>;
+      truncated: boolean;
     };
     expect(json.total).toBe(0);
     expect(json.quads.trim()).toBe('');
-    expect(json.perSource.alpha.count).toBe(0);
+    expect(json.truncated).toBe(false);
   });
 
   it('returns 400 when `expandedPaths` is provided without a `source`', async () => {
@@ -238,7 +231,7 @@ describe('DescribeController — result routing through describe-http-errors map
       iri: 'http://example.org/alice',
       quads: '',
       total: 0,
-      perSource: { alpha: { count: 0, truncated: false } },
+      truncated: false,
     };
     const { res, calls } = fakeRes();
     await controllerWithOk(value).post(
@@ -249,16 +242,11 @@ describe('DescribeController — result routing through describe-http-errors map
     expect(JSON.parse(calls.body)).toEqual(value);
   });
 
-  it('routes all-sources-failed through the mapper as a 502 HttpException', async () => {
+  it('routes a single-source upstream failure through the mapper as a 502 HttpException (ADR-0052)', async () => {
     const ctl = controllerWithErr({
-      kind: 'all-sources-failed',
-      perSource: {
-        alpha: {
-          kind: 'endpoint-describe',
-          endpoint: 'http://ex/sparql',
-          message: 'down',
-        },
-      },
+      kind: 'endpoint-describe',
+      endpoint: 'http://ex/sparql',
+      message: 'down',
     });
     let caught: HttpException | undefined;
     try {
@@ -268,16 +256,9 @@ describe('DescribeController — result routing through describe-http-errors map
     }
     expect(caught).toBeInstanceOf(HttpException);
     expect(caught?.getStatus()).toBe(502);
-    expect(caught?.getResponse()).toEqual({
-      kind: 'all-sources-failed',
-      perSource: {
-        alpha: {
-          kind: 'endpoint-describe',
-          endpoint: 'http://ex/sparql',
-          message: 'down',
-        },
-      },
-    });
+    const body = caught?.getResponse() as { kind: string; endpoint: string };
+    expect(body.kind).toBe('endpoint-describe');
+    expect(body.endpoint).toBe('http://ex/sparql');
   });
 
   it('routes every precondition variant through the mapper as 400 HttpExceptions', async () => {

@@ -21,8 +21,8 @@ import {
 import type { FormatSerialization, PathStep } from 'common';
 import type { Quad } from 'n3';
 import { DescribeSectionsComponent } from './components/describe-sections.component';
-import { SourceErrorsComponent } from './components/source-errors.component';
 import { describeIriExpand } from './utils/describe-iri-expand';
+import { describeErrorMessage } from './utils/describe-error-message';
 import type { DescribeBnodePathResult } from './utils/describe-bnode-path';
 import { mergeDescribeSourceSlice } from './utils/merge-describe-source-slice';
 import { stripDescribeResponse } from './utils/strip-describe-response';
@@ -44,7 +44,6 @@ type DescribeTab = 'table' | 'turtle';
     EyebrowComponent,
     FormattedResultComponent,
     SourcesPickerComponent,
-    SourceErrorsComponent,
   ],
   template: `
     <header class="border-b border-border-muted bg-surface px-4 py-3">
@@ -83,11 +82,13 @@ type DescribeTab = 'table' | 'turtle';
       @if (iriError(); as msg) {
         <p app-error-banner>{{ msg }}</p>
       }
+      @if (describeError(); as msg) {
+        <p app-error-banner data-testid="describe-error">{{ msg }}</p>
+      }
       @if (running()) {
         <div class="text-sm text-foreground-faint">loading…</div>
       }
       @if (response(); as resp) {
-        <app-source-errors [perSource]="resp.perSource" />
         <section class="flex flex-col gap-2">
           <p class="text-sm text-foreground-muted">{{ resp.total }} quad(s).</p>
           <nav
@@ -154,6 +155,9 @@ export class DescribePage implements OnInit {
   readonly running = signal<boolean>(false);
   readonly response = signal<DescribeResponse | null>(null);
   readonly iriError = signal<string | null>(null);
+  /** Single error state for a failed describe (ADR-0052): the request now
+   *  fails as one typed top-level error rather than per-source rows. */
+  readonly describeError = signal<string | null>(null);
   readonly selectedSource = signal<string>('');
   readonly initialSource = signal<string>('');
   private prefixes: Record<string, string> = {};
@@ -255,6 +259,7 @@ export class DescribePage implements OnInit {
     }
     const iri = expanded.iri;
     this.iriError.set(null);
+    this.describeError.set(null);
     this.submittedSeed.set(iri);
     this.expandedPaths = [];
     this.running.set(true);
@@ -277,17 +282,10 @@ export class DescribePage implements OnInit {
       },
       error: (err: unknown) => {
         this.running.set(false);
-        // `/api/describe` returns 502 with the same response shape (per-source
-        // error map, empty quads) when every selected source failed — surface
-        // it so the error rows still render.
+        // Describe fails as one typed top-level error (ADR-0052): surface its
+        // message in the single error banner. No partial/in-payload data.
         const body = (err as { error?: unknown } | null)?.error;
-        if (
-          body !== null &&
-          typeof body === 'object' &&
-          'perSource' in (body as Record<string, unknown>)
-        ) {
-          this.response.set(body as DescribeResponse);
-        }
+        this.describeError.set(describeErrorMessage(body));
       },
     });
   }
@@ -320,8 +318,10 @@ export class DescribePage implements OnInit {
           this.running.set(false);
           this.response.set(mergeDescribeSourceSlice(current, sourceId, fresh));
         },
-        error: () => {
+        error: (err: unknown) => {
           this.running.set(false);
+          const body = (err as { error?: unknown } | null)?.error;
+          this.describeError.set(describeErrorMessage(body));
         },
       });
   }

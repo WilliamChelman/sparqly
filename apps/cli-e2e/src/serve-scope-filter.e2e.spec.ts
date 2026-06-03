@@ -97,7 +97,8 @@ describe('sparqly serve — --source as a scope filter (ADR-0016 / #197)', () =>
     expect(json.sources).toHaveLength(1);
     expect(json.sources[0]).toMatchObject({ id: 'alpha', kind: 'glob' });
 
-    // /api/describe with no `sources` only aggregates the served set.
+    // /api/describe with no `source` resolves the served set's sole entry
+    // (alpha) and returns the flattened single-source shape (ADR-0052).
     const describeRes = await fetch(`${handle.baseUrl}/api/describe`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -105,9 +106,13 @@ describe('sparqly serve — --source as a scope filter (ADR-0016 / #197)', () =>
     });
     expect(describeRes.status).toBe(200);
     const describeJson = (await describeRes.json()) as {
-      perSource: Record<string, unknown>;
+      iri: string;
+      total: number;
+      truncated: boolean;
     };
-    expect(Object.keys(describeJson.perSource)).toEqual(['alpha']);
+    expect(describeJson).not.toHaveProperty('perSource');
+    expect(typeof describeJson.total).toBe('number');
+    expect(typeof describeJson.truncated).toBe('boolean');
 
     // /api/diff cannot name a filtered-out @id; per ADR-0024 / #248 this is a
     // transport-level 400 carrying a structured TargetWrappedError body whose

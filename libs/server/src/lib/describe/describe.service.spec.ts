@@ -214,7 +214,6 @@ describe('DescribeService — expandedPaths (ADR-0019)', () => {
       expect(ep.queries.some((q) => q.includes(`<${PIN}>`))).toBe(true);
       // …and the bnode's own quad is merged into the description.
       expect(after.total).toBe(2);
-      expect(after.perSource.remote.count).toBe(2);
     } finally {
       await ep.close();
     }
@@ -233,7 +232,7 @@ describe('DescribeService — expandedPaths (ADR-0019)', () => {
         source: 'remote',
         expandedPaths: [overLong],
       });
-      expect(out.perSource.remote.truncated).toBe(true);
+      expect(out.truncated).toBe(true);
       // The path-walk query the endpoint received was clamped to MAX steps:
       // its WHERE chains exactly MAX blank-node hops (one isBlank filter each),
       // not 30.
@@ -286,8 +285,9 @@ describe('DescribeService — multi-source aggregation', () => {
       const out = await describeResponse(new DescribeService(registry), {
         iri: 'http://example.org/alice',
       });
-      expect(out.perSource).toHaveProperty('beta');
-      expect(out.perSource).not.toHaveProperty('alpha');
+      // beta is the default: its `age` quad is present, alpha's `city` is not.
+      expect(out.quads).toContain('http://example.org/age');
+      expect(out.quads).not.toContain('http://example.org/city');
     });
 
     it('resolves to the sole served entry even without a default marker', async () => {
@@ -295,8 +295,9 @@ describe('DescribeService — multi-source aggregation', () => {
       const out = await describeResponse(new DescribeService(registry), {
         iri: 'http://example.org/alice',
       });
-      expect(out.perSource).toHaveProperty('alpha');
-      expect(Object.keys(out.perSource)).toEqual(['alpha']);
+      // alpha is the sole entry: its `city` quad is present.
+      expect(out.total).toBe(3);
+      expect(out.quads).toContain('http://example.org/city');
     });
   });
 
@@ -305,8 +306,9 @@ describe('DescribeService — multi-source aggregation', () => {
       iri: 'http://example.org/alice',
       source: 'alpha',
     });
-    expect(out.perSource).toHaveProperty('alpha');
-    expect(out.perSource).not.toHaveProperty('beta');
+    // alpha-only `city`, never beta-only `age`.
+    expect(out.quads).toContain('http://example.org/city');
+    expect(out.quads).not.toContain('http://example.org/age');
   });
 
   it('accepts an `@`-prefixed source id (matches the wire convention)', async () => {
@@ -314,8 +316,9 @@ describe('DescribeService — multi-source aggregation', () => {
       iri: 'http://example.org/alice',
       source: '@beta',
     });
-    expect(out.perSource).toHaveProperty('beta');
-    expect(out.perSource).not.toHaveProperty('alpha');
+    // beta-only `age`, never alpha-only `city`.
+    expect(out.quads).toContain('http://example.org/age');
+    expect(out.quads).not.toContain('http://example.org/city');
   });
 
   it('errs with empty-target when `source` names an unknown id', async () => {
@@ -352,7 +355,7 @@ describe('DescribeService — multi-source aggregation', () => {
           q.predicate.value === FROM_SOURCE,
       );
       // alpha contributes 3 quads about alice -> 3 annotations, all from alpha.
-      expect(annotations).toHaveLength(out.perSource.alpha.count);
+      expect(annotations).toHaveLength(out.total);
       const origins = new Set(annotations.map((q) => q.object.value));
       expect([...origins]).toEqual(['alpha']);
     });
@@ -398,7 +401,6 @@ describe('DescribeService — multi-source aggregation', () => {
         iri: 'http://example.org/ghost',
       });
       expect(out.total).toBe(0);
-      expect(out.perSource.alpha.count).toBe(0);
       expect(out.quads.trim()).toBe('');
     });
   });
@@ -465,33 +467,30 @@ describe('DescribeService — multi-source aggregation', () => {
           iri: 'http://example.org/alice',
           source: '@docs/one.ttl',
         });
-        expect(out.perSource).toHaveProperty('docs/one.ttl');
-        expect(out.perSource).not.toHaveProperty('docs');
-        expect(out.perSource).not.toHaveProperty('docs/two.ttl');
-        // file `one.ttl` holds the address+city quads about alice.
-        expect(out.perSource['docs/one.ttl'].count).toBe(2);
+        // file `one.ttl` holds the address+city quads about alice; two.ttl's
+        // `name` quad is absent because only the child was described.
+        expect(out.total).toBe(2);
+        expect(out.quads).toContain('http://example.org/city');
+        expect(out.quads).not.toContain('http://example.org/name');
       } finally {
         await rm(dir, { recursive: true, force: true });
       }
     });
   });
 
-  describe('single-source failure terminal (all-sources-failed)', () => {
-    it('promotes a failing source to a top-level all-sources-failed with per-source attribution', async () => {
+  describe('single-source failure surfaces as a typed top-level error (ADR-0052)', () => {
+    it('surfaces the sole failing source as a top-level `source` error (no all-sources-failed wrapper)', async () => {
       // `bad` points at a malformed turtle file, so resolveSourceResult surfaces a
-      // real GlobLoadError. As the sole resolved source, its failure is the
-      // whole describe's failure (ADR-0024 top-level Result, ADR-0052).
+      // real GlobLoadError. As the only source, its failure is the whole
+      // describe's failure (ADR-0024 top-level Result, ADR-0052) — the source's
+      // own DescribeError, not an aggregate wrapper.
       const registry = parseSourceSpecs([{ id: 'bad', glob: paths.badTtl }]);
       const result = await new DescribeService(registry).runDescribe({
         iri: 'http://example.org/alice',
       });
       expect(result.isErr()).toBe(true);
       if (result.isErr()) {
-        expect(result.error.kind).toBe('all-sources-failed');
-        if (result.error.kind === 'all-sources-failed') {
-          expect(Object.keys(result.error.perSource)).toEqual(['bad']);
-          expect(result.error.perSource.bad.kind).toBe('source');
-        }
+        expect(result.error.kind).toBe('source');
       }
     });
   });
@@ -509,8 +508,8 @@ describe('DescribeService — multi-source aggregation', () => {
         iri: 'http://example.org/alice',
         perSourceLimit: 1_000_000,
       });
-      expect(out.perSource.alpha.truncated).toBe(true);
-      expect(out.perSource.alpha.count).toBeLessThan(3);
+      expect(out.truncated).toBe(true);
+      expect(out.total).toBeLessThan(3);
     });
 
     it('applies `perSourceSoftLimit` when the request omits `perSourceLimit`', async () => {
@@ -523,7 +522,7 @@ describe('DescribeService — multi-source aggregation', () => {
       const out = await describeResponse(soft, {
         iri: 'http://example.org/alice',
       });
-      expect(out.perSource.alpha.truncated).toBe(true);
+      expect(out.truncated).toBe(true);
     });
 
     it('falls back to the configured `fromSourcePredicate` when the request omits it', async () => {
@@ -557,15 +556,13 @@ describe('DescribeService — multi-source aggregation', () => {
         const out = await describeResponse(new DescribeService(registry), {
           iri: 'http://example.org/alice',
         });
-        expect(out.perSource.remote.error).toBeUndefined();
-        expect(out.perSource.remote.count).toBe(1);
         expect(out.total).toBe(1);
       } finally {
         await ep.close();
       }
     });
 
-    it('surfaces an unreachable endpoint as an endpoint-describe error (promoted to all-sources-failed for the sole source)', async () => {
+    it('surfaces an unreachable endpoint as a top-level endpoint-describe error', async () => {
       const registry = parseSourceSpecs([
         { id: 'remote', endpoint: 'http://127.0.0.1:1/sparql' },
       ]);
@@ -573,16 +570,15 @@ describe('DescribeService — multi-source aggregation', () => {
         iri: 'http://example.org/alice',
       });
       expect(result.isErr()).toBe(true);
-      if (result.isErr() && result.error.kind === 'all-sources-failed') {
-        const remoteErr = result.error.perSource.remote;
-        expect(remoteErr.kind).toBe('endpoint-describe');
-        if (remoteErr.kind === 'endpoint-describe') {
-          expect(remoteErr.endpoint).toBe('http://127.0.0.1:1/sparql');
+      if (result.isErr()) {
+        expect(result.error.kind).toBe('endpoint-describe');
+        if (result.error.kind === 'endpoint-describe') {
+          expect(result.error.endpoint).toBe('http://127.0.0.1:1/sparql');
         }
       }
     });
 
-    it('surfaces empty-source when the user explicitly names the empty source (preserved explanatory error)', async () => {
+    it('surfaces empty-source as a top-level error when the user explicitly names the empty source', async () => {
       const registry = parseSourceSpecs([
         { id: 'alpha', glob: paths.alphaTtl },
         { id: 'placeholder', empty: true },
@@ -591,11 +587,11 @@ describe('DescribeService — multi-source aggregation', () => {
         iri: 'http://example.org/alice',
         source: 'placeholder',
       });
-      // Single-source all-failed terminal: the empty-source per-source error
-      // is promoted to the top level via all-sources-failed.
+      // The empty-source precondition is the single source's own failure, so
+      // it is the top-level Result error (ADR-0052).
       expect(result.isErr()).toBe(true);
-      if (result.isErr() && result.error.kind === 'all-sources-failed') {
-        expect(result.error.perSource.placeholder.kind).toBe('empty-source');
+      if (result.isErr()) {
+        expect(result.error.kind).toBe('empty-source');
       }
     });
 
@@ -666,7 +662,7 @@ describe('DescribeService — multi-source aggregation', () => {
      * index dir would fail. The boundary contract: surface a typed
      * per-source error AND release the lock before returning.
      */
-    it('surfaces a typed per-source error (not silent count:0) for a disk-backed source and releases the LevelDB lock', async () => {
+    it('surfaces a typed top-level error (not silent total:0) for a disk-backed source and releases the LevelDB lock', async () => {
       // The disk-backed resolver builds its index under
       // `<configDir>/.sparqly/index/<id>/`, defaulting `configDir` to
       // `process.cwd()`. Sandbox cwd so the index lives inside the test temp dir.
@@ -682,16 +678,10 @@ describe('DescribeService — multi-source aggregation', () => {
           source: 'big',
         });
 
-        // Single-source, all failed -> top-level all-sources-failed carries
-        // the per-source disk-backed error.
+        // Single-source: the disk-backed precondition is the top-level error.
         expect(result.isErr()).toBe(true);
         if (!result.isErr()) throw new Error('unreachable');
-        expect(result.error.kind).toBe('all-sources-failed');
-        if (result.error.kind !== 'all-sources-failed')
-          throw new Error('unreachable');
-        const per = result.error.perSource['big'];
-        expect(per).toBeDefined();
-        expect(per.kind).toBe('disk-backed-source');
+        expect(result.error.kind).toBe('disk-backed-source');
 
         // Lock-release check: re-resolving the same disk-backed source via
         // resolveSourceResult must succeed (a leaked LevelDB lock would

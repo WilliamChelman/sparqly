@@ -49,19 +49,21 @@ export function formatDescribePerSourceError(error: DescribeError): string {
   }
 }
 
+/**
+ * Top-level describe failure (ADR-0024). Describe now targets exactly one
+ * source (ADR-0052), so the source's own {@link DescribeError} *is* the
+ * request error — there is no `all-sources-failed` aggregate wrapper any more
+ * (ADR-0025 retired). The remaining variants are precondition / routing
+ * failures raised before (or instead of) dispatching to the source.
+ */
 export type DescribeTopLevelError =
-  | AllSourcesFailedError
+  | DescribeError
   | EmptyTargetError
   | SeedNotIriError
   | DescribeReferenceTargetError
   | DescribeNoDefaultMultiError
   | ExpandedPathsWithoutSourceError
   | ExpandedPathsNonEndpointSourceError;
-
-export interface AllSourcesFailedError {
-  kind: 'all-sources-failed';
-  perSource: Readonly<Record<string, DescribeError>>;
-}
 
 export interface EmptyTargetError {
   kind: 'empty-target';
@@ -98,10 +100,12 @@ export interface ExpandedPathsNonEndpointSourceError {
 
 export function formatDescribeError(error: DescribeTopLevelError): string {
   switch (error.kind) {
-    case 'all-sources-failed': {
-      const ids = Object.keys(error.perSource).sort();
-      return `every selected source failed: ${ids.map((id) => `@${id}`).join(', ')}`;
-    }
+    case 'source':
+    case 'endpoint-describe':
+    case 'empty-source':
+    case 'reference-source':
+    case 'disk-backed-source':
+      return formatDescribePerSourceError(error);
     case 'empty-target':
       return 'describe: no target sources selected';
     case 'seed-not-iri':
