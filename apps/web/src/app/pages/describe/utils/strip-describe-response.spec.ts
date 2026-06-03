@@ -28,7 +28,7 @@ describe('stripDescribeResponse', () => {
       iri: SEED,
       quads: '   \n\t  ',
       total: 0,
-      perSource: {},
+      truncated: false,
     });
     expect(quads).toEqual([]);
     expect(originsByQuad.size).toBe(0);
@@ -43,7 +43,7 @@ describe('stripDescribeResponse', () => {
       iri: SEED,
       quads: wire,
       total: 1,
-      perSource: { alpha: { count: 1, truncated: false } },
+      truncated: false,
     });
     expect(quads.length).toBe(1);
     expect(quads[0].subject.value).toBe(SEED);
@@ -65,10 +65,7 @@ describe('stripDescribeResponse', () => {
       iri: SEED,
       quads: wire,
       total: 1,
-      perSource: {
-        alpha: { count: 1, truncated: false },
-        beta: { count: 1, truncated: false },
-      },
+      truncated: false,
     });
     expect(quads.length).toBe(1);
     const origins = originsByQuad.get(quadKey(SEED, KNOWS, BOB)) ?? [];

@@ -27,10 +27,6 @@ function wire(quadsBySource: ReadonlyArray<[string, Quad[]]>): string {
 function buildResponse(
   quadsBySource: ReadonlyArray<[string, Quad[]]>,
 ): DescribeResponse {
-  const perSource: DescribeResponse['perSource'] = {};
-  for (const [src, qs] of quadsBySource) {
-    perSource[src] = { count: qs.length, truncated: false };
-  }
   return {
     iri: SEED,
     quads: wire(quadsBySource),
@@ -39,7 +35,7 @@ function buildResponse(
         qs.map((q) => `${q.subject.value}|${q.predicate.value}|${q.object.value}`),
       ),
     ).size,
-    perSource,
+    truncated: false,
   };
 }
 
@@ -89,7 +85,7 @@ describe('mergeDescribeSourceSlice', () => {
     expect([...(originsByQuad.get(key) ?? [])].sort()).toEqual(['alpha', 'beta']);
   });
 
-  it('admits a brand-new source on first expand: adds it to perSource and contributes its slice', () => {
+  it('admits a brand-new source on first expand: contributes its slice alongside the peer', () => {
     const aQuad = quad(namedNode(SEED), namedNode(P), namedNode('http://example.org/a'));
     const dQuad = quad(namedNode(SEED), namedNode(P), namedNode('http://example.org/d'));
     const current = buildResponse([['alpha', [aQuad]]]);
@@ -102,8 +98,7 @@ describe('mergeDescribeSourceSlice', () => {
       'http://example.org/a',
       'http://example.org/d',
     ]);
-    expect(merged.perSource['delta']).toEqual({ count: 1, truncated: false });
-    expect(merged.perSource['alpha']).toEqual({ count: 1, truncated: false });
+    expect(merged.total).toBe(2);
   });
 
   it('preserves the response iri from current (the URL-bound seed is the source of truth)', () => {
@@ -125,7 +120,7 @@ describe('mergeDescribeSourceSlice', () => {
       iri: SEED,
       quads: '',
       total: 0,
-      perSource: { beta: { count: 0, truncated: false } },
+      truncated: false,
     };
     const merged = mergeDescribeSourceSlice(current, 'beta', fresh);
     const { quads, originsByQuad } = stripDescribeResponse(merged);

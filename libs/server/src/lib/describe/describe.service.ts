@@ -55,17 +55,16 @@ export interface DescribeRequest {
 /** Over-long paths are clamped, not rejected. */
 export const MAX_EXPANSION_PATH_STEPS = 12;
 
-export interface DescribePerSourceEntry {
-  count: number;
-  truncated: boolean;
-  error?: DescribeError;
-}
-
 export interface DescribeResult {
   iri: string;
   quads: string;
   total: number;
-  perSource: Record<string, DescribePerSourceEntry>;
+  /**
+   * The single source's description was capped, a probe degraded, or dangling
+   * blank nodes remain (ADR-0052 flattens the former per-source flag to the
+   * top level — describe targets exactly one source).
+   */
+  truncated: boolean;
 }
 
 @Injectable()
@@ -122,68 +121,51 @@ export class DescribeService {
       this.config.perSourceHardLimit,
     );
 
-    // Combining never short-circuits — a single failing source does not fail
-    // the request; the all-failed case is checked after all sources resolve.
-    const folded = selected.map((target) => {
-      const id = target.id ?? 'source';
-      const requestedPaths =
-        target.kind === 'endpoint' && req.source !== undefined
-          ? req.expandedPaths ?? []
-          : [];
-      return this.describeOneResult(target, id, seed, perSourceLimit, requestedPaths)
-        .map(
-          (raw): SourceRun => ({
-            id,
-            quads: relabelBnodes(raw.quads, id),
-            truncated: raw.truncated,
-          }),
-        )
-        .orElse(
-          (error): ResultAsync<SourceRun, never> =>
-            okAsync({ id, quads: [], truncated: false, error }),
-        );
-    });
+    // Describe targets exactly one source (ADR-0052): the source's own
+    // failure *is* the request failure, surfaced as a typed top-level error
+    // (ADR-0024) rather than folded into per-source data on an HTTP-200 body.
+    const target = selected[0];
+    const id = target.id ?? 'source';
+    const requestedPaths =
+      target.kind === 'endpoint' && req.source !== undefined
+        ? req.expandedPaths ?? []
+        : [];
 
-    return ResultAsync.combine(folded).andThen((runs) =>
-      this.assembleResult(req.iri, runs, withProvenance, predicate),
-    );
+    return this.describeOneResult(target, id, seed, perSourceLimit, requestedPaths)
+      .mapErr((error): DescribeTopLevelError => error)
+      .map((raw) =>
+        this.assembleResult(
+          req.iri,
+          { id, quads: relabelBnodes(raw.quads, id), truncated: raw.truncated },
+          withProvenance,
+          predicate,
+        ),
+      );
   }
 
   private assembleResult(
     iri: string,
-    runs: ReadonlyArray<SourceRun>,
+    run: SourceRun,
     withProvenance: boolean,
     predicate: string,
-  ): ResultAsync<DescribeResult, DescribeTopLevelError> {
-    // Merge with lexical (s, p, o, g) dedup. Track per-source membership so
-    // we can both report perSource.count and inject one annotation per
-    // (quad, origin) pair on the wire.
+  ): DescribeResult {
+    // Lexical (s, p, o, g) dedup of the single source's quads. `originsByQuad`
+    // collapses to one origin per quad here; it (and the provenance pass) are
+    // retained until #409 deletes the merge machinery wholesale.
     const merged = new Map<string, Quad>();
     const originsByQuad = new Map<string, string[]>();
-    for (const run of runs) {
-      for (const q of run.quads) {
-        const key = quadKey(q);
-        if (!merged.has(key)) merged.set(key, q);
-        const list = originsByQuad.get(key);
-        if (list) {
-          if (!list.includes(run.id)) list.push(run.id);
-        } else {
-          originsByQuad.set(key, [run.id]);
-        }
+    for (const q of run.quads) {
+      const key = quadKey(q);
+      if (!merged.has(key)) merged.set(key, q);
+      const list = originsByQuad.get(key);
+      if (list) {
+        if (!list.includes(run.id)) list.push(run.id);
+      } else {
+        originsByQuad.set(key, [run.id]);
       }
     }
 
     const total = merged.size;
-    const perSource: Record<string, DescribePerSourceEntry> = {};
-    for (const run of runs) {
-      if (run.error !== undefined) {
-        perSource[run.id] = { count: 0, truncated: false, error: run.error };
-        continue;
-      }
-      const count = countMembership(originsByQuad, run.id);
-      perSource[run.id] = { count, truncated: run.truncated };
-    }
-
     let wire: Quad[] = [...merged.values()];
     if (withProvenance) {
       const annotations: Quad[] = [];
@@ -199,18 +181,7 @@ export class DescribeService {
     }
 
     const quads = serializeDescribeWire(wire);
-    const result: DescribeResult = { iri, quads, total, perSource };
-
-    const attempted = runs.length;
-    const failed = runs.filter((r) => r.error !== undefined).length;
-    if (attempted > 0 && failed === attempted) {
-      const failures: Record<string, DescribeError> = {};
-      for (const run of runs) {
-        if (run.error !== undefined) failures[run.id] = run.error;
-      }
-      return errAsync({ kind: 'all-sources-failed', perSource: failures });
-    }
-    return okAsync(result);
+    return { iri, quads, total, truncated: run.truncated };
   }
 
   private describeOneResult(
@@ -299,7 +270,6 @@ interface SourceRun {
   id: string;
   quads: Quad[];
   truncated: boolean;
-  error?: DescribeError;
 }
 
 /**
@@ -340,17 +310,6 @@ function parseSeed(value: string): Result<NamedNode, DescribeTopLevelError> {
     return err({ kind: 'seed-not-iri', value });
   }
   return ok(DataFactory.namedNode(value));
-}
-
-function countMembership(
-  originsByQuad: Map<string, string[]>,
-  id: string,
-): number {
-  let n = 0;
-  for (const origins of originsByQuad.values()) {
-    if (origins.includes(id)) n++;
-  }
-  return n;
 }
 
 function quadKey(q: Quad): string {

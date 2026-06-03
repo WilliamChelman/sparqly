@@ -48,8 +48,10 @@ export function mergeDescribeSourceSlice(
   }
   slices.set(sourceId, freshSlice);
 
-  const orderedSources = Object.keys(current.perSource);
-  if (!orderedSources.includes(sourceId)) orderedSources.push(sourceId);
+  // `slices` was populated peer-first (during the strip loop) then `sourceId`
+  // (set above), so its key order reproduces the prior peers-then-named order
+  // the flattened response no longer carries explicitly.
+  const orderedSources = [...slices.keys()];
   const merged = new Map<string, Quad>();
   const originsByQuad = new Map<string, string[]>();
   for (const src of orderedSources) {
@@ -74,10 +76,12 @@ export function mergeDescribeSourceSlice(
     }
   }
   const quads = serializeDescribeWire([...merged.values(), ...annotations]);
-  const perSource = { ...current.perSource };
-  const freshEntry = fresh.perSource[sourceId];
-  if (freshEntry) perSource[sourceId] = freshEntry;
-  return { iri: current.iri, quads, total: merged.size, perSource };
+  return {
+    iri: current.iri,
+    quads,
+    total: merged.size,
+    truncated: fresh.truncated,
+  };
 }
 
 function quadKey(q: Quad): string {
