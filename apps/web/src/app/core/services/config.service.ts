@@ -25,7 +25,6 @@ export interface DisplayContext {
 export interface DescribeConfig {
   perSourceSoftLimit: number;
   perSourceHardLimit: number;
-  fromSourcePredicate: string;
 }
 
 export interface SavedQueriesCapability {

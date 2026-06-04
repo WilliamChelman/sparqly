@@ -105,11 +105,6 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
         @if (m.graph; as g2) {
           <app-term-cell [term]="g2" [context]="context()" [linkable]="false" />
         }
-        @for (origin of m.origins; track origin) {
-          <span
-            class="ml-0.5 inline-block rounded-md border border-border bg-surface-sunken px-1.5 py-0.5 text-[11px] font-medium text-foreground-muted"
-          >{{ origin }}</span>
-        }
         @for (ann of m.annotations; track $index) {
           <ng-container
             *ngTemplateOutlet="annotationBlockTpl; context: { $implicit: ann }"
@@ -181,7 +176,6 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 })
 export class DescribeSectionsComponent {
   readonly quads = input<ReadonlyArray<Quad>>([]);
-  readonly originsByQuad = input<ReadonlyMap<string, readonly string[]>>(new Map());
   readonly seed = input<string>('');
   readonly context = input<DisplayContext>({ prefixes: {} });
   readonly source = input<string>('');
@@ -195,7 +189,6 @@ export class DescribeSectionsComponent {
   readonly sections = computed<DescribeSections>(() =>
     buildDescribeSections(
       this.quads(),
-      this.originsByQuad(),
       this.seed(),
       new Set(this.endpointSourceIds()),
     ),

@@ -73,8 +73,6 @@ const describeBlockSchema = z
     perSourceSoftLimit: z.number().int().positive(),
     // Absolute ceiling; a request-supplied `perSourceLimit` is clamped to it.
     perSourceHardLimit: z.number().int().positive(),
-    // Default RDF-star annotation predicate for describe provenance.
-    fromSourcePredicate: z.string().min(1),
   })
   .partial()
   .strict();

@@ -1,29 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { DataFactory, type Quad, type Term } from 'n3';
+import { DataFactory, type Quad } from 'n3';
 import { buildDescribeSections } from './describe-sections';
 
 const { namedNode, blankNode, literal, quad } = DataFactory;
-
-// Mirrors `describeProvenance.strip`'s key format so test fixtures can be
-// indexed the same way the page indexes its `originsByQuad` map.
-function quadKey(q: Quad): string {
-  return `${termKey(q.subject)} ${termKey(q.predicate)} ${termKey(q.object)} ${termKey(q.graph)}`;
-}
-function termKey(t: Term): string {
-  return `${t.termType}:${t.value}`;
-}
 
 const SEED = 'http://example.org/alice';
 const seed = namedNode(SEED);
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 
-const NO_ORIGINS = new Map<string, readonly string[]>();
 const NO_ENDPOINTS = new Set<string>();
 
 describe('buildDescribeSections', () => {
   it('places a seed→p→o quad in outbound with one predicate group and one member', () => {
     const q = quad(seed, namedNode('http://example.org/knows'), namedNode('http://example.org/bob'));
-    const { outbound, inbound } = buildDescribeSections([q], NO_ORIGINS, SEED, NO_ENDPOINTS);
+    const { outbound, inbound } = buildDescribeSections([q], SEED, NO_ENDPOINTS);
 
     expect(outbound.direction).toBe('outbound');
     expect(inbound.direction).toBe('inbound');
@@ -38,7 +28,7 @@ describe('buildDescribeSections', () => {
 
   it('places a quad with the seed as object in inbound; the member term is the subject', () => {
     const q = quad(namedNode('http://example.org/carol'), namedNode('http://example.org/knows'), seed);
-    const { outbound, inbound } = buildDescribeSections([q], NO_ORIGINS, SEED, NO_ENDPOINTS);
+    const { outbound, inbound } = buildDescribeSections([q], SEED, NO_ENDPOINTS);
 
     expect(outbound.predicateGroups.length).toBe(0);
     expect(inbound.predicateGroups.length).toBe(1);
@@ -56,7 +46,7 @@ describe('buildDescribeSections', () => {
       quad(seed, knows, namedNode('http://example.org/carol')),
       quad(seed, namedNode('http://example.org/age'), literal('30')),
     ];
-    const { outbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+    const { outbound } = buildDescribeSections(quads, SEED, NO_ENDPOINTS);
     const knowsGroup = outbound.predicateGroups.find((g) => g.predicate === 'http://example.org/knows');
     expect(knowsGroup?.members.map((m) => m.term.value)).toEqual([
       'http://example.org/bob',
@@ -71,7 +61,7 @@ describe('buildDescribeSections', () => {
       quad(seed, namedNode('http://example.org/age'), literal('30')),
       quad(seed, namedNode(RDF_TYPE), namedNode('http://example.org/Person')),
     ];
-    const { outbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+    const { outbound } = buildDescribeSections(quads, SEED, NO_ENDPOINTS);
     expect(outbound.predicateGroups.map((g) => g.predicate)).toEqual([
       RDF_TYPE,
       'http://example.org/age',
@@ -88,7 +78,7 @@ describe('buildDescribeSections', () => {
       quad(namedNode('http://example.org/y'), namedNode(RDF_TYPE), seed),
       quad(namedNode('http://example.org/z'), namedNode('http://example.org/age'), seed),
     ];
-    const { inbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+    const { inbound } = buildDescribeSections(quads, SEED, NO_ENDPOINTS);
     expect(inbound.predicateGroups.map((g) => g.predicate)).toEqual([
       'http://example.org/age',
       'http://example.org/zebra',
@@ -105,7 +95,7 @@ describe('buildDescribeSections', () => {
       quad(seed, p, namedNode('http://example.org/alice')),
       quad(seed, p, literal('alpha')),
     ];
-    const { outbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+    const { outbound } = buildDescribeSections(quads, SEED, NO_ENDPOINTS);
     const members = outbound.predicateGroups[0].members;
     expect(members.map((m) => `${m.term.termType}:${m.term.value}`)).toEqual([
       'NamedNode:http://example.org/alice',
@@ -116,26 +106,11 @@ describe('buildDescribeSections', () => {
     ]);
   });
 
-  it('carries origins through to each member, keyed by quad', () => {
-    const q1 = quad(seed, namedNode('http://example.org/p'), namedNode('http://example.org/alice'));
-    const q2 = quad(seed, namedNode('http://example.org/p'), namedNode('http://example.org/bob'));
-    const origins = new Map<string, readonly string[]>([
-      [quadKey(q1), ['alpha']],
-      [quadKey(q2), ['alpha', 'beta']],
-    ]);
-    const { outbound } = buildDescribeSections([q1, q2], origins, SEED, NO_ENDPOINTS);
-    const members = outbound.predicateGroups[0].members;
-    expect(members.map((m) => ({ v: m.term.value, o: m.origins }))).toEqual([
-      { v: 'http://example.org/alice', o: ['alpha'] },
-      { v: 'http://example.org/bob', o: ['alpha', 'beta'] },
-    ]);
-  });
-
   it('carries the named graph onto each member; default graph maps to null', () => {
     const g1 = namedNode('http://example.org/g1');
     const q1 = quad(seed, namedNode('http://example.org/p'), namedNode('http://example.org/alice'), g1);
     const q2 = quad(seed, namedNode('http://example.org/p'), namedNode('http://example.org/bob'));
-    const { outbound } = buildDescribeSections([q1, q2], NO_ORIGINS, SEED, NO_ENDPOINTS);
+    const { outbound } = buildDescribeSections([q1, q2], SEED, NO_ENDPOINTS);
     const members = outbound.predicateGroups[0].members;
     const byValue = new Map(members.map((m) => [m.term.value, m] as const));
     expect(byValue.get('http://example.org/alice')?.graph).toEqual(
@@ -153,14 +128,14 @@ describe('buildDescribeSections', () => {
       quad(seed, q, namedNode('http://example.org/c')),
       quad(namedNode('http://example.org/x'), p, seed),
     ];
-    const { outbound, inbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+    const { outbound, inbound } = buildDescribeSections(quads, SEED, NO_ENDPOINTS);
     expect(outbound.count).toBe(3);
     expect(inbound.count).toBe(1);
   });
 
   it('places a self-loop (<seed> :p <seed>) once, under outbound', () => {
     const q = quad(seed, namedNode('http://example.org/knows'), seed);
-    const { outbound, inbound } = buildDescribeSections([q], NO_ORIGINS, SEED, NO_ENDPOINTS);
+    const { outbound, inbound } = buildDescribeSections([q], SEED, NO_ENDPOINTS);
     expect(outbound.count).toBe(1);
     expect(outbound.predicateGroups[0].members.length).toBe(1);
     expect(inbound.count).toBe(0);
@@ -184,7 +159,6 @@ describe('buildDescribeSections', () => {
       );
       const { outbound } = buildDescribeSections(
         [annotated, annotation],
-        NO_ORIGINS,
         SEED,
         NO_ENDPOINTS,
       );
@@ -223,7 +197,6 @@ describe('buildDescribeSections', () => {
       ];
       const { outbound } = buildDescribeSections(
         [annotated, ...annotations],
-        NO_ORIGINS,
         SEED,
         NO_ENDPOINTS,
       );
@@ -264,7 +237,7 @@ describe('buildDescribeSections', () => {
         quad(provenance, namedNode('http://example.org/agent'), namedNode('http://example.org/Acme')),
         quad(provenance, namedNode('http://example.org/when'), literal('2023')),
       ];
-      const { outbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+      const { outbound } = buildDescribeSections(quads, SEED, NO_ENDPOINTS);
       const member = outbound.predicateGroups[0].members[0];
       const ann = member.annotations[0];
       expect(ann.predicateGroups.length).toBe(1);
@@ -291,7 +264,6 @@ describe('buildDescribeSections', () => {
       );
       const { outbound, inbound } = buildDescribeSections(
         [inboundQuad, annotation],
-        NO_ORIGINS,
         SEED,
         NO_ENDPOINTS,
       );
@@ -312,7 +284,7 @@ describe('buildDescribeSections', () => {
     it('populates a single-use bnode object with an empty inline BnodeBlock (no label)', () => {
       const b = blankNode('b0');
       const q = quad(seed, namedNode('http://example.org/address'), b);
-      const { outbound } = buildDescribeSections([q], NO_ORIGINS, SEED, NO_ENDPOINTS);
+      const { outbound } = buildDescribeSections([q], SEED, NO_ENDPOINTS);
       const member = outbound.predicateGroups[0].members[0];
       expect(member.nested).toEqual({
         kind: 'bnode',
@@ -328,7 +300,7 @@ describe('buildDescribeSections', () => {
         quad(b, namedNode('http://example.org/city'), literal('Paris')),
         quad(b, namedNode('http://example.org/zip'), literal('75001')),
       ];
-      const { outbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+      const { outbound } = buildDescribeSections(quads, SEED, NO_ENDPOINTS);
       const member = outbound.predicateGroups[0].members[0];
       const nested = member.nested;
       if (!nested || nested.kind !== 'bnode') throw new Error('expected bnode nested');
@@ -355,7 +327,6 @@ describe('buildDescribeSections', () => {
       ];
       const { outbound, inbound } = buildDescribeSections(
         quads,
-        NO_ORIGINS,
         SEED,
         NO_ENDPOINTS,
       );
@@ -385,7 +356,7 @@ describe('buildDescribeSections', () => {
         // rdf:first is present, but no rdf:rest → not a valid list.
         quad(head, namedNode(RDF_FIRST), namedNode('http://example.org/a')),
       ];
-      const { outbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+      const { outbound } = buildDescribeSections(quads, SEED, NO_ENDPOINTS);
       const block = outbound.predicateGroups[0].members[0].nested;
       if (!block || block.kind !== 'bnode') {
         throw new Error('expected fallback bnode block, got ' + block?.kind);
@@ -406,7 +377,7 @@ describe('buildDescribeSections', () => {
         quad(mid, namedNode(RDF_FIRST), literal('b')),
         quad(mid, namedNode(RDF_REST), namedNode(RDF_NIL)),
       ];
-      const { outbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+      const { outbound } = buildDescribeSections(quads, SEED, NO_ENDPOINTS);
       const block = outbound.predicateGroups[0].members[0].nested;
       if (!block || block.kind !== 'collection') {
         throw new Error('expected collection block');
@@ -428,7 +399,7 @@ describe('buildDescribeSections', () => {
         quad(a, namedNode('http://example.org/next'), b),
         quad(b, namedNode('http://example.org/back'), a),
       ];
-      const { outbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+      const { outbound } = buildDescribeSections(quads, SEED, NO_ENDPOINTS);
       const aBlock = outbound.predicateGroups[0].members[0].nested;
       if (!aBlock || aBlock.kind !== 'bnode') throw new Error('expected A bnode');
       const bBlock = aBlock.predicateGroups[0].members[0].nested;
@@ -449,7 +420,7 @@ describe('buildDescribeSections', () => {
         quad(seed, namedNode('http://example.org/work'), b),
         quad(b, namedNode('http://example.org/city'), literal('Paris')),
       ];
-      const { outbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+      const { outbound } = buildDescribeSections(quads, SEED, NO_ENDPOINTS);
       // Predicates are alphabetical: :home before :work.
       const homeBlock = outbound.predicateGroups[0].members[0].nested;
       const workBlock = outbound.predicateGroups[1].members[0].nested;
@@ -469,7 +440,6 @@ describe('buildDescribeSections', () => {
       const q = quad(seed, namedNode('http://example.org/knows'), b);
       const { outbound } = buildDescribeSections(
         [q],
-        NO_ORIGINS,
         SEED,
         new Set(['remote']),
       );
@@ -486,7 +456,6 @@ describe('buildDescribeSections', () => {
       }
       const { outbound } = buildDescribeSections(
         quads,
-        NO_ORIGINS,
         SEED,
         new Set(['remote']),
       );
@@ -509,7 +478,6 @@ describe('buildDescribeSections', () => {
       ];
       const { outbound } = buildDescribeSections(
         quads,
-        NO_ORIGINS,
         SEED,
         new Set(['remote']),
       );
@@ -522,7 +490,6 @@ describe('buildDescribeSections', () => {
       const q = quad(seed, namedNode('http://example.org/knows'), b);
       const { outbound } = buildDescribeSections(
         [q],
-        NO_ORIGINS,
         SEED,
         new Set(['remote']),
       );
@@ -542,7 +509,7 @@ describe('buildDescribeSections', () => {
         quad(geo, namedNode('http://example.org/lat'), literal('48.85')),
         quad(geo, namedNode('http://example.org/long'), literal('2.35')),
       ];
-      const { outbound } = buildDescribeSections(quads, NO_ORIGINS, SEED, NO_ENDPOINTS);
+      const { outbound } = buildDescribeSections(quads, SEED, NO_ENDPOINTS);
       const addrBlock = outbound.predicateGroups[0].members[0].nested;
       if (!addrBlock || addrBlock.kind !== 'bnode') throw new Error('expected addr bnode');
       const geoBlock = addrBlock.predicateGroups[0].members[0].nested;

@@ -94,7 +94,6 @@ function flushConfig(
     describe: {
       perSourceSoftLimit: 0,
       perSourceHardLimit: 0,
-      fromSourcePredicate: '',
     },
     sourcesAdmin: { allowAdminActions: opts.allowAdminActions ?? true },
   });

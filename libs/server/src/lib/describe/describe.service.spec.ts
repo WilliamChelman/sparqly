@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { QueryEngine } from '@comunica/query-sparql';
-import { parseDescribeWire, serializeDescribeWire } from 'common';
+import { serializeDescribeWire } from 'common';
 import {
   parseSourceSpec,
   parseSourceSpecs,
@@ -17,8 +17,6 @@ import {
   type DescribeRequest,
   type DescribeResult,
 } from './describe.service';
-
-const FROM_SOURCE = 'urn:sparqly:fromSource';
 
 /**
  * Most tests only care about the ok payload, not the precondition / all-failed
@@ -74,10 +72,6 @@ async function makeRegistry(): Promise<RegistryPaths> {
   );
   await writeFile(badTtl, 'this is not valid turtle <<<');
   return { dir, alphaTtl, betaTtl, badTtl };
-}
-
-function parseNQuads(text: string): Quad[] {
-  return parseDescribeWire(text);
 }
 
 function storeFromTurtle(turtle: string): Store {
@@ -330,12 +324,9 @@ describe('DescribeService — multi-source aggregation', () => {
     if (result.isErr()) expect(result.error.kind).toBe('empty-target');
   });
 
-  // ADR-0052: describe now targets exactly one source. The merge machinery
-  // (provenance inject/strip, per-source membership) remains but is a no-op over
-  // a single origin; these tests lock that single-origin behavior. Cross-source
-  // dedup / per-origin attribution / cross-source bnode disjointness are no
-  // longer reachable through the public interface and their tests are retired.
-  describe('single-origin merge machinery (no-op over one source)', () => {
+  // ADR-0052: describe targets exactly one source and emits no provenance —
+  // the wire is the source's plain quads, `total` is the quad count.
+  describe('single-source describe (no provenance, ADR-0052)', () => {
     let solo: DescribeService;
 
     beforeEach(() => {
@@ -344,56 +335,13 @@ describe('DescribeService — multi-source aggregation', () => {
       );
     });
 
-    it('injects one provenance annotation per quad attributed to the single source', async () => {
+    it('emits no `urn:sparqly:fromSource` provenance annotations on the wire', async () => {
       const out = await describeResponse(solo, {
         iri: 'http://example.org/alice',
       });
-      const wire = parseNQuads(out.quads);
-      const annotations = wire.filter(
-        (q) =>
-          (q.subject.termType as string) === 'Quad' &&
-          q.predicate.value === FROM_SOURCE,
-      );
-      // alpha contributes 3 quads about alice -> 3 annotations, all from alpha.
-      expect(annotations).toHaveLength(out.total);
-      const origins = new Set(annotations.map((q) => q.object.value));
-      expect([...origins]).toEqual(['alpha']);
-    });
-
-    it('omits provenance annotations from the wire when `withProvenance: false`', async () => {
-      const out = await describeResponse(solo, {
-        iri: 'http://example.org/alice',
-        withProvenance: false,
-      });
-      const wire = parseNQuads(out.quads);
-      const annotations = wire.filter(
-        (q) =>
-          (q.subject.termType as string) === 'Quad' &&
-          q.predicate.value === FROM_SOURCE,
-      );
-      expect(annotations).toHaveLength(0);
-    });
-
-    it('uses a request-supplied `fromSourcePredicate` instead of the default', async () => {
-      const custom = 'http://my/from';
-      const out = await describeResponse(solo, {
-        iri: 'http://example.org/alice',
-        fromSourcePredicate: custom,
-      });
-      const wire = parseNQuads(out.quads);
-      const annotated = wire.filter(
-        (q) =>
-          (q.subject.termType as string) === 'Quad' &&
-          q.predicate.value === custom,
-      );
-      expect(annotated.length).toBeGreaterThan(0);
-      // And the default predicate is NOT used.
-      const defaultAnnotated = wire.filter(
-        (q) =>
-          (q.subject.termType as string) === 'Quad' &&
-          q.predicate.value === FROM_SOURCE,
-      );
-      expect(defaultAnnotated).toHaveLength(0);
+      expect(out.quads).not.toContain('urn:sparqly:fromSource');
+      // alpha contributes 3 plain quads about alice.
+      expect(out.total).toBe(3);
     });
 
     it('returns total=0 and zero count when the seed is absent from the source', async () => {
@@ -502,7 +450,6 @@ describe('DescribeService — multi-source aggregation', () => {
       const clamped = new DescribeService(registry, {
         perSourceSoftLimit: 10000,
         perSourceHardLimit: 1,
-        fromSourcePredicate: FROM_SOURCE,
       });
       const out = await describeResponse(clamped, {
         iri: 'http://example.org/alice',
@@ -517,32 +464,11 @@ describe('DescribeService — multi-source aggregation', () => {
       const soft = new DescribeService(registry, {
         perSourceSoftLimit: 1,
         perSourceHardLimit: 100000,
-        fromSourcePredicate: FROM_SOURCE,
       });
       const out = await describeResponse(soft, {
         iri: 'http://example.org/alice',
       });
       expect(out.truncated).toBe(true);
-    });
-
-    it('falls back to the configured `fromSourcePredicate` when the request omits it', async () => {
-      const registry = parseSourceSpecs([{ id: 'alpha', glob: paths.alphaTtl }]);
-      const custom = 'http://configured/from';
-      const configured = new DescribeService(registry, {
-        perSourceSoftLimit: 10000,
-        perSourceHardLimit: 100000,
-        fromSourcePredicate: custom,
-      });
-      const out = await describeResponse(configured, {
-        iri: 'http://example.org/alice',
-      });
-      const wire = parseNQuads(out.quads);
-      const annotated = wire.filter(
-        (q) =>
-          (q.subject.termType as string) === 'Quad' &&
-          q.predicate.value === custom,
-      );
-      expect(annotated.length).toBeGreaterThan(0);
     });
   });
 

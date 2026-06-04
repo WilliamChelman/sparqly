@@ -18,14 +18,13 @@ import {
   resultToFormatted,
   type FormattedResult,
 } from '@app/pages/query/utils/result-to-formatted';
+import { parseDescribeWire } from 'common';
 import type { FormatSerialization, PathStep } from 'common';
 import type { Quad } from 'n3';
 import { DescribeSectionsComponent } from './components/describe-sections.component';
 import { describeIriExpand } from './utils/describe-iri-expand';
 import { describeErrorMessage } from './utils/describe-error-message';
 import type { DescribeBnodePathResult } from './utils/describe-bnode-path';
-import { mergeDescribeSourceSlice } from './utils/merge-describe-source-slice';
-import { stripDescribeResponse } from './utils/strip-describe-response';
 import {
   DescribeService,
   type DescribeResponse,
@@ -120,8 +119,7 @@ type DescribeTab = 'table' | 'turtle';
           @switch (activeTab()) {
             @case ('table') {
               <app-describe-sections
-                [quads]="strippedQuads()"
-                [originsByQuad]="originsByQuad()"
+                [quads]="describeQuads()"
                 [seed]="submittedSeed()"
                 [context]="displayContext()"
                 [source]="selectedSource()"
@@ -179,21 +177,17 @@ export class DescribePage implements OnInit {
   private readonly _activeTab = signal<DescribeTab>('table');
   readonly activeTab = this._activeTab.asReadonly();
 
-  /** Stripped describe quads + origins map, shared by the table tab and the
-   *  turtle/trig tab so wire parsing happens once per response. */
-  private readonly strippedResponse = computed(() =>
-    stripDescribeResponse(this.response()),
-  );
-
-  readonly strippedQuads = computed<readonly Quad[]>(
-    () => this.strippedResponse().quads,
-  );
-  readonly originsByQuad = computed<ReadonlyMap<string, readonly string[]>>(
-    () => this.strippedResponse().originsByQuad,
-  );
+  /** Decoded describe quads, shared by the table tab and the turtle/trig tab
+   *  so wire parsing happens once per response (ADR-0052: plain quads, no
+   *  provenance to strip). */
+  readonly describeQuads = computed<readonly Quad[]>(() => {
+    const resp = this.response();
+    if (!resp || resp.quads.trim().length === 0) return [];
+    return parseDescribeWire(resp.quads);
+  });
 
   readonly formatted = computed<FormattedResult | null>(() => {
-    const quads = this.strippedResponse().quads;
+    const quads = this.describeQuads();
     if (quads.length === 0) return null;
     return resultToFormatted(
       quads as Quad[],
@@ -293,10 +287,10 @@ export class DescribePage implements OnInit {
   /**
    * Expand a dangling blank node one hop deeper (ADR-0019, ADR-0033). Append
    * its predicate-pinned path to `expandedPaths` and re-call `/api/describe`
-   * against the currently selected endpoint source alone; splice the fresh
-   * slice into the merged view. Affordance gating upstream guarantees a
-   * non-empty selected source whose kind is `endpoint`, so the bnode's
-   * origin source always matches the selection.
+   * against the currently selected endpoint source alone. Describe targets one
+   * source (ADR-0052), so the fresh response — depth-0 plus every accumulated
+   * expansion path — replaces the current one wholesale; there is no
+   * cross-source slice to stitch.
    */
   onExpand(target: DescribeBnodePathResult): void {
     const current = this.response();
@@ -316,7 +310,7 @@ export class DescribePage implements OnInit {
       .subscribe({
         next: (fresh) => {
           this.running.set(false);
-          this.response.set(mergeDescribeSourceSlice(current, sourceId, fresh));
+          this.response.set(fresh);
         },
         error: (err: unknown) => {
           this.running.set(false);

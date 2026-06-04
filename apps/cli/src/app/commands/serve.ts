@@ -33,7 +33,6 @@ interface ServeConfig {
   base?: string;
   perSourceSoftLimit?: number;
   perSourceHardLimit?: number;
-  fromSourcePredicate?: string;
   savedQueriesPath?: string;
   indexCacheDir?: string;
   indexConcurrency?: number;
@@ -114,11 +113,6 @@ const describeHardLimitField: FieldDescriptor = {
   schema: z.number().int().positive(),
 };
 
-const describeFromSourcePredicateField: FieldDescriptor = {
-  key: 'fromSourcePredicate',
-  schema: z.string().min(1),
-};
-
 const savedQueriesPathField: FieldDescriptor = {
   key: 'savedQueriesPath',
   schema: z.string().min(1),
@@ -170,7 +164,6 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     contextBaseField,
     describeSoftLimitField,
     describeHardLimitField,
-    describeFromSourcePredicateField,
     savedQueriesPathField,
     indexCacheDirField,
     indexConcurrencyField,
@@ -224,7 +217,6 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       describe: {
         perSourceSoftLimit: config.perSourceSoftLimit,
         perSourceHardLimit: config.perSourceHardLimit,
-        fromSourcePredicate: config.fromSourcePredicate,
       },
       savedQueriesPath: config.savedQueriesPath,
       indexCacheDir: config.indexCacheDir,

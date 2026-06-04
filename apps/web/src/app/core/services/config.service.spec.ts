@@ -19,7 +19,6 @@ const PAYLOAD: ConfigPayload = {
   describe: {
     perSourceSoftLimit: 10000,
     perSourceHardLimit: 100000,
-    fromSourcePredicate: 'urn:sparqly:fromSource',
   },
   savedQueries: { writable: true },
 };
