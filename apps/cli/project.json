@@ -8,7 +8,11 @@
     "build": {
       "executor": "nx:run-commands",
       "dependsOn": ["^build", "web:build"],
-      "inputs": ["production", "^production"],
+      "inputs": [
+        "production",
+        "^production",
+        { "dependentTasksOutputFiles": "**/*", "transitive": false }
+      ],
       "outputs": ["{workspaceRoot}/dist/apps/cli"],
       "options": {
         "command": "webpack-cli build",

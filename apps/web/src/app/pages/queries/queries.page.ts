@@ -3,16 +3,19 @@ import {
   Component,
   computed,
   DestroyRef,
+  effect,
   inject,
   OnInit,
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
+import { Title } from '@angular/platform-browser';
 import { combineLatest } from 'rxjs';
 import {
   ConfigService,
   SavedQueriesService,
+  pageTitle,
   type LoadedSavedQuery,
   type SavedQuerySummary,
 } from '@app/core';
@@ -27,6 +30,7 @@ import {
 import { QueriesRailComponent } from './components/queries-rail.component';
 import type { CreateNavState } from './models/create-nav-state';
 import type { DetailState } from './models/detail-state';
+import { queriesTitleValue } from './utils/queries-title-value';
 import { toWriteBody } from './utils/to-write-body';
 
 @Component({
@@ -99,6 +103,7 @@ export class QueriesPage implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly title = inject(Title);
 
   readonly entries = signal<readonly SavedQuerySummary[]>([]);
   readonly selectedSlug = signal<string | null>(null);
@@ -132,6 +137,12 @@ export class QueriesPage implements OnInit {
       parameters: d.loadedParameters,
     };
   });
+
+  constructor() {
+    effect(() => {
+      this.title.setTitle(pageTitle(queriesTitleValue(this.detail()), 'Queries'));
+    });
+  }
 
   ngOnInit(): void {
     const source = this.route.snapshot.queryParamMap.get('source');

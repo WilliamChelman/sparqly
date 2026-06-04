@@ -5,6 +5,8 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { Title } from '@angular/platform-browser';
+import { pageTitle } from '@app/core';
 import { SourceCardComponent } from './components/source-card.component';
 import {
   SourceFilterBarComponent,
@@ -77,6 +79,11 @@ import { SourcesRegistryService } from './services/sources-registry.service';
 })
 export class SourcesPage {
   private readonly registry = inject(SourcesRegistryService);
+  private readonly title = inject(Title);
+
+  constructor() {
+    this.title.setTitle(pageTitle('', 'Sources'));
+  }
 
   readonly rows = this.registry.rows;
   readonly allowAdminActions = this.registry.allowAdminActions;

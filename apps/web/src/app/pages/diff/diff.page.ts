@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { Title } from '@angular/platform-browser';
 import { ButtonComponent } from '@app/modules/button';
 import { CodeChipComponent } from '@app/modules/code-chip';
 import { ErrorBannerComponent } from '@app/modules/error-banner';
@@ -17,11 +18,14 @@ import { SourcesPickerComponent } from '@app/modules/sources-picker';
 import {
   ConfigService,
   SavedQueriesService,
+  pageTitle,
+  sourceTitleToken,
   type DisplayContext,
   type SavedQuerySummary,
   type SourceListingEntry,
 } from '@app/core';
 import { DiffService } from './services/diff.service';
+import { diffTitleValue } from './utils/diff-title-value';
 import type { DiffError, DiffErrorResponse } from './models/diff-error';
 import type { DiffRequest, DiffResponse } from './models/diff-response';
 import { formatDiffError } from './utils/format-error';
@@ -211,6 +215,7 @@ export class DiffPage implements OnInit {
   private readonly savedQueriesService = inject(SavedQueriesService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly title = inject(Title);
 
   readonly sources = signal<SourceListingEntry[] | null>(null);
   readonly leftId = signal<string>('');
@@ -253,6 +258,14 @@ export class DiffPage implements OnInit {
     if (right) this.rightId.set(right);
     if (leftQuery !== null) this.leftSide.query.set(leftQuery);
     if (rightQuery !== null) this.rightSide.query.set(rightQuery);
+
+    effect(() => {
+      const value = diffTitleValue(
+        sourceTitleToken(this.leftId()),
+        sourceTitleToken(this.rightId()),
+      );
+      this.title.setTitle(pageTitle(value, 'Diff'));
+    });
 
     effect(() => {
       const queryParams: Record<string, string | null> = {
