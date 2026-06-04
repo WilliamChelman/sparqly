@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { describeProvenance, serializeDescribeWire, type PathStep } from 'common';
+import { serializeDescribeWire, type PathStep } from 'common';
 import {
   describeEndpointResult,
   describeStore,
@@ -15,7 +15,7 @@ import {
   type SourceError,
   type TargetError,
 } from 'core';
-import { DataFactory, type NamedNode, type Quad, type Term } from 'n3';
+import { DataFactory, type NamedNode, type Quad } from 'n3';
 import {
   ResultAsync,
   errAsync,
@@ -28,13 +28,11 @@ import {
 export const DEFAULT_DESCRIBE_CONFIG: DescribeConfig = {
   perSourceSoftLimit: 10000,
   perSourceHardLimit: 100000,
-  fromSourcePredicate: 'urn:sparqly:fromSource',
 };
 
 export interface DescribeConfig {
   perSourceSoftLimit: number;
   perSourceHardLimit: number;
-  fromSourcePredicate: string;
 }
 
 export interface DescribeRequest {
@@ -45,9 +43,7 @@ export interface DescribeRequest {
    * else a `no-default-multi` error.
    */
   source?: string;
-  withProvenance?: boolean;
   perSourceLimit?: number;
-  fromSourcePredicate?: string;
   /** Only valid when `source` names an endpoint. Over-long paths are clamped. */
   expandedPaths?: PathStep[][];
 }
@@ -111,9 +107,6 @@ export class DescribeService {
       }
     }
 
-    const predicate =
-      req.fromSourcePredicate ?? this.config.fromSourcePredicate;
-    const withProvenance = req.withProvenance !== false;
     const requestedLimit = req.perSourceLimit ?? this.config.perSourceSoftLimit;
     // Defense in depth: a client cannot blow past the deployment ceiling.
     const perSourceLimit = Math.min(
@@ -133,55 +126,19 @@ export class DescribeService {
 
     return this.describeOneResult(target, id, seed, perSourceLimit, requestedPaths)
       .mapErr((error): DescribeTopLevelError => error)
-      .map((raw) =>
-        this.assembleResult(
-          req.iri,
-          { id, quads: relabelBnodes(raw.quads, id), truncated: raw.truncated },
-          withProvenance,
-          predicate,
-        ),
-      );
-  }
-
-  private assembleResult(
-    iri: string,
-    run: SourceRun,
-    withProvenance: boolean,
-    predicate: string,
-  ): DescribeResult {
-    // Lexical (s, p, o, g) dedup of the single source's quads. `originsByQuad`
-    // collapses to one origin per quad here; it (and the provenance pass) are
-    // retained until #409 deletes the merge machinery wholesale.
-    const merged = new Map<string, Quad>();
-    const originsByQuad = new Map<string, string[]>();
-    for (const q of run.quads) {
-      const key = quadKey(q);
-      if (!merged.has(key)) merged.set(key, q);
-      const list = originsByQuad.get(key);
-      if (list) {
-        if (!list.includes(run.id)) list.push(run.id);
-      } else {
-        originsByQuad.set(key, [run.id]);
-      }
-    }
-
-    const total = merged.size;
-    let wire: Quad[] = [...merged.values()];
-    if (withProvenance) {
-      const annotations: Quad[] = [];
-      for (const [key, q] of merged) {
-        const origins = originsByQuad.get(key) ?? [];
-        for (const origin of origins) {
-          annotations.push(
-            ...describeProvenance.inject([q], origin, predicate).slice(1),
-          );
-        }
-      }
-      wire = [...wire, ...annotations];
-    }
-
-    const quads = serializeDescribeWire(wire);
-    return { iri, quads, total, truncated: run.truncated };
+      .map((raw): DescribeResult => {
+        // Describe targets exactly one source (ADR-0052), and both describe
+        // paths (`describeStore`, `describeEndpointResult`) already return
+        // lexically-deduped quads — so `total` is just the quad count and no
+        // merge/provenance pass remains.
+        const quads = relabelBnodes(raw.quads, id);
+        return {
+          iri: req.iri,
+          quads: serializeDescribeWire(quads),
+          total: quads.length,
+          truncated: raw.truncated,
+        };
+      });
   }
 
   private describeOneResult(
@@ -266,12 +223,6 @@ export class DescribeService {
   }
 }
 
-interface SourceRun {
-  id: string;
-  quads: Quad[];
-  truncated: boolean;
-}
-
 /**
  * Map the reused ADR-0016 `TargetError` (default-routing) onto describe's own
  * top-level error vocabulary. Only the omitted-`source` branch calls this, so
@@ -310,15 +261,4 @@ function parseSeed(value: string): Result<NamedNode, DescribeTopLevelError> {
     return err({ kind: 'seed-not-iri', value });
   }
   return ok(DataFactory.namedNode(value));
-}
-
-function quadKey(q: Quad): string {
-  return `${termKey(q.subject)} ${termKey(q.predicate)} ${termKey(q.object)} ${termKey(q.graph)}`;
-}
-
-function termKey(t: Term): string {
-  if ((t.termType as string) === 'Quad') {
-    return `<<${quadKey(t as unknown as Quad)}>>`;
-  }
-  return `${t.termType}:${t.value}`;
 }

@@ -25,7 +25,6 @@ import {
 export interface SectionMember {
   /** Outbound: the object. Inbound: the subject. */
   readonly term: CoreTerm;
-  readonly origins: readonly string[];
   /** Named graph for this quad, or `null` for the default graph. */
   readonly graph: CoreTerm | null;
   /**
@@ -114,14 +113,12 @@ interface GroupAccumulator {
 function newMember(
   memberTerm: Term,
   graph: Term,
-  origins: readonly string[],
   nested: NestedBlock | null,
   annotations: readonly AnnotationBlock[],
   ctx: BuildCtx,
 ): SectionMember {
   return {
     term: asCoreTerm(memberTerm),
-    origins,
     graph: graph.termType === 'DefaultGraph' ? null : asCoreTerm(graph),
     nested,
     annotations,
@@ -177,7 +174,6 @@ function comparePredicate(direction: 'outbound' | 'inbound', a: string, b: strin
 }
 
 interface BuildCtx {
-  readonly originsByQuad: ReadonlyMap<string, readonly string[]>;
   readonly bnodeOutgoing: ReadonlyMap<string, readonly Quad[]>;
   /** Number of times each bnode label appears as the object of any quad.
    *  Count > 1 ⇒ render as labeled `_:b` (multi-reference). */
@@ -331,13 +327,12 @@ function buildBnodeBlock(
       acc = { predicateTerm: asCoreTerm(q.predicate), members: [] };
       groups.set(p, acc);
     }
-    const origins = ctx.originsByQuad.get(quadKey(q)) ?? [];
     const nested: NestedBlock | null =
       q.object.termType === 'BlankNode'
         ? buildNestedForBnode(q.object.value, ctx, emitted)
         : null;
     const annotations = buildAnnotations(q, ctx, emitted);
-    acc.members.push(newMember(q.object, q.graph, origins, nested, annotations, ctx));
+    acc.members.push(newMember(q.object, q.graph, nested, annotations, ctx));
   }
   const predicateGroups: PredicateGroup[] = [...groups]
     .map(([predicate, acc]) => ({
@@ -370,14 +365,13 @@ function buildAnnotations(
       acc = { predicateTerm: asCoreTerm(q.predicate), members: [] };
       groups.set(p, acc);
     }
-    const origins = ctx.originsByQuad.get(quadKey(q)) ?? [];
     const nested: NestedBlock | null =
       q.object.termType === 'BlankNode'
         ? buildNestedForBnode(q.object.value, ctx, emitted)
         : null;
     const innerAnnotations = buildAnnotations(q, ctx, emitted);
     acc.members.push(
-      newMember(q.object, q.graph, origins, nested, innerAnnotations, ctx),
+      newMember(q.object, q.graph, nested, innerAnnotations, ctx),
     );
   }
   const predicateGroups: PredicateGroup[] = [...groups]
@@ -393,7 +387,6 @@ function buildAnnotations(
 interface RawMember {
   readonly quad: Quad;
   readonly memberTerm: Term;
-  readonly origins: readonly string[];
 }
 
 function buildSection(
@@ -413,8 +406,7 @@ function buildSection(
       raw.set(p, acc);
     }
     const memberTerm = direction === 'outbound' ? q.object : q.subject;
-    const origins = ctx.originsByQuad.get(quadKey(q)) ?? [];
-    acc.members.push({ quad: q, memberTerm, origins });
+    acc.members.push({ quad: q, memberTerm });
   }
   const emitted = new Set<string>();
   const predicateGroups: PredicateGroup[] = [...raw]
@@ -427,14 +419,7 @@ function buildSection(
             ? buildNestedForBnode(rm.memberTerm.value, ctx, emitted)
             : null;
         const annotations = buildAnnotations(rm.quad, ctx, emitted);
-        return newMember(
-          rm.memberTerm,
-          rm.quad.graph,
-          rm.origins,
-          nested,
-          annotations,
-          ctx,
-        );
+        return newMember(rm.memberTerm, rm.quad.graph, nested, annotations, ctx);
       });
       return { predicate, predicateTerm: acc.predicateTerm, members };
     });
@@ -450,7 +435,6 @@ function compareRawMembers(a: RawMember, b: RawMember): number {
 
 export function buildDescribeSections(
   quads: ReadonlyArray<Quad>,
-  originsByQuad: ReadonlyMap<string, readonly string[]>,
   seed: string,
   endpointSourceIds: ReadonlySet<string>,
 ): DescribeSections {
@@ -463,7 +447,6 @@ export function buildDescribeSections(
     else if (objectIsSeed) inboundQuads.push(q);
   }
   const ctx: BuildCtx = {
-    originsByQuad,
     bnodeOutgoing: indexBnodeOutgoing(quads),
     bnodeRefCount: indexBnodeRefCount(quads),
     annotationsByQuadKey: indexAnnotations(quads),

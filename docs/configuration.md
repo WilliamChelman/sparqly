@@ -115,14 +115,12 @@ Defaults for the webapp's describe page. Consumed by `serve` only.
 describe:
   perSourceSoftLimit: 1000
   perSourceHardLimit: 10000
-  fromSourcePredicate: urn:sparqly:fromSource
 ```
 
-| Field                 | Type    | Meaning                                                                                                                                                                               |
-| --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `perSourceSoftLimit`  | integer | Per-source quad cap applied when a describe request omits `perSourceLimit`. A source that hits the cap reports `truncated: true` on its response entry.                               |
-| `perSourceHardLimit`  | integer | Absolute ceiling: a request-supplied `perSourceLimit` larger than this is clamped down to it.                                                                                         |
-| `fromSourcePredicate` | string  | Predicate IRI used in the RDF-star annotation that records per-quad source membership on the describe response. Defaults to a built-in `urn:sparqly:*` IRI; override to namespace it. |
+| Field                | Type    | Meaning                                                                                                                                                |
+| -------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `perSourceSoftLimit` | integer | Per-source quad cap applied when a describe request omits `perSourceLimit`. A source that hits the cap reports `truncated: true` on its response.      |
+| `perSourceHardLimit` | integer | Absolute ceiling: a request-supplied `perSourceLimit` larger than this is clamped down to it.                                                         |
 
 All fields are optional.
 

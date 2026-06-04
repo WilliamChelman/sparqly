@@ -78,26 +78,21 @@ describe('POST /api/describe — tracer-bullet (single glob source)', () => {
     expect(json.quads).toContain('http://example.org/age');
   });
 
-  it('injects `urn:sparqly:fromSource` provenance annotations by default (withProvenance defaults to true)', async () => {
+  it('emits no `urn:sparqly:fromSource` provenance annotations on the wire (ADR-0052)', async () => {
     const resp = await postJson({ iri: 'http://example.org/alice' });
     expect(resp.status).toBe(200);
-    const json = (await resp.json()) as { quads: string };
-    expect(json.quads).toContain('urn:sparqly:fromSource');
+    const json = (await resp.json()) as { quads: string; total: number };
+    expect(json.quads).not.toContain('urn:sparqly:fromSource');
+    // Plain quad set: 2 alice-subject + 1 alice-object.
+    expect(json.total).toBe(3);
   });
 
-  it('omits `urn:sparqly:fromSource` annotations from the wire when `withProvenance: false`, leaving total/count unchanged', async () => {
+  it('rejects the retired `withProvenance` flag as an unknown property (strict schema)', async () => {
     const resp = await postJson({
       iri: 'http://example.org/alice',
       withProvenance: false,
     });
-    expect(resp.status).toBe(200);
-    const json = (await resp.json()) as {
-      quads: string;
-      total: number;
-    };
-    expect(json.quads).not.toContain('urn:sparqly:fromSource');
-    // Same merged quad set as the provenance-on case (2 alice-subject + 1 alice-object).
-    expect(json.total).toBe(3);
+    expect(resp.status).toBe(400);
   });
 
   it('accepts the single-source `source` field and dispatches against that source only', async () => {

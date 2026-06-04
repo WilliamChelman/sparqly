@@ -245,7 +245,6 @@ describe('makeFileLoader — whole-project schema', () => {
         'describe:',
         '  perSourceSoftLimit: 5000',
         '  perSourceHardLimit: 50000',
-        '  fromSourcePredicate: urn:my:fromSource',
         '',
       ].join('\n'),
     );
@@ -255,7 +254,6 @@ describe('makeFileLoader — whole-project schema', () => {
       describe: {
         perSourceSoftLimit: 5000,
         perSourceHardLimit: 50000,
-        fromSourcePredicate: 'urn:my:fromSource',
       },
     });
   });

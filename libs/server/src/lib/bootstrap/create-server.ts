@@ -312,9 +312,6 @@ function resolveDescribeConfig(
       partial?.perSourceSoftLimit ?? DEFAULT_DESCRIBE_CONFIG.perSourceSoftLimit,
     perSourceHardLimit:
       partial?.perSourceHardLimit ?? DEFAULT_DESCRIBE_CONFIG.perSourceHardLimit,
-    fromSourcePredicate:
-      partial?.fromSourcePredicate ??
-      DEFAULT_DESCRIBE_CONFIG.fromSourcePredicate,
   };
 }
 

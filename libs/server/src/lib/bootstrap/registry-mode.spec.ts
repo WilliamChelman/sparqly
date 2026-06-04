@@ -53,7 +53,6 @@ describe('createServer — served registry', () => {
       describe: {
         perSourceSoftLimit: number;
         perSourceHardLimit: number;
-        fromSourcePredicate: string;
       };
     };
     expect(json.sources).toHaveLength(3);
@@ -68,7 +67,6 @@ describe('createServer — served registry', () => {
     expect(json.describe).toEqual({
       perSourceSoftLimit: 10000,
       perSourceHardLimit: 100000,
-      fromSourcePredicate: 'urn:sparqly:fromSource',
     });
   });
 
@@ -137,13 +135,11 @@ describe('createServer — served registry', () => {
         describe: {
           perSourceSoftLimit: number;
           perSourceHardLimit: number;
-          fromSourcePredicate: string;
         };
       };
       expect(json.describe).toEqual({
         perSourceSoftLimit: 10000,
         perSourceHardLimit: 42,
-        fromSourcePredicate: 'urn:sparqly:fromSource',
       });
     } finally {
       await local.close();
