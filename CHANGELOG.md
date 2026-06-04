@@ -1,3 +1,9 @@
+## [0.36.0](https://github.com/WilliamChelman/sparqly/compare/v0.35.0...v0.36.0) (2026-06-04)
+
+### Features
+
+* **web:** meaningful document titles per page (ADR-0053) ([1cdbef0](https://github.com/WilliamChelman/sparqly/commit/1cdbef057db4669ce7a00561138c2718c3f99e92))
+
 ## [0.35.0](https://github.com/WilliamChelman/sparqly/compare/v0.34.1...v0.35.0) (2026-06-04)
 
 ### Features
