@@ -1,3 +1,12 @@
+## [0.35.0](https://github.com/WilliamChelman/sparqly/compare/v0.34.1...v0.35.0) (2026-06-04)
+
+### Features
+
+* **describe:** flatten response & single-source Result error contract (ADR-0052, [#408](https://github.com/WilliamChelman/sparqly/issues/408)) ([ac331e9](https://github.com/WilliamChelman/sparqly/commit/ac331e94f6e0948361e3f2812b67e27baaa8a016))
+* **describe:** mandatory single-select source picker (ADR-0052, [#407](https://github.com/WilliamChelman/sparqly/issues/407)) ([38af182](https://github.com/WilliamChelman/sparqly/commit/38af182016413401d4bc05906ed206f61f4f8c85)), closes [#406](https://github.com/WilliamChelman/sparqly/issues/406)
+* **describe:** resolve omitted source to the registry's default source (ADR-0052, [#406](https://github.com/WilliamChelman/sparqly/issues/406)) ([afd7b75](https://github.com/WilliamChelman/sparqly/commit/afd7b757af76e0ac7ea0b558e2abbd1cc4b897a3))
+* **diff:** anchor "defined here" on the predicate that changed on the other side ([#405](https://github.com/WilliamChelman/sparqly/issues/405)) ([0e83495](https://github.com/WilliamChelman/sparqly/commit/0e834954fe0ae8a159f8c49145e073bc8aaa374a))
+
 ## [0.34.1](https://github.com/WilliamChelman/sparqly/compare/v0.34.0...v0.34.1) (2026-06-01)
 
 ### Bug Fixes
