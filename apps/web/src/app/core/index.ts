@@ -40,3 +40,5 @@ export {
   detectQueryType,
   type QueryType,
 } from './utils/query-detection';
+export { pageTitle } from './utils/page-title';
+export { sourceTitleToken } from './utils/source-title-token';

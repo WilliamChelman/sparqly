@@ -13,15 +13,19 @@ import {
   signal,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { Title } from '@angular/platform-browser';
 import {
   ConfigService,
   SavedQueriesService,
   decodeSparqlResult,
   detectQueryType,
+  pageTitle,
+  sourceTitleToken,
   type DisplayContext,
   type SavedQuerySummary,
   type SourceListingEntry,
 } from '@app/core';
+import { queryTitleSnippet } from './utils/query-title-snippet';
 import {
   substitute,
   type ParameterBindings,
@@ -119,6 +123,7 @@ export class QueryPage implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly title = inject(Title);
 
   readonly sources = signal<SourceListingEntry[] | null>(null);
   readonly sourceId = signal<string>('');
@@ -161,6 +166,13 @@ export class QueryPage implements OnInit {
         this.knownBindKeys.set(new Set(Object.keys(parsed)));
       }
     }
+
+    effect(() => {
+      const source = sourceTitleToken(this.sourceId());
+      const snippet = queryTitleSnippet(this.query());
+      const value = [source, snippet].filter((part) => part.length > 0).join(' · ');
+      this.title.setTitle(pageTitle(value, 'Playground'));
+    });
 
     effect(() => {
       const pinned = this.pinnedSlug();

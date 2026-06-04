@@ -7,6 +7,7 @@ test.describe('per-page smoke', () => {
       page.getByRole('heading', { level: 1, name: 'sparqly playground' }),
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Run' })).toBeVisible();
+    await expect(page).toHaveTitle(/ — Playground — sparqly$/);
   });
 
   test('/diff renders the diff page', async ({ page }) => {
@@ -14,6 +15,7 @@ test.describe('per-page smoke', () => {
     await expect(
       page.getByRole('heading', { level: 1, name: 'diff' }),
     ).toBeVisible();
+    await expect(page).toHaveTitle(/Diff — sparqly$/);
   });
 
   test('/describe renders the describe page', async ({ page }) => {
@@ -22,6 +24,7 @@ test.describe('per-page smoke', () => {
       page.getByRole('heading', { level: 1, name: 'describe' }),
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Describe' })).toBeVisible();
+    await expect(page).toHaveTitle('Describe — sparqly');
   });
 
   test('/queries renders the saved-queries page', async ({ page }) => {
@@ -32,6 +35,7 @@ test.describe('per-page smoke', () => {
     await expect(
       page.getByText('Select an entry to view its body.'),
     ).toBeVisible();
+    await expect(page).toHaveTitle('Queries — sparqly');
   });
 
   test('/sources renders the sources page', async ({ page }) => {
@@ -39,5 +43,6 @@ test.describe('per-page smoke', () => {
     await expect(
       page.getByRole('heading', { level: 1, name: 'sources' }),
     ).toBeVisible();
+    await expect(page).toHaveTitle('Sources — sparqly');
   });
 });

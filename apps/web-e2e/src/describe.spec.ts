@@ -36,6 +36,9 @@ test.describe('describe page · single-source picker', () => {
     // The URL is rewritten with the fully-expanded seed on submit so the page
     // is bookmarkable.
     await expect(page).toHaveURL(/[?&]iri=http(?::|%3A)%2F%2Fexample\.org%2Fbob/);
+
+    // ADR-0053: the document title carries the described seed as a curie.
+    await expect(page).toHaveTitle('ex:bob — Describe — sparqly');
   });
 
   test('picking another source rescopes the page and rewrites the URL', async ({

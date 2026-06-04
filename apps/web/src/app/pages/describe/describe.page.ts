@@ -8,11 +8,12 @@ import {
   signal,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { Title } from '@angular/platform-browser';
 import { ButtonComponent } from '@app/modules/button';
 import { ErrorBannerComponent } from '@app/modules/error-banner';
 import { EyebrowComponent } from '@app/modules/eyebrow';
 import { SourcesPickerComponent } from '@app/modules/sources-picker';
-import { ConfigService, type DisplayContext } from '@app/core';
+import { ConfigService, pageTitle, type DisplayContext } from '@app/core';
 import { FormattedResultComponent } from '@app/pages/query/components/result/formatted-result.component';
 import {
   resultToFormatted,
@@ -23,6 +24,7 @@ import type { FormatSerialization, PathStep } from 'common';
 import type { Quad } from 'n3';
 import { DescribeSectionsComponent } from './components/describe-sections.component';
 import { describeIriExpand } from './utils/describe-iri-expand';
+import { describeTitleValue } from './utils/describe-title-value';
 import { describeErrorMessage } from './utils/describe-error-message';
 import type { DescribeBnodePathResult } from './utils/describe-bnode-path';
 import {
@@ -147,6 +149,7 @@ export class DescribePage implements OnInit {
   private readonly configService = inject(ConfigService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly title = inject(Title);
 
   readonly seed = signal<string>('');
   readonly submittedSeed = signal<string>('');
@@ -217,6 +220,14 @@ export class DescribePage implements OnInit {
         queryParamsHandling: 'merge',
         replaceUrl: true,
       });
+    });
+
+    effect(() => {
+      const value = describeTitleValue(
+        this.submittedSeed(),
+        this.displayContext(),
+      );
+      this.title.setTitle(pageTitle(value, 'Describe'));
     });
   }
 

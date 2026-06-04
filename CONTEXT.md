@@ -38,6 +38,10 @@ _Avoid_: "SPO query", "graph-shaped SELECT", "triple SELECT"
 A SPARQL query passed directly to `query`, `hash`, or `diff` and run against the **target source** — the only derivation sparqly performs, since there is no derived **Source**. On `diff`, an arbitrary `SELECT` tuple selects **tabular diff** over **graph diff**; `hash` and graph-`diff` require a query that produces triples (`CONSTRUCT` or a **triple-shaped SELECT**). Never persisted, never `@id`-addressable.
 _Avoid_: "anonymous view", "ad-hoc view", "view"
 
+**Playground**:
+The webapp's home surface for composing and running an **inline query** against a single selected source; it is also a **Saved-query run surface**. "Playground" is this page's UI and nav label — the canonical user-facing name for what is described elsewhere as the "query page".
+_Avoid_: extending "Playground" to the other **Saved-query run surfaces** (e.g. the `diff` page's loaders); "query playground" as a synonym for the run-surface concept itself.
+
 ### Registries & targets
 
 **Source registry**:
@@ -164,7 +168,7 @@ _Avoid_: "queries library page", "saved-query manager"
 
 **Saved-query run surface**:
 A webapp surface that consumes **Saved query** entries without authoring them — today, the `query` page and each side of the `diff` page. Exposes Load and the runtime parameter form only, never Save, Save-as, Delete, or parameter authoring.
-_Avoid_: "read-only editor", "query playground", conflating with **Saved-query authoring surface**
+_Avoid_: "read-only editor", "query playground" (the **Playground** is one specific host of this surface, not a synonym for it), conflating with **Saved-query authoring surface**
 
 **Templated saved query**:
 A **Saved query** with a non-empty **Parameter declaration** list; at run time the supplied values are composed into a `VALUES` clause prepended to the body. The template body itself is always valid SPARQL — there is no text-level placeholder syntax.

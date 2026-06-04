@@ -64,6 +64,9 @@ test.describe('queries page · create → list → load → run', () => {
       page.getByRole('heading', { level: 2, name: SLUG }),
     ).toBeVisible();
 
+    // ADR-0053: a loaded saved query surfaces its slug in the document title.
+    await expect(page).toHaveTitle(`${SLUG} — Queries — sparqly`);
+
     // Run — the sources picker auto-selects the default source on mount,
     // so the Run button is enabled out of the box.
     const runBtn = page.getByRole('button', { name: 'Run', exact: true });
