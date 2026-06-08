@@ -74,7 +74,17 @@ _Avoid_: "lazy loading", "on-demand resolution", "deferred boot"
 
 **Glob index**:
 The persistent on-disk quad store a **Disk-backed glob** materializes into. Carries a manifest of the matched files, the sparqly version, and the applied transforms, so a stale build surfaces explicitly rather than as a silent rebuild.
-_Avoid_: "cache", "database", "snapshot", "derived cache"
+_Avoid_: "cache" (caching results is the **Query cache**; this is a source's own queryable store), "database", "snapshot", "derived cache"
+
+### Query cache
+
+**Query cache**:
+An opt-in store of serialized **inline query** results, so a repeated query against the same **target source** is answered without re-running resolution. It sits above every resolution path and is available to every **Source** kind. Distinct from the **Glob index** (a source's own queryable store) and from the resident-set store budget (`query.maxResidentQuads`, which holds loaded Stores, not results): the **Query cache** holds *answers*, the others hold *data*. Enabled per source, never on by default.
+_Avoid_: "cache" unqualified (collides with **Glob index**), "result store", "memo", conflating with the resident set
+
+**Cached result**:
+One **Query cache** entry: the serialized body of a single (**target source**, query, output format, display **context**) combination, bounded by an explicit freshness contract. For local sources (materialized glob/file, **Disk-backed glob**) the entry is keyed on a content fingerprint, so any underlying change is a different key — a miss — rather than a stale hit; for an **Endpoint source**, whose store is opaque, an elapsed-time bound is the only staleness guard. A **Pinned source** keys on its resolved SHA and so is reproducibly cacheable.
+_Avoid_: "snapshot", loose "cache hit"
 
 ### Pinning
 
