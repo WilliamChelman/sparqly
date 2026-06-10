@@ -8,6 +8,8 @@ import {
   digestGlobIndexManifest,
   pinnedFreshnessToken,
   queryCacheCap,
+  queryCacheTtlMs,
+  resolveQueryCacheTtlMs,
   openQueryCache,
   queryCacheDir,
   readGlobIndexManifest,
@@ -80,6 +82,7 @@ export class ServeQueryCache {
         contextDigest: digestContext({}),
         freshnessToken,
         schemaVersion: this.schemaVersion,
+        entryTtlMs: resolveQueryCacheTtlMs(queryCacheTtlMs(queryCache)),
         mode: 'normal',
         logger: this.logger,
       });

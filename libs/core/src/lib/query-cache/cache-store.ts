@@ -30,6 +30,13 @@ export interface QueryCacheSetMeta {
    * `undefined` leaves the source governed by the global budget alone.
    */
   sourceMaxBytes?: number | null;
+  /**
+   * This entry's absolute TTL in milliseconds (ADR-0054, #416), measured from
+   * insertion. Resolved per source by {@link resolveQueryCacheTtlMs} so a
+   * per-source `ttl` overrides the store default; `undefined` falls back to the
+   * store's open-time {@link OpenQueryCacheOptions.ttlMs}.
+   */
+  ttlMs?: number;
 }
 
 /**
@@ -81,6 +88,7 @@ const ENTRIES_DDL = `
     content_type   TEXT NOT NULL,
     source_id      TEXT NOT NULL,
     bytes          INTEGER NOT NULL,
+    ttl_ms         INTEGER NOT NULL,
     inserted_at    INTEGER NOT NULL,
     last_access_at INTEGER NOT NULL
   ) WITHOUT ROWID;
@@ -122,26 +130,28 @@ export function openQueryCache(options: OpenQueryCacheOptions): QueryCache {
   }
 
   const selectStmt = db.prepare(
-    'SELECT body, format, content_type AS contentType, inserted_at AS insertedAt FROM entries WHERE key = ?',
+    'SELECT body, format, content_type AS contentType, ttl_ms AS ttlMs, inserted_at AS insertedAt FROM entries WHERE key = ?',
   );
   const touchStmt = db.prepare(
     'UPDATE entries SET last_access_at = ? WHERE key = ?',
   );
   const upsertStmt = db.prepare(
-    `INSERT INTO entries (key, body, format, content_type, source_id, bytes, inserted_at, last_access_at)
-     VALUES (@key, @body, @format, @contentType, @sourceId, @bytes, @at, @at)
+    `INSERT INTO entries (key, body, format, content_type, source_id, bytes, ttl_ms, inserted_at, last_access_at)
+     VALUES (@key, @body, @format, @contentType, @sourceId, @bytes, @ttlMs, @at, @at)
      ON CONFLICT(key) DO UPDATE SET
        body = excluded.body,
        format = excluded.format,
        content_type = excluded.content_type,
        source_id = excluded.source_id,
        bytes = excluded.bytes,
+       ttl_ms = excluded.ttl_ms,
        inserted_at = excluded.inserted_at,
        last_access_at = excluded.last_access_at`,
   );
   const deleteStmt = db.prepare('DELETE FROM entries WHERE key = ?');
+  // Each row carries its own ttl, so expiry is judged per entry.
   const purgeExpiredStmt = db.prepare(
-    'DELETE FROM entries WHERE ? - inserted_at > ?',
+    'DELETE FROM entries WHERE ? - inserted_at > ttl_ms',
   );
   const totalBytesStmt = db.prepare(
     'SELECT COALESCE(SUM(bytes), 0) AS total FROM entries',
@@ -188,11 +198,12 @@ export function openQueryCache(options: OpenQueryCacheOptions): QueryCache {
             body: string;
             format: string;
             contentType: string;
+            ttlMs: number;
             insertedAt: number;
           }
         | undefined;
       if (row === undefined) return undefined;
-      if (now() - row.insertedAt > options.ttlMs) {
+      if (now() - row.insertedAt > row.ttlMs) {
         deleteStmt.run(key);
         return undefined;
       }
@@ -209,7 +220,7 @@ export function openQueryCache(options: OpenQueryCacheOptions): QueryCache {
       // A body over the per-entry ceiling bypasses the cache (no error).
       if (bytes > maxEntryBytes) return;
       // Sweep expired rows first so their bytes don't count against the budget.
-      purgeExpiredStmt.run(now(), options.ttlMs);
+      purgeExpiredStmt.run(now());
       upsertStmt.run({
         key,
         body,
@@ -217,6 +228,8 @@ export function openQueryCache(options: OpenQueryCacheOptions): QueryCache {
         contentType: meta.contentType,
         sourceId: meta.sourceId,
         bytes,
+        // Per-source override when given, else the store's open-time default.
+        ttlMs: meta.ttlMs ?? options.ttlMs,
         at: now(),
       });
       // Per-source cap first (bounds this source on its own), then the global

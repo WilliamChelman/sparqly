@@ -178,6 +178,44 @@ describe('CachingQueryExecutor', () => {
     expect(recomputed.body).toBe('NEW');
   });
 
+  it('forwards the resolved per-entry ttl to the store on a miss (per-source override)', async () => {
+    const captured: QueryCacheSetMeta[] = [];
+    const cache: QueryCache = {
+      get: () => undefined,
+      set: (_k, _b, meta) => void captured.push(meta),
+      close: () => undefined,
+    };
+    const s = new CachingQueryExecutor({
+      delegate: delegate({ ok: jsonResult('x') }),
+      cache,
+      sourceId: 'endpoint-1',
+      contextDigest: 'ctx',
+      freshnessToken: '',
+      schemaVersion: '1',
+      entryTtlMs: 30 * 60 * 1000,
+    });
+
+    await s.executeResult(QUERY);
+
+    expect(captured[0]?.ttlMs).toBe(30 * 60 * 1000);
+  });
+
+  it('never caches a non-deterministic query (NOW): every call executes live', async () => {
+    const inner = delegate({ ok: jsonResult('z') });
+    const s = seam(inner, fakeCache()); // normal mode
+
+    const first = (
+      await s.executeResult('SELECT (NOW() AS ?t) WHERE { ?s ?p ?o }')
+    )._unsafeUnwrap();
+    const second = (
+      await s.executeResult('SELECT (NOW() AS ?t) WHERE { ?s ?p ?o }')
+    )._unsafeUnwrap();
+
+    expect(inner.calls).toBe(2); // not served from cache the second time
+    expect(first.cacheStatus).toBe('bypass');
+    expect(second.cacheStatus).toBe('bypass');
+  });
+
   it('in bypass mode neither reads nor writes the cache', async () => {
     const inner = delegate({ ok: jsonResult('y') });
     const s = seam(inner, fakeCache(), { mode: 'bypass' });

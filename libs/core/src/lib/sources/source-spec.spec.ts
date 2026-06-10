@@ -128,13 +128,31 @@ describe('parseSourceSpec — object form', () => {
     ).toMatchObject({ queryCache: true });
   });
 
-  it('rejects per-source `ttl` (lands in a later slice)', () => {
+  it('opts in with a per-source ttl from a human duration (ADR-0054, #416)', () => {
+    expect(
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        queryCache: { ttl: '30min' },
+      }),
+    ).toMatchObject({ queryCache: { ttl: 30 * 60 * 1000 } });
+  });
+
+  it('combines a per-source ttl and maxBytes in the object form', () => {
+    expect(
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        queryCache: { ttl: '1h', maxBytes: 1024 },
+      }),
+    ).toMatchObject({ queryCache: { ttl: 60 * 60 * 1000, maxBytes: 1024 } });
+  });
+
+  it('rejects an unparseable per-source ttl', () => {
     expect(() =>
       parseSourceSpec({
         endpoint: 'https://example.com/sparql',
-        queryCache: { ttl: '30min' } as { maxBytes?: number },
+        queryCache: { ttl: 'soon' },
       }),
-    ).toThrow(/ttl.*not supported/i);
+    ).toThrow(/ttl.*valid duration/i);
   });
 
   it('rejects an unparseable per-source maxBytes', () => {

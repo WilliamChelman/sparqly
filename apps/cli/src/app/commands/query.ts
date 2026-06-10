@@ -12,6 +12,8 @@ import {
   digestContext,
   freshnessTokenFor,
   queryCacheCap,
+  queryCacheTtlMs,
+  resolveQueryCacheTtlMs,
   sourceQueryCacheOptIn,
   expandSplitGlobs,
   MIME_TO_FORMAT,
@@ -366,6 +368,7 @@ async function maybeWithQueryCache(
       }),
       freshnessToken,
       schemaVersion: cliVersion(),
+      entryTtlMs: resolveQueryCacheTtlMs(queryCacheTtlMs(queryCache)),
       mode: 'normal',
       logger,
     });

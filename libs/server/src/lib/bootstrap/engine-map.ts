@@ -38,39 +38,21 @@ import {
   spawnIndexBuildUnavailable,
   unloadedEntry,
   type Entry,
+  type EngineMapOptions,
   type IndexingError,
   type LoadedEntry,
   type LoadedSources,
 } from './engine-map-types';
-import { IndexBuildPool, type SpawnIndexBuild } from './index-build-pool';
+import { IndexBuildPool } from './index-build-pool';
 import type { SourceRuntime } from '../sources/source-row-projector';
 import type { SourceStateEmitter } from '../sources/source-state-emitter';
 
-export type { IndexingError, LoadedSources } from './engine-map-types';
+export type {
+  EngineMapOptions,
+  IndexingError,
+  LoadedSources,
+} from './engine-map-types';
 export { isIndexingError } from './engine-map-types';
-
-export interface EngineMapOptions {
-  logger?: SparqlyLogger;
-  configDir?: string;
-  sparqlyVersion?: string;
-  indexCacheDir?: string;
-  // Query cache (ADR-0054) byte budget, forwarded to the store on open.
-  queryCacheBudget?: { maxBytes?: number | null; maxEntryBytes?: number };
-  // Spawns the isolated `sparqly index` child; omitting it makes the first
-  // touch of a not-yet-built disk-backed source throw.
-  spawnIndexBuild?: SpawnIndexBuild;
-  indexConcurrency?: number;
-  indexBuildCooldownMs?: number;
-  now?: () => number;
-  sourceStateEmitter?: SourceStateEmitter;
-  // When set, in-memory materialized queries run off the main loop in this
-  // worker pool (ADR-0050). Omitting it keeps the legacy main-thread path.
-  queryPool?: QueryWorkerPool;
-  // Resolves an ad-hoc pin's `gitRef:` to a SHA on the main thread (the worker
-  // routing key, #390). Injected so tests stub git; production builds the CLI port.
-  gitPort?: GitPort;
-  repoDiscovery?: RepoDiscoveryDeps;
-}
 
 export class EngineMap {
   private constructor(

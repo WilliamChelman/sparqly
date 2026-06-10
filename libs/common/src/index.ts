@@ -2,6 +2,7 @@ export { formatRdf } from './lib/formatter';
 export type { FormatSerialization, ResolvedFormatterConfig } from './lib/formatter';
 export * from './lib/parse-rdf-string';
 export * from './lib/parse-byte-size';
+export * from './lib/parse-duration';
 export * from './lib/shorten-nquad-line';
 export * from './lib/describe-wire-codec';
 export * from './lib/describe-path';

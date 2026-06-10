@@ -1,8 +1,10 @@
 import {
   QueryEngine,
+  type GitPort,
   type ParsedEndpointSource,
   type ParsedSource,
   type QueryExecutor,
+  type RepoDiscoveryDeps,
   type SourceError,
   type SourceRecordSidecar,
 } from 'core';
@@ -12,6 +14,33 @@ import type * as RDF from '@rdfjs/types';
 import type { Store } from 'n3';
 import { ok, type Result } from 'neverthrow';
 import type { StoreRef } from './tokens';
+import type { SpawnIndexBuild } from './index-build-pool';
+import type { QueryWorkerPool } from '../sparql/query-worker-pool';
+import type { SourceStateEmitter } from '../sources/source-state-emitter';
+
+/** Construction options for an {@link EngineMap}. */
+export interface EngineMapOptions {
+  logger?: SparqlyLogger;
+  configDir?: string;
+  sparqlyVersion?: string;
+  indexCacheDir?: string;
+  // Query cache (ADR-0054) byte budget, forwarded to the store on open.
+  queryCacheBudget?: { maxBytes?: number | null; maxEntryBytes?: number };
+  // Spawns the isolated `sparqly index` child; omitting it makes the first
+  // touch of a not-yet-built disk-backed source throw.
+  spawnIndexBuild?: SpawnIndexBuild;
+  indexConcurrency?: number;
+  indexBuildCooldownMs?: number;
+  now?: () => number;
+  sourceStateEmitter?: SourceStateEmitter;
+  // When set, in-memory materialized queries run off the main loop in this
+  // worker pool (ADR-0050). Omitting it keeps the legacy main-thread path.
+  queryPool?: QueryWorkerPool;
+  // Resolves an ad-hoc pin's `gitRef:` to a SHA on the main thread (the worker
+  // routing key, #390). Injected so tests stub git; production builds the CLI port.
+  gitPort?: GitPort;
+  repoDiscovery?: RepoDiscoveryDeps;
+}
 
 export type LoadedSources =
   | { mode: 'materialized'; store: Store; sourceRecords?: SourceRecordSidecar }

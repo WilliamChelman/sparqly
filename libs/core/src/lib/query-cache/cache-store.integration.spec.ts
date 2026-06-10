@@ -102,6 +102,42 @@ describe('query cache store', () => {
     }
   });
 
+  it('expires an entry by its per-source ttl override, shorter than the store default', () => {
+    let clock = 0;
+    const cache = open({ ttlMs: 10_000, now: () => clock });
+    try {
+      cache.set('short', 'body', { ...meta, ttlMs: 1000 });
+      clock = 1500; // past the per-entry 1s ttl, still within the 10s default
+      expect(cache.get('short')).toBeUndefined();
+    } finally {
+      cache.close();
+    }
+  });
+
+  it('honors a per-entry ttl longer than the store default', () => {
+    let clock = 0;
+    const cache = open({ ttlMs: 1000, now: () => clock });
+    try {
+      cache.set('long', 'body', { ...meta, ttlMs: 10_000 });
+      clock = 5000; // past the store default but within the per-entry override
+      expect(cache.get('long')?.body).toBe('body');
+    } finally {
+      cache.close();
+    }
+  });
+
+  it('falls back to the store default ttl when an entry sets no per-entry ttl', () => {
+    let clock = 0;
+    const cache = open({ ttlMs: 10_000, now: () => clock });
+    try {
+      cache.set('dflt', 'body', meta); // no per-entry ttl
+      clock = 1500;
+      expect(cache.get('dflt')?.body).toBe('body'); // still within the default
+    } finally {
+      cache.close();
+    }
+  });
+
   it('removes an expired entry on read (self-heal), not just hides it by clock', () => {
     let clock = 0;
     const cache = open({ ttlMs: 1000, now: () => clock });

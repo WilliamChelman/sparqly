@@ -1,4 +1,3 @@
-import { parseHumanByteSize } from 'common';
 import { TRANSFORM_REGISTRY } from './transform-registry';
 import {
   parseTransformList,
@@ -15,6 +14,7 @@ import {
   rejectUnionDefaultGraphOn,
 } from './union-default-graph';
 import { pickGitFields, rejectGitRefOn } from './source-spec-git';
+import { pickQueryCache } from './source-spec-query-cache';
 import {
   pickStorage,
   rejectAnnotateSourceOnDiskGlob,
@@ -97,14 +97,20 @@ export interface ParsedEndpointSource
   /**
    * Opt-in to the Query cache (ADR-0054). Absent means not opted in. `true` opts
    * in under the global budget alone; the object form adds a per-source byte cap
-   * (`{ maxBytes }`, already resolved to a byte count or `null` for unbounded).
-   * Per-source `ttl` lands in a later slice.
+   * (`{ maxBytes }`, resolved to a byte count or `null` for unbounded) and/or a
+   * per-source absolute TTL (`{ ttl }`, resolved to milliseconds; ADR-0054 #416).
    */
   queryCache?: ParsedQueryCache;
 }
 
-/** A source's resolved Query cache opt-in: bare, or with a per-source byte cap. */
-export type ParsedQueryCache = true | { maxBytes?: number | null };
+/**
+ * A source's resolved Query cache opt-in: bare (`true`), or an object carrying a
+ * per-source byte cap (`maxBytes`) and/or a per-source absolute TTL in
+ * milliseconds (`ttl`, ADR-0054 #416), each already resolved from its config form.
+ */
+export type ParsedQueryCache =
+  | true
+  | { maxBytes?: number | null; ttl?: number };
 
 /**
  * The per-source byte cap declared on a source's `queryCache`, or `undefined`
@@ -117,6 +123,19 @@ export function queryCacheCap(
 ): number | null | undefined {
   if (queryCache === undefined || queryCache === true) return undefined;
   return queryCache.maxBytes;
+}
+
+/**
+ * The per-source absolute TTL (ms) declared on a source's `queryCache` (ADR-0054,
+ * #416), or `undefined` when it opted in bare (`true`), did not opt in, or set no
+ * `ttl` — in which case {@link resolveQueryCacheTtlMs} falls back to the global
+ * default.
+ */
+export function queryCacheTtlMs(
+  queryCache: ParsedQueryCache | undefined,
+): number | undefined {
+  if (queryCache === undefined || queryCache === true) return undefined;
+  return queryCache.ttl;
 }
 
 /**
@@ -187,7 +206,9 @@ export interface SourceSpecObjectInput
   storage?: StorageTier;
   gitRef?: string;
   gitRoot?: string;
-  queryCache?: boolean | { maxBytes?: number | string | null };
+  queryCache?:
+    | boolean
+    | { maxBytes?: number | string | null; ttl?: number | string };
 }
 
 export type SourceSpecInput = string | SourceSpecObjectInput;
@@ -346,62 +367,6 @@ export function parseSourceSpec(
     ...pickQueryCache(input),
     ...defaultMarker,
   };
-}
-
-/**
- * Resolves a source's `queryCache` opt-in (ADR-0054). `true`/`false` toggle it
- * under the global budget; the object form adds a per-source `maxBytes` cap,
- * accepting a raw byte count, a human size (`256MB`), or `null` (explicitly
- * unbounded). Per-source `ttl` is rejected until a later slice honors it, so a
- * config that sets it fails loudly rather than silently ignoring the knob.
- */
-function pickQueryCache(input: SourceSpecObjectInput): {
-  queryCache?: ParsedQueryCache;
-} {
-  const value = input.queryCache;
-  if (value === undefined || value === false) return {};
-  if (value === true) return { queryCache: true };
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(
-      '`queryCache` must be a boolean or an object (`{ maxBytes }`)',
-    );
-  }
-  const record = value as Record<string, unknown>;
-  if ('ttl' in record) {
-    throw new Error(
-      '`queryCache.ttl` is not supported yet (per-source ttl lands in a later slice)',
-    );
-  }
-  for (const key of Object.keys(record)) {
-    if (key !== 'maxBytes') {
-      throw new Error(`unknown \`queryCache.${key}\` key (only \`maxBytes\`)`);
-    }
-  }
-  if (!('maxBytes' in record)) return { queryCache: true };
-  return { queryCache: { maxBytes: resolveMaxBytes(record['maxBytes']) } };
-}
-
-/** Resolves a per-source `maxBytes` to a byte count or `null` (unbounded). */
-function resolveMaxBytes(value: unknown): number | null {
-  if (value === null) return null;
-  if (typeof value === 'number') {
-    if (!Number.isInteger(value) || value <= 0) {
-      throw new Error('`queryCache.maxBytes` must be a positive byte count');
-    }
-    return value;
-  }
-  if (typeof value === 'string') {
-    const bytes = parseHumanByteSize(value);
-    if (bytes === undefined) {
-      throw new Error(
-        `\`queryCache.maxBytes\` is not a valid byte size: ${JSON.stringify(value)}`,
-      );
-    }
-    return bytes;
-  }
-  throw new Error(
-    '`queryCache.maxBytes` must be a byte count, a human size like `256MB`, or `null`',
-  );
 }
 
 function rejectTransformsOn(

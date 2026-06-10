@@ -7,6 +7,7 @@ import type {
 } from '../sources/errors';
 import { deriveCacheKey } from './cache-key';
 import type { QueryCache } from './cache-store';
+import { queryIsNonDeterministic } from './non-determinism-guard';
 
 /**
  * The seam's mode (ADR-0054). Only `normal` is wired in slice 1; `bypass` and
@@ -38,6 +39,13 @@ export interface CachingQueryExecutorOptions {
   freshnessToken?: string;
   /** Cache-schema version — a key component. */
   schemaVersion: string;
+  /**
+   * This source's resolved absolute TTL in milliseconds (ADR-0054, #416),
+   * forwarded to the store on `set` so a per-source `ttl` override expires this
+   * source's entries on its own clock. `undefined` lets the store fall back to
+   * its open-time default.
+   */
+  entryTtlMs?: number;
   mode?: CacheMode;
   logger?: SparqlyLogger;
 }
@@ -59,6 +67,7 @@ export class CachingQueryExecutor implements QueryExecutor {
   private readonly contextDigest: string;
   private readonly freshnessToken: string;
   private readonly schemaVersion: string;
+  private readonly entryTtlMs?: number;
   private readonly mode: CacheMode;
   private readonly logger: SparqlyLogger;
 
@@ -70,6 +79,7 @@ export class CachingQueryExecutor implements QueryExecutor {
     this.contextDigest = options.contextDigest;
     this.freshnessToken = options.freshnessToken ?? '';
     this.schemaVersion = options.schemaVersion;
+    this.entryTtlMs = options.entryTtlMs;
     this.mode = options.mode ?? 'normal';
     this.logger = options.logger ?? noopLogger;
   }
@@ -78,7 +88,7 @@ export class CachingQueryExecutor implements QueryExecutor {
     query: string,
     options: ExecuteOptions = {},
   ): ResultAsync<ExecuteResult, ExecuteError> {
-    if (this.mode === 'bypass') {
+    if (this.bypasses(query)) {
       return this.delegate
         .executeResult(query, options)
         .map((result) => ({ ...result, cacheStatus: 'bypass' as const }));
@@ -107,7 +117,7 @@ export class CachingQueryExecutor implements QueryExecutor {
     query: string,
     options: ExecuteOptions = {},
   ): Promise<ExecuteResult> {
-    if (this.mode === 'bypass') {
+    if (this.bypasses(query)) {
       return {
         ...(await this.delegate.execute(query, options)),
         cacheStatus: 'bypass',
@@ -133,6 +143,15 @@ export class CachingQueryExecutor implements QueryExecutor {
     return { ...result, cacheStatus: 'miss' };
   }
 
+  /**
+   * Whether this query skips the cache entirely (no read, no write). True in
+   * explicit `bypass` mode, and — regardless of mode — for a non-deterministic
+   * query (ADR-0054, #416), whose answer must never be served from a prior run.
+   */
+  private bypasses(query: string): boolean {
+    return this.mode === 'bypass' || queryIsNonDeterministic(query);
+  }
+
   private keyFor(query: string, options: ExecuteOptions): string {
     return deriveCacheKey({
       sourceId: this.sourceId,
@@ -152,6 +171,7 @@ export class CachingQueryExecutor implements QueryExecutor {
       contentType: result.contentType,
       sourceId: this.sourceId,
       sourceMaxBytes: this.sourceMaxBytes,
+      ttlMs: this.entryTtlMs,
     });
   }
 
