@@ -36,9 +36,20 @@ const sourceObjectSchema = z
     storage: z.enum(['memory', 'disk']).optional(),
     gitRef: z.string().optional(),
     gitRoot: z.string().optional(),
-    // Opt-in to the Query cache (ADR-0054). Slice 1 accepts only the boolean
-    // form; `parseSourceSpec` rejects the `{ ttl, maxBytes }` form for now.
-    queryCache: z.boolean().optional(),
+    // Opt-in to the Query cache (ADR-0054). Boolean toggles it under the global
+    // budget; the object form adds a per-source `maxBytes` cap (raw bytes, a
+    // human size like `256MB`, or `null` for unbounded). `parseSourceSpec`
+    // resolves and validates the value; per-source `ttl` is rejected for now.
+    queryCache: z
+      .union([
+        z.boolean(),
+        z
+          .object({
+            maxBytes: z.union([z.number(), z.string(), z.null()]).optional(),
+          })
+          .strict(),
+      ])
+      .optional(),
   })
   .strict();
 

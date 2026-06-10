@@ -31,10 +31,7 @@ import { maybeStartWatcher } from './multi-source-watcher';
 import { RequestLoggingInterceptor } from './request-logging.interceptor';
 import { ServerModule } from './server.module';
 import { SnippetAllowList } from '../snippet';
-import {
-  SourceStateBroker,
-  SourceStateEmitter,
-} from '../sources';
+import { SourceStateBroker, SourceStateEmitter } from '../sources';
 import { sparqlQueryBodyParser } from './sparql-query-body-parser';
 import type { SparqlContext } from './tokens';
 
@@ -78,6 +75,11 @@ export interface CreateServerOptions {
   /** Cooperative→nuclear cancel cutover (`query.cancelGraceMs`, ADR-0050).
    * Defaults to 250ms. */
   queryCancelGraceMs?: number;
+  /** Query cache global byte budget (`queryCache.maxBytes`, ADR-0054). `null` is
+   * explicitly unbounded; omitted uses the 256 MB default. */
+  queryCacheMaxBytes?: number | null;
+  /** Query cache per-entry ceiling (`queryCache.maxEntryBytes`). 32 MB default. */
+  queryCacheMaxEntryBytes?: number;
   /** Defaults to 15_000. */
   sseHeartbeatMs?: number;
   /** Defaults to 256. */
@@ -136,6 +138,10 @@ export async function createServer(
     indexCacheDir: options.indexCacheDir,
     spawnIndexBuild: options.spawnIndexBuild,
     indexConcurrency: options.indexConcurrency,
+    queryCacheBudget: {
+      maxBytes: options.queryCacheMaxBytes,
+      maxEntryBytes: options.queryCacheMaxEntryBytes,
+    },
     sourceStateEmitter,
     queryPool,
   });

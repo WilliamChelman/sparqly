@@ -9,6 +9,7 @@ import {
   defaultGlobWalker,
   DEFAULT_QUERY_CACHE_TTL_MS,
   digestContext,
+  endpointQueryCacheCap,
   expandSplitGlobs,
   MIME_TO_FORMAT,
   N3_FORMAT_BY_EXT,
@@ -65,6 +66,10 @@ interface QueryConfig {
   out?: string;
   at?: string;
   indexCacheDir?: string;
+  /** Global Query cache byte budget from `queryCache.maxBytes` (`null` = unbounded). */
+  queryCacheMaxBytes?: number | null;
+  /** Per-entry ceiling from `queryCache.maxEntryBytes`. */
+  queryCacheMaxEntryBytes?: number;
   verbose?: boolean;
   quiet?: boolean;
   logFormat?: 'text' | 'json';
@@ -117,6 +122,18 @@ const indexCacheDirField: FieldDescriptor = {
   schema: z.string().min(1),
 };
 
+// Read from the top-level `queryCache` block (already resolved to bytes by the
+// project-config schema); a project-shaped budget, not a per-invocation flag.
+const queryCacheMaxBytesField: FieldDescriptor = {
+  key: 'queryCacheMaxBytes',
+  schema: z.union([z.number().int().positive(), z.null()]),
+};
+
+const queryCacheMaxEntryBytesField: FieldDescriptor = {
+  key: 'queryCacheMaxEntryBytes',
+  schema: z.number().int().positive(),
+};
+
 export function inferQueryFormatFromOut(
   out: string | undefined,
 ): SparqlFormat | undefined {
@@ -153,6 +170,8 @@ export const querySpec: CommandSpec<QueryConfig> = {
     queryFileField,
     formatField,
     indexCacheDirField,
+    queryCacheMaxBytesField,
+    queryCacheMaxEntryBytesField,
     atRefField,
     ...mutableFieldsFor('query'),
     contextPrefixesField,
@@ -326,7 +345,7 @@ function maybeWithQueryCache(
   if (
     sources.mode !== 'pass-through' ||
     target.kind !== 'endpoint' ||
-    target.queryCache !== true
+    target.queryCache === undefined
   ) {
     return engine;
   }
@@ -334,12 +353,16 @@ function maybeWithQueryCache(
     dir: queryCacheDir(process.cwd()),
     schemaVersion: cliVersion(),
     ttlMs: DEFAULT_QUERY_CACHE_TTL_MS,
+    maxBytes: config.queryCacheMaxBytes,
+    maxEntryBytes: config.queryCacheMaxEntryBytes,
+    logger,
   });
   registerClose(() => cache.close());
   return new CachingQueryExecutor({
     delegate: engine,
     cache,
     sourceId: target.id ?? target.endpoint,
+    sourceMaxBytes: endpointQueryCacheCap(target.queryCache),
     contextDigest: digestContext({
       prefixes: config.prefixes,
       base: config.base,

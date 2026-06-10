@@ -54,7 +54,9 @@ export interface EngineMapOptions {
   configDir?: string;
   sparqlyVersion?: string;
   indexCacheDir?: string;
-  // Spawns the isolated `sparqly index @id` child. Omitting it makes first
+  // Query cache (ADR-0054) byte budget, forwarded to the store on open.
+  queryCacheBudget?: { maxBytes?: number | null; maxEntryBytes?: number };
+  // Spawns the isolated `sparqly index` child; omitting it makes the first
   // touch of a not-yet-built disk-backed source throw.
   spawnIndexBuild?: SpawnIndexBuild;
   indexConcurrency?: number;
@@ -64,16 +66,13 @@ export interface EngineMapOptions {
   // When set, in-memory materialized queries run off the main loop in this
   // worker pool (ADR-0050). Omitting it keeps the legacy main-thread path.
   queryPool?: QueryWorkerPool;
-  // Git port/discovery used to resolve an ad-hoc pin's `gitRef:` to a SHA on the
-  // main thread (the worker routing key, #390). Injected so tests stub git;
-  // production lazily constructs the `git`-CLI port.
+  // Resolves an ad-hoc pin's `gitRef:` to a SHA on the main thread (the worker
+  // routing key, #390). Injected so tests stub git; production builds the CLI port.
   gitPort?: GitPort;
   repoDiscovery?: RepoDiscoveryDeps;
 }
 
 export class EngineMap {
-  private readonly queryCache: ServeQueryCache; // ADR-0054, closed on shutdown
-
   private constructor(
     private readonly entries: Map<string, Entry>,
     private readonly logger: SparqlyLogger | undefined,
@@ -85,13 +84,12 @@ export class EngineMap {
     private readonly queryPool: QueryWorkerPool | undefined,
     private readonly gitPort: GitPort | undefined,
     private readonly repoDiscovery: RepoDiscoveryDeps | undefined,
+    private readonly queryCache: ServeQueryCache, // ADR-0054, closed on shutdown
   ) {
-    // A reclaimed worker (ADR-0050 nuclear cancel) loses its stores — drop the
-    // memoized load so the next touch rebuilds them on the respawn.
+    // A reclaimed worker (ADR-0050) loses its stores — drop the memoized load so the next touch rebuilds them on respawn.
     this.queryPool?.onReset((ids) =>
       resetWorkerResidency(this.entries, this.queryPool, ids),
     );
-    this.queryCache = new ServeQueryCache(configDir, sparqlyVersion, logger);
   }
 
   static async create(
@@ -123,8 +121,7 @@ export class EngineMap {
       spawn: options.spawnIndexBuild ?? spawnIndexBuildUnavailable,
       cooldownMs: options.indexBuildCooldownMs,
       now: options.now,
-      // A cancel leaves the prior index intact, but its `.building-<pid>-*`
-      // temp dir would linger if no follow-up build runs.
+      // A cancel leaves the prior index intact, but its `.building-<pid>-*` temp dir lingers.
       sweepTempDir: async (sourceId) => {
         const dir = indexDirOf(sourceId);
         if (dir === undefined) return;
@@ -159,6 +156,12 @@ export class EngineMap {
       options.queryPool,
       options.gitPort,
       options.repoDiscovery,
+      new ServeQueryCache(
+        configDir,
+        options.sparqlyVersion,
+        options.logger,
+        options.queryCacheBudget ?? {},
+      ),
     );
   }
 
@@ -195,9 +198,8 @@ export class EngineMap {
     id: string,
   ): ResultAsync<LoadedSources, SourceError | IndexingError> {
     const entry = this.entries.get(id);
-    // ADR-0050: a worker-owned store isn't on the main heap, so callers that
-    // need the actual store (diff) resolve it fresh on main rather than reusing
-    // the worker's resident copy. Endpoint/disk-backed keep the memoized path.
+    // ADR-0050: a worker-owned store isn't on the main heap, so callers that need
+    // the actual store (diff) resolve it fresh on main. Endpoint/disk-backed keep memoized.
     if (entry && this.isWorkerInMemory(entry) && !isDiskBacked(entry.source)) {
       return resolveFreshWorkerSources(entry.source, {
         logger: this.logger,
@@ -268,9 +270,8 @@ export class EngineMap {
     entry: Entry,
   ): Promise<Result<LoadedEntry, SourceError | IndexingError>> {
     const sourceId = entry.source.id as string;
-    // Sticky-failed: skip re-spawning until Retry clears it. Still return
-    // `indexing` so the 503 boundary applies; the Sources page surfaces
-    // `failed` via `readState` reading `entry.lastError`.
+    // Sticky-failed: skip re-spawning until Retry clears it. Still return `indexing`
+    // so the 503 boundary applies; the Sources page surfaces `failed` via `readState`.
     if (entry.lastError !== undefined) {
       entry.disk = undefined;
       return err(indexingError(sourceId));
@@ -428,15 +429,14 @@ export class EngineMap {
   }
 
   // Atomically swaps `StoreRef.current` to the freshly built store — same
-  // `StoreRef` instance, so existing holders pick up the new store
-  // transparently. Endpoint and disk-backed entries short-circuit.
+  // `StoreRef` instance, so existing holders pick up the new store transparently.
+  // Endpoint and disk-backed entries short-circuit.
   async reload(id: string): Promise<Result<QueryExecutor, SourceError>> {
     const entry = this.entries.get(id);
     if (!entry) throw new Error(`EngineMap: no source with @id "${id}"`);
-    // ADR-0050 (#391): the worker owns the store, so Reload drops its resident
-    // copy first — a bare re-load against a still-resident store just echoes its
-    // metrics — then re-loads, which now genuinely rebuilds it from disk and
-    // returns the Sources page to `loaded`.
+    // ADR-0050 (#391): the worker owns the store, so Reload drops its resident copy
+    // first — a bare re-load against a still-resident store just echoes its metrics —
+    // then re-loads, genuinely rebuilding from disk and returning the page to `loaded`.
     if (this.isWorkerInMemory(entry) && !isDiskBacked(entry.source)) {
       this.invalidate(id);
       entry.loaded = this.loadViaWorker(entry);

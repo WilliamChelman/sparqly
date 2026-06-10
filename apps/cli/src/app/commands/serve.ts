@@ -40,6 +40,8 @@ interface ServeConfig {
   queryMaxResidentQuads?: number;
   queryCancelGraceMs?: number;
   queryMaxOldGenerationSizeMb?: number;
+  queryCacheMaxBytes?: number | null;
+  queryCacheMaxEntryBytes?: number;
   verbose?: boolean;
   quiet?: boolean;
   logFormat?: 'text' | 'json';
@@ -148,6 +150,18 @@ const queryMaxOldGenerationSizeMbField: FieldDescriptor = {
   schema: z.number().int().positive(),
 };
 
+// Query cache global budget from the top-level `queryCache` block (already
+// resolved to bytes by the project-config schema). `null` = explicitly unbounded.
+const queryCacheMaxBytesField: FieldDescriptor = {
+  key: 'queryCacheMaxBytes',
+  schema: z.union([z.number().int().positive(), z.null()]),
+};
+
+const queryCacheMaxEntryBytesField: FieldDescriptor = {
+  key: 'queryCacheMaxEntryBytes',
+  schema: z.number().int().positive(),
+};
+
 export const serveSpec: CommandSpec<ServeConfig> = {
   name: 'serve',
   description:
@@ -171,6 +185,8 @@ export const serveSpec: CommandSpec<ServeConfig> = {
     queryMaxResidentQuadsField,
     queryCancelGraceMsField,
     queryMaxOldGenerationSizeMbField,
+    queryCacheMaxBytesField,
+    queryCacheMaxEntryBytesField,
     ...verbosityFieldsFor('serve'),
   ],
   positionals: [{ field: 'source', name: 'glob' }],
@@ -223,6 +239,8 @@ export const serveSpec: CommandSpec<ServeConfig> = {
       indexConcurrency: config.indexConcurrency,
       queryConcurrency: config.queryConcurrency,
       queryCancelGraceMs: config.queryCancelGraceMs,
+      queryCacheMaxBytes: config.queryCacheMaxBytes,
+      queryCacheMaxEntryBytes: config.queryCacheMaxEntryBytes,
       spawnIndexBuild: makeSpawnIndexBuild({ cliEntry }),
       spawnQueryWorker: makeSpawnQueryWorker({
         cliEntry,

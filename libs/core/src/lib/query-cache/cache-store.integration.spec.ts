@@ -36,7 +36,20 @@ describe('query cache store', () => {
   const meta = {
     format: 'json',
     contentType: 'application/sparql-results+json',
+    sourceId: 's1',
   };
+
+  /** Meta for a body owned by `sourceId`, optionally with a per-source cap. */
+  function metaFor(sourceId: string, sourceMaxBytes?: number | null) {
+    return {
+      ...meta,
+      sourceId,
+      ...(sourceMaxBytes === undefined ? {} : { sourceMaxBytes }),
+    };
+  }
+
+  /** A body of exactly `n` ASCII bytes, so byte budgets are easy to reason about. */
+  const body = (n: number) => 'x'.repeat(n);
 
   it('returns a stored body and its serialization metadata for a known key', () => {
     const cache = open();
@@ -139,6 +152,118 @@ describe('query cache store', () => {
       expect(second.get('k')?.body).toBe('kept');
     } finally {
       second.close();
+    }
+  });
+
+  it('evicts least-recently-accessed entries on write until total bytes fit maxBytes', () => {
+    // Budget holds three 10-byte bodies; a fourth insert evicts the oldest.
+    let tick = 0;
+    const cache = open({ maxBytes: 30, now: () => ++tick });
+    try {
+      cache.set('a', body(10), metaFor('s1'));
+      cache.set('b', body(10), metaFor('s1'));
+      cache.set('c', body(10), metaFor('s1'));
+      cache.set('d', body(10), metaFor('s1'));
+      expect(cache.get('a')).toBeUndefined(); // least-recently-accessed, evicted
+      expect(cache.get('b')?.body).toBe(body(10));
+      expect(cache.get('c')?.body).toBe(body(10));
+      expect(cache.get('d')?.body).toBe(body(10));
+    } finally {
+      cache.close();
+    }
+  });
+
+  it('rescues a recently-read entry from eviction (recency is access, not insertion)', () => {
+    let tick = 0;
+    const cache = open({ maxBytes: 30, now: () => ++tick });
+    try {
+      cache.set('a', body(10), metaFor('s1'));
+      cache.set('b', body(10), metaFor('s1'));
+      cache.set('c', body(10), metaFor('s1'));
+      cache.get('a'); // touch the oldest so it is no longer the eviction victim
+      cache.set('d', body(10), metaFor('s1'));
+      expect(cache.get('a')?.body).toBe(body(10)); // survived: just accessed
+      expect(cache.get('b')).toBeUndefined(); // now the least-recently-accessed
+      expect(cache.get('c')?.body).toBe(body(10));
+      expect(cache.get('d')?.body).toBe(body(10));
+    } finally {
+      cache.close();
+    }
+  });
+
+  it('bounds a source to its per-source maxBytes independently of the global pool', () => {
+    let tick = 0;
+    // Global budget is roomy, so any eviction here is the per-source cap at work.
+    const cache = open({ maxBytes: 1000, now: () => ++tick });
+    try {
+      cache.set('s2a', body(10), metaFor('s2')); // uncapped, shares the pool
+      cache.set('s1a', body(10), metaFor('s1', 20));
+      cache.set('s1b', body(10), metaFor('s1', 20)); // s1 now at its 20-byte cap
+      cache.set('s1c', body(10), metaFor('s1', 20)); // over cap → evict s1's oldest
+      expect(cache.get('s1a')).toBeUndefined();
+      expect(cache.get('s1b')?.body).toBe(body(10));
+      expect(cache.get('s1c')?.body).toBe(body(10));
+      expect(cache.get('s2a')?.body).toBe(body(10)); // a different source is untouched
+    } finally {
+      cache.close();
+    }
+  });
+
+  it('bypasses a body larger than maxEntryBytes (not stored, no error)', () => {
+    const cache = open({ maxEntryBytes: 50 });
+    try {
+      expect(() => cache.set('big', body(51), metaFor('s1'))).not.toThrow();
+      expect(cache.get('big')).toBeUndefined();
+      cache.set('ok', body(50), metaFor('s1')); // a body at the ceiling still fits
+      expect(cache.get('ok')?.body).toBe(body(50));
+    } finally {
+      cache.close();
+    }
+  });
+
+  it('warns once at open for an explicitly unbounded budget, and not for a bounded one', () => {
+    const warnings: string[] = [];
+    const logger = { warn: (message: string) => warnings.push(message) };
+
+    const unbounded = open({ maxBytes: null, logger });
+    unbounded.close();
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/unbounded/i);
+
+    const bounded = open({ maxBytes: 100, logger });
+    bounded.close();
+    const dflt = open({ logger }); // default budget, also no warning
+    dflt.close();
+    expect(warnings).toHaveLength(1);
+  });
+
+  it('purges expired entries on write, not only on read', () => {
+    let clock = 0;
+    const cache = open({ ttlMs: 1000, now: () => clock });
+    try {
+      cache.set('old', body(10), metaFor('s1'));
+      clock = 2000; // 'old' is now past its TTL
+      cache.set('new', body(10), metaFor('s1')); // a write sweeps expired rows
+      clock = 0; // rewind: a merely TTL-hidden row would reappear here
+      expect(cache.get('old')).toBeUndefined();
+      expect(cache.get('new')?.body).toBe(body(10));
+    } finally {
+      cache.close();
+    }
+  });
+
+  it('never evicts under an explicitly unbounded budget', () => {
+    let tick = 0;
+    const cache = open({ maxBytes: null, now: () => ++tick });
+    try {
+      for (const k of ['a', 'b', 'c', 'd', 'e']) {
+        cache.set(k, body(1000), metaFor('s1'));
+      }
+      for (const k of ['a', 'b', 'c', 'd', 'e']) {
+        expect(cache.get(k)?.body).toBe(body(1000));
+      }
+    } finally {
+      cache.close();
     }
   });
 });

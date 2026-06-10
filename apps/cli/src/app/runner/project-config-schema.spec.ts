@@ -187,3 +187,54 @@ describe('validateProjectConfig — index block', () => {
     }
   });
 });
+
+describe('validateProjectConfig — queryCache block', () => {
+  it('resolves a human maxBytes / maxEntryBytes to a byte count', () => {
+    const result = validateProjectConfig({
+      sources: ['data/*.ttl'],
+      queryCache: { maxBytes: '512MB', maxEntryBytes: '8MB' },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.queryCache?.maxBytes).toBe(512 * 1024 * 1024);
+      expect(result.data.queryCache?.maxEntryBytes).toBe(8 * 1024 * 1024);
+    }
+  });
+
+  it('accepts a raw byte count and an explicit `null` (unbounded) maxBytes', () => {
+    const raw = validateProjectConfig({
+      sources: ['data/*.ttl'],
+      queryCache: { maxBytes: 1024 },
+    });
+    expect(raw.ok).toBe(true);
+    if (raw.ok) expect(raw.data.queryCache?.maxBytes).toBe(1024);
+
+    const unbounded = validateProjectConfig({
+      sources: ['data/*.ttl'],
+      queryCache: { maxBytes: null },
+    });
+    expect(unbounded.ok).toBe(true);
+    if (unbounded.ok) expect(unbounded.data.queryCache?.maxBytes).toBeNull();
+  });
+
+  it('accepts an empty queryCache block', () => {
+    expect(
+      validateProjectConfig({ sources: ['data/*.ttl'], queryCache: {} }).ok,
+    ).toBe(true);
+  });
+
+  it('rejects an unparseable byte size and an unknown field', () => {
+    expect(
+      validateProjectConfig({
+        sources: ['data/*.ttl'],
+        queryCache: { maxBytes: 'enormous' },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validateProjectConfig({
+        sources: ['data/*.ttl'],
+        queryCache: { unknown: 1 },
+      }).ok,
+    ).toBe(false);
+  });
+});

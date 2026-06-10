@@ -1,5 +1,33 @@
 import { z } from 'zod';
+import { parseHumanByteSize } from 'common';
 import { projectSourcesSchema } from './fields/fields-shared';
+
+/** A byte size as a raw count or a human string (`256MB`), resolved to bytes. */
+const byteSizeSchema = z
+  .union([z.number().int().positive(), z.string()])
+  .transform((value, ctx) => {
+    if (typeof value === 'number') return value;
+    const bytes = parseHumanByteSize(value);
+    if (bytes === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `not a valid byte size: ${JSON.stringify(value)}`,
+      });
+      return z.NEVER;
+    }
+    return bytes;
+  });
+
+const queryCacheBlockSchema = z
+  .object({
+    // Global byte budget for the whole cache; `null` is explicitly unbounded
+    // (allowed, but warns at cache open). Defaults to 256 MB.
+    maxBytes: z.union([byteSizeSchema, z.null()]),
+    // Per-entry ceiling; a result larger than this bypasses the cache. 32 MB.
+    maxEntryBytes: byteSizeSchema,
+  })
+  .partial()
+  .strict();
 
 const serveBlockSchema = z
   .object({
@@ -114,6 +142,7 @@ const KNOWN_TOP_LEVEL = new Set([
   'savedQueries',
   'index',
   'query',
+  'queryCache',
 ]);
 
 // Keys that name a config block AND a per-invocation flag — disambiguated by
@@ -130,6 +159,7 @@ const baseProjectSchema = z
     savedQueries: savedQueriesBlockSchema.optional(),
     index: indexBlockSchema.optional(),
     query: queryBlockSchema.optional(),
+    queryCache: queryCacheBlockSchema.optional(),
   })
   .strict();
 
@@ -138,7 +168,9 @@ export const projectConfigSchema = baseProjectSchema;
 // The strict z.object already rejects unknown keys with a generic message.
 // We add a separate pre-validation pass to surface friendlier messages for
 // known per-invocation keys and known block-misplaced keys at root.
-export function validateProjectConfig(parsed: unknown):
+export function validateProjectConfig(
+  parsed: unknown,
+):
   | { ok: true; data: ProjectConfig }
   | { ok: false; issues: ReadonlyArray<{ path: string; message: string }> } {
   const issues: { path: string; message: string }[] = [];

@@ -21,8 +21,13 @@ export interface CachingQueryExecutorOptions {
   /** The executor whose results are cached (the bare endpoint engine). */
   delegate: QueryExecutor;
   cache: QueryCache;
-  /** The {@link target source}'s id — a key component. */
+  /** The {@link target source}'s id — a key component and the per-source cap owner. */
   sourceId: string;
+  /**
+   * This source's optional per-source byte cap (ADR-0054), forwarded to the
+   * store on `set`. `undefined` leaves the source under the global budget alone.
+   */
+  sourceMaxBytes?: number | null;
   /** Digest of the display {@link context} (prefixes/base) — a key component. */
   contextDigest: string;
   /** Cache-schema version — a key component. */
@@ -44,6 +49,7 @@ export class CachingQueryExecutor implements QueryExecutor {
   private readonly delegate: QueryExecutor;
   private readonly cache: QueryCache;
   private readonly sourceId: string;
+  private readonly sourceMaxBytes?: number | null;
   private readonly contextDigest: string;
   private readonly schemaVersion: string;
   private readonly mode: CacheMode;
@@ -53,6 +59,7 @@ export class CachingQueryExecutor implements QueryExecutor {
     this.delegate = options.delegate;
     this.cache = options.cache;
     this.sourceId = options.sourceId;
+    this.sourceMaxBytes = options.sourceMaxBytes;
     this.contextDigest = options.contextDigest;
     this.schemaVersion = options.schemaVersion;
     this.mode = options.mode ?? 'normal';
@@ -134,6 +141,8 @@ export class CachingQueryExecutor implements QueryExecutor {
     this.cache.set(key, result.body, {
       format: result.format,
       contentType: result.contentType,
+      sourceId: this.sourceId,
+      sourceMaxBytes: this.sourceMaxBytes,
     });
   }
 

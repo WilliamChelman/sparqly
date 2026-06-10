@@ -89,15 +89,61 @@ describe('parseSourceSpec — object form', () => {
     expect('queryCache' in parsed).toBe(false);
   });
 
-  it('rejects the object form of queryCache (not supported yet)', () => {
-    expect(() =>
+  it('opts in with a per-source maxBytes cap from the object form', () => {
+    expect(
       parseSourceSpec({
         endpoint: 'https://example.com/sparql',
         id: 'live',
-        // @ts-expect-error — object form (ttl/maxBytes) lands in a later slice
-        queryCache: { ttl: '30min' },
+        queryCache: { maxBytes: '64MB' },
       }),
-    ).toThrow(/queryCache.*boolean/i);
+    ).toEqual({
+      kind: 'endpoint',
+      endpoint: 'https://example.com/sparql',
+      id: 'live',
+      queryCache: { maxBytes: 64 * 1024 * 1024 },
+    });
+  });
+
+  it('accepts a raw byte count and an explicit `null` (unbounded) per-source cap', () => {
+    expect(
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        queryCache: { maxBytes: 1024 },
+      }),
+    ).toMatchObject({ queryCache: { maxBytes: 1024 } });
+    expect(
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        queryCache: { maxBytes: null },
+      }),
+    ).toMatchObject({ queryCache: { maxBytes: null } });
+  });
+
+  it('treats an empty object form as a bare opt-in', () => {
+    expect(
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        queryCache: {},
+      }),
+    ).toMatchObject({ queryCache: true });
+  });
+
+  it('rejects per-source `ttl` (lands in a later slice)', () => {
+    expect(() =>
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        queryCache: { ttl: '30min' } as { maxBytes?: number },
+      }),
+    ).toThrow(/ttl.*not supported/i);
+  });
+
+  it('rejects an unparseable per-source maxBytes', () => {
+    expect(() =>
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        queryCache: { maxBytes: 'huge' },
+      }),
+    ).toThrow(/maxBytes.*valid byte size/i);
   });
 
   it('carries through optional common fields on the glob branch', () => {
@@ -145,9 +191,7 @@ describe('parseSourceSpec — empty source', () => {
         empty: true,
         glob: 'data/*.ttl',
       }),
-    ).toThrow(
-      /exactly one of `glob:`, `endpoint:`, or `empty:`/,
-    );
+    ).toThrow(/exactly one of `glob:`, `endpoint:`, or `empty:`/);
   });
 
   it('rejects empty: true combined with endpoint:', () => {
@@ -158,9 +202,7 @@ describe('parseSourceSpec — empty source', () => {
         empty: true,
         endpoint: 'https://example.com/sparql',
       }),
-    ).toThrow(
-      /exactly one of `glob:`, `endpoint:`, or `empty:`/,
-    );
+    ).toThrow(/exactly one of `glob:`, `endpoint:`, or `empty:`/);
   });
 
   it('requires an id on empty sources', () => {
@@ -177,9 +219,7 @@ describe('parseSourceSpec — empty source', () => {
         // @ts-expect-error — empty must be `true`
         empty: false,
       }),
-    ).toThrow(
-      /exactly one of `glob:`, `endpoint:`, or `empty:`/,
-    );
+    ).toThrow(/exactly one of `glob:`, `endpoint:`, or `empty:`/);
   });
 
   it('rejects unknown extra fields on an empty source', () => {
@@ -365,7 +405,11 @@ describe('parseSourceSpec — annotateSource transform on glob sources', () => {
 describe('parseSourceSpec — transforms field (closed registry)', () => {
   it('accepts an empty transforms list on a glob source and surfaces it as []', () => {
     const parsed = parseSourceSpec({ glob: 'data/*.ttl', transforms: [] });
-    expect(parsed).toMatchObject({ kind: 'glob', glob: 'data/*.ttl', transforms: [] });
+    expect(parsed).toMatchObject({
+      kind: 'glob',
+      glob: 'data/*.ttl',
+      transforms: [],
+    });
   });
 
   it('omits the transforms field on a glob source when it is not declared', () => {
@@ -453,7 +497,11 @@ describe('parseSourceSpec — prefilter is removed', () => {
 describe('parseSourceSpec — gitRef / gitRoot on glob sources (ADR-0029)', () => {
   it('carries through gitRef on a glob source', () => {
     expect(
-      parseSourceSpec({ glob: 'vendor/foaf.ttl', id: 'foaf', gitRef: 'v1.2.0' }),
+      parseSourceSpec({
+        glob: 'vendor/foaf.ttl',
+        id: 'foaf',
+        gitRef: 'v1.2.0',
+      }),
     ).toEqual({
       kind: 'glob',
       glob: 'vendor/foaf.ttl',
@@ -710,7 +758,9 @@ describe('parseSourceSpec — default: true marker', () => {
     // so a reference with `default: true` is structurally impossible.
     const parsed = parseSourceSpec('@my-alias');
     expect(parsed).toEqual({ kind: 'reference', ref: 'my-alias' });
-    expect((parsed as unknown as Record<string, unknown>)['default']).toBeUndefined();
+    expect(
+      (parsed as unknown as Record<string, unknown>)['default'],
+    ).toBeUndefined();
   });
 
   it('rejects default: false explicitly (the marker must be `true` to opt in)', () => {
@@ -756,7 +806,9 @@ describe('parseSourceSpecs — registry-level default validation', () => {
       { glob: 'b/*.ttl', id: 'two' },
     ]);
     expect(parsed[0]).toMatchObject({ id: 'one', default: true });
-    expect((parsed[1] as unknown as Record<string, unknown>)['default']).toBeUndefined();
+    expect(
+      (parsed[1] as unknown as Record<string, unknown>)['default'],
+    ).toBeUndefined();
   });
 
   it('accepts a registry with no default: true entries', () => {
@@ -765,7 +817,9 @@ describe('parseSourceSpecs — registry-level default validation', () => {
       { glob: 'b/*.ttl', id: 'two' },
     ]);
     for (const p of parsed) {
-      expect((p as unknown as Record<string, unknown>)['default']).toBeUndefined();
+      expect(
+        (p as unknown as Record<string, unknown>)['default'],
+      ).toBeUndefined();
     }
   });
 
@@ -778,7 +832,9 @@ describe('parseSourceSpecs — registry-level default validation', () => {
         ],
         { locations: ['config:sources[0]', 'config:sources[1]'] },
       ),
-    ).toThrow(/more than one.*default.*config:sources\[0\].*config:sources\[1\]/s);
+    ).toThrow(
+      /more than one.*default.*config:sources\[0\].*config:sources\[1\]/s,
+    );
   });
 
   it('reports an integer index when no explicit location is provided for multi-default', () => {
@@ -830,7 +886,9 @@ describe('parseSourceSpecs — id collision detection', () => {
           locations: ['config:sources[0]', 'config:sources[1]'],
         },
       ),
-    ).toThrow(/duplicate source id "dup".*config:sources\[0\].*config:sources\[1\]/s);
+    ).toThrow(
+      /duplicate source id "dup".*config:sources\[0\].*config:sources\[1\]/s,
+    );
   });
 
   it('reports an integer index when no explicit location is provided', () => {
