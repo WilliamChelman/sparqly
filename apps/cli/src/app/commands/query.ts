@@ -1,15 +1,18 @@
 import { extname } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { ok, type Result, type ResultAsync } from 'neverthrow';
+import { ok, ResultAsync, type Result } from 'neverthrow';
 import { z } from 'zod';
 import { formatRdf, parseRdfString } from 'common';
 import {
   CachingQueryExecutor,
   createGitTreeWalker,
   defaultGlobWalker,
+  cacheSourceId,
   DEFAULT_QUERY_CACHE_TTL_MS,
   digestContext,
-  endpointQueryCacheCap,
+  freshnessTokenFor,
+  queryCacheCap,
+  sourceQueryCacheOptIn,
   expandSplitGlobs,
   MIME_TO_FORMAT,
   N3_FORMAT_BY_EXT,
@@ -316,61 +319,63 @@ function executeAgainstSources(
   registerClose: (close: () => void) => void,
 ): ResultAsync<ExecuteResult, QueryExecutionError | EndpointFetchError> {
   const engine = buildQueryEngine(sources, target, logger);
-  const executor = maybeWithQueryCache(
-    engine,
-    sources,
-    target,
-    config,
-    logger,
-    registerClose,
-  );
-  return executor.executeResult(query, { format, mutable });
+  return ResultAsync.fromSafePromise(
+    maybeWithQueryCache(engine, sources, target, config, logger, registerClose),
+  ).andThen((executor) => executor.executeResult(query, { format, mutable }));
 }
 
 /**
- * Wraps the bare endpoint engine in the read-through Query cache when the
- * endpoint opted in (`queryCache: true`, ADR-0054 slice 1). The cache is opened
- * for this CLI invocation; its closer is registered so the SQLite handle is
- * released after the query settles. Non-opted-in or non-endpoint paths return
- * the engine untouched, so nothing is created or read.
+ * Wraps the bare engine in the read-through Query cache when the source opted in
+ * (`queryCache`, ADR-0054). Covers every resolution path: an endpoint keys on TTL
+ * alone, while a materialized glob/file, a pinned source, or a disk-backed glob
+ * folds a path-aware freshness token (#415) into the key so an underlying change
+ * recomputes. The cache is opened for this CLI invocation; its closer is
+ * registered so the SQLite handle is released after the query settles. A source
+ * that did not opt in — or any failure computing the token or opening the store —
+ * returns the bare engine, so the query still runs uncached.
  */
-function maybeWithQueryCache(
+async function maybeWithQueryCache(
   engine: QueryEngine,
   sources: QuerySources,
   target: ParsedSource,
   config: QueryConfig,
   logger: ReturnType<typeof configureLogger>,
   registerClose: (close: () => void) => void,
-): QueryExecutor {
-  if (
-    sources.mode !== 'pass-through' ||
-    target.kind !== 'endpoint' ||
-    target.queryCache === undefined
-  ) {
+): Promise<QueryExecutor> {
+  const queryCache = sourceQueryCacheOptIn(target);
+  if (queryCache === undefined) return engine;
+  try {
+    const freshnessToken = await freshnessTokenFor(sources);
+    const cache = openQueryCache({
+      dir: queryCacheDir(process.cwd()),
+      schemaVersion: cliVersion(),
+      ttlMs: DEFAULT_QUERY_CACHE_TTL_MS,
+      maxBytes: config.queryCacheMaxBytes,
+      maxEntryBytes: config.queryCacheMaxEntryBytes,
+      logger,
+    });
+    registerClose(() => cache.close());
+    return new CachingQueryExecutor({
+      delegate: engine,
+      cache,
+      sourceId: cacheSourceId(target),
+      sourceMaxBytes: queryCacheCap(queryCache),
+      contextDigest: digestContext({
+        prefixes: config.prefixes,
+        base: config.base,
+      }),
+      freshnessToken,
+      schemaVersion: cliVersion(),
+      mode: 'normal',
+      logger,
+    });
+  } catch (err) {
+    logger.debug('query-cache-disabled', {
+      source: cacheSourceId(target),
+      reason: err instanceof Error ? err.message : String(err),
+    });
     return engine;
   }
-  const cache = openQueryCache({
-    dir: queryCacheDir(process.cwd()),
-    schemaVersion: cliVersion(),
-    ttlMs: DEFAULT_QUERY_CACHE_TTL_MS,
-    maxBytes: config.queryCacheMaxBytes,
-    maxEntryBytes: config.queryCacheMaxEntryBytes,
-    logger,
-  });
-  registerClose(() => cache.close());
-  return new CachingQueryExecutor({
-    delegate: engine,
-    cache,
-    sourceId: target.id ?? target.endpoint,
-    sourceMaxBytes: endpointQueryCacheCap(target.queryCache),
-    contextDigest: digestContext({
-      prefixes: config.prefixes,
-      base: config.base,
-    }),
-    schemaVersion: cliVersion(),
-    mode: 'normal',
-    logger,
-  });
 }
 
 function buildQueryEngine(

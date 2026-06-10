@@ -30,6 +30,12 @@ export interface CachingQueryExecutorOptions {
   sourceMaxBytes?: number | null;
   /** Digest of the display {@link context} (prefixes/base) — a key component. */
   contextDigest: string;
+  /**
+   * Path-aware freshness token (ADR-0054, #415) — a content fingerprint of the
+   * source folded into the key so an underlying change is a miss. Empty for
+   * opaque endpoints (TTL-bounded). Defaults to empty when omitted.
+   */
+  freshnessToken?: string;
   /** Cache-schema version — a key component. */
   schemaVersion: string;
   mode?: CacheMode;
@@ -51,6 +57,7 @@ export class CachingQueryExecutor implements QueryExecutor {
   private readonly sourceId: string;
   private readonly sourceMaxBytes?: number | null;
   private readonly contextDigest: string;
+  private readonly freshnessToken: string;
   private readonly schemaVersion: string;
   private readonly mode: CacheMode;
   private readonly logger: SparqlyLogger;
@@ -61,6 +68,7 @@ export class CachingQueryExecutor implements QueryExecutor {
     this.sourceId = options.sourceId;
     this.sourceMaxBytes = options.sourceMaxBytes;
     this.contextDigest = options.contextDigest;
+    this.freshnessToken = options.freshnessToken ?? '';
     this.schemaVersion = options.schemaVersion;
     this.mode = options.mode ?? 'normal';
     this.logger = options.logger ?? noopLogger;
@@ -133,6 +141,7 @@ export class CachingQueryExecutor implements QueryExecutor {
       // stable per request, so the key is reproducible across invocations.
       format: options.format ?? '',
       contextDigest: this.contextDigest,
+      freshnessToken: this.freshnessToken,
       schemaVersion: this.schemaVersion,
     });
   }

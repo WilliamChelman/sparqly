@@ -223,6 +223,44 @@ describe('expandSplitGlobs — storage (ADR-0041)', () => {
   });
 });
 
+describe('expandSplitGlobs — queryCache (#415)', () => {
+  it("inherits the meta's `queryCache` opt-in onto each synthesized file child", async () => {
+    const meta: ParsedGlobSource = {
+      kind: 'glob',
+      id: 'docs',
+      glob: 'data/*.ttl',
+      splitByFile: true,
+      queryCache: { maxBytes: 1024 },
+    };
+    const walker = async () => [
+      '/abs/proj/data/a.ttl',
+      '/abs/proj/data/b.ttl',
+    ];
+
+    const expanded = await expandSplitGlobs([meta], { walkGlob: walker });
+    const children = expanded.filter((s) => s.kind === 'file');
+    expect(children).toHaveLength(2);
+    for (const child of children) {
+      expect(child).toMatchObject({ queryCache: { maxBytes: 1024 } });
+    }
+  });
+
+  it('omits `queryCache` on each child when the meta does not opt in', async () => {
+    const meta: ParsedGlobSource = {
+      kind: 'glob',
+      id: 'docs',
+      glob: 'data/*.ttl',
+      splitByFile: true,
+    };
+    const walker = async () => ['/abs/proj/data/a.ttl'];
+
+    const expanded = await expandSplitGlobs([meta], { walkGlob: walker });
+    const child = expanded.find((s) => s.kind === 'file');
+    expect(child).toBeDefined();
+    expect('queryCache' in (child as object)).toBe(false);
+  });
+});
+
 describe('expandSplitGlobs — pass-through', () => {
   it('passes non-split entries through unchanged and does not call the walker for them', async () => {
     const plainGlob: ParsedGlobSource = {

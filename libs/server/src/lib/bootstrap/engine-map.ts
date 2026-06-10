@@ -172,8 +172,15 @@ export class EngineMap {
   // Triggers a one-shot lazy load on first call; concurrent first-touches share
   // the in-flight promise. On `err` the memo slot is cleared for self-heal.
   ensure(id: string): ResultAsync<QueryExecutor, SourceError | IndexingError> {
-    return this.ensureEntry(id).map((loaded) =>
-      this.queryCache.wrap(this.entries.get(id)?.source, loaded.engine),
+    return this.ensureEntry(id).andThen((loaded) =>
+      ResultAsync.fromSafePromise(
+        this.queryCache.wrap(
+          this.entries.get(id)?.source,
+          loaded.engine,
+          loaded.sources,
+          this.entries.get(id)?.files ?? [],
+        ),
+      ),
     );
   }
 

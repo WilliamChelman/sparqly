@@ -77,13 +77,18 @@ describe('CachingQueryExecutor', () => {
   function seam(
     inner: QueryExecutor,
     cache: QueryCache,
-    overrides: Partial<{ sourceId: string; mode: 'normal' | 'bypass' }> = {},
+    overrides: Partial<{
+      sourceId: string;
+      mode: 'normal' | 'bypass';
+      freshnessToken: string;
+    }> = {},
   ): CachingQueryExecutor {
     return new CachingQueryExecutor({
       delegate: inner,
       cache,
       sourceId: overrides.sourceId ?? 'endpoint-1',
       contextDigest: 'ctx',
+      freshnessToken: overrides.freshnessToken ?? '',
       schemaVersion: '1',
       mode: overrides.mode ?? 'normal',
     });
@@ -153,6 +158,24 @@ describe('CachingQueryExecutor', () => {
 
     expect(fromB.cacheStatus).toBe('miss'); // not a's cached body
     expect(fromB.body).toBe('B');
+  });
+
+  it('recomputes when the freshness token changes (underlying content edited)', async () => {
+    const cache = fakeCache();
+    const before = seam(delegate({ ok: jsonResult('OLD') }), cache, {
+      sourceId: 'glob-1',
+      freshnessToken: 'stat:before',
+    });
+    const after = seam(delegate({ ok: jsonResult('NEW') }), cache, {
+      sourceId: 'glob-1',
+      freshnessToken: 'stat:after',
+    });
+
+    await before.executeResult(QUERY);
+    const recomputed = (await after.executeResult(QUERY))._unsafeUnwrap();
+
+    expect(recomputed.cacheStatus).toBe('miss'); // a stale entry is not served
+    expect(recomputed.body).toBe('NEW');
   });
 
   it('in bypass mode neither reads nor writes the cache', async () => {

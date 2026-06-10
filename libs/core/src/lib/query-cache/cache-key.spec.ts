@@ -15,6 +15,7 @@ describe('deriveCacheKey', () => {
       query: 'SELECT * WHERE { ?s ?p ?o }',
       format: 'json',
       contextDigest: 'ctx-0',
+      freshnessToken: '',
       schemaVersion: '1',
       ...overrides,
     };
@@ -45,6 +46,12 @@ describe('deriveCacheKey', () => {
   it('distinguishes a different source id', () => {
     expect(deriveCacheKey(input({ sourceId: 'wikidata' }))).not.toBe(
       deriveCacheKey(input({ sourceId: 'dbpedia' })),
+    );
+  });
+
+  it('distinguishes a different freshness token (underlying content changed)', () => {
+    expect(deriveCacheKey(input({ freshnessToken: 'stat:abc' }))).not.toBe(
+      deriveCacheKey(input({ freshnessToken: 'stat:def' })),
     );
   });
 

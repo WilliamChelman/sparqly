@@ -180,6 +180,26 @@ describe('resolveSourceResult — pinned split-glob batches file reads', () => {
 
     expect(port.readFileAtSha).not.toHaveBeenCalled();
   });
+
+  it('exposes the resolved SHA on the materialized result so the query cache can key on it (#415)', async () => {
+    const target = parseSourceSpec({
+      id: 'data',
+      glob: `${REPO}/data/*.ttl`,
+      gitRef: 'v1.0.0',
+      splitByFile: true,
+    });
+
+    const result = await resolveSourceResult(target, {
+      gitPort: makePort(),
+      repoDiscovery: { hasGitDir: (dir) => dir === REPO },
+      configDir: REPO,
+    });
+
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) throw new Error('unreachable');
+    if (result.value.mode !== 'materialized') throw new Error('unreachable');
+    expect(result.value.resolvedSha).toBe(SHA);
+  });
 });
 
 describe('resolveSourceResult — transform-parse on glob target', () => {

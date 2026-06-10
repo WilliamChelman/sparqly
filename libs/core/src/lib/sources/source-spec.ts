@@ -59,6 +59,12 @@ export interface ParsedGlobSource
    * so two pins onto the same commit share cache entries.
    */
   resolvedSha?: string;
+  /**
+   * Opt-in to the Query cache (ADR-0054, #415). Same shape as the endpoint
+   * field; a materialized glob keys on a stat-digest of matched files (or its
+   * resolved SHA when pinned), so an edit recomputes automatically.
+   */
+  queryCache?: ParsedQueryCache;
 }
 
 /**
@@ -78,6 +84,8 @@ export interface ParsedFileSource extends SourceSpecCommonFields {
   /** Propagated alongside `gitRef` so the file loader does not re-walk discovery. */
   repoRoot?: string;
   resolvedSha?: string;
+  /** Inherited from the split-glob parent's `queryCache` opt-in (ADR-0054, #415). */
+  queryCache?: ParsedQueryCache;
 }
 
 export interface ParsedEndpointSource
@@ -99,15 +107,52 @@ export interface ParsedEndpointSource
 export type ParsedQueryCache = true | { maxBytes?: number | null };
 
 /**
- * The per-source byte cap declared on an endpoint's `queryCache`, or `undefined`
+ * The per-source byte cap declared on a source's `queryCache`, or `undefined`
  * when it opted in bare (`true`) or did not opt in — i.e. governed by the global
- * budget alone. `null` is an explicit per-source unbounded.
+ * budget alone. `null` is an explicit per-source unbounded. Applies to every
+ * source kind that can opt in (endpoint, glob, file).
  */
-export function endpointQueryCacheCap(
+export function queryCacheCap(
   queryCache: ParsedQueryCache | undefined,
 ): number | null | undefined {
   if (queryCache === undefined || queryCache === true) return undefined;
   return queryCache.maxBytes;
+}
+
+/**
+ * A source's Query cache opt-in (ADR-0054), for every kind that can hold one —
+ * endpoint, glob, and file. Reference and empty sources never cache, so they
+ * return `undefined`. The single gate the read-through seam checks before wrapping.
+ */
+export function sourceQueryCacheOptIn(
+  source: ParsedSource,
+): ParsedQueryCache | undefined {
+  if (
+    source.kind === 'endpoint' ||
+    source.kind === 'glob' ||
+    source.kind === 'file'
+  ) {
+    return source.queryCache;
+  }
+  return undefined;
+}
+
+/**
+ * The cache-key source id: the declared `id`, else the kind's natural address
+ * (endpoint URL, glob pattern, or file path). Stable per source so the key is
+ * reproducible across invocations.
+ */
+export function cacheSourceId(source: ParsedSource): string {
+  switch (source.kind) {
+    case 'endpoint':
+      return source.id ?? source.endpoint;
+    case 'glob':
+      return source.id ?? source.glob;
+    case 'file':
+      return source.id ?? source.path;
+    default:
+      return source.id ?? '(target)';
+  }
 }
 
 export interface ParsedReferenceSource extends SourceSpecCommonFields {
@@ -282,6 +327,7 @@ export function parseSourceSpec(
       ...unionDefaultGraphField,
       ...storageField,
       ...gitFields,
+      ...pickQueryCache(input),
       ...defaultMarker,
     };
   }

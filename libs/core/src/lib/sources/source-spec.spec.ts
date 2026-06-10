@@ -159,6 +159,23 @@ describe('parseSourceSpec — object form', () => {
     });
   });
 
+  it('opts a glob into the query cache (#415), including a per-source maxBytes cap', () => {
+    expect(
+      parseSourceSpec({ glob: 'data/*.ttl', id: 'vocab', queryCache: true }),
+    ).toEqual({ kind: 'glob', glob: 'data/*.ttl', id: 'vocab', queryCache: true });
+    expect(
+      parseSourceSpec({
+        glob: 'data/*.ttl',
+        id: 'vocab',
+        queryCache: { maxBytes: 1024 },
+      }),
+    ).toMatchObject({ queryCache: { maxBytes: 1024 } });
+  });
+
+  it('omits queryCache on a glob that does not opt in', () => {
+    expect('queryCache' in parseSourceSpec({ glob: 'data/*.ttl' })).toBe(false);
+  });
+
   it('rejects an object with both glob: and endpoint:', () => {
     expect(() =>
       parseSourceSpec({

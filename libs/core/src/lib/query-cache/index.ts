@@ -2,3 +2,5 @@ export * from './cache-key';
 export * from './cache-layout';
 export * from './cache-store';
 export * from './caching-query-executor';
+export * from './freshness-token';
+export * from './freshness-token-for';
