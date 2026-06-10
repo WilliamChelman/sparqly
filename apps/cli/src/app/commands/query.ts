@@ -4,14 +4,19 @@ import { ok, type Result, type ResultAsync } from 'neverthrow';
 import { z } from 'zod';
 import { formatRdf, parseRdfString } from 'common';
 import {
+  CachingQueryExecutor,
   createGitTreeWalker,
   defaultGlobWalker,
+  DEFAULT_QUERY_CACHE_TTL_MS,
+  digestContext,
   expandSplitGlobs,
   MIME_TO_FORMAT,
   N3_FORMAT_BY_EXT,
+  openQueryCache,
   parseSourceSpecs,
   parseSparqlPrefixes,
   QueryEngine,
+  queryCacheDir,
   resolveSourceResult,
   selectTargetResult,
   SUPPORTED_FORMATS,
@@ -20,6 +25,7 @@ import {
   type ExecuteResult,
   type ParsedSource,
   type QueryExecutionError,
+  type QueryExecutor,
   type QuerySources,
   type SourceError,
   type SourceSpecInput,
@@ -130,13 +136,16 @@ export function resolveQueryTargetResult(
   const raw = typeof config.source === 'string' ? config.source : undefined;
   const { targetArg, positionalRef } = splitPositionalAddress(raw);
   return selectTargetResult(effective, targetArg).map((target) =>
-    positionalRef === undefined ? target : applyAtOverride(target, positionalRef),
+    positionalRef === undefined
+      ? target
+      : applyAtOverride(target, positionalRef),
   );
 }
 
 export const querySpec: CommandSpec<QueryConfig> = {
   name: 'query',
-  description: 'Run a SPARQL query against a target source (an `@id` ref into the config registry, or an inline glob/URL)',
+  description:
+    'Run a SPARQL query against a target source (an `@id` ref into the config registry, or an inline glob/URL)',
   fields: [
     sourceField,
     sourcesRegistryField,
@@ -154,7 +163,8 @@ export const querySpec: CommandSpec<QueryConfig> = {
   positionals: [{ field: 'source', name: 'glob' }],
   configScope: { sources: true },
   exitCode: (err) => {
-    if (err instanceof QueryErrorSignal) return queryErrorExitCode(err.queryError);
+    if (err instanceof QueryErrorSignal)
+      return queryErrorExitCode(err.queryError);
     return 1;
   },
   handler: async (config) => {
@@ -210,37 +220,45 @@ export const querySpec: CommandSpec<QueryConfig> = {
     // Disk-backed globs hand back an open LevelDB handle; capture the closer
     // so the embedded lock is released whether the query succeeds or fails.
     let closeIndex: (() => Promise<void>) | undefined;
+    // An opted-in endpoint opens the on-disk Query cache for this invocation;
+    // capture its closer so the SQLite handle is released on either outcome.
+    let closeCache: (() => void) | undefined;
 
     const pipeline: ResultAsync<ExecuteResult, SourceError | TargetError> =
       resolveQueryTargetResult(config, registry)
         .map((target) => applyAtOverride(target, config.at))
         .asyncAndThen<ExecuteResult, SourceError | TargetError>((target) => {
-        const loadStart = Date.now();
-        return resolveSourceResult(target, {
-          logger: boundaryLog,
-          configDir: process.cwd(),
-          sparqlyVersion: cliVersion(),
-          indexCacheDir: config.indexCacheDir,
-        })
-          .map((sources) => {
-            if (sources.mode === 'disk-backed') closeIndex = sources.close;
-            logSourceLoaded(boundaryLog, sources, Date.now() - loadStart);
-            return sources;
+          const loadStart = Date.now();
+          return resolveSourceResult(target, {
+            logger: boundaryLog,
+            configDir: process.cwd(),
+            sparqlyVersion: cliVersion(),
+            indexCacheDir: config.indexCacheDir,
           })
-          .andThen((sources) =>
-            executeAgainstSources(
-              sources,
-              target,
-              query,
-              format,
-              mutable,
-              boundaryLog,
-            ),
-          );
-      });
+            .map((sources) => {
+              if (sources.mode === 'disk-backed') closeIndex = sources.close;
+              logSourceLoaded(boundaryLog, sources, Date.now() - loadStart);
+              return sources;
+            })
+            .andThen((sources) =>
+              executeAgainstSources(
+                sources,
+                target,
+                query,
+                format,
+                mutable,
+                boundaryLog,
+                config,
+                (close) => {
+                  closeCache = close;
+                },
+              ),
+            );
+        });
 
     const outcome = await pipeline;
     if (closeIndex !== undefined) await closeIndex();
+    if (closeCache !== undefined) closeCache();
 
     await outcome.match(
       async (result) => {
@@ -275,9 +293,61 @@ function executeAgainstSources(
   format: SparqlFormat | undefined,
   mutable: boolean,
   logger: ReturnType<typeof configureLogger>,
+  config: QueryConfig,
+  registerClose: (close: () => void) => void,
 ): ResultAsync<ExecuteResult, QueryExecutionError | EndpointFetchError> {
   const engine = buildQueryEngine(sources, target, logger);
-  return engine.executeResult(query, { format, mutable });
+  const executor = maybeWithQueryCache(
+    engine,
+    sources,
+    target,
+    config,
+    logger,
+    registerClose,
+  );
+  return executor.executeResult(query, { format, mutable });
+}
+
+/**
+ * Wraps the bare endpoint engine in the read-through Query cache when the
+ * endpoint opted in (`queryCache: true`, ADR-0054 slice 1). The cache is opened
+ * for this CLI invocation; its closer is registered so the SQLite handle is
+ * released after the query settles. Non-opted-in or non-endpoint paths return
+ * the engine untouched, so nothing is created or read.
+ */
+function maybeWithQueryCache(
+  engine: QueryEngine,
+  sources: QuerySources,
+  target: ParsedSource,
+  config: QueryConfig,
+  logger: ReturnType<typeof configureLogger>,
+  registerClose: (close: () => void) => void,
+): QueryExecutor {
+  if (
+    sources.mode !== 'pass-through' ||
+    target.kind !== 'endpoint' ||
+    target.queryCache !== true
+  ) {
+    return engine;
+  }
+  const cache = openQueryCache({
+    dir: queryCacheDir(process.cwd()),
+    schemaVersion: cliVersion(),
+    ttlMs: DEFAULT_QUERY_CACHE_TTL_MS,
+  });
+  registerClose(() => cache.close());
+  return new CachingQueryExecutor({
+    delegate: engine,
+    cache,
+    sourceId: target.id ?? target.endpoint,
+    contextDigest: digestContext({
+      prefixes: config.prefixes,
+      base: config.base,
+    }),
+    schemaVersion: cliVersion(),
+    mode: 'normal',
+    logger,
+  });
 }
 
 function buildQueryEngine(
@@ -299,8 +369,7 @@ function buildQueryEngine(
       : target.kind === 'file'
         ? target.path
         : '(target)');
-  const store =
-    sources.mode === 'disk-backed' ? sources.source : sources.store;
+  const store = sources.mode === 'disk-backed' ? sources.source : sources.store;
   return new QueryEngine(
     store,
     { id, mode: 'materialized', logger },

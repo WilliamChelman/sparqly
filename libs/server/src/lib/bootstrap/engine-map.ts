@@ -14,6 +14,7 @@ import {
   type RepoDiscoveryDeps,
   type SourceError,
 } from 'core';
+import { ServeQueryCache } from './engine-map-query-cache';
 import type { StoreRef } from './tokens';
 import { loadEntryViaWorker } from './engine-map-worker-load';
 import { ensureAdHocExecutor } from './engine-map-adhoc';
@@ -27,7 +28,10 @@ import {
   resolveFreshWorkerSources,
   unloadEntry,
 } from './engine-map-actions';
-import { projectEntryState, reconcileStaleDedup } from './engine-map-read-state';
+import {
+  projectEntryState,
+  reconcileStaleDedup,
+} from './engine-map-read-state';
 import {
   endpointEntry,
   indexingError,
@@ -68,6 +72,8 @@ export interface EngineMapOptions {
 }
 
 export class EngineMap {
+  private readonly queryCache: ServeQueryCache; // ADR-0054, closed on shutdown
+
   private constructor(
     private readonly entries: Map<string, Entry>,
     private readonly logger: SparqlyLogger | undefined,
@@ -85,6 +91,7 @@ export class EngineMap {
     this.queryPool?.onReset((ids) =>
       resetWorkerResidency(this.entries, this.queryPool, ids),
     );
+    this.queryCache = new ServeQueryCache(configDir, sparqlyVersion, logger);
   }
 
   static async create(
@@ -162,7 +169,9 @@ export class EngineMap {
   // Triggers a one-shot lazy load on first call; concurrent first-touches share
   // the in-flight promise. On `err` the memo slot is cleared for self-heal.
   ensure(id: string): ResultAsync<QueryExecutor, SourceError | IndexingError> {
-    return this.ensureEntry(id).map((loaded) => loaded.engine);
+    return this.ensureEntry(id).map((loaded) =>
+      this.queryCache.wrap(this.entries.get(id)?.source, loaded.engine),
+    );
   }
 
   /** Resolves a {@link QueryExecutor} for an *ad-hoc pinned* source (`@id:ref`)
@@ -504,6 +513,7 @@ export class EngineMap {
   async close(): Promise<void> {
     await this.buildPool.shutdown();
     await this.queryPool?.shutdown();
+    this.queryCache.close();
     for (const entry of this.entries.values()) {
       if (entry.closeIndex) {
         try {
@@ -517,4 +527,3 @@ export class EngineMap {
     this.entries.clear();
   }
 }
-

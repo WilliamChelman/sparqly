@@ -57,6 +57,49 @@ describe('parseSourceSpec — object form', () => {
     });
   });
 
+  it('opts an endpoint into the query cache with `queryCache: true`', () => {
+    expect(
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        id: 'live',
+        queryCache: true,
+      }),
+    ).toEqual({
+      kind: 'endpoint',
+      endpoint: 'https://example.com/sparql',
+      id: 'live',
+      queryCache: true,
+    });
+  });
+
+  it('omits queryCache when the endpoint does not opt in', () => {
+    const parsed = parseSourceSpec({
+      endpoint: 'https://example.com/sparql',
+      id: 'live',
+    });
+    expect('queryCache' in parsed).toBe(false);
+  });
+
+  it('treats `queryCache: false` as not opted in (field omitted)', () => {
+    const parsed = parseSourceSpec({
+      endpoint: 'https://example.com/sparql',
+      id: 'live',
+      queryCache: false,
+    });
+    expect('queryCache' in parsed).toBe(false);
+  });
+
+  it('rejects the object form of queryCache (not supported yet)', () => {
+    expect(() =>
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        id: 'live',
+        // @ts-expect-error — object form (ttl/maxBytes) lands in a later slice
+        queryCache: { ttl: '30min' },
+      }),
+    ).toThrow(/queryCache.*boolean/i);
+  });
+
   it('carries through optional common fields on the glob branch', () => {
     expect(
       parseSourceSpec({

@@ -159,7 +159,10 @@ export class RegistrySparqlController {
     const onDisconnect = (): void => abort.abort();
     req.on('close', onDisconnect);
     req.on('aborted', onDisconnect);
-    let result: Result<ExecuteResult, SourceError | TargetError | IndexingError>;
+    let result: Result<
+      ExecuteResult,
+      SourceError | TargetError | IndexingError
+    >;
     try {
       result = await this.executeAgainstTarget(
         selected.value,
@@ -173,10 +176,13 @@ export class RegistrySparqlController {
     }
     result.match(
       (ok: ExecuteResult) => {
-        res
-          .status(HttpStatus.OK)
-          .setHeader('Content-Type', ok.contentType)
-          .send(ok.body);
+        res.status(HttpStatus.OK).setHeader('Content-Type', ok.contentType);
+        // ADR-0054: surface the Query cache disposition so clients (and Web e2e)
+        // can observe a hit vs miss. Absent when no cache was involved.
+        if (ok.cacheStatus !== undefined) {
+          res.setHeader('X-Sparqly-Cache', ok.cacheStatus);
+        }
+        res.send(ok.body);
       },
       (error: SourceError | TargetError | IndexingError) => {
         throw mapError(error);
@@ -197,13 +203,15 @@ export class RegistrySparqlController {
       // main-thread build for pass-through/disk-backed/no-worker.
       return this.engineMap
         .ensureAdHoc(target)
-        .andThen<ExecuteResult, SourceError | TargetError | IndexingError>(
-          (engine) =>
-            engine.executeResult(query, {
-              format,
-              mutable: this.config.mutable,
-              signal,
-            }),
+        .andThen<
+          ExecuteResult,
+          SourceError | TargetError | IndexingError
+        >((engine) =>
+          engine.executeResult(query, {
+            format,
+            mutable: this.config.mutable,
+            signal,
+          }),
         );
     }
     // ensure() shares the in-flight promise so concurrent first-touches load
@@ -211,13 +219,15 @@ export class RegistrySparqlController {
     // 4xx vs 5xx instead of collapsing everything to 500.
     return this.engineMap
       .ensure(target.id as string)
-      .andThen<ExecuteResult, SourceError | TargetError | IndexingError>(
-        (engine) =>
-          engine.executeResult(query, {
-            format,
-            mutable: this.config.mutable,
-            signal,
-          }),
+      .andThen<
+        ExecuteResult,
+        SourceError | TargetError | IndexingError
+      >((engine) =>
+        engine.executeResult(query, {
+          format,
+          mutable: this.config.mutable,
+          signal,
+        }),
       );
   }
 
@@ -243,9 +253,7 @@ function mapError(
   return statusToHttpException(sourceErrorToStatus(error), cloneError(error));
 }
 
-function isTargetError(
-  error: SourceError | TargetError,
-): error is TargetError {
+function isTargetError(error: SourceError | TargetError): error is TargetError {
   switch (error.kind) {
     case 'ref-as-target':
     case 'empty-registry':
@@ -257,9 +265,7 @@ function isTargetError(
   }
 }
 
-function cloneError(
-  error: SourceError | TargetError | IndexingError,
-): object {
+function cloneError(error: SourceError | TargetError | IndexingError): object {
   return JSON.parse(JSON.stringify(error)) as object;
 }
 

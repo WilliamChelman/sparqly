@@ -2,6 +2,7 @@ export * from './lib/shared';
 export * from './lib/canonical';
 export * from './lib/engine';
 export * from './lib/glob-index';
+export * from './lib/query-cache';
 export * from './lib/sources';
 export * from './lib/inline-query';
 export * from './lib/describe';

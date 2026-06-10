@@ -85,6 +85,11 @@ export interface ParsedEndpointSource
     DefaultMarkerField {
   kind: 'endpoint';
   endpoint: string;
+  /**
+   * Opt-in to the Query cache (ADR-0054). Present only as `true`; absent means
+   * not opted in. The object form (`{ ttl, maxBytes }`) lands in a later slice.
+   */
+  queryCache?: true;
 }
 
 export interface ParsedReferenceSource extends SourceSpecCommonFields {
@@ -119,6 +124,7 @@ export interface SourceSpecObjectInput
   storage?: StorageTier;
   gitRef?: string;
   gitRoot?: string;
+  queryCache?: boolean;
 }
 
 export type SourceSpecInput = string | SourceSpecObjectInput;
@@ -134,9 +140,9 @@ export const SOURCE_ID_REGEX = /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/;
 export const SYNTHESIZED_SOURCE_ID_REGEX =
   /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*(?:\/[a-zA-Z0-9_-][a-zA-Z0-9_.-]*)+$/;
 
-const COMMON_FIELD_KEYS = [
-  'id',
-] as const satisfies ReadonlyArray<keyof SourceSpecCommonFields>;
+const COMMON_FIELD_KEYS = ['id'] as const satisfies ReadonlyArray<
+  keyof SourceSpecCommonFields
+>;
 
 function pickDefault(input: SourceSpecObjectInput): DefaultMarkerField {
   if (input.default === undefined) return {};
@@ -146,14 +152,10 @@ function pickDefault(input: SourceSpecObjectInput): DefaultMarkerField {
   return { default: true };
 }
 
-function pickSplitByFile(
-  input: SourceSpecObjectInput,
-): { splitByFile?: true } {
+function pickSplitByFile(input: SourceSpecObjectInput): { splitByFile?: true } {
   if (input.splitByFile === undefined) return {};
   if (input.splitByFile !== true) {
-    throw new Error(
-      '`splitByFile` must be `true` (omit the field otherwise)',
-    );
+    throw new Error('`splitByFile` must be `true` (omit the field otherwise)');
   }
   return { splitByFile: true };
 }
@@ -173,7 +175,9 @@ const LEGACY_GLOB_GRAPH_FIELD_KEYS = ['graphMode', 'graph'] as const;
 
 function validateSourceId(id: string): void {
   if (id.startsWith('@')) {
-    throw new Error(`source id ${JSON.stringify(id)} must not start with \`@\``);
+    throw new Error(
+      `source id ${JSON.stringify(id)} must not start with \`@\``,
+    );
   }
   if (!SOURCE_ID_REGEX.test(id)) {
     throw new Error(
@@ -275,8 +279,25 @@ export function parseSourceSpec(
     endpoint: input.endpoint as string,
     ...common,
     ...http,
+    ...pickQueryCache(input),
     ...defaultMarker,
   };
+}
+
+/**
+ * Slice 1 of the Query cache (ADR-0054) accepts only `queryCache: true | false`.
+ * The object form (`{ ttl, maxBytes }`) is rejected until a later slice honors
+ * it, so a config that sets it fails loudly rather than silently ignoring knobs.
+ */
+function pickQueryCache(input: SourceSpecObjectInput): { queryCache?: true } {
+  const value = input.queryCache;
+  if (value === undefined || value === false) return {};
+  if (value !== true) {
+    throw new Error(
+      '`queryCache` must be a boolean (the `{ ttl, maxBytes }` form is not supported yet)',
+    );
+  }
+  return { queryCache: true };
 }
 
 function rejectTransformsOn(
@@ -306,9 +327,7 @@ function parseEmpty(input: SourceSpecObjectInput): ParsedEmptySource {
   }
   for (const key of EMPTY_FORBIDDEN_KEYS) {
     if ((input as Record<string, unknown>)[key] !== undefined) {
-      throw new Error(
-        `empty source: \`${key}\` is not valid on empty sources`,
-      );
+      throw new Error(`empty source: \`${key}\` is not valid on empty sources`);
     }
   }
   const defaultMarker = pickDefault(input);

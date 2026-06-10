@@ -36,6 +36,9 @@ const sourceObjectSchema = z
     storage: z.enum(['memory', 'disk']).optional(),
     gitRef: z.string().optional(),
     gitRoot: z.string().optional(),
+    // Opt-in to the Query cache (ADR-0054). Slice 1 accepts only the boolean
+    // form; `parseSourceSpec` rejects the `{ ttl, maxBytes }` form for now.
+    queryCache: z.boolean().optional(),
   })
   .strict();
 
@@ -84,7 +87,10 @@ export const sourceField: FieldDescriptor = {
 // commands should use `sourceField` + `selectTargetResult` + `resolveSourceResult`.
 export const sourcesField: FieldDescriptor = {
   key: 'sources',
-  schema: z.union([sourceSpecInputSchema, z.array(sourceSpecInputSchema).min(1)]),
+  schema: z.union([
+    sourceSpecInputSchema,
+    z.array(sourceSpecInputSchema).min(1),
+  ]),
   flags: [
     {
       spec: '-s, --sources <glob>',

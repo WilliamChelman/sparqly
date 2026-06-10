@@ -44,7 +44,11 @@ export const MIME_TO_FORMAT: Readonly<Record<string, SparqlFormat>> =
     ),
   );
 
-const RDF_FORMATS: ReadonlySet<SparqlFormat> = new Set(['turtle', 'trig', 'nquads']);
+const RDF_FORMATS: ReadonlySet<SparqlFormat> = new Set([
+  'turtle',
+  'trig',
+  'nquads',
+]);
 
 export interface ExecuteOptions {
   format?: SparqlFormat;
@@ -66,6 +70,12 @@ export interface ExecuteResult {
   body: string;
   format: SparqlFormat;
   contentType: string;
+  /**
+   * Query cache disposition (ADR-0054), set only by the caching seam. Absent on
+   * the bare engine path (no cache involved). `serve` maps it to the
+   * `X-Sparqly-Cache` response header.
+   */
+  cacheStatus?: 'hit' | 'miss' | 'bypass';
 }
 
 /**
@@ -149,13 +159,15 @@ export class QueryEngine implements QueryExecutor {
     query: string,
     options: ExecuteOptions = {},
   ): ResultAsync<ExecuteResult, QueryExecutionError | EndpointFetchError> {
-    return ResultAsync.fromPromise(
-      this.execute(query, options),
-      (err) => this.toExecuteError(query, err),
+    return ResultAsync.fromPromise(this.execute(query, options), (err) =>
+      this.toExecuteError(query, err),
     );
   }
 
-  async execute(query: string, options: ExecuteOptions = {}): Promise<ExecuteResult> {
+  async execute(
+    query: string,
+    options: ExecuteOptions = {},
+  ): Promise<ExecuteResult> {
     const queryType = detectQueryType(query);
     assertImmutable(queryType, { mutable: options.mutable });
     if (options.signal?.aborted) throw cancelledError();
@@ -246,7 +258,9 @@ export class QueryEngine implements QueryExecutor {
       query,
       type,
       ms,
-      size: isOk ? resultSize(outcome.resultType, outcome.body, outcome.format) : undefined,
+      size: isOk
+        ? resultSize(outcome.resultType, outcome.body, outcome.format)
+        : undefined,
       bytes: isOk ? Buffer.byteLength(outcome.body) : undefined,
       err: isOk ? undefined : outcome.err,
     });
@@ -306,7 +320,8 @@ async function reifyBindingsToRdfString(
   const rows = await collectBindingRows(result, variables, signal);
   const quads = reifyTripleShapedBindings({ variables, bindings: rows });
   if (quads === null) {
-    const projection = variables.length === 0 ? '(none)' : `?${variables.join(' ?')}`;
+    const projection =
+      variables.length === 0 ? '(none)' : `?${variables.join(' ?')}`;
     throw new Error(
       `Format '${format}' requires a triple-shaped SELECT projecting ?s ?p ?o (and optionally ?g). Got projection: ${projection}.`,
     );
