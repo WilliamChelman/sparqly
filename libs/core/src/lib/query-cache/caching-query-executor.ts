@@ -1,6 +1,11 @@
 import { okAsync, type ResultAsync } from 'neverthrow';
 import { noopLogger, type SparqlyLogger } from 'common';
-import type { ExecuteOptions, ExecuteResult, QueryExecutor } from '../engine';
+import type {
+  CacheMode,
+  ExecuteOptions,
+  ExecuteResult,
+  QueryExecutor,
+} from '../engine';
 import type {
   EndpointFetchError,
   QueryExecutionError,
@@ -9,14 +14,7 @@ import { deriveCacheKey } from './cache-key';
 import type { QueryCache } from './cache-store';
 import { queryIsNonDeterministic } from './non-determinism-guard';
 
-/**
- * The seam's mode (ADR-0054). Only `normal` is wired in slice 1; `bypass` and
- * `refresh` are surfaced for later slices' `--no-cache` / `--refresh` controls.
- * - `normal` — read-through: serve a hit, else execute and store.
- * - `bypass` — neither read nor write the cache.
- * - `refresh` — ignore any stored entry, execute, then replace it.
- */
-export type CacheMode = 'normal' | 'bypass' | 'refresh';
+export type { CacheMode } from '../engine';
 
 export interface CachingQueryExecutorOptions {
   /** The executor whose results are cached (the bare endpoint engine). */
@@ -88,13 +86,14 @@ export class CachingQueryExecutor implements QueryExecutor {
     query: string,
     options: ExecuteOptions = {},
   ): ResultAsync<ExecuteResult, ExecuteError> {
-    if (this.bypasses(query)) {
+    const mode = this.modeFor(options);
+    if (this.bypasses(query, mode)) {
       return this.delegate
         .executeResult(query, options)
         .map((result) => ({ ...result, cacheStatus: 'bypass' as const }));
     }
     const key = this.keyFor(query, options);
-    if (this.mode === 'normal') {
+    if (mode === 'normal') {
       const hit = this.cache.get(key);
       if (hit !== undefined) {
         this.log('hit', key);
@@ -117,14 +116,15 @@ export class CachingQueryExecutor implements QueryExecutor {
     query: string,
     options: ExecuteOptions = {},
   ): Promise<ExecuteResult> {
-    if (this.bypasses(query)) {
+    const mode = this.modeFor(options);
+    if (this.bypasses(query, mode)) {
       return {
         ...(await this.delegate.execute(query, options)),
         cacheStatus: 'bypass',
       };
     }
     const key = this.keyFor(query, options);
-    if (this.mode === 'normal') {
+    if (mode === 'normal') {
       const hit = this.cache.get(key);
       if (hit !== undefined) {
         this.log('hit', key);
@@ -144,12 +144,20 @@ export class CachingQueryExecutor implements QueryExecutor {
   }
 
   /**
+   * The effective mode for one call: a per-request `cacheMode` (ADR-0054,
+   * #418) overrides the instance mode set at wrap time.
+   */
+  private modeFor(options: ExecuteOptions): CacheMode {
+    return options.cacheMode ?? this.mode;
+  }
+
+  /**
    * Whether this query skips the cache entirely (no read, no write). True in
    * explicit `bypass` mode, and — regardless of mode — for a non-deterministic
    * query (ADR-0054, #416), whose answer must never be served from a prior run.
    */
-  private bypasses(query: string): boolean {
-    return this.mode === 'bypass' || queryIsNonDeterministic(query);
+  private bypasses(query: string, mode: CacheMode): boolean {
+    return mode === 'bypass' || queryIsNonDeterministic(query);
   }
 
   private keyFor(query: string, options: ExecuteOptions): string {

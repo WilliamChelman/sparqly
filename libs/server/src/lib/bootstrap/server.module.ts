@@ -1,6 +1,7 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import type { SparqlyLogger } from 'common';
 import type { ParsedSource } from 'core';
+import { CacheController } from '../cache';
 import { ConfigController } from '../config';
 import {
   DescribeController,
@@ -25,6 +26,7 @@ import {
   createDefaultSnippetReader,
 } from '../snippet';
 import {
+  SPARQL_CACHE_ADMIN_CONFIG,
   SPARQL_CONFIG,
   SPARQL_CONTEXT,
   SPARQL_DEFAULT_ID,
@@ -39,6 +41,7 @@ import {
   SPARQL_SNIPPET_ALLOW_LIST,
   SPARQL_SOURCE_STATE_BROKER,
   SPARQL_SOURCES_ADMIN_CONFIG,
+  type CacheAdminServerConfig,
   type SavedQueriesServerConfig,
   type SourcesAdminServerConfig,
   type SparqlContext,
@@ -57,6 +60,7 @@ export interface ServerModuleOptions {
   snippetAllowList: SnippetAllowList;
   savedQueries: SavedQueriesServerConfig;
   sourcesAdmin: SourcesAdminServerConfig;
+  cacheAdmin: CacheAdminServerConfig;
   sourceStateBroker: SourceStateBroker;
   logger?: SparqlyLogger;
 }
@@ -67,6 +71,7 @@ export class ServerModule {
     return {
       module: ServerModule,
       controllers: [
+        CacheController,
         ConfigController,
         RegistrySparqlController,
         RefsController,
@@ -113,6 +118,10 @@ export class ServerModule {
         {
           provide: SPARQL_SOURCES_ADMIN_CONFIG,
           useValue: options.sourcesAdmin,
+        },
+        {
+          provide: SPARQL_CACHE_ADMIN_CONFIG,
+          useValue: options.cacheAdmin,
         },
       ],
     };

@@ -195,6 +195,11 @@ export async function createServer(
       sourcesAdmin: {
         allowAdminActions: options.readOnly !== true,
       },
+      // ADR-0054: caching reads/writes are untouched by --read-only; only the
+      // destructive clear is.
+      cacheAdmin: {
+        allowClear: options.readOnly !== true,
+      },
       sourceStateBroker,
       logger: boundaryLogger,
     }),

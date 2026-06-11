@@ -9,6 +9,12 @@ export {
   type SourceListingMode,
 } from './services/config.service';
 export {
+  SparqlClientService,
+  type CacheStatus,
+  type SparqlRunOptions,
+  type SparqlRunOutcome,
+} from './services/sparql-client.service';
+export {
   SavedQueriesService,
   type DeleteResult,
   type LoadedSavedQuery,

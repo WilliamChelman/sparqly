@@ -3,9 +3,12 @@ sources:
   # default source on landing, and the describe-this affordance lets the server
   # resolve an omitted `source` to that same default. alpha carries the seed
   # `ex:bob` the describe e2e uses.
+  # queryCache (ADR-0054): the playground cache e2e drives the cached
+  # indicator + Force refresh against this source.
   - id: alpha
     glob: ./data/alpha.ttl
     default: true
+    queryCache: true
   - id: beta
     glob: ./data/beta.ttl
   # Raw pass-through targets for the ADR-0047 diff-page gate. Never queried.

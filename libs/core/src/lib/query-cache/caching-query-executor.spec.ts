@@ -216,6 +216,40 @@ describe('CachingQueryExecutor', () => {
     expect(second.cacheStatus).toBe('bypass');
   });
 
+  it('a per-request cacheMode refresh re-executes and replaces the stored entry (#418)', async () => {
+    const cache = fakeCache();
+    let upstream = 'OLD';
+    const inner = {
+      calls: 0,
+      executeResult(): ResultAsync<
+        ExecuteResult,
+        QueryExecutionError | EndpointFetchError
+      > {
+        inner.calls++;
+        return okAsync(jsonResult(upstream));
+      },
+      async execute(): Promise<ExecuteResult> {
+        inner.calls++;
+        return jsonResult(upstream);
+      },
+    };
+    const s = seam(inner, cache); // instance mode stays 'normal'
+
+    await s.executeResult(QUERY); // warm: stores OLD
+    upstream = 'NEW';
+
+    const refreshed = (
+      await s.executeResult(QUERY, { cacheMode: 'refresh' })
+    )._unsafeUnwrap();
+    expect(inner.calls).toBe(2); // the stored entry was ignored
+    expect(refreshed.cacheStatus).toBe('miss');
+    expect(refreshed.body).toBe('NEW');
+
+    const after = (await s.executeResult(QUERY))._unsafeUnwrap();
+    expect(after.cacheStatus).toBe('hit');
+    expect(after.body).toBe('NEW'); // replaced, not the stale OLD
+  });
+
   it('in bypass mode neither reads nor writes the cache', async () => {
     const inner = delegate({ ok: jsonResult('y') });
     const s = seam(inner, fakeCache(), { mode: 'bypass' });

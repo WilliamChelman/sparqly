@@ -1,8 +1,4 @@
-import {
-  HttpClient,
-  HttpErrorResponse,
-  HttpHeaders,
-} from '@angular/common/http';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -17,8 +13,7 @@ import { Title } from '@angular/platform-browser';
 import {
   ConfigService,
   SavedQueriesService,
-  decodeSparqlResult,
-  detectQueryType,
+  SparqlClientService,
   pageTitle,
   sourceTitleToken,
   type DisplayContext,
@@ -41,11 +36,7 @@ import {
   type ResultPaneState,
 } from './components/result/result-pane.component';
 import { encodeBindings, parseBindings } from './utils/bindings-url';
-import { parseErrorBody } from './utils/parse-error-body';
-import {
-  acceptForQueryType,
-  buildDefaultQuery,
-} from './utils/sparql-defaults';
+import { buildDefaultQuery } from './utils/sparql-defaults';
 
 @Component({
   selector: 'app-query-page',
@@ -96,7 +87,7 @@ import {
           (valueChange)="query.set($event)"
           (submitBindings)="onSubmitBindings($event)"
         />
-        <div>
+        <div class="flex items-center gap-2">
           <button
             app-btn
             variant="primary"
@@ -106,6 +97,16 @@ import {
             (click)="run()"
           >
             {{ running() ? 'running…' : 'Run' }}
+          </button>
+          <button
+            app-btn
+            variant="secondary"
+            type="button"
+            [disabled]="!sourceId() || running()"
+            (click)="runRefresh()"
+            title="Re-run, recomputing any cached result"
+          >
+            Force refresh
           </button>
         </div>
         <app-result-pane
@@ -120,7 +121,7 @@ import {
 export class QueryPage implements OnInit {
   private readonly configService = inject(ConfigService);
   private readonly savedQueriesService = inject(SavedQueriesService);
-  private readonly http = inject(HttpClient);
+  private readonly sparqlClient = inject(SparqlClientService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly title = inject(Title);
@@ -267,38 +268,26 @@ export class QueryPage implements OnInit {
     this.executeSparql(this.query());
   }
 
-  private executeSparql(sparql: string): void {
+  /**
+   * Force refresh (ADR-0054, #418): recompute a cached result. The standard
+   * `Cache-Control: no-cache` request directive maps to the Query cache's
+   * `refresh` on the server — execute and replace the stored entry.
+   */
+  runRefresh(): void {
+    this.executeSparql(this.query(), { refresh: true });
+  }
+
+  private executeSparql(
+    sparql: string,
+    options: { refresh?: boolean } = {},
+  ): void {
     this.running.set(true);
     this.resultState.set({ kind: 'loading' });
-    const url = `/api/sparql/${encodeURIComponent(this.sourceId())}`;
-    const accept = acceptForQueryType(detectQueryType(sparql));
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/sparql-query',
-    };
-    if (accept) headers['Accept'] = accept;
-    this.http
-      .post(url, sparql, {
-        headers: new HttpHeaders(headers),
-        observe: 'response',
-        responseType: 'text',
-      })
-      .subscribe({
-        next: (response) => {
-          this.running.set(false);
-          const contentType =
-            response.headers.get('Content-Type') ?? 'application/octet-stream';
-          const body = response.body ?? '';
-          this.resultState.set({
-            kind: 'result',
-            result: decodeSparqlResult(body, contentType),
-          });
-        },
-        error: (e: HttpErrorResponse) => {
-          this.running.set(false);
-          const errBody = parseErrorBody(e?.error);
-          const message = errBody ?? e?.message ?? 'request failed';
-          this.resultState.set({ kind: 'error', message });
-        },
+    this.sparqlClient
+      .run(this.sourceId(), sparql, options)
+      .subscribe((outcome) => {
+        this.running.set(false);
+        this.resultState.set(outcome);
       });
   }
 }

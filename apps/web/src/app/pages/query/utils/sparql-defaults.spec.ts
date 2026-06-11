@@ -1,26 +1,4 @@
-import {
-  acceptForQueryType,
-  buildDefaultQuery,
-  buildQuickQuery,
-} from './sparql-defaults';
-
-describe('acceptForQueryType', () => {
-  it('returns the JSON Accept for SELECT and ASK', () => {
-    expect(acceptForQueryType('SELECT')).toBe('application/sparql-results+json');
-    expect(acceptForQueryType('ASK')).toBe('application/sparql-results+json');
-  });
-
-  it('returns the Turtle Accept for CONSTRUCT and DESCRIBE', () => {
-    expect(acceptForQueryType('CONSTRUCT')).toBe('text/turtle');
-    expect(acceptForQueryType('DESCRIBE')).toBe('text/turtle');
-  });
-
-  it('returns undefined for an unrecognised type so the caller drops the Accept header', () => {
-    expect(acceptForQueryType(undefined)).toBeUndefined();
-    expect(acceptForQueryType('UPDATE')).toBeUndefined();
-    expect(acceptForQueryType('')).toBeUndefined();
-  });
-});
+import { buildDefaultQuery, buildQuickQuery } from './sparql-defaults';
 
 describe('buildDefaultQuery', () => {
   it('seeds a classic ?s ?p ?o body when the context has no prefixes or base', () => {

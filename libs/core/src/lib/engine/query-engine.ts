@@ -50,9 +50,23 @@ const RDF_FORMATS: ReadonlySet<SparqlFormat> = new Set([
   'nquads',
 ]);
 
+/**
+ * The Query cache seam's mode (ADR-0054).
+ * - `normal` — read-through: serve a hit, else execute and store.
+ * - `bypass` — neither read nor write the cache.
+ * - `refresh` — ignore any stored entry, execute, then replace it.
+ */
+export type CacheMode = 'normal' | 'bypass' | 'refresh';
+
 export interface ExecuteOptions {
   format?: SparqlFormat;
   mutable?: boolean;
+  /**
+   * Per-request Query cache mode (ADR-0054, #418) — overrides the caching
+   * seam's instance mode for this call. `serve` maps a `Cache-Control:
+   * no-cache` request header to `refresh`. Ignored on the bare engine path.
+   */
+  cacheMode?: CacheMode;
   /**
    * Cooperative cancellation (ADR-0050): when this aborts, the engine destroys
    * the stream it is consuming so the query collapses into a typed

@@ -95,6 +95,15 @@ export class ServeQueryCache {
     }
   }
 
+  /**
+   * Empties the store — the `cache clear` admin action (ADR-0054, #418).
+   * Opens the store when this process hasn't touched it yet: entries persisted
+   * by a prior run live on disk and must clear too.
+   */
+  clear(): void {
+    this.store().clear();
+  }
+
   close(): void {
     this.handle?.close();
     this.handle = undefined;

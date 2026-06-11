@@ -459,3 +459,35 @@ describe('ResultPaneComponent describe-link source threading', () => {
     expect(href).toBe('/describe?iri=http%3A%2F%2Fexample.org%2Fa');
   });
 });
+
+describe('ResultPaneComponent · cached indicator (ADR-0054, #418)', () => {
+  it('shows a visible "cached" indicator when the result came from the Query cache', () => {
+    const ref = createPaneFixture({
+      kind: 'result',
+      result: SELECT_RESULT,
+      cacheStatus: 'hit',
+    });
+    const badge = (ref.nativeElement as HTMLElement).querySelector(
+      '[role="status"]',
+    );
+    expect(badge?.textContent).toContain('cached');
+  });
+
+  it('shows no indicator on a freshly computed (miss) result', () => {
+    const ref = createPaneFixture({
+      kind: 'result',
+      result: SELECT_RESULT,
+      cacheStatus: 'miss',
+    });
+    expect(
+      (ref.nativeElement as HTMLElement).querySelector('[role="status"]'),
+    ).toBeNull();
+  });
+
+  it('shows no indicator when the response carried no cache disposition', () => {
+    const ref = createPaneFixture({ kind: 'result', result: SELECT_RESULT });
+    expect(
+      (ref.nativeElement as HTMLElement).querySelector('[role="status"]'),
+    ).toBeNull();
+  });
+});

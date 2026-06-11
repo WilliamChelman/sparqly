@@ -151,6 +151,11 @@ export class EngineMap {
     return Array.from(this.entries.keys());
   }
 
+  /** Empties the serve Query cache — the `cache clear` admin action (#418). */
+  clearQueryCache(): void {
+    this.queryCache.clear();
+  }
+
   // Triggers a one-shot lazy load on first call; concurrent first-touches share
   // the in-flight promise. On `err` the memo slot is cleared for self-heal.
   ensure(id: string): ResultAsync<QueryExecutor, SourceError | IndexingError> {

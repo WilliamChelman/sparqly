@@ -1,4 +1,5 @@
 export * from './lib/bootstrap';
+export * from './lib/cache';
 export * from './lib/sparql';
 export * from './lib/config';
 export * from './lib/diff';
