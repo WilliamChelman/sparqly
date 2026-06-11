@@ -288,6 +288,53 @@ describe('query cache store', () => {
     }
   });
 
+  it('empties every entry on clear, surviving a reopen', () => {
+    const cache = open();
+    cache.set('a', body(10), metaFor('s1'));
+    cache.set('b', body(10), metaFor('s2'));
+    cache.clear();
+    expect(cache.get('a')).toBeUndefined();
+    expect(cache.get('b')).toBeUndefined();
+    cache.close();
+
+    // The wipe is durable: a reopened store sees nothing either.
+    const reopened = open();
+    try {
+      expect(reopened.get('a')).toBeUndefined();
+    } finally {
+      reopened.close();
+    }
+  });
+
+  it('reports total entry count and summed body bytes in stats', () => {
+    const cache = open();
+    try {
+      cache.set('a', body(10), metaFor('s1'));
+      cache.set('b', body(30), metaFor('s1'));
+      const stats = cache.stats();
+      expect(stats.entryCount).toBe(2);
+      expect(stats.totalBytes).toBe(40);
+    } finally {
+      cache.close();
+    }
+  });
+
+  it('breaks stats down per source, ordered by descending bytes', () => {
+    const cache = open();
+    try {
+      cache.set('a', body(10), metaFor('s1'));
+      cache.set('b', body(10), metaFor('s1'));
+      cache.set('c', body(50), metaFor('s2'));
+      const stats = cache.stats();
+      expect(stats.perSource).toEqual([
+        { sourceId: 's2', entryCount: 1, totalBytes: 50 },
+        { sourceId: 's1', entryCount: 2, totalBytes: 20 },
+      ]);
+    } finally {
+      cache.close();
+    }
+  });
+
   it('never evicts under an explicitly unbounded budget', () => {
     let tick = 0;
     const cache = open({ maxBytes: null, now: () => ++tick });

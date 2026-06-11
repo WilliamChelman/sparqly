@@ -50,6 +50,7 @@ import { applyAtOverride, splitPositionalAddress } from './at-override';
 import type { FieldDescriptor } from '../runner/fields/field';
 import {
   atRefField,
+  coercedBooleanSchema,
   contextBaseField,
   contextPrefixesField,
   mutableFieldsFor,
@@ -75,6 +76,10 @@ interface QueryConfig {
   queryCacheMaxBytes?: number | null;
   /** Per-entry ceiling from `queryCache.maxEntryBytes`. */
   queryCacheMaxEntryBytes?: number;
+  /** `--no-cache`: when false, bypass the Query cache for this run (no read, no write). */
+  cache?: boolean;
+  /** `--refresh`: ignore any cached entry, recompute, and replace it. */
+  refresh?: boolean;
   verbose?: boolean;
   quiet?: boolean;
   logFormat?: 'text' | 'json';
@@ -139,6 +144,33 @@ const queryCacheMaxEntryBytesField: FieldDescriptor = {
   schema: z.number().int().positive(),
 };
 
+// Per-invocation Query cache controls (ADR-0054). Commander's native `--no-`
+// negation gives `cache` a default of `true`; `--no-cache` flips it to `false`.
+const noCacheField: FieldDescriptor = {
+  key: 'cache',
+  schema: coercedBooleanSchema,
+  flags: [
+    {
+      spec: '--no-cache',
+      description:
+        'Bypass the Query cache for this run: neither read a hit nor write the result.',
+    },
+  ],
+};
+
+const refreshField: FieldDescriptor = {
+  key: 'refresh',
+  schema: coercedBooleanSchema,
+  default: false,
+  flags: [
+    {
+      spec: '--refresh',
+      description:
+        'Ignore any cached entry, recompute the result, and replace the cached entry.',
+    },
+  ],
+};
+
 export function inferQueryFormatFromOut(
   out: string | undefined,
 ): SparqlFormat | undefined {
@@ -177,6 +209,8 @@ export const querySpec: CommandSpec<QueryConfig> = {
     indexCacheDirField,
     queryCacheMaxBytesField,
     queryCacheMaxEntryBytesField,
+    noCacheField,
+    refreshField,
     atRefField,
     ...mutableFieldsFor('query'),
     contextPrefixesField,
@@ -335,6 +369,11 @@ function executeAgainstSources(
  * registered so the SQLite handle is released after the query settles. A source
  * that did not opt in — or any failure computing the token or opening the store —
  * returns the bare engine, so the query still runs uncached.
+ *
+ * `--no-cache` (`config.cache === false`) short-circuits before the store is
+ * even opened, so that invocation leaves the cache directory untouched — no
+ * read, no write, not even an empty store created. `--refresh` opens the store
+ * but runs the seam in `refresh` mode: it ignores any hit and replaces the entry.
  */
 async function maybeWithQueryCache(
   engine: QueryEngine,
@@ -346,6 +385,7 @@ async function maybeWithQueryCache(
 ): Promise<QueryExecutor> {
   const queryCache = sourceQueryCacheOptIn(target);
   if (queryCache === undefined) return engine;
+  if (config.cache === false) return engine;
   try {
     const freshnessToken = await freshnessTokenFor(sources);
     const cache = openQueryCache({
@@ -369,7 +409,7 @@ async function maybeWithQueryCache(
       freshnessToken,
       schemaVersion: cliVersion(),
       entryTtlMs: resolveQueryCacheTtlMs(queryCacheTtlMs(queryCache)),
-      mode: 'normal',
+      mode: config.refresh === true ? 'refresh' : 'normal',
       logger,
     });
   } catch (err) {

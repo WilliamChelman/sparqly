@@ -39,10 +39,30 @@ export interface QueryCacheSetMeta {
   ttlMs?: number;
 }
 
+/** One source's slice of the Query cache, as reported by `cache stats`. */
+export interface QueryCacheSourceStats {
+  /** The owning {@link target source}'s id. */
+  sourceId: string;
+  /** Number of stored entries owned by this source. */
+  entryCount: number;
+  /** Summed body bytes owned by this source. */
+  totalBytes: number;
+}
+
+/** A point-in-time summary of the Query cache, as reported by `cache stats`. */
+export interface QueryCacheStats {
+  /** Number of stored entries across every source. */
+  entryCount: number;
+  /** Summed body bytes — the figure the global `maxBytes` budget governs. */
+  totalBytes: number;
+  /** Per-source breakdown, ordered by descending bytes (ties broken by id). */
+  perSource: QueryCacheSourceStats[];
+}
+
 /**
  * The Cache store's public surface (ADR-0054). A deep module: callers see only
- * `get`/`set`/`close`; the SQLite backend, the schema-version stamp, and the
- * lazy absolute-TTL sweep are hidden behind it.
+ * `get`/`set`/`clear`/`stats`/`close`; the SQLite backend, the schema-version
+ * stamp, and the lazy absolute-TTL sweep are hidden behind it.
  */
 export interface QueryCache {
   /**
@@ -52,6 +72,10 @@ export interface QueryCache {
   get(key: string): CachedResult | undefined;
   /** Stores (or replaces) the body for `key`, stamped with the current time. */
   set(key: string, body: string, meta: QueryCacheSetMeta): void;
+  /** Removes every entry, leaving the store empty but its schema intact. */
+  clear(): void;
+  /** A summary of the store's current contents (entry count, summed bytes). */
+  stats(): QueryCacheStats;
   close(): void;
 }
 
@@ -149,12 +173,20 @@ export function openQueryCache(options: OpenQueryCacheOptions): QueryCache {
        last_access_at = excluded.last_access_at`,
   );
   const deleteStmt = db.prepare('DELETE FROM entries WHERE key = ?');
+  const clearStmt = db.prepare('DELETE FROM entries');
   // Each row carries its own ttl, so expiry is judged per entry.
   const purgeExpiredStmt = db.prepare(
     'DELETE FROM entries WHERE ? - inserted_at > ttl_ms',
   );
   const totalBytesStmt = db.prepare(
     'SELECT COALESCE(SUM(bytes), 0) AS total FROM entries',
+  );
+  const statsStmt = db.prepare(
+    'SELECT COUNT(*) AS entryCount, COALESCE(SUM(bytes), 0) AS totalBytes FROM entries',
+  );
+  const perSourceStatsStmt = db.prepare(
+    `SELECT source_id AS sourceId, COUNT(*) AS entryCount, SUM(bytes) AS totalBytes
+     FROM entries GROUP BY source_id ORDER BY totalBytes DESC, source_id ASC`,
   );
   // The single least-recently-accessed key, ties broken by key for determinism.
   const oldestKeyStmt = db.prepare(
@@ -238,6 +270,16 @@ export function openQueryCache(options: OpenQueryCacheOptions): QueryCache {
         evictToSourceBudget(meta.sourceId, meta.sourceMaxBytes);
       }
       if (maxBytes !== null) evictToGlobalBudget(maxBytes);
+    },
+    clear(): void {
+      clearStmt.run();
+    },
+    stats(): QueryCacheStats {
+      const totals = statsStmt.get() as Omit<QueryCacheStats, 'perSource'>;
+      return {
+        ...totals,
+        perSource: perSourceStatsStmt.all() as QueryCacheSourceStats[],
+      };
     },
     close(): void {
       db.close();
