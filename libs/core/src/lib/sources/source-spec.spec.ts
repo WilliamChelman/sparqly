@@ -164,6 +164,25 @@ describe('parseSourceSpec — object form', () => {
     ).toThrow(/maxBytes.*valid byte size/i);
   });
 
+  // A per-source `maxBytes` shares the project config's byte-size contract: a
+  // raw count must be a *positive integer* (a fractional or non-positive number
+  // is a misconfiguration, not a half-byte budget). `null` is the one extra
+  // form the field allows — explicit unbounded.
+  it('rejects a fractional or non-positive raw per-source maxBytes', () => {
+    expect(() =>
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        queryCache: { maxBytes: 1.5 },
+      }),
+    ).toThrow(/maxBytes.*positive/i);
+    expect(() =>
+      parseSourceSpec({
+        endpoint: 'https://example.com/sparql',
+        queryCache: { maxBytes: 0 },
+      }),
+    ).toThrow(/maxBytes.*positive/i);
+  });
+
   it('carries through optional common fields on the glob branch', () => {
     expect(
       parseSourceSpec({

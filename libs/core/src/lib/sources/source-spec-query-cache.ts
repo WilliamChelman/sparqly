@@ -1,4 +1,4 @@
-import { parseHumanByteSize, parseHumanDuration } from 'common';
+import { parseHumanDuration, resolvePositiveByteSize } from 'common';
 import type { ParsedQueryCache, SourceSpecObjectInput } from './source-spec';
 
 /**
@@ -37,20 +37,21 @@ export function pickQueryCache(input: SourceSpecObjectInput): {
   return { queryCache: resolved };
 }
 
-/** Resolves a per-source `maxBytes` to a byte count or `null` (unbounded). */
+/**
+ * Resolves a per-source `maxBytes` to a byte count or `null` (unbounded).
+ * `null` is this field's own contract (explicit unbounded); the positive
+ * count / human-string core is shared with the project config's
+ * `byteSizeSchema` via {@link resolvePositiveByteSize}.
+ */
 function resolveMaxBytes(value: unknown): number | null {
   if (value === null) return null;
-  if (typeof value === 'number') {
-    if (!Number.isInteger(value) || value <= 0) {
-      throw new Error('`queryCache.maxBytes` must be a positive byte count');
-    }
-    return value;
-  }
-  if (typeof value === 'string') {
-    const bytes = parseHumanByteSize(value);
+  if (typeof value === 'number' || typeof value === 'string') {
+    const bytes = resolvePositiveByteSize(value);
     if (bytes === undefined) {
       throw new Error(
-        `\`queryCache.maxBytes\` is not a valid byte size: ${JSON.stringify(value)}`,
+        typeof value === 'number'
+          ? '`queryCache.maxBytes` must be a positive byte count'
+          : `\`queryCache.maxBytes\` is not a valid byte size: ${JSON.stringify(value)}`,
       );
     }
     return bytes;

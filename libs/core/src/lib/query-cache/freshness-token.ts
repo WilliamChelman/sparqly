@@ -47,10 +47,25 @@ export function digestGlobIndexManifest(manifest: GlobIndexManifest): string {
 }
 
 /**
- * The pinned-source freshness token: the resolved commit SHA. A moved floating
- * ref resolves to a new SHA — a new token, hence a miss — while a pinned ref is
- * reproducibly cacheable because its SHA is stable across invocations.
+ * The pinned-source freshness token: the resolved commit SHA folded with the set
+ * of matched file paths. A moved floating ref resolves to a new SHA — a new
+ * token, hence a miss — while a pinned ref is reproducibly cacheable because its
+ * SHA is stable across invocations. The SHA pins file *content* but not the glob
+ * *selection*: the resolved SHA is the ref's commit, independent of the glob
+ * PATTERN, so widening `data/*.ttl` → `data/**\/*.ttl` at the same pin matches
+ * more files without moving the SHA. Folding the matched paths in keeps the
+ * broader query from being served the narrower query's cached body. Paths are
+ * sorted so enumeration order doesn't matter and NUL-separated so no path can
+ * shift across a boundary to forge a colliding digest.
  */
-export function pinnedFreshnessToken(sha: string): string {
-  return `sha:${sha}`;
+export function pinnedFreshnessToken(
+  sha: string,
+  files: ReadonlyArray<string> = [],
+): string {
+  if (files.length === 0) return `sha:${sha}`;
+  const hash = createHash(ALGO);
+  for (const path of [...files].sort()) {
+    hash.update(`${path}\0`);
+  }
+  return `sha:${sha}:${hash.digest('hex')}`;
 }

@@ -1,3 +1,5 @@
+import { parseUnitScalar } from './parse-unit-scalar';
+
 /**
  * Parses a human byte size — `256MB`, `1.5gb`, `512`, `32KiB` — into a raw byte
  * count, or `undefined` when the input is unparseable or non-positive.
@@ -8,13 +10,26 @@
  * `B`/no-suffix value, is taken as raw bytes.
  */
 export function parseHumanByteSize(input: string): number | undefined {
-  const match = /^\s*(\d+(?:\.\d+)?)\s*([a-z]*)\s*$/i.exec(input);
-  if (match === null) return undefined;
-  const multiplier = UNIT_MULTIPLIERS[match[2].toLowerCase()];
-  if (multiplier === undefined) return undefined;
-  const bytes = Number(match[1]) * multiplier;
-  if (!Number.isFinite(bytes) || bytes <= 0) return undefined;
-  return Math.round(bytes);
+  return parseUnitScalar(input, UNIT_MULTIPLIERS);
+}
+
+/**
+ * Validates one configured byte budget — a raw count or a human string — to a
+ * positive byte count, or `undefined` when it is neither (a non-positive /
+ * fractional number, or an unparseable string). The shared core behind the
+ * project config's `byteSizeSchema` (zod) and a source's per-source `maxBytes`
+ * (`resolveMaxBytes`): both reject the same shapes, then each layers its own
+ * error reporting and its own `null`-as-unbounded contract on top. Null is *not*
+ * handled here — it is a field-level concern, valid only where an unbounded
+ * budget is meaningful (a global/per-source cap, never a per-entry ceiling).
+ */
+export function resolvePositiveByteSize(
+  value: number | string,
+): number | undefined {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value > 0 ? value : undefined;
+  }
+  return parseHumanByteSize(value);
 }
 
 const KIB = 1024;

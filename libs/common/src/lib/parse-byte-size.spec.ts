@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseHumanByteSize } from './parse-byte-size';
+import { parseHumanByteSize, resolvePositiveByteSize } from './parse-byte-size';
 
 /**
  * `parseHumanByteSize` turns a human byte size (`256MB`, `1.5gb`, `512`) into a
@@ -36,5 +36,32 @@ describe('parseHumanByteSize', () => {
     expect(parseHumanByteSize('0')).toBeUndefined();
     expect(parseHumanByteSize('-5MB')).toBeUndefined();
     expect(parseHumanByteSize('')).toBeUndefined();
+  });
+});
+
+/**
+ * `resolvePositiveByteSize` is the shared validation core behind the project
+ * config's `byteSizeSchema` (zod) and a source's per-source `maxBytes`
+ * (`resolveMaxBytes`): a raw count must be a positive integer, a string goes
+ * through `parseHumanByteSize`, and `null`-as-unbounded is *not* its concern —
+ * that is a field-level contract layered on by the callers.
+ */
+describe('resolvePositiveByteSize', () => {
+  it('passes a positive integer count through unchanged', () => {
+    expect(resolvePositiveByteSize(1024)).toBe(1024);
+  });
+
+  it('resolves a human string via the 1024-based parser', () => {
+    expect(resolvePositiveByteSize('256MB')).toBe(256 * 1024 * 1024);
+  });
+
+  it('returns undefined for a fractional, zero, or negative raw count', () => {
+    expect(resolvePositiveByteSize(1.5)).toBeUndefined();
+    expect(resolvePositiveByteSize(0)).toBeUndefined();
+    expect(resolvePositiveByteSize(-5)).toBeUndefined();
+  });
+
+  it('returns undefined for an unparseable string', () => {
+    expect(resolvePositiveByteSize('huge')).toBeUndefined();
   });
 });

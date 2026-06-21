@@ -238,3 +238,24 @@ describe('validateProjectConfig — queryCache block', () => {
     ).toBe(false);
   });
 });
+
+describe('validateProjectConfig — per-source queryCache', () => {
+  it('accepts a per-source `queryCache: { ttl }` (ADR-0054, #416)', () => {
+    const result = validateProjectConfig({
+      sources: [{ endpoint: 'https://example.com/sparql', queryCache: { ttl: '30min' } }],
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('accepts a per-source `queryCache: { ttl, maxBytes }`', () => {
+    const result = validateProjectConfig({
+      sources: [
+        {
+          endpoint: 'https://example.com/sparql',
+          queryCache: { ttl: '1h', maxBytes: 1024 },
+        },
+      ],
+    });
+    expect(result.ok).toBe(true);
+  });
+});

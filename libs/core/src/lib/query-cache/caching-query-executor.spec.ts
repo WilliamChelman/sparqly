@@ -216,6 +216,28 @@ describe('CachingQueryExecutor', () => {
     expect(second.cacheStatus).toBe('bypass');
   });
 
+  it('a refresh on a non-deterministic query bypasses (never stores it for a later read to serve stale)', async () => {
+    // The non-determinism guard wins over refresh: refresh recomputes-and-stores,
+    // but storing a NOW()/UUID() answer would let a subsequent normal read serve
+    // it as a stale hit — exactly what the guard exists to prevent. So a refresh
+    // on such a query is consistently a live bypass that writes nothing.
+    const ND = 'SELECT (NOW() AS ?t) WHERE { ?s ?p ?o }';
+    const cache = fakeCache();
+    const inner = delegate({ ok: jsonResult('LIVE') });
+    const s = seam(inner, cache);
+
+    const refreshed = (
+      await s.executeResult(ND, { cacheMode: 'refresh' })
+    )._unsafeUnwrap();
+    expect(refreshed.cacheStatus).toBe('bypass');
+    expect(refreshed.body).toBe('LIVE');
+
+    // Nothing was written: a later normal read still has to execute live.
+    const after = (await s.executeResult(ND))._unsafeUnwrap();
+    expect(after.cacheStatus).toBe('bypass');
+    expect(inner.calls).toBe(2);
+  });
+
   it('a per-request cacheMode refresh re-executes and replaces the stored entry (#418)', async () => {
     const cache = fakeCache();
     let upstream = 'OLD';
@@ -248,6 +270,29 @@ describe('CachingQueryExecutor', () => {
     const after = (await s.executeResult(QUERY))._unsafeUnwrap();
     expect(after.cacheStatus).toBe('hit');
     expect(after.body).toBe('NEW'); // replaced, not the stale OLD
+  });
+
+  it('still returns a successful result when the cache write throws (served-but-not-cached)', async () => {
+    // A cross-process write collision surfaces as a throw from set() (e.g.
+    // SQLITE_BUSY). It must degrade to served-but-not-cached, never failing the
+    // query whose execution already succeeded.
+    const throwingCache: QueryCache = {
+      get: () => undefined,
+      set: () => {
+        throw new Error('SQLITE_BUSY: database is locked');
+      },
+      close: () => undefined,
+    };
+    const inner = delegate({ ok: jsonResult('{"rows":1}') });
+    const s = seam(inner, throwingCache);
+
+    const viaResult = await s.executeResult(QUERY);
+    expect(viaResult.isOk()).toBe(true);
+    expect(viaResult._unsafeUnwrap().body).toBe('{"rows":1}');
+
+    const viaExecute = await s.execute(QUERY);
+    expect(viaExecute.body).toBe('{"rows":1}');
+    expect(viaExecute.cacheStatus).toBe('miss');
   });
 
   it('in bypass mode neither reads nor writes the cache', async () => {

@@ -143,6 +143,11 @@ export function openQueryCache(options: OpenQueryCacheOptions): QueryCache {
   const db = new Database(queryCacheDbPath(options.dir));
   db.pragma('journal_mode = WAL');
   db.pragma('synchronous = NORMAL');
+  // ADR-0054 shares one on-disk store across CLI and serve. Without a
+  // busy_timeout, a write that collides with a sibling writer (cross-process)
+  // throws SQLITE_BUSY immediately; a non-zero timeout makes the loser wait and
+  // retry, so a concurrent `set` degrades to a brief block rather than a throw.
+  db.pragma('busy_timeout = 5000');
   db.exec(META_DDL);
   db.exec(ENTRIES_DDL);
   enforceSchemaVersion(db, options.schemaVersion);
@@ -188,39 +193,85 @@ export function openQueryCache(options: OpenQueryCacheOptions): QueryCache {
     `SELECT source_id AS sourceId, COUNT(*) AS entryCount, SUM(bytes) AS totalBytes
      FROM entries GROUP BY source_id ORDER BY totalBytes DESC, source_id ASC`,
   );
-  // The single least-recently-accessed key, ties broken by key for determinism.
-  const oldestKeyStmt = db.prepare(
-    'SELECT key FROM entries ORDER BY last_access_at ASC, key ASC LIMIT 1',
+  // The least-recently-accessed entries (key + bytes), ties broken by key for
+  // determinism. We select a victim's bytes alongside its key so eviction can
+  // decrement a running total instead of re-summing the table after each delete.
+  const oldestEntriesStmt = db.prepare(
+    'SELECT key, bytes FROM entries ORDER BY last_access_at ASC, key ASC',
   );
   const sourceBytesStmt = db.prepare(
     'SELECT COALESCE(SUM(bytes), 0) AS total FROM entries WHERE source_id = ?',
   );
-  const oldestSourceKeyStmt = db.prepare(
-    'SELECT key FROM entries WHERE source_id = ? ORDER BY last_access_at ASC, key ASC LIMIT 1',
+  const oldestSourceEntriesStmt = db.prepare(
+    'SELECT key, bytes FROM entries WHERE source_id = ? ORDER BY last_access_at ASC, key ASC',
   );
+
+  type Victim = { key: string; bytes: number };
+
+  /**
+   * Deletes `victims` oldest-first, decrementing `total` by each one's bytes,
+   * and stops the moment `total` fits `budget`. The candidate list is gathered
+   * once (an ordered snapshot, not a live cursor — so we never mutate the table
+   * mid-scan), so a multi-victim eviction re-sums no `SUM(bytes)` per delete.
+   */
+  function evictVictims(
+    victims: Victim[],
+    total: number,
+    budget: number,
+  ): void {
+    for (const victim of victims) {
+      if (total <= budget) return;
+      deleteStmt.run(victim.key);
+      total -= victim.bytes;
+    }
+  }
 
   /** Evicts least-recently-accessed entries until total bytes fit `budget`. */
   function evictToGlobalBudget(budget: number): void {
-    let total = (totalBytesStmt.get() as { total: number }).total;
-    while (total > budget) {
-      const victim = oldestKeyStmt.get() as { key: string } | undefined;
-      if (victim === undefined) return;
-      deleteStmt.run(victim.key);
-      total = (totalBytesStmt.get() as { total: number }).total;
-    }
+    const total = (totalBytesStmt.get() as { total: number }).total;
+    if (total <= budget) return;
+    evictVictims(oldestEntriesStmt.all() as Victim[], total, budget);
   }
 
   /** Evicts a source's least-recently-accessed entries until it fits `budget`. */
   function evictToSourceBudget(sourceId: string, budget: number): void {
-    let total = (sourceBytesStmt.get(sourceId) as { total: number }).total;
-    while (total > budget) {
-      const victim = oldestSourceKeyStmt.get(sourceId) as
-        | { key: string }
-        | undefined;
-      if (victim === undefined) return;
-      deleteStmt.run(victim.key);
-      total = (sourceBytesStmt.get(sourceId) as { total: number }).total;
-    }
+    const total = (sourceBytesStmt.get(sourceId) as { total: number }).total;
+    if (total <= budget) return;
+    evictVictims(oldestSourceEntriesStmt.all(sourceId) as Victim[], total, budget);
+  }
+
+  // The purge → upsert → evict sequence runs as one transaction so a concurrent
+  // writer can't interleave between the upsert and the eviction it triggers and
+  // leave the store persistently overshooting the byte budget.
+  const writeEntryTxn = db.transaction(
+    (key: string, body: string, bytes: number, meta: QueryCacheSetMeta) => {
+      // Sweep expired rows first so their bytes don't count against the budget.
+      purgeExpiredStmt.run(now());
+      upsertStmt.run({
+        key,
+        body,
+        format: meta.format,
+        contentType: meta.contentType,
+        sourceId: meta.sourceId,
+        bytes,
+        // Per-source override when given, else the store's open-time default.
+        ttlMs: meta.ttlMs ?? options.ttlMs,
+        at: now(),
+      });
+      // Per-source cap first (bounds this source on its own), then the global
+      // pool — so a chatty cheap source cannot crowd out an expensive one.
+      if (typeof meta.sourceMaxBytes === 'number') {
+        evictToSourceBudget(meta.sourceId, meta.sourceMaxBytes);
+      }
+      if (maxBytes !== null) evictToGlobalBudget(maxBytes);
+    },
+  );
+
+  function writeEntry(key: string, body: string, meta: QueryCacheSetMeta): void {
+    const bytes = Buffer.byteLength(body, 'utf8');
+    // A body over the per-entry ceiling bypasses the cache (no error).
+    if (bytes > maxEntryBytes) return;
+    writeEntryTxn(key, body, bytes, meta);
   }
 
   return {
@@ -247,30 +298,7 @@ export function openQueryCache(options: OpenQueryCacheOptions): QueryCache {
         contentType: row.contentType,
       };
     },
-    set(key: string, body: string, meta: QueryCacheSetMeta): void {
-      const bytes = Buffer.byteLength(body, 'utf8');
-      // A body over the per-entry ceiling bypasses the cache (no error).
-      if (bytes > maxEntryBytes) return;
-      // Sweep expired rows first so their bytes don't count against the budget.
-      purgeExpiredStmt.run(now());
-      upsertStmt.run({
-        key,
-        body,
-        format: meta.format,
-        contentType: meta.contentType,
-        sourceId: meta.sourceId,
-        bytes,
-        // Per-source override when given, else the store's open-time default.
-        ttlMs: meta.ttlMs ?? options.ttlMs,
-        at: now(),
-      });
-      // Per-source cap first (bounds this source on its own), then the global
-      // pool — so a chatty cheap source cannot crowd out an expensive one.
-      if (typeof meta.sourceMaxBytes === 'number') {
-        evictToSourceBudget(meta.sourceId, meta.sourceMaxBytes);
-      }
-      if (maxBytes !== null) evictToGlobalBudget(maxBytes);
-    },
+    set: writeEntry,
     clear(): void {
       clearStmt.run();
     },

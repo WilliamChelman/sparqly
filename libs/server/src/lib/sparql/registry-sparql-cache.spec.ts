@@ -132,4 +132,33 @@ describe('serve — per-request Query cache refresh (ADR-0054, #418)', () => {
     expect(await after.text()).toContain('http://example.org/NEW');
     expect(up.calls()).toBe(afterRefresh);
   });
+
+  it('Cache-Control: no-store bypasses the cache — no read, no write', async () => {
+    const { url, up } = await bootCachedEndpoint();
+
+    // Warm the cache so there is a stored entry that a bypass must ignore.
+    const warm = await fetch(url);
+    expect(warm.status).toBe(200);
+    expect(warm.headers.get('x-sparqly-cache')).toBe('miss');
+    expect(await warm.text()).toContain('http://example.org/OLD');
+    const afterWarm = up.calls();
+
+    // The upstream answer changes; a no-store request must not be served the
+    // stored hit, and must not be tagged as a hit.
+    up.setAnswer('http://example.org/NEW');
+    const bypass = await fetch(url, {
+      headers: { 'cache-control': 'no-store' },
+    });
+    expect(bypass.status).toBe(200);
+    expect(bypass.headers.get('x-sparqly-cache')).toBe('bypass');
+    expect(await bypass.text()).toContain('http://example.org/NEW');
+    expect(up.calls()).toBeGreaterThan(afterWarm);
+
+    // The bypass did not write: a normal request still hits the original entry.
+    const afterBypass = up.calls();
+    const after = await fetch(url);
+    expect(after.headers.get('x-sparqly-cache')).toBe('hit');
+    expect(await after.text()).toContain('http://example.org/OLD');
+    expect(up.calls()).toBe(afterBypass);
+  });
 });

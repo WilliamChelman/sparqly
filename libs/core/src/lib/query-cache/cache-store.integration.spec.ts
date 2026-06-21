@@ -209,6 +209,45 @@ describe('query cache store', () => {
     }
   });
 
+  it('evicts as many least-recently-accessed entries as one oversized write requires', () => {
+    // A single write inserts a body that overshoots the budget by several
+    // entries, so eviction must drop more than one victim in the same write and
+    // still land the store within budget — pinning the running-total bookkeeping.
+    let tick = 0;
+    const cache = open({ maxBytes: 30, now: () => ++tick });
+    try {
+      cache.set('a', body(10), metaFor('s1'));
+      cache.set('b', body(10), metaFor('s1'));
+      cache.set('c', body(10), metaFor('s1')); // store now full at 30 bytes
+      cache.set('big', body(30), metaFor('s1')); // needs all 30 bytes for itself
+      // a, b, c are the three least-recently-accessed and must all be evicted.
+      expect(cache.get('a')).toBeUndefined();
+      expect(cache.get('b')).toBeUndefined();
+      expect(cache.get('c')).toBeUndefined();
+      expect(cache.get('big')?.body).toBe(body(30));
+      expect(cache.stats().totalBytes).toBe(30); // within budget
+    } finally {
+      cache.close();
+    }
+  });
+
+  it('evicts a source down to its cap across multiple victims in one write', () => {
+    let tick = 0;
+    const cache = open({ maxBytes: 1000, now: () => ++tick });
+    try {
+      cache.set('s1a', body(10), metaFor('s1', 20));
+      cache.set('s1b', body(10), metaFor('s1', 20)); // s1 at its 20-byte cap
+      cache.set('s2x', body(10), metaFor('s2')); // a different source, untouched
+      cache.set('s1big', body(20), metaFor('s1', 20)); // fills the whole cap alone
+      expect(cache.get('s1a')).toBeUndefined();
+      expect(cache.get('s1b')).toBeUndefined();
+      expect(cache.get('s1big')?.body).toBe(body(20));
+      expect(cache.get('s2x')?.body).toBe(body(10)); // other source survives
+    } finally {
+      cache.close();
+    }
+  });
+
   it('rescues a recently-read entry from eviction (recency is access, not insertion)', () => {
     let tick = 0;
     const cache = open({ maxBytes: 30, now: () => ++tick });
@@ -332,6 +371,26 @@ describe('query cache store', () => {
       ]);
     } finally {
       cache.close();
+    }
+  });
+
+  it('lets a write on a second connection retry past a sibling write lock instead of failing immediately (busy_timeout)', () => {
+    // ADR-0054 shares one on-disk store across CLI and serve. With the default
+    // busy_timeout of 0, a write that collides with a sibling write throws
+    // SQLITE_BUSY at once; a non-zero busy_timeout makes the loser wait and
+    // retry. We approximate a cross-process collision by opening a second
+    // connection to the same store directory and writing through it.
+    const a = open();
+    const b = open();
+    try {
+      a.set('a', body(10), metaFor('s1'));
+      // A write through the sibling connection must not throw SQLITE_BUSY.
+      expect(() => b.set('b', body(10), metaFor('s1'))).not.toThrow();
+      expect(b.get('a')?.body).toBe(body(10));
+      expect(a.get('b')?.body).toBe(body(10));
+    } finally {
+      a.close();
+      b.close();
     }
   });
 

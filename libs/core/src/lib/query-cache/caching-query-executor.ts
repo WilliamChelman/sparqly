@@ -155,9 +155,24 @@ export class CachingQueryExecutor implements QueryExecutor {
    * Whether this query skips the cache entirely (no read, no write). True in
    * explicit `bypass` mode, and — regardless of mode — for a non-deterministic
    * query (ADR-0054, #416), whose answer must never be served from a prior run.
+   *
+   * The guard wins over `refresh`: refresh recomputes-and-stores, but storing a
+   * `NOW()`/`UUID()` answer would let a later normal read serve it stale — the
+   * very thing the guard prevents — so such a query is a live bypass that writes
+   * nothing. To keep that override from being silent, a `refresh` (or any
+   * non-`normal`) request downgraded to a bypass by the guard is logged.
    */
   private bypasses(query: string, mode: CacheMode): boolean {
-    return mode === 'bypass' || queryIsNonDeterministic(query);
+    if (queryIsNonDeterministic(query)) {
+      if (mode !== 'normal') {
+        this.logger.debug(
+          'query-cache bypass: non-deterministic query overrides cacheMode',
+          { source: this.sourceId, mode },
+        );
+      }
+      return true;
+    }
+    return mode === 'bypass';
   }
 
   private keyFor(query: string, options: ExecuteOptions): string {
@@ -173,14 +188,29 @@ export class CachingQueryExecutor implements QueryExecutor {
     });
   }
 
+  /**
+   * Writes a fresh result to the cache, degrading to served-but-not-cached on
+   * failure. A cross-process write collision can surface from the on-disk store
+   * as a throw (e.g. SQLITE_BUSY); since the query itself already succeeded, a
+   * write failure is swallowed and logged rather than turned into an error
+   * propagated from the read-through seam.
+   */
   private store(key: string, result: ExecuteResult): void {
-    this.cache.set(key, result.body, {
-      format: result.format,
-      contentType: result.contentType,
-      sourceId: this.sourceId,
-      sourceMaxBytes: this.sourceMaxBytes,
-      ttlMs: this.entryTtlMs,
-    });
+    try {
+      this.cache.set(key, result.body, {
+        format: result.format,
+        contentType: result.contentType,
+        sourceId: this.sourceId,
+        sourceMaxBytes: this.sourceMaxBytes,
+        ttlMs: this.entryTtlMs,
+      });
+    } catch (error) {
+      this.logger.warn('query-cache write failed; serving without caching', {
+        source: this.sourceId,
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private log(status: 'hit' | 'miss', key: string): void {

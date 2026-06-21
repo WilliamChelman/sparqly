@@ -310,17 +310,20 @@ function pinOf(source: ParsedSource): { gitRef: string | undefined } {
 
 /**
  * Per-request Query cache control (ADR-0054, #418): the standard
- * `Cache-Control: no-cache` request directive maps to the seam's `refresh` —
- * recompute and replace the stored entry. Any other value leaves the seam on
- * its instance mode.
+ * `Cache-Control` request directives map to the seam's modes. `no-store` —
+ * "don't read and don't write" — maps to `bypass` (the upstream answer is
+ * served straight through, neither read from nor written to the cache).
+ * `no-cache` maps to `refresh` — recompute and replace the stored entry.
+ * `no-store` is checked first since the two can co-occur and the stricter
+ * "don't store" wins. Any other value leaves the seam on its instance mode.
  */
 function requestCacheMode(
   cacheControl: string | undefined,
 ): CacheMode | undefined {
   if (cacheControl === undefined) return undefined;
-  return /(^|[\s,])no-cache($|[\s,=])/i.test(cacheControl)
-    ? 'refresh'
-    : undefined;
+  if (/(^|[\s,])no-store($|[\s,=])/i.test(cacheControl)) return 'bypass';
+  if (/(^|[\s,])no-cache($|[\s,=])/i.test(cacheControl)) return 'refresh';
+  return undefined;
 }
 
 function pickFormat(accept: string | undefined): SparqlFormat | undefined {

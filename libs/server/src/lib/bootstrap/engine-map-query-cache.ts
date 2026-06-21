@@ -1,20 +1,15 @@
 import type { SparqlyLogger } from 'common';
 import {
   cacheSourceId,
-  CachingQueryExecutor,
   DEFAULT_QUERY_CACHE_TTL_MS,
   digestContext,
-  digestFileStats,
-  digestGlobIndexManifest,
-  pinnedFreshnessToken,
-  queryCacheCap,
-  queryCacheTtlMs,
-  resolveQueryCacheTtlMs,
+  freshnessFactsAreStable,
+  freshnessTokenFromFacts,
   openQueryCache,
   queryCacheDir,
-  readGlobIndexManifest,
-  snapshotIndexedFiles,
   sourceQueryCacheOptIn,
+  wrapWithQueryCache,
+  type FreshnessFacts,
   type ParsedSource,
   type QueryCache,
   type QueryExecutor,
@@ -38,6 +33,26 @@ export interface ServeQueryCacheBudget {
 export class ServeQueryCache {
   private handle: QueryCache | undefined;
   private readonly schemaVersion: string;
+  /**
+   * Memoizes the freshness token per loaded generation (ADR-0054), but **only**
+   * for sources whose token is invariant for that generation's lifetime
+   * (`freshnessFactsAreStable`): pass-through, disk-backed, and *pinned*
+   * materialized. `ensure` runs {@link wrap} on every request, so reusing a
+   * stable token within a generation avoids re-reading a manifest / re-hashing
+   * paths on a sub-millisecond hit. Each (re)load builds a fresh
+   * {@link LoadedSources} object (see `loadEntry`/`loadEntryViaWorker`), so keying
+   * on its reference recomputes after a reload — and the WeakMap lets the stale
+   * generation's entry be collected.
+   *
+   * An *unpinned* materialized source is deliberately excluded: its stat-digest
+   * moves on an on-disk edit with no reload, so its token MUST be recomputed per
+   * request — that per-request stat is #415's content-aware invalidation, and
+   * memoizing it would serve stale content.
+   */
+  private readonly freshnessTokens = new WeakMap<
+    LoadedSources,
+    Promise<string>
+  >();
 
   constructor(
     private readonly configDir: string,
@@ -66,33 +81,48 @@ export class ServeQueryCache {
     if (source === undefined) return engine;
     const queryCache = sourceQueryCacheOptIn(source);
     if (queryCache === undefined) return engine;
-    try {
-      const freshnessToken = await serveFreshnessToken(
-        source,
-        loadedSources,
-        files,
-      );
-      return new CachingQueryExecutor({
-        delegate: engine,
-        cache: this.store(),
-        sourceId: cacheSourceId(source),
-        sourceMaxBytes: queryCacheCap(queryCache),
-        // `serve` serializes without project prefixes/base today, so the display
-        // context is empty here; a later slice threads it through if that changes.
-        contextDigest: digestContext({}),
-        freshnessToken,
-        schemaVersion: this.schemaVersion,
-        entryTtlMs: resolveQueryCacheTtlMs(queryCacheTtlMs(queryCache)),
-        mode: 'normal',
-        logger: this.logger,
-      });
-    } catch (err) {
-      this.logger?.debug('query-cache-disabled', {
-        source: cacheSourceId(source),
-        reason: err instanceof Error ? err.message : String(err),
-      });
-      return engine;
-    }
+    return wrapWithQueryCache({
+      engine,
+      queryCache,
+      sourceId: cacheSourceId(source),
+      schemaVersion: this.schemaVersion,
+      // `serve` serializes without project prefixes/base today, so the display
+      // context is empty here; a later slice threads it through if that changes.
+      contextDigest: digestContext({}),
+      mode: 'normal',
+      // The token is memoized per loaded generation (see `freshnessToken`), so a
+      // sub-millisecond hit doesn't restat every matched file on each request.
+      freshnessToken: () =>
+        this.freshnessToken(source, loadedSources, files),
+      openCache: () => this.store(),
+      logger: this.logger,
+    });
+  }
+
+  /**
+   * The freshness token for a request. A *stable* fact-set (pass-through,
+   * disk-backed, or pinned materialized) is computed once per
+   * {@link LoadedSources} object and reused across requests until a reload swaps
+   * in a fresh object; a rejected computation is evicted so a transient failure
+   * (e.g. a stat error) self-heals on the next request. An *unstable* fact-set
+   * (unpinned materialized) is recomputed every request so an on-disk edit is
+   * detected without a reload (ADR-0054, #415) — it is never memoized.
+   */
+  private freshnessToken(
+    source: ParsedSource,
+    loadedSources: LoadedSources,
+    files: ReadonlyArray<string>,
+  ): Promise<string> {
+    const facts = serveFreshnessFacts(source, loadedSources, files);
+    if (!freshnessFactsAreStable(facts)) return freshnessTokenFromFacts(facts);
+    const memoized = this.freshnessTokens.get(loadedSources);
+    if (memoized !== undefined) return memoized;
+    const computed = freshnessTokenFromFacts(facts).catch((err) => {
+      this.freshnessTokens.delete(loadedSources);
+      throw err;
+    });
+    this.freshnessTokens.set(loadedSources, computed);
+    return computed;
   }
 
   /**
@@ -125,34 +155,32 @@ export class ServeQueryCache {
 }
 
 /**
- * The path-aware freshness token for a loaded `serve` source (ADR-0054, #415),
- * derived from main-side facts so it works identically for main-thread and
- * worker-loaded (ADR-0050) entries:
- * - endpoint → empty (TTL-bounded).
- * - disk-backed → the on-disk index manifest digest.
- * - pinned glob/file (resolved SHA on the source) → that SHA.
+ * Projects the `serve` shapes (`ParsedSource` + `LoadedSources` + matched files)
+ * onto the shared {@link FreshnessFacts} (ADR-0054, #415) — the single source of
+ * truth shared with the CLI (`freshnessTokenFor`) so serve and CLI can't drift.
+ * Keeping the projection pure (no I/O) lets {@link ServeQueryCache.freshnessToken}
+ * decide memoizability via `freshnessFactsAreStable` before paying for the token:
+ * - endpoint → pass-through (TTL-bounded, empty token).
+ * - disk-backed → the on-disk index manifest.
+ * - pinned glob/file (resolved SHA on the source) → that SHA + path set.
  * - otherwise materialized → a stat-digest of the matched files.
  *
  * A plain `gitRef` glob without a stamped `resolvedSha` falls back to the
  * stat-digest, which is conservative (a working-tree edit recomputes) and never
- * serves stale content.
+ * serves stale content. Worker-loaded (ADR-0050) entries project identically.
  */
-async function serveFreshnessToken(
+function serveFreshnessFacts(
   source: ParsedSource,
   loadedSources: LoadedSources,
   files: ReadonlyArray<string>,
-): Promise<string> {
-  if (loadedSources.mode === 'pass-through') return '';
+): FreshnessFacts {
+  if (loadedSources.mode === 'pass-through') return { mode: 'pass-through' };
   if (loadedSources.mode === 'disk-backed') {
-    return digestGlobIndexManifest(
-      await readGlobIndexManifest(loadedSources.indexDir),
-    );
+    return { mode: 'disk-backed', indexDir: loadedSources.indexDir };
   }
-  if (
-    (source.kind === 'glob' || source.kind === 'file') &&
-    source.resolvedSha !== undefined
-  ) {
-    return pinnedFreshnessToken(source.resolvedSha);
-  }
-  return digestFileStats(await snapshotIndexedFiles([...files]));
+  const resolvedSha =
+    source.kind === 'glob' || source.kind === 'file'
+      ? source.resolvedSha
+      : undefined;
+  return { mode: 'materialized', resolvedSha, files };
 }

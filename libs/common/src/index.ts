@@ -1,6 +1,7 @@
 export { formatRdf } from './lib/formatter';
 export type { FormatSerialization, ResolvedFormatterConfig } from './lib/formatter';
 export * from './lib/parse-rdf-string';
+export * from './lib/parse-unit-scalar';
 export * from './lib/parse-byte-size';
 export * from './lib/parse-duration';
 export * from './lib/shorten-nquad-line';

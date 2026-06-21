@@ -1,3 +1,5 @@
+import { parseUnitScalar } from './parse-unit-scalar';
+
 /**
  * Parses a human time span — `30s`, `30min`, `1.5h`, `500ms`, `1d` — into a
  * millisecond count, or `undefined` when the input is unparseable or
@@ -9,13 +11,7 @@
  * (and their plurals), case-insensitive.
  */
 export function parseHumanDuration(input: string): number | undefined {
-  const match = /^\s*(\d+(?:\.\d+)?)\s*([a-z]*)\s*$/i.exec(input);
-  if (match === null) return undefined;
-  const multiplier = UNIT_MULTIPLIERS[match[2].toLowerCase()];
-  if (multiplier === undefined) return undefined;
-  const ms = Number(match[1]) * multiplier;
-  if (!Number.isFinite(ms) || ms <= 0) return undefined;
-  return Math.round(ms);
+  return parseUnitScalar(input, UNIT_MULTIPLIERS);
 }
 
 const SECOND = 1000;

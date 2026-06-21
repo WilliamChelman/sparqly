@@ -4,17 +4,14 @@ import { ok, ResultAsync, type Result } from 'neverthrow';
 import { z } from 'zod';
 import { formatRdf, parseRdfString } from 'common';
 import {
-  CachingQueryExecutor,
   createGitTreeWalker,
   defaultGlobWalker,
   cacheSourceId,
   DEFAULT_QUERY_CACHE_TTL_MS,
   digestContext,
   freshnessTokenFor,
-  queryCacheCap,
-  queryCacheTtlMs,
-  resolveQueryCacheTtlMs,
   sourceQueryCacheOptIn,
+  wrapWithQueryCache,
   expandSplitGlobs,
   MIME_TO_FORMAT,
   N3_FORMAT_BY_EXT,
@@ -386,39 +383,31 @@ async function maybeWithQueryCache(
   const queryCache = sourceQueryCacheOptIn(target);
   if (queryCache === undefined) return engine;
   if (config.cache === false) return engine;
-  try {
-    const freshnessToken = await freshnessTokenFor(sources);
-    const cache = openQueryCache({
-      dir: queryCacheDir(process.cwd()),
-      schemaVersion: cliVersion(),
-      ttlMs: DEFAULT_QUERY_CACHE_TTL_MS,
-      maxBytes: config.queryCacheMaxBytes,
-      maxEntryBytes: config.queryCacheMaxEntryBytes,
-      logger,
-    });
-    registerClose(() => cache.close());
-    return new CachingQueryExecutor({
-      delegate: engine,
-      cache,
-      sourceId: cacheSourceId(target),
-      sourceMaxBytes: queryCacheCap(queryCache),
-      contextDigest: digestContext({
-        prefixes: config.prefixes,
-        base: config.base,
-      }),
-      freshnessToken,
-      schemaVersion: cliVersion(),
-      entryTtlMs: resolveQueryCacheTtlMs(queryCacheTtlMs(queryCache)),
-      mode: config.refresh === true ? 'refresh' : 'normal',
-      logger,
-    });
-  } catch (err) {
-    logger.debug('query-cache-disabled', {
-      source: cacheSourceId(target),
-      reason: err instanceof Error ? err.message : String(err),
-    });
-    return engine;
-  }
+  return wrapWithQueryCache({
+    engine,
+    queryCache,
+    sourceId: cacheSourceId(target),
+    schemaVersion: cliVersion(),
+    contextDigest: digestContext({
+      prefixes: config.prefixes,
+      base: config.base,
+    }),
+    mode: config.refresh === true ? 'refresh' : 'normal',
+    freshnessToken: () => freshnessTokenFor(sources),
+    openCache: () => {
+      const cache = openQueryCache({
+        dir: queryCacheDir(process.cwd()),
+        schemaVersion: cliVersion(),
+        ttlMs: DEFAULT_QUERY_CACHE_TTL_MS,
+        maxBytes: config.queryCacheMaxBytes,
+        maxEntryBytes: config.queryCacheMaxEntryBytes,
+        logger,
+      });
+      registerClose(() => cache.close());
+      return cache;
+    },
+    logger,
+  });
 }
 
 function buildQueryEngine(

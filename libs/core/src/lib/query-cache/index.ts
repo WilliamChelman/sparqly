@@ -4,5 +4,7 @@ export * from './cache-store';
 export * from './caching-query-executor';
 export * from './freshness-token';
 export * from './freshness-token-for';
+export * from './freshness-token-from-facts';
 export * from './non-determinism-guard';
 export * from './ttl-policy';
+export * from './wrap-with-query-cache';

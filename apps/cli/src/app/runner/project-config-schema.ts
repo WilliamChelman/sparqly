@@ -1,13 +1,18 @@
 import { z } from 'zod';
-import { parseHumanByteSize } from 'common';
+import { resolvePositiveByteSize } from 'common';
 import { projectSourcesSchema } from './fields/fields-shared';
 
-/** A byte size as a raw count or a human string (`256MB`), resolved to bytes. */
+/**
+ * A byte size as a raw count or a human string (`256MB`), resolved to a positive
+ * byte count. Shares its validation core with a source's per-source `maxBytes`
+ * (`resolveMaxBytes`) via {@link resolvePositiveByteSize}. `null`-as-unbounded is
+ * composed at the field (the `maxBytes` union below) — never here — so a
+ * per-entry ceiling can't be made unbounded.
+ */
 const byteSizeSchema = z
   .union([z.number().int().positive(), z.string()])
   .transform((value, ctx) => {
-    if (typeof value === 'number') return value;
-    const bytes = parseHumanByteSize(value);
+    const bytes = resolvePositiveByteSize(value);
     if (bytes === undefined) {
       ctx.addIssue({
         code: 'custom',

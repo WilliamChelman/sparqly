@@ -37,11 +37,44 @@ describe('queryIsNonDeterministic', () => {
     ).toBe(false);
   });
 
-  it('conservatively flags a token that appears only inside a string literal', () => {
-    // A false positive here forfeits caching for this one query — acceptable,
-    // and far cheaper than parsing SPARQL to exclude literals.
+  it('flags a call written with whitespace before the parenthesis (NOW ())', () => {
+    expect(
+      queryIsNonDeterministic('SELECT (NOW () AS ?t) WHERE { ?s ?p ?o }'),
+    ).toBe(true);
+  });
+
+  it('does not flag a token inside a string literal (no call parenthesis)', () => {
+    // Only an actual function call (token immediately followed by `(`) trips the
+    // guard, so a bare word in a string is not a false positive.
     expect(
       queryIsNonDeterministic('SELECT * WHERE { ?s ?p "the time is NOW" }'),
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  it('does not flag a token inside a prefixed local name (ex:nowPlaying)', () => {
+    expect(
+      queryIsNonDeterministic('SELECT * WHERE { ?s ?p ex:nowPlaying }'),
+    ).toBe(false);
+  });
+
+  it('does not flag a token used as a prefix label (PREFIX uuid:)', () => {
+    expect(
+      queryIsNonDeterministic(
+        'PREFIX uuid: <urn:uuid:> SELECT * WHERE { ?s ?p ?o }',
+      ),
+    ).toBe(false);
+  });
+
+  it('does not flag a token inside an IRI (<...now()...>)', () => {
+    // The token sits inside an angle-bracket IRI, not as a bare function call.
+    expect(
+      queryIsNonDeterministic('SELECT * WHERE { ?s ?p <http://ex/now()> }'),
+    ).toBe(false);
+  });
+
+  it('does not flag a token inside a line comment', () => {
+    expect(
+      queryIsNonDeterministic('# uses NOW() somewhere\nSELECT * WHERE {}'),
+    ).toBe(false);
   });
 });

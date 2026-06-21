@@ -32,11 +32,35 @@ describe('freshnessTokenFor', () => {
     const sources: QuerySources = {
       mode: 'materialized',
       store: new Store(),
-      files: ['/anything.ttl'],
+      files: ['/data/a.ttl'],
       prefixes: {},
       resolvedSha: 'a'.repeat(40),
     };
-    expect(await freshnessTokenFor(sources)).toBe(`sha:${'a'.repeat(40)}`);
+    expect((await freshnessTokenFor(sources)).startsWith(`sha:${'a'.repeat(40)}`)).toBe(
+      true,
+    );
+  });
+
+  it('differs when a pinned glob widens at the same SHA (more files matched)', async () => {
+    // The resolved SHA is the ref's commit, independent of the glob PATTERN, so
+    // widening `data/*.ttl` → `data/**/*.ttl` at the same pin matches more files
+    // without moving the SHA — folding the matched files in keeps the broader
+    // query from being served the narrower query's cached body.
+    const sha = 'a'.repeat(40);
+    const narrow: QuerySources = {
+      mode: 'materialized',
+      store: new Store(),
+      files: ['/data/a.ttl'],
+      prefixes: {},
+      resolvedSha: sha,
+    };
+    const wide: QuerySources = {
+      ...narrow,
+      files: ['/data/a.ttl', '/data/nested/b.ttl'],
+    };
+    expect(await freshnessTokenFor(wide)).not.toBe(
+      await freshnessTokenFor(narrow),
+    );
   });
 
   describe('with real files on disk', () => {
