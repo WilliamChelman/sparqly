@@ -1,20 +1,23 @@
 import { QueryEngine as ComunicaQueryEngine } from '@comunica/query-sparql';
 import { DataFactory, Store, type Quad } from 'n3';
-import { ResultAsync, okAsync } from 'neverthrow';
+import { ResultAsync, errAsync, okAsync } from 'neverthrow';
 import type { SparqlyLogger } from 'common';
 import { emitQueryEvent, loadRdfResult } from '../engine';
 import { detectQueryType } from '../canonical/immutability';
 import {
   applyTransformPipeline,
+  resolveSourceResult,
   storageTier,
   unionDefaultGraphEnabled,
   type ParsedEmptySource,
   type ParsedFileSource,
   type ParsedGlobSource,
   type ParsedSource,
+  type SourceError,
 } from '../sources';
 import type {
   EndpointFetchError,
+  GitPinError,
   GlobLoadError,
   QueryExecutionError,
   InlineQueryValidationError,
@@ -34,7 +37,8 @@ export type ExecuteInlineQueryError =
   | EndpointFetchError
   | QueryExecutionError
   | GlobLoadError
-  | TransformParseError;
+  | TransformParseError
+  | GitPinError;
 
 export interface ExecuteInlineQueryOptions {
   engine?: ComunicaQueryEngine;
@@ -69,6 +73,24 @@ export function executeInlineQueryResult(
   if (upstream.kind === 'glob' && storageTier(upstream) === 'disk') {
     return runOverDiskBackedGlob(upstream, query, meta, options);
   }
+  if (upstream.kind === 'glob' && upstream.gitRef !== undefined) {
+    // A pinned glob must enumerate (and read) from the git tree at its resolved
+    // SHA — delegating to the shared resolver so a file present only at the ref
+    // is materialized rather than silently dropped (the working-tree glob would
+    // miss it). `loadUpstreamStore` ignores `gitRef`, so route around it.
+    return loadPinnedGlobStore(upstream, options).andThen<
+      Store,
+      ExecuteInlineQueryError
+    >((store) =>
+      runInMemoryQueryResult(
+        store,
+        query,
+        meta,
+        options.engine,
+        unionDefaultGraphEnabled(upstream),
+      ),
+    );
+  }
   return loadUpstreamStore(upstream, options).andThen<Store, ExecuteInlineQueryError>(
     (store) =>
       runInMemoryQueryResult(
@@ -101,6 +123,55 @@ function loadUpstreamStore(
       perFileRecords: sub.perFileRecords,
     }),
   );
+}
+
+function loadPinnedGlobStore(
+  upstream: ParsedGlobSource,
+  options: ExecuteInlineQueryOptions,
+): ResultAsync<Store, ExecuteInlineQueryError> {
+  return resolveSourceResult(upstream, {
+    logger: options.logger,
+    configDir: options.configDir,
+  })
+    .mapErr(narrowPinnedSourceError)
+    .andThen<Store, ExecuteInlineQueryError>((sources) => {
+      if (sources.mode === 'materialized') return okAsync(sources.store);
+      if (sources.mode === 'disk-backed') {
+        // Unreachable: `resolveSourceResult` rejects `gitRef` on a disk-backed
+        // glob before it can resolve. Release the lock and fail defensively.
+        void sources.close();
+        return errAsync<Store, ExecuteInlineQueryError>({
+          kind: 'glob-load',
+          glob: [upstream.glob],
+          message:
+            'inline query: disk-backed glob upstream (`storage: disk`) cannot be materialized at a pinned ref',
+        });
+      }
+      return errAsync<Store, ExecuteInlineQueryError>({
+        kind: 'glob-load',
+        glob: [upstream.glob],
+        message:
+          'inline query: pinned glob upstream unexpectedly resolved to a pass-through endpoint',
+      });
+    });
+}
+
+// `resolveSourceResult` can in principle surface every `SourceError`, but a
+// glob upstream never produces `reference-target` / `raw-pass-through-target`;
+// collapse those to inline-query-validation so the narrower
+// `ExecuteInlineQueryError` union stays exhaustive (mirrors the tabular path).
+function narrowPinnedSourceError(err: SourceError): ExecuteInlineQueryError {
+  if (err.kind === 'reference-target') {
+    return {
+      kind: 'inline-query-validation',
+      message:
+        "inline query: `kind: 'reference'` entries cannot be resolved as a target",
+    };
+  }
+  if (err.kind === 'raw-pass-through-target') {
+    return { kind: 'inline-query-validation', message: err.message };
+  }
+  return err;
 }
 
 function runOverDiskBackedGlob(

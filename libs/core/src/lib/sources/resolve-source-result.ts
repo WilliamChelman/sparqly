@@ -135,23 +135,18 @@ function pinAndLoadGlob(
     .mapErr<SourceError>((e) => e)
     .andThen<MaterializedLoadResult, SourceError>((pinned) => {
       const transformPin = { ref: pinned.ref, sha: pinned.resolvedSha };
-      if (source.splitByFile === true) {
-        // Enumerate from the git tree at the resolved SHA so the load sees the
-        // ref-time file set, not the working tree's.
-        return loadPinnedSplitGlob(source, pinned, port, repoDiscovery)
-          .map((sub) => applyGlobTransforms(sub, transforms, transformPin));
-      }
-      return loadRdfResult({
-        sources: source.glob,
-        logger: options.logger,
-        contentReader: pinned.contentReader,
-      })
+      // Enumerate from the git tree at the resolved SHA so the load sees the
+      // ref-time file set, not the working tree's — otherwise a file present
+      // only at the ref (or absent from it) is silently mis-counted. Split and
+      // non-split globs load identically here; the split distinction only
+      // governs registry expansion into per-file children, not this load.
+      return loadPinnedGlobFromTree(source, pinned, port, repoDiscovery)
         .map((sub) => applyGlobTransforms(sub, transforms, transformPin))
         .orElse((err) => mapPinnedLoadError(err));
     });
 }
 
-function loadPinnedSplitGlob(
+function loadPinnedGlobFromTree(
   source: ParsedGlobSource,
   pinned: PinnedGlob,
   port: GitPort,

@@ -456,6 +456,121 @@ describe('DiffService — pinned `@id:ref` address (ADR-0029)', () => {
   });
 });
 
+describe('DiffService — pinned split-glob diff with a ref-only file', () => {
+  let repo: string;
+
+  // Working tree holds only `a.ttl`; the `has-extra` branch additionally holds
+  // `extra.ttl`. A tabular SELECT diff of `@docs` (working tree) vs
+  // `@docs:has-extra` must surface the ref-only scheme — enumerating the glob
+  // against the git tree at the pinned SHA, not the working tree.
+  beforeEach(async () => {
+    repo = await mkdtemp(join(tmpdir(), 'sparqly-diff-split-pin-'));
+    const aTtl = join(repo, 'a.ttl');
+    const extraTtl = join(repo, 'extra.ttl');
+    await writeFile(
+      aTtl,
+      '@prefix ex: <http://example.org/> .\nex:a a ex:Scheme .\n',
+    );
+    await writeFile(
+      extraTtl,
+      '@prefix ex: <http://example.org/> .\nex:extra a ex:Scheme .\n',
+    );
+    await git(repo, ['init', '-q', '-b', 'main']);
+    await git(repo, ['add', '.']);
+    await git(repo, ['commit', '-q', '-m', 'both files']);
+    await git(repo, ['branch', 'has-extra']);
+    // Drop extra.ttl from main's working tree so it exists only at `has-extra`.
+    await rm(extraTtl, { force: true });
+    await git(repo, ['add', '-A']);
+    await git(repo, ['commit', '-q', '-m', 'drop extra']);
+  }, 30_000);
+
+  afterEach(async () => {
+    if (repo) await rm(repo, { recursive: true, force: true });
+  });
+
+  it('enumerates the pinned glob against the git tree so a ref-only file appears in the diff', async () => {
+    const expanded = await expandSplitGlobs(
+      parseSourceSpecs([
+        { id: 'docs', glob: join(repo, '*.ttl'), splitByFile: true },
+      ]),
+      { walkGlob: defaultGlobWalker },
+    );
+    const engineMap = await EngineMap.create(expanded);
+    const svc = new DiffService(engineMap);
+
+    const select =
+      'PREFIX ex: <http://example.org/> SELECT DISTINCT ?s WHERE { ?s a ex:Scheme }';
+    const out = await svc.runDiff({
+      left: '@docs',
+      right: '@docs:has-extra',
+      leftQuery: select,
+      rightQuery: select,
+    });
+
+    expect(out.kind).toBe('tabular');
+    if (out.kind !== 'tabular') return;
+    expect(out.totals).toEqual({ left: 1, right: 2 });
+    expect(out.diff.added.map((e) => e.row['s']?.value)).toEqual([
+      'http://example.org/extra',
+    ]);
+    expect(out.diff.removed).toEqual([]);
+  });
+
+  it('enumerates a non-split pinned glob against the git tree (ref-only file appears)', async () => {
+    const registry = parseSourceSpecs([
+      { id: 'docs', glob: join(repo, '*.ttl') },
+    ]);
+    const engineMap = await EngineMap.create(registry);
+    const svc = new DiffService(engineMap);
+
+    const select =
+      'PREFIX ex: <http://example.org/> SELECT DISTINCT ?s WHERE { ?s a ex:Scheme }';
+    const out = await svc.runDiff({
+      left: '@docs',
+      right: '@docs:has-extra',
+      leftQuery: select,
+      rightQuery: select,
+    });
+
+    expect(out.kind).toBe('tabular');
+    if (out.kind !== 'tabular') return;
+    expect(out.totals).toEqual({ left: 1, right: 2 });
+    expect(out.diff.added.map((e) => e.row['s']?.value)).toEqual([
+      'http://example.org/extra',
+    ]);
+  });
+
+  it('enumerates the pinned glob against the git tree for a graph-mode CONSTRUCT diff', async () => {
+    const expanded = await expandSplitGlobs(
+      parseSourceSpecs([
+        { id: 'docs', glob: join(repo, '*.ttl'), splitByFile: true },
+      ]),
+      { walkGlob: defaultGlobWalker },
+    );
+    const engineMap = await EngineMap.create(expanded);
+    const svc = new DiffService(engineMap);
+
+    const construct =
+      'PREFIX ex: <http://example.org/> CONSTRUCT { ?s a ex:Scheme } WHERE { ?s a ex:Scheme }';
+    const out = await svc.runDiff({
+      left: '@docs',
+      right: '@docs:has-extra',
+      leftQuery: construct,
+      rightQuery: construct,
+    });
+
+    expect(out.kind).toBe('grouped');
+    if (out.kind !== 'grouped') return;
+    const anchors = out.hunked.hunks.map((h) => h.anchor);
+    expect(anchors).toContain('http://example.org/extra');
+    const extra = out.hunked.hunks.find(
+      (h) => h.anchor === 'http://example.org/extra',
+    );
+    expect(extra?.lines.every((l) => l.side === '+')).toBe(true);
+  });
+});
+
 describe('DiffService — pass-through boundary warn (ADR-0047, #376)', () => {
   function captureLogger() {
     return {
