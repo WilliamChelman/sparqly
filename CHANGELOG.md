@@ -1,3 +1,9 @@
+## [0.37.1](https://github.com/WilliamChelman/sparqly/compare/v0.37.0...v0.37.1) (2026-06-22)
+
+### Bug Fixes
+
+* **diff:** enumerate pinned globs from the git tree, not the working tree (ADR-0029) ([95a1ade](https://github.com/WilliamChelman/sparqly/commit/95a1adea90ec762fb78232ce5dc03335c7d119ce))
+
 ## [0.37.0](https://github.com/WilliamChelman/sparqly/compare/v0.36.0...v0.37.0) (2026-06-22)
 
 ### Features
