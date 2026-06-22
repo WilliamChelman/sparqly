@@ -15,6 +15,7 @@ export const SPARQL_SAVED_QUERIES_CONFIG = Symbol('SPARQL_SAVED_QUERIES_CONFIG')
 export const SPARQL_SAVED_QUERIES_SERVICE = Symbol('SPARQL_SAVED_QUERIES_SERVICE');
 export const SPARQL_SOURCE_STATE_BROKER = Symbol('SPARQL_SOURCE_STATE_BROKER');
 export const SPARQL_SOURCES_ADMIN_CONFIG = Symbol('SPARQL_SOURCES_ADMIN_CONFIG');
+export const SPARQL_CACHE_ADMIN_CONFIG = Symbol('SPARQL_CACHE_ADMIN_CONFIG');
 
 export interface SparqlContext {
   prefixes: Record<string, string>;
@@ -36,6 +37,16 @@ export interface SparqlServerConfig {
 export interface SourcesAdminServerConfig {
   /** When `false`, mutating routes reject with 403; snapshot + SSE stay open. */
   allowAdminActions: boolean;
+}
+
+/**
+ * Caching reads/writes are never gated — the Query cache is not a project file
+ * (ADR-0054). Only the destructive `cache clear` admin action is, by
+ * `serve --read-only`.
+ */
+export interface CacheAdminServerConfig {
+  /** When `false`, POST /api/cache/clear rejects with 403. */
+  allowClear: boolean;
 }
 
 export interface SavedQueriesServerConfig {

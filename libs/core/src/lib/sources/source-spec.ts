@@ -14,6 +14,7 @@ import {
   rejectUnionDefaultGraphOn,
 } from './union-default-graph';
 import { pickGitFields, rejectGitRefOn } from './source-spec-git';
+import { pickQueryCache } from './source-spec-query-cache';
 import {
   pickStorage,
   rejectAnnotateSourceOnDiskGlob,
@@ -58,6 +59,12 @@ export interface ParsedGlobSource
    * so two pins onto the same commit share cache entries.
    */
   resolvedSha?: string;
+  /**
+   * Opt-in to the Query cache (ADR-0054, #415). Same shape as the endpoint
+   * field; a materialized glob keys on a stat-digest of matched files (or its
+   * resolved SHA when pinned), so an edit recomputes automatically.
+   */
+  queryCache?: ParsedQueryCache;
 }
 
 /**
@@ -77,6 +84,8 @@ export interface ParsedFileSource extends SourceSpecCommonFields {
   /** Propagated alongside `gitRef` so the file loader does not re-walk discovery. */
   repoRoot?: string;
   resolvedSha?: string;
+  /** Inherited from the split-glob parent's `queryCache` opt-in (ADR-0054, #415). */
+  queryCache?: ParsedQueryCache;
 }
 
 export interface ParsedEndpointSource
@@ -85,6 +94,84 @@ export interface ParsedEndpointSource
     DefaultMarkerField {
   kind: 'endpoint';
   endpoint: string;
+  /**
+   * Opt-in to the Query cache (ADR-0054). Absent means not opted in. `true` opts
+   * in under the global budget alone; the object form adds a per-source byte cap
+   * (`{ maxBytes }`, resolved to a byte count or `null` for unbounded) and/or a
+   * per-source absolute TTL (`{ ttl }`, resolved to milliseconds; ADR-0054 #416).
+   */
+  queryCache?: ParsedQueryCache;
+}
+
+/**
+ * A source's resolved Query cache opt-in: bare (`true`), or an object carrying a
+ * per-source byte cap (`maxBytes`) and/or a per-source absolute TTL in
+ * milliseconds (`ttl`, ADR-0054 #416), each already resolved from its config form.
+ */
+export type ParsedQueryCache =
+  | true
+  | { maxBytes?: number | null; ttl?: number };
+
+/**
+ * The per-source byte cap declared on a source's `queryCache`, or `undefined`
+ * when it opted in bare (`true`) or did not opt in — i.e. governed by the global
+ * budget alone. `null` is an explicit per-source unbounded. Applies to every
+ * source kind that can opt in (endpoint, glob, file).
+ */
+export function queryCacheCap(
+  queryCache: ParsedQueryCache | undefined,
+): number | null | undefined {
+  if (queryCache === undefined || queryCache === true) return undefined;
+  return queryCache.maxBytes;
+}
+
+/**
+ * The per-source absolute TTL (ms) declared on a source's `queryCache` (ADR-0054,
+ * #416), or `undefined` when it opted in bare (`true`), did not opt in, or set no
+ * `ttl` — in which case {@link resolveQueryCacheTtlMs} falls back to the global
+ * default.
+ */
+export function queryCacheTtlMs(
+  queryCache: ParsedQueryCache | undefined,
+): number | undefined {
+  if (queryCache === undefined || queryCache === true) return undefined;
+  return queryCache.ttl;
+}
+
+/**
+ * A source's Query cache opt-in (ADR-0054), for every kind that can hold one —
+ * endpoint, glob, and file. Reference and empty sources never cache, so they
+ * return `undefined`. The single gate the read-through seam checks before wrapping.
+ */
+export function sourceQueryCacheOptIn(
+  source: ParsedSource,
+): ParsedQueryCache | undefined {
+  if (
+    source.kind === 'endpoint' ||
+    source.kind === 'glob' ||
+    source.kind === 'file'
+  ) {
+    return source.queryCache;
+  }
+  return undefined;
+}
+
+/**
+ * The cache-key source id: the declared `id`, else the kind's natural address
+ * (endpoint URL, glob pattern, or file path). Stable per source so the key is
+ * reproducible across invocations.
+ */
+export function cacheSourceId(source: ParsedSource): string {
+  switch (source.kind) {
+    case 'endpoint':
+      return source.id ?? source.endpoint;
+    case 'glob':
+      return source.id ?? source.glob;
+    case 'file':
+      return source.id ?? source.path;
+    default:
+      return source.id ?? '(target)';
+  }
 }
 
 export interface ParsedReferenceSource extends SourceSpecCommonFields {
@@ -119,6 +206,9 @@ export interface SourceSpecObjectInput
   storage?: StorageTier;
   gitRef?: string;
   gitRoot?: string;
+  queryCache?:
+    | boolean
+    | { maxBytes?: number | string | null; ttl?: number | string };
 }
 
 export type SourceSpecInput = string | SourceSpecObjectInput;
@@ -134,9 +224,9 @@ export const SOURCE_ID_REGEX = /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/;
 export const SYNTHESIZED_SOURCE_ID_REGEX =
   /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*(?:\/[a-zA-Z0-9_-][a-zA-Z0-9_.-]*)+$/;
 
-const COMMON_FIELD_KEYS = [
-  'id',
-] as const satisfies ReadonlyArray<keyof SourceSpecCommonFields>;
+const COMMON_FIELD_KEYS = ['id'] as const satisfies ReadonlyArray<
+  keyof SourceSpecCommonFields
+>;
 
 function pickDefault(input: SourceSpecObjectInput): DefaultMarkerField {
   if (input.default === undefined) return {};
@@ -146,14 +236,10 @@ function pickDefault(input: SourceSpecObjectInput): DefaultMarkerField {
   return { default: true };
 }
 
-function pickSplitByFile(
-  input: SourceSpecObjectInput,
-): { splitByFile?: true } {
+function pickSplitByFile(input: SourceSpecObjectInput): { splitByFile?: true } {
   if (input.splitByFile === undefined) return {};
   if (input.splitByFile !== true) {
-    throw new Error(
-      '`splitByFile` must be `true` (omit the field otherwise)',
-    );
+    throw new Error('`splitByFile` must be `true` (omit the field otherwise)');
   }
   return { splitByFile: true };
 }
@@ -173,7 +259,9 @@ const LEGACY_GLOB_GRAPH_FIELD_KEYS = ['graphMode', 'graph'] as const;
 
 function validateSourceId(id: string): void {
   if (id.startsWith('@')) {
-    throw new Error(`source id ${JSON.stringify(id)} must not start with \`@\``);
+    throw new Error(
+      `source id ${JSON.stringify(id)} must not start with \`@\``,
+    );
   }
   if (!SOURCE_ID_REGEX.test(id)) {
     throw new Error(
@@ -260,6 +348,7 @@ export function parseSourceSpec(
       ...unionDefaultGraphField,
       ...storageField,
       ...gitFields,
+      ...pickQueryCache(input),
       ...defaultMarker,
     };
   }
@@ -275,6 +364,7 @@ export function parseSourceSpec(
     endpoint: input.endpoint as string,
     ...common,
     ...http,
+    ...pickQueryCache(input),
     ...defaultMarker,
   };
 }
@@ -306,9 +396,7 @@ function parseEmpty(input: SourceSpecObjectInput): ParsedEmptySource {
   }
   for (const key of EMPTY_FORBIDDEN_KEYS) {
     if ((input as Record<string, unknown>)[key] !== undefined) {
-      throw new Error(
-        `empty source: \`${key}\` is not valid on empty sources`,
-      );
+      throw new Error(`empty source: \`${key}\` is not valid on empty sources`);
     }
   }
   const defaultMarker = pickDefault(input);

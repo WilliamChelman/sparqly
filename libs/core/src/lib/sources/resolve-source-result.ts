@@ -102,6 +102,8 @@ export function resolveSourceResult(
 
 interface MaterializedLoadResult extends LoadResult {
   sourceRecords: SourceRecordSidecar;
+  /** The pinned commit SHA, when this load came from a `gitRef` pin (#415). */
+  resolvedSha?: string;
 }
 
 function loadGlobIntoStore(
@@ -202,6 +204,7 @@ function applyGlobTransforms(
       sub.perFileRecords ?? new Map(),
       pin,
     ),
+    ...(pin === undefined ? {} : { resolvedSha: pin.sha }),
   };
 }
 
@@ -344,6 +347,7 @@ function materializeFileLoad(
       sub.perFileRecords ?? new Map(),
       pin,
     ),
+    ...(pin === undefined ? {} : { resolvedSha: pin.sha }),
   };
 }
 
@@ -366,12 +370,22 @@ function materialized(
   files: string[],
   prefixes: Record<string, Record<string, string>>,
   sourceRecords?: SourceRecordSidecar,
+  resolvedSha?: string,
 ): QuerySources {
-  return sourceRecords === undefined
-    ? { mode: 'materialized', store, files, prefixes }
-    : { mode: 'materialized', store, files, prefixes, sourceRecords };
+  const base = { mode: 'materialized' as const, store, files, prefixes };
+  return {
+    ...base,
+    ...(sourceRecords === undefined ? {} : { sourceRecords }),
+    ...(resolvedSha === undefined ? {} : { resolvedSha }),
+  };
 }
 
 function materializeLoad(loaded: MaterializedLoadResult): QuerySources {
-  return materialized(loaded.store, loaded.files, loaded.prefixes, loaded.sourceRecords);
+  return materialized(
+    loaded.store,
+    loaded.files,
+    loaded.prefixes,
+    loaded.sourceRecords,
+    loaded.resolvedSha,
+  );
 }

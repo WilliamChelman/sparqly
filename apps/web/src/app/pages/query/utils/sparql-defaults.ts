@@ -14,21 +14,6 @@ const BODIES: Record<Exclude<QuickQueryKind, 'clear'>, string> = {
     'CONSTRUCT { ?s ?p ?o } WHERE {\n  ?s ?p ?o .\n} LIMIT 10',
 };
 
-export function acceptForQueryType(
-  queryType: string | undefined,
-): string | undefined {
-  switch (queryType) {
-    case 'SELECT':
-    case 'ASK':
-      return 'application/sparql-results+json';
-    case 'CONSTRUCT':
-    case 'DESCRIBE':
-      return 'text/turtle';
-    default:
-      return undefined;
-  }
-}
-
 export function buildQuickQuery(
   kind: QuickQueryKind,
   context: DisplayContext,

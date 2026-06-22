@@ -19,6 +19,7 @@ import {
 import { type Result } from 'neverthrow';
 import {
   selectTargetResult,
+  type CacheMode,
   type ExecuteResult,
   type ParsedSource,
   type SourceError,
@@ -67,23 +68,25 @@ export class RegistrySparqlController {
   async getDefault(
     @Query('query') query: string | undefined,
     @Headers('accept') accept: string | undefined,
+    @Headers('cache-control') cacheControl: string | undefined,
     @Res() res: ResLike,
     @Req() req: ReqLike,
   ): Promise<void> {
     this.assertQuery(query);
-    await this.respond(undefined, query, accept, res, req);
+    await this.respond(undefined, query, accept, cacheControl, res, req);
   }
 
   @Post()
   async postDefault(
     @Headers('content-type') contentType: string | undefined,
     @Headers('accept') accept: string | undefined,
+    @Headers('cache-control') cacheControl: string | undefined,
     @Body() body: unknown,
     @Res() res: ResLike,
     @Req() req: ReqLike,
   ): Promise<void> {
     const query = this.extractPostQuery(contentType, body);
-    await this.respond(undefined, query, accept, res, req);
+    await this.respond(undefined, query, accept, cacheControl, res, req);
   }
 
   @Get('*id')
@@ -91,11 +94,12 @@ export class RegistrySparqlController {
     @Param('id') id: string | string[],
     @Query('query') query: string | undefined,
     @Headers('accept') accept: string | undefined,
+    @Headers('cache-control') cacheControl: string | undefined,
     @Res() res: ResLike,
     @Req() req: ReqLike,
   ): Promise<void> {
     this.assertQuery(query);
-    await this.respond(toRef(id), query, accept, res, req);
+    await this.respond(toRef(id), query, accept, cacheControl, res, req);
   }
 
   @Post('*id')
@@ -103,12 +107,13 @@ export class RegistrySparqlController {
     @Param('id') id: string | string[],
     @Headers('content-type') contentType: string | undefined,
     @Headers('accept') accept: string | undefined,
+    @Headers('cache-control') cacheControl: string | undefined,
     @Body() body: unknown,
     @Res() res: ResLike,
     @Req() req: ReqLike,
   ): Promise<void> {
     const query = this.extractPostQuery(contentType, body);
-    await this.respond(toRef(id), query, accept, res, req);
+    await this.respond(toRef(id), query, accept, cacheControl, res, req);
   }
 
   private assertQuery(query: string | undefined): asserts query is string {
@@ -144,10 +149,12 @@ export class RegistrySparqlController {
     ref: string | undefined,
     query: string,
     accept: string | undefined,
+    cacheControl: string | undefined,
     res: ResLike,
     req: ReqLike,
   ): Promise<void> {
     const format = pickFormat(accept);
+    const cacheMode = requestCacheMode(cacheControl);
     const selected = selectTargetResult(this.servedRegistry, ref);
     if (selected.isErr()) {
       throw mapError(selected.error);
@@ -159,12 +166,16 @@ export class RegistrySparqlController {
     const onDisconnect = (): void => abort.abort();
     req.on('close', onDisconnect);
     req.on('aborted', onDisconnect);
-    let result: Result<ExecuteResult, SourceError | TargetError | IndexingError>;
+    let result: Result<
+      ExecuteResult,
+      SourceError | TargetError | IndexingError
+    >;
     try {
       result = await this.executeAgainstTarget(
         selected.value,
         query,
         format,
+        cacheMode,
         abort.signal,
       );
     } finally {
@@ -173,10 +184,13 @@ export class RegistrySparqlController {
     }
     result.match(
       (ok: ExecuteResult) => {
-        res
-          .status(HttpStatus.OK)
-          .setHeader('Content-Type', ok.contentType)
-          .send(ok.body);
+        res.status(HttpStatus.OK).setHeader('Content-Type', ok.contentType);
+        // ADR-0054: surface the Query cache disposition so clients (and Web e2e)
+        // can observe a hit vs miss. Absent when no cache was involved.
+        if (ok.cacheStatus !== undefined) {
+          res.setHeader('X-Sparqly-Cache', ok.cacheStatus);
+        }
+        res.send(ok.body);
       },
       (error: SourceError | TargetError | IndexingError) => {
         throw mapError(error);
@@ -188,6 +202,7 @@ export class RegistrySparqlController {
     target: ParsedSource,
     query: string,
     format: SparqlFormat | undefined,
+    cacheMode: CacheMode | undefined,
     signal: AbortSignal,
   ): Promise<Result<ExecuteResult, SourceError | TargetError | IndexingError>> {
     if (this.isAdHocPin(target)) {
@@ -197,13 +212,16 @@ export class RegistrySparqlController {
       // main-thread build for pass-through/disk-backed/no-worker.
       return this.engineMap
         .ensureAdHoc(target)
-        .andThen<ExecuteResult, SourceError | TargetError | IndexingError>(
-          (engine) =>
-            engine.executeResult(query, {
-              format,
-              mutable: this.config.mutable,
-              signal,
-            }),
+        .andThen<
+          ExecuteResult,
+          SourceError | TargetError | IndexingError
+        >((engine) =>
+          engine.executeResult(query, {
+            format,
+            mutable: this.config.mutable,
+            cacheMode,
+            signal,
+          }),
         );
     }
     // ensure() shares the in-flight promise so concurrent first-touches load
@@ -211,13 +229,16 @@ export class RegistrySparqlController {
     // 4xx vs 5xx instead of collapsing everything to 500.
     return this.engineMap
       .ensure(target.id as string)
-      .andThen<ExecuteResult, SourceError | TargetError | IndexingError>(
-        (engine) =>
-          engine.executeResult(query, {
-            format,
-            mutable: this.config.mutable,
-            signal,
-          }),
+      .andThen<
+        ExecuteResult,
+        SourceError | TargetError | IndexingError
+      >((engine) =>
+        engine.executeResult(query, {
+          format,
+          mutable: this.config.mutable,
+          cacheMode,
+          signal,
+        }),
       );
   }
 
@@ -243,9 +264,7 @@ function mapError(
   return statusToHttpException(sourceErrorToStatus(error), cloneError(error));
 }
 
-function isTargetError(
-  error: SourceError | TargetError,
-): error is TargetError {
+function isTargetError(error: SourceError | TargetError): error is TargetError {
   switch (error.kind) {
     case 'ref-as-target':
     case 'empty-registry':
@@ -257,9 +276,7 @@ function isTargetError(
   }
 }
 
-function cloneError(
-  error: SourceError | TargetError | IndexingError,
-): object {
+function cloneError(error: SourceError | TargetError | IndexingError): object {
   return JSON.parse(JSON.stringify(error)) as object;
 }
 
@@ -289,6 +306,24 @@ function toRef(id: string | string[]): string {
 function pinOf(source: ParsedSource): { gitRef: string | undefined } {
   const s = source as { gitRef?: string };
   return { gitRef: s.gitRef };
+}
+
+/**
+ * Per-request Query cache control (ADR-0054, #418): the standard
+ * `Cache-Control` request directives map to the seam's modes. `no-store` —
+ * "don't read and don't write" — maps to `bypass` (the upstream answer is
+ * served straight through, neither read from nor written to the cache).
+ * `no-cache` maps to `refresh` — recompute and replace the stored entry.
+ * `no-store` is checked first since the two can co-occur and the stricter
+ * "don't store" wins. Any other value leaves the seam on its instance mode.
+ */
+function requestCacheMode(
+  cacheControl: string | undefined,
+): CacheMode | undefined {
+  if (cacheControl === undefined) return undefined;
+  if (/(^|[\s,])no-store($|[\s,=])/i.test(cacheControl)) return 'bypass';
+  if (/(^|[\s,])no-cache($|[\s,=])/i.test(cacheControl)) return 'refresh';
+  return undefined;
 }
 
 function pickFormat(accept: string | undefined): SparqlFormat | undefined {

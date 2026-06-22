@@ -1,0 +1,220 @@
+import { okAsync, type ResultAsync } from 'neverthrow';
+import { noopLogger, type SparqlyLogger } from 'common';
+import type {
+  CacheMode,
+  ExecuteOptions,
+  ExecuteResult,
+  QueryExecutor,
+} from '../engine';
+import type {
+  EndpointFetchError,
+  QueryExecutionError,
+} from '../sources/errors';
+import { deriveCacheKey } from './cache-key';
+import type { QueryCache } from './cache-store';
+import { queryIsNonDeterministic } from './non-determinism-guard';
+
+export type { CacheMode } from '../engine';
+
+export interface CachingQueryExecutorOptions {
+  /** The executor whose results are cached (the bare endpoint engine). */
+  delegate: QueryExecutor;
+  cache: QueryCache;
+  /** The {@link target source}'s id — a key component and the per-source cap owner. */
+  sourceId: string;
+  /**
+   * This source's optional per-source byte cap (ADR-0054), forwarded to the
+   * store on `set`. `undefined` leaves the source under the global budget alone.
+   */
+  sourceMaxBytes?: number | null;
+  /** Digest of the display {@link context} (prefixes/base) — a key component. */
+  contextDigest: string;
+  /**
+   * Path-aware freshness token (ADR-0054, #415) — a content fingerprint of the
+   * source folded into the key so an underlying change is a miss. Empty for
+   * opaque endpoints (TTL-bounded). Defaults to empty when omitted.
+   */
+  freshnessToken?: string;
+  /** Cache-schema version — a key component. */
+  schemaVersion: string;
+  /**
+   * This source's resolved absolute TTL in milliseconds (ADR-0054, #416),
+   * forwarded to the store on `set` so a per-source `ttl` override expires this
+   * source's entries on its own clock. `undefined` lets the store fall back to
+   * its open-time default.
+   */
+  entryTtlMs?: number;
+  mode?: CacheMode;
+  logger?: SparqlyLogger;
+}
+
+type ExecuteError = QueryExecutionError | EndpointFetchError;
+
+/**
+ * Wraps a {@link QueryExecutor} with the read-through Query cache (ADR-0054).
+ * On a hit it returns the stored body tagged `cacheStatus: 'hit'` without
+ * touching the delegate; on a miss it executes, stores the body (never an
+ * error — a failed execution propagates before `set`; an empty body is a
+ * legitimate result and is cached), and tags `cacheStatus: 'miss'`.
+ */
+export class CachingQueryExecutor implements QueryExecutor {
+  private readonly delegate: QueryExecutor;
+  private readonly cache: QueryCache;
+  private readonly sourceId: string;
+  private readonly sourceMaxBytes?: number | null;
+  private readonly contextDigest: string;
+  private readonly freshnessToken: string;
+  private readonly schemaVersion: string;
+  private readonly entryTtlMs?: number;
+  private readonly mode: CacheMode;
+  private readonly logger: SparqlyLogger;
+
+  constructor(options: CachingQueryExecutorOptions) {
+    this.delegate = options.delegate;
+    this.cache = options.cache;
+    this.sourceId = options.sourceId;
+    this.sourceMaxBytes = options.sourceMaxBytes;
+    this.contextDigest = options.contextDigest;
+    this.freshnessToken = options.freshnessToken ?? '';
+    this.schemaVersion = options.schemaVersion;
+    this.entryTtlMs = options.entryTtlMs;
+    this.mode = options.mode ?? 'normal';
+    this.logger = options.logger ?? noopLogger;
+  }
+
+  executeResult(
+    query: string,
+    options: ExecuteOptions = {},
+  ): ResultAsync<ExecuteResult, ExecuteError> {
+    const mode = this.modeFor(options);
+    if (this.bypasses(query, mode)) {
+      return this.delegate
+        .executeResult(query, options)
+        .map((result) => ({ ...result, cacheStatus: 'bypass' as const }));
+    }
+    const key = this.keyFor(query, options);
+    if (mode === 'normal') {
+      const hit = this.cache.get(key);
+      if (hit !== undefined) {
+        this.log('hit', key);
+        return okAsync({
+          body: hit.body,
+          format: hit.format as ExecuteResult['format'],
+          contentType: hit.contentType,
+          cacheStatus: 'hit',
+        });
+      }
+    }
+    return this.delegate.executeResult(query, options).map((result) => {
+      this.store(key, result);
+      this.log('miss', key);
+      return { ...result, cacheStatus: 'miss' as const };
+    });
+  }
+
+  async execute(
+    query: string,
+    options: ExecuteOptions = {},
+  ): Promise<ExecuteResult> {
+    const mode = this.modeFor(options);
+    if (this.bypasses(query, mode)) {
+      return {
+        ...(await this.delegate.execute(query, options)),
+        cacheStatus: 'bypass',
+      };
+    }
+    const key = this.keyFor(query, options);
+    if (mode === 'normal') {
+      const hit = this.cache.get(key);
+      if (hit !== undefined) {
+        this.log('hit', key);
+        return {
+          body: hit.body,
+          format: hit.format as ExecuteResult['format'],
+          contentType: hit.contentType,
+          cacheStatus: 'hit',
+        };
+      }
+    }
+    // A throw here propagates before `store` — errors are never cached.
+    const result = await this.delegate.execute(query, options);
+    this.store(key, result);
+    this.log('miss', key);
+    return { ...result, cacheStatus: 'miss' };
+  }
+
+  /**
+   * The effective mode for one call: a per-request `cacheMode` (ADR-0054,
+   * #418) overrides the instance mode set at wrap time.
+   */
+  private modeFor(options: ExecuteOptions): CacheMode {
+    return options.cacheMode ?? this.mode;
+  }
+
+  /**
+   * Whether this query skips the cache entirely (no read, no write). True in
+   * explicit `bypass` mode, and — regardless of mode — for a non-deterministic
+   * query (ADR-0054, #416), whose answer must never be served from a prior run.
+   *
+   * The guard wins over `refresh`: refresh recomputes-and-stores, but storing a
+   * `NOW()`/`UUID()` answer would let a later normal read serve it stale — the
+   * very thing the guard prevents — so such a query is a live bypass that writes
+   * nothing. To keep that override from being silent, a `refresh` (or any
+   * non-`normal`) request downgraded to a bypass by the guard is logged.
+   */
+  private bypasses(query: string, mode: CacheMode): boolean {
+    if (queryIsNonDeterministic(query)) {
+      if (mode !== 'normal') {
+        this.logger.debug(
+          'query-cache bypass: non-deterministic query overrides cacheMode',
+          { source: this.sourceId, mode },
+        );
+      }
+      return true;
+    }
+    return mode === 'bypass';
+  }
+
+  private keyFor(query: string, options: ExecuteOptions): string {
+    return deriveCacheKey({
+      sourceId: this.sourceId,
+      query,
+      // Verbatim requested format token (empty when the caller defaulted it);
+      // stable per request, so the key is reproducible across invocations.
+      format: options.format ?? '',
+      contextDigest: this.contextDigest,
+      freshnessToken: this.freshnessToken,
+      schemaVersion: this.schemaVersion,
+    });
+  }
+
+  /**
+   * Writes a fresh result to the cache, degrading to served-but-not-cached on
+   * failure. A cross-process write collision can surface from the on-disk store
+   * as a throw (e.g. SQLITE_BUSY); since the query itself already succeeded, a
+   * write failure is swallowed and logged rather than turned into an error
+   * propagated from the read-through seam.
+   */
+  private store(key: string, result: ExecuteResult): void {
+    try {
+      this.cache.set(key, result.body, {
+        format: result.format,
+        contentType: result.contentType,
+        sourceId: this.sourceId,
+        sourceMaxBytes: this.sourceMaxBytes,
+        ttlMs: this.entryTtlMs,
+      });
+    } catch (error) {
+      this.logger.warn('query-cache write failed; serving without caching', {
+        source: this.sourceId,
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private log(status: 'hit' | 'miss', key: string): void {
+    if (this.logger === noopLogger) return;
+    this.logger.debug('query-cache', { source: this.sourceId, status, key });
+  }
+}

@@ -54,7 +54,10 @@ export function registerSpec<T extends Record<string, unknown>>(
   const allowsVariadic = (spec.positionals ?? []).some((p) => p.variadic);
 
   applyFieldFlags(sub, spec.fields);
-  sub.option('--config <path>', 'Path to a sparqly.config.{yaml,yml,json} file.');
+  sub.option(
+    '--config <path>',
+    'Path to a sparqly.config.{yaml,yml,json} file.',
+  );
   sub.option(
     '--no-config',
     'Skip auto-discovery of sparqly.config.{yaml,yml,json} from the current directory upward.',
@@ -135,7 +138,9 @@ export function registerSpec<T extends Record<string, unknown>>(
       const finalSchema = spec.refine ? spec.refine(baseSchema) : baseSchema;
       const validated = finalSchema.safeParse(merged.config);
       if (!validated.success) {
-        throw new Error(formatIssues(validated.error.issues, spec.fields, merged.config));
+        throw new Error(
+          formatIssues(validated.error.issues, spec.fields, merged.config),
+        );
       }
 
       const data = validated.data as Record<string, unknown>;
@@ -180,6 +185,7 @@ function projectFileLayer(
     'savedQueries',
     'index',
     'query',
+    'queryCache',
   ] as const) {
     const block = data[blockName];
     if (!block || typeof block !== 'object' || Array.isArray(block)) continue;
@@ -200,7 +206,11 @@ function projectFileLayer(
                     ? 'queryCancelGraceMs'
                     : blockName === 'query' && k === 'maxOldGenerationSizeMb'
                       ? 'queryMaxOldGenerationSizeMb'
-                      : k;
+                      : blockName === 'queryCache' && k === 'maxBytes'
+                        ? 'queryCacheMaxBytes'
+                        : blockName === 'queryCache' && k === 'maxEntryBytes'
+                          ? 'queryCacheMaxEntryBytes'
+                          : k;
       if (fieldKeys.has(fieldKey)) out[fieldKey] = v;
     }
   }
@@ -226,9 +236,10 @@ function resolveSourcesIfPresent(
   const list: SourceSpecInput[] = Array.isArray(sources)
     ? (sources as SourceSpecInput[])
     : [sources as SourceSpecInput];
-  const registry = fileLayers.filepath === null
-    ? null
-    : ((fileLayers.data.sources as SourceSpecInput[] | undefined) ?? []);
+  const registry =
+    fileLayers.filepath === null
+      ? null
+      : ((fileLayers.data.sources as SourceSpecInput[] | undefined) ?? []);
   const resolved = resolveSourceReferences(list, { registry });
   config.sources = Array.isArray(sources) ? resolved : resolved[0];
 }
@@ -298,7 +309,12 @@ function flagFor(field: FieldDescriptor): string {
 }
 
 function formatIssues(
-  issues: ReadonlyArray<{ code?: string; path: ReadonlyArray<PropertyKey>; message: string; values?: ReadonlyArray<unknown> }>,
+  issues: ReadonlyArray<{
+    code?: string;
+    path: ReadonlyArray<PropertyKey>;
+    message: string;
+    values?: ReadonlyArray<unknown>;
+  }>,
   fields: ReadonlyArray<FieldDescriptor>,
   rawValues: Record<string, unknown>,
 ): string {

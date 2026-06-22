@@ -44,11 +44,29 @@ export const MIME_TO_FORMAT: Readonly<Record<string, SparqlFormat>> =
     ),
   );
 
-const RDF_FORMATS: ReadonlySet<SparqlFormat> = new Set(['turtle', 'trig', 'nquads']);
+const RDF_FORMATS: ReadonlySet<SparqlFormat> = new Set([
+  'turtle',
+  'trig',
+  'nquads',
+]);
+
+/**
+ * The Query cache seam's mode (ADR-0054).
+ * - `normal` — read-through: serve a hit, else execute and store.
+ * - `bypass` — neither read nor write the cache.
+ * - `refresh` — ignore any stored entry, execute, then replace it.
+ */
+export type CacheMode = 'normal' | 'bypass' | 'refresh';
 
 export interface ExecuteOptions {
   format?: SparqlFormat;
   mutable?: boolean;
+  /**
+   * Per-request Query cache mode (ADR-0054, #418) — overrides the caching
+   * seam's instance mode for this call. `serve` maps a `Cache-Control:
+   * no-cache` request header to `refresh`. Ignored on the bare engine path.
+   */
+  cacheMode?: CacheMode;
   /**
    * Cooperative cancellation (ADR-0050): when this aborts, the engine destroys
    * the stream it is consuming so the query collapses into a typed
@@ -66,6 +84,12 @@ export interface ExecuteResult {
   body: string;
   format: SparqlFormat;
   contentType: string;
+  /**
+   * Query cache disposition (ADR-0054), set only by the caching seam. Absent on
+   * the bare engine path (no cache involved). `serve` maps it to the
+   * `X-Sparqly-Cache` response header.
+   */
+  cacheStatus?: 'hit' | 'miss' | 'bypass';
 }
 
 /**
@@ -149,13 +173,15 @@ export class QueryEngine implements QueryExecutor {
     query: string,
     options: ExecuteOptions = {},
   ): ResultAsync<ExecuteResult, QueryExecutionError | EndpointFetchError> {
-    return ResultAsync.fromPromise(
-      this.execute(query, options),
-      (err) => this.toExecuteError(query, err),
+    return ResultAsync.fromPromise(this.execute(query, options), (err) =>
+      this.toExecuteError(query, err),
     );
   }
 
-  async execute(query: string, options: ExecuteOptions = {}): Promise<ExecuteResult> {
+  async execute(
+    query: string,
+    options: ExecuteOptions = {},
+  ): Promise<ExecuteResult> {
     const queryType = detectQueryType(query);
     assertImmutable(queryType, { mutable: options.mutable });
     if (options.signal?.aborted) throw cancelledError();
@@ -246,7 +272,9 @@ export class QueryEngine implements QueryExecutor {
       query,
       type,
       ms,
-      size: isOk ? resultSize(outcome.resultType, outcome.body, outcome.format) : undefined,
+      size: isOk
+        ? resultSize(outcome.resultType, outcome.body, outcome.format)
+        : undefined,
       bytes: isOk ? Buffer.byteLength(outcome.body) : undefined,
       err: isOk ? undefined : outcome.err,
     });
@@ -306,7 +334,8 @@ async function reifyBindingsToRdfString(
   const rows = await collectBindingRows(result, variables, signal);
   const quads = reifyTripleShapedBindings({ variables, bindings: rows });
   if (quads === null) {
-    const projection = variables.length === 0 ? '(none)' : `?${variables.join(' ?')}`;
+    const projection =
+      variables.length === 0 ? '(none)' : `?${variables.join(' ?')}`;
     throw new Error(
       `Format '${format}' requires a triple-shaped SELECT projecting ?s ?p ?o (and optionally ?g). Got projection: ${projection}.`,
     );

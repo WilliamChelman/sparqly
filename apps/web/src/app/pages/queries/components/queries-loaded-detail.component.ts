@@ -1,4 +1,3 @@
-import { HttpClient } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -13,6 +12,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import {
   SavedQueriesService,
+  SparqlClientService,
   type LoadedSavedQuery,
   type SavedQueryWriteBody,
 } from '@app/core';
@@ -32,7 +32,6 @@ import {
 } from '../../query/components/result/result-pane.component';
 import { DeleteController } from '../services/queries-delete-controller';
 import { isDraftModified } from '../utils/is-draft-modified';
-import { runSparql } from '../utils/run-sparql';
 import { toWriteBody } from '../utils/to-write-body';
 import { QueriesStaleDeleteDialogComponent } from './queries-stale-delete-dialog.component';
 import { QueriesStaleDialogComponent } from './queries-stale-dialog.component';
@@ -168,7 +167,7 @@ export interface LoadedDetailInput {
 export class QueriesLoadedDetailComponent {
   private readonly service = inject(SavedQueriesService);
   private readonly router = inject(Router);
-  private readonly http = inject(HttpClient);
+  private readonly sparqlClient = inject(SparqlClientService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly loadedSlug = signal<string>('');
@@ -339,8 +338,9 @@ export class QueriesLoadedDetailComponent {
 
   private executeSparql(sparql: string): void {
     this.resultState.set({ kind: 'loading' });
-    runSparql(this.http, this.sourceId, sparql)
+    this.sparqlClient
+      .run(this.sourceId, sparql)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((state) => this.resultState.set(state));
+      .subscribe((outcome) => this.resultState.set(outcome));
   }
 }

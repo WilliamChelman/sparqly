@@ -165,6 +165,90 @@ describe('QueryPage · HTTP wiring', () => {
     http.verify();
   });
 
+  it('captures the X-Sparqly-Cache disposition into the result state (#418)', async () => {
+    const { page, http } = await setup();
+    page.sourceId.set('a');
+    page.query.set('SELECT ?s WHERE { ?s ?p ?o }');
+    page.run();
+
+    http.expectOne('/api/sparql/a').flush(
+      JSON.stringify({ head: { vars: ['s'] }, results: { bindings: [] } }),
+      {
+        headers: {
+          'Content-Type': 'application/sparql-results+json',
+          'X-Sparqly-Cache': 'hit',
+        },
+      },
+    );
+
+    const state = page.resultState();
+    expect(state.kind).toBe('result');
+    if (state.kind === 'result') {
+      expect(state.cacheStatus).toBe('hit');
+    }
+    http.verify();
+  });
+
+  it('leaves cacheStatus unset when the response carries no X-Sparqly-Cache header', async () => {
+    const { page, http } = await setup();
+    page.sourceId.set('a');
+    page.query.set('SELECT ?s WHERE { ?s ?p ?o }');
+    page.run();
+
+    http.expectOne('/api/sparql/a').flush(
+      JSON.stringify({ head: { vars: ['s'] }, results: { bindings: [] } }),
+      { headers: { 'Content-Type': 'application/sparql-results+json' } },
+    );
+
+    const state = page.resultState();
+    expect(state.kind).toBe('result');
+    if (state.kind === 'result') {
+      expect(state.cacheStatus).toBeUndefined();
+    }
+    http.verify();
+  });
+
+  it('Force refresh re-runs with a Cache-Control: no-cache request header (#418)', async () => {
+    const { page, http } = await setup();
+    page.sourceId.set('a');
+    page.query.set('SELECT ?s WHERE { ?s ?p ?o }');
+    page.runRefresh();
+
+    const req = http.expectOne('/api/sparql/a');
+    expect(req.request.headers.get('Cache-Control')).toBe('no-cache');
+    req.flush(
+      JSON.stringify({ head: { vars: ['s'] }, results: { bindings: [] } }),
+      {
+        headers: {
+          'Content-Type': 'application/sparql-results+json',
+          'X-Sparqly-Cache': 'miss',
+        },
+      },
+    );
+
+    const state = page.resultState();
+    expect(state.kind).toBe('result');
+    if (state.kind === 'result') {
+      expect(state.cacheStatus).toBe('miss');
+    }
+    http.verify();
+  });
+
+  it('a plain Run sends no Cache-Control header', async () => {
+    const { page, http } = await setup();
+    page.sourceId.set('a');
+    page.query.set('SELECT ?s WHERE { ?s ?p ?o }');
+    page.run();
+
+    const req = http.expectOne('/api/sparql/a');
+    expect(req.request.headers.has('Cache-Control')).toBe(false);
+    req.flush(
+      JSON.stringify({ head: { vars: ['s'] }, results: { bindings: [] } }),
+      { headers: { 'Content-Type': 'application/sparql-results+json' } },
+    );
+    http.verify();
+  });
+
   it('Run posts CONSTRUCT with the Turtle Accept header and decodes a triples result', async () => {
     const { page, http } = await setup();
     page.sourceId.set('a');

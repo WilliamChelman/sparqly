@@ -147,6 +147,9 @@ function synthesizeChild(
   if (meta.storage !== undefined) {
     child.storage = meta.storage;
   }
+  if (meta.queryCache !== undefined) {
+    child.queryCache = meta.queryCache;
+  }
   if (pin !== undefined) {
     child.gitRef = pin.gitRef;
     child.repoRoot = pin.repoRoot;

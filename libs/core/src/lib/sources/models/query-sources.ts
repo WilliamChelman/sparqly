@@ -21,6 +21,11 @@ export type QuerySources =
       // graph-agnostic triple-pattern strings; re-key by canonical N-Quads at
       // diff time via the canonicalizer's blank-node label map.
       sourceRecords?: SourceRecordSidecar;
+      // The commit SHA a pinned source (`gitRef`) resolved to, present only when
+      // the materialized store came from a pin. The Query cache keys on it so a
+      // moved floating ref recomputes; an unpinned working-tree load omits it and
+      // the cache falls back to a stat-digest of `files` (ADR-0054, #415).
+      resolvedSha?: string;
     }
   | {
       mode: 'disk-backed';

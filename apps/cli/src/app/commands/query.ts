@@ -1,17 +1,25 @@
 import { extname } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { ok, type Result, type ResultAsync } from 'neverthrow';
+import { ok, ResultAsync, type Result } from 'neverthrow';
 import { z } from 'zod';
 import { formatRdf, parseRdfString } from 'common';
 import {
   createGitTreeWalker,
   defaultGlobWalker,
+  cacheSourceId,
+  DEFAULT_QUERY_CACHE_TTL_MS,
+  digestContext,
+  freshnessTokenFor,
+  sourceQueryCacheOptIn,
+  wrapWithQueryCache,
   expandSplitGlobs,
   MIME_TO_FORMAT,
   N3_FORMAT_BY_EXT,
+  openQueryCache,
   parseSourceSpecs,
   parseSparqlPrefixes,
   QueryEngine,
+  queryCacheDir,
   resolveSourceResult,
   selectTargetResult,
   SUPPORTED_FORMATS,
@@ -20,6 +28,7 @@ import {
   type ExecuteResult,
   type ParsedSource,
   type QueryExecutionError,
+  type QueryExecutor,
   type QuerySources,
   type SourceError,
   type SourceSpecInput,
@@ -38,6 +47,7 @@ import { applyAtOverride, splitPositionalAddress } from './at-override';
 import type { FieldDescriptor } from '../runner/fields/field';
 import {
   atRefField,
+  coercedBooleanSchema,
   contextBaseField,
   contextPrefixesField,
   mutableFieldsFor,
@@ -59,6 +69,14 @@ interface QueryConfig {
   out?: string;
   at?: string;
   indexCacheDir?: string;
+  /** Global Query cache byte budget from `queryCache.maxBytes` (`null` = unbounded). */
+  queryCacheMaxBytes?: number | null;
+  /** Per-entry ceiling from `queryCache.maxEntryBytes`. */
+  queryCacheMaxEntryBytes?: number;
+  /** `--no-cache`: when false, bypass the Query cache for this run (no read, no write). */
+  cache?: boolean;
+  /** `--refresh`: ignore any cached entry, recompute, and replace it. */
+  refresh?: boolean;
   verbose?: boolean;
   quiet?: boolean;
   logFormat?: 'text' | 'json';
@@ -111,6 +129,45 @@ const indexCacheDirField: FieldDescriptor = {
   schema: z.string().min(1),
 };
 
+// Read from the top-level `queryCache` block (already resolved to bytes by the
+// project-config schema); a project-shaped budget, not a per-invocation flag.
+const queryCacheMaxBytesField: FieldDescriptor = {
+  key: 'queryCacheMaxBytes',
+  schema: z.union([z.number().int().positive(), z.null()]),
+};
+
+const queryCacheMaxEntryBytesField: FieldDescriptor = {
+  key: 'queryCacheMaxEntryBytes',
+  schema: z.number().int().positive(),
+};
+
+// Per-invocation Query cache controls (ADR-0054). Commander's native `--no-`
+// negation gives `cache` a default of `true`; `--no-cache` flips it to `false`.
+const noCacheField: FieldDescriptor = {
+  key: 'cache',
+  schema: coercedBooleanSchema,
+  flags: [
+    {
+      spec: '--no-cache',
+      description:
+        'Bypass the Query cache for this run: neither read a hit nor write the result.',
+    },
+  ],
+};
+
+const refreshField: FieldDescriptor = {
+  key: 'refresh',
+  schema: coercedBooleanSchema,
+  default: false,
+  flags: [
+    {
+      spec: '--refresh',
+      description:
+        'Ignore any cached entry, recompute the result, and replace the cached entry.',
+    },
+  ],
+};
+
 export function inferQueryFormatFromOut(
   out: string | undefined,
 ): SparqlFormat | undefined {
@@ -130,13 +187,16 @@ export function resolveQueryTargetResult(
   const raw = typeof config.source === 'string' ? config.source : undefined;
   const { targetArg, positionalRef } = splitPositionalAddress(raw);
   return selectTargetResult(effective, targetArg).map((target) =>
-    positionalRef === undefined ? target : applyAtOverride(target, positionalRef),
+    positionalRef === undefined
+      ? target
+      : applyAtOverride(target, positionalRef),
   );
 }
 
 export const querySpec: CommandSpec<QueryConfig> = {
   name: 'query',
-  description: 'Run a SPARQL query against a target source (an `@id` ref into the config registry, or an inline glob/URL)',
+  description:
+    'Run a SPARQL query against a target source (an `@id` ref into the config registry, or an inline glob/URL)',
   fields: [
     sourceField,
     sourcesRegistryField,
@@ -144,6 +204,10 @@ export const querySpec: CommandSpec<QueryConfig> = {
     queryFileField,
     formatField,
     indexCacheDirField,
+    queryCacheMaxBytesField,
+    queryCacheMaxEntryBytesField,
+    noCacheField,
+    refreshField,
     atRefField,
     ...mutableFieldsFor('query'),
     contextPrefixesField,
@@ -154,7 +218,8 @@ export const querySpec: CommandSpec<QueryConfig> = {
   positionals: [{ field: 'source', name: 'glob' }],
   configScope: { sources: true },
   exitCode: (err) => {
-    if (err instanceof QueryErrorSignal) return queryErrorExitCode(err.queryError);
+    if (err instanceof QueryErrorSignal)
+      return queryErrorExitCode(err.queryError);
     return 1;
   },
   handler: async (config) => {
@@ -210,37 +275,45 @@ export const querySpec: CommandSpec<QueryConfig> = {
     // Disk-backed globs hand back an open LevelDB handle; capture the closer
     // so the embedded lock is released whether the query succeeds or fails.
     let closeIndex: (() => Promise<void>) | undefined;
+    // An opted-in endpoint opens the on-disk Query cache for this invocation;
+    // capture its closer so the SQLite handle is released on either outcome.
+    let closeCache: (() => void) | undefined;
 
     const pipeline: ResultAsync<ExecuteResult, SourceError | TargetError> =
       resolveQueryTargetResult(config, registry)
         .map((target) => applyAtOverride(target, config.at))
         .asyncAndThen<ExecuteResult, SourceError | TargetError>((target) => {
-        const loadStart = Date.now();
-        return resolveSourceResult(target, {
-          logger: boundaryLog,
-          configDir: process.cwd(),
-          sparqlyVersion: cliVersion(),
-          indexCacheDir: config.indexCacheDir,
-        })
-          .map((sources) => {
-            if (sources.mode === 'disk-backed') closeIndex = sources.close;
-            logSourceLoaded(boundaryLog, sources, Date.now() - loadStart);
-            return sources;
+          const loadStart = Date.now();
+          return resolveSourceResult(target, {
+            logger: boundaryLog,
+            configDir: process.cwd(),
+            sparqlyVersion: cliVersion(),
+            indexCacheDir: config.indexCacheDir,
           })
-          .andThen((sources) =>
-            executeAgainstSources(
-              sources,
-              target,
-              query,
-              format,
-              mutable,
-              boundaryLog,
-            ),
-          );
-      });
+            .map((sources) => {
+              if (sources.mode === 'disk-backed') closeIndex = sources.close;
+              logSourceLoaded(boundaryLog, sources, Date.now() - loadStart);
+              return sources;
+            })
+            .andThen((sources) =>
+              executeAgainstSources(
+                sources,
+                target,
+                query,
+                format,
+                mutable,
+                boundaryLog,
+                config,
+                (close) => {
+                  closeCache = close;
+                },
+              ),
+            );
+        });
 
     const outcome = await pipeline;
     if (closeIndex !== undefined) await closeIndex();
+    if (closeCache !== undefined) closeCache();
 
     await outcome.match(
       async (result) => {
@@ -275,9 +348,66 @@ function executeAgainstSources(
   format: SparqlFormat | undefined,
   mutable: boolean,
   logger: ReturnType<typeof configureLogger>,
+  config: QueryConfig,
+  registerClose: (close: () => void) => void,
 ): ResultAsync<ExecuteResult, QueryExecutionError | EndpointFetchError> {
   const engine = buildQueryEngine(sources, target, logger);
-  return engine.executeResult(query, { format, mutable });
+  return ResultAsync.fromSafePromise(
+    maybeWithQueryCache(engine, sources, target, config, logger, registerClose),
+  ).andThen((executor) => executor.executeResult(query, { format, mutable }));
+}
+
+/**
+ * Wraps the bare engine in the read-through Query cache when the source opted in
+ * (`queryCache`, ADR-0054). Covers every resolution path: an endpoint keys on TTL
+ * alone, while a materialized glob/file, a pinned source, or a disk-backed glob
+ * folds a path-aware freshness token (#415) into the key so an underlying change
+ * recomputes. The cache is opened for this CLI invocation; its closer is
+ * registered so the SQLite handle is released after the query settles. A source
+ * that did not opt in — or any failure computing the token or opening the store —
+ * returns the bare engine, so the query still runs uncached.
+ *
+ * `--no-cache` (`config.cache === false`) short-circuits before the store is
+ * even opened, so that invocation leaves the cache directory untouched — no
+ * read, no write, not even an empty store created. `--refresh` opens the store
+ * but runs the seam in `refresh` mode: it ignores any hit and replaces the entry.
+ */
+async function maybeWithQueryCache(
+  engine: QueryEngine,
+  sources: QuerySources,
+  target: ParsedSource,
+  config: QueryConfig,
+  logger: ReturnType<typeof configureLogger>,
+  registerClose: (close: () => void) => void,
+): Promise<QueryExecutor> {
+  const queryCache = sourceQueryCacheOptIn(target);
+  if (queryCache === undefined) return engine;
+  if (config.cache === false) return engine;
+  return wrapWithQueryCache({
+    engine,
+    queryCache,
+    sourceId: cacheSourceId(target),
+    schemaVersion: cliVersion(),
+    contextDigest: digestContext({
+      prefixes: config.prefixes,
+      base: config.base,
+    }),
+    mode: config.refresh === true ? 'refresh' : 'normal',
+    freshnessToken: () => freshnessTokenFor(sources),
+    openCache: () => {
+      const cache = openQueryCache({
+        dir: queryCacheDir(process.cwd()),
+        schemaVersion: cliVersion(),
+        ttlMs: DEFAULT_QUERY_CACHE_TTL_MS,
+        maxBytes: config.queryCacheMaxBytes,
+        maxEntryBytes: config.queryCacheMaxEntryBytes,
+        logger,
+      });
+      registerClose(() => cache.close());
+      return cache;
+    },
+    logger,
+  });
 }
 
 function buildQueryEngine(
@@ -299,8 +429,7 @@ function buildQueryEngine(
       : target.kind === 'file'
         ? target.path
         : '(target)');
-  const store =
-    sources.mode === 'disk-backed' ? sources.source : sources.store;
+  const store = sources.mode === 'disk-backed' ? sources.source : sources.store;
   return new QueryEngine(
     store,
     { id, mode: 'materialized', logger },

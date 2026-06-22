@@ -7,6 +7,7 @@ import {
 } from '@angular/core';
 import type {
   AskResult,
+  CacheStatus,
   DecodedResult,
   DisplayContext,
   SelectResult,
@@ -45,7 +46,7 @@ export type ResultPaneState =
   | { kind: 'empty' }
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
-  | { kind: 'result'; result: DecodedResult };
+  | { kind: 'result'; result: DecodedResult; cacheStatus?: CacheStatus };
 
 type Tab = 'table' | 'turtle' | 'raw' | 'download';
 
@@ -109,7 +110,16 @@ type Tab = 'table' | 'turtle' | 'raw' | 'download';
                 >{{ t.label }}</button>
               }
             </nav>
-            <span class="text-foreground-muted">{{ headerMeta() }}</span>
+            <div class="flex items-center gap-2.5">
+              @if (cached()) {
+                <span
+                  role="status"
+                  class="rounded-full border border-accent/40 px-2 py-0.5 text-accent"
+                  >cached</span
+                >
+              }
+              <span class="text-foreground-muted">{{ headerMeta() }}</span>
+            </div>
           </div>
           <div>
             @switch (activeTab()) {
@@ -313,6 +323,12 @@ export class ResultPaneComponent {
   readonly errorMessage = computed(() => {
     const s = this.state();
     return s.kind === 'error' ? s.message : '';
+  });
+
+  /** Visible only when the body was answered from the Query cache (#418). */
+  readonly cached = computed<boolean>(() => {
+    const s = this.state();
+    return s.kind === 'result' && s.cacheStatus === 'hit';
   });
 
   readonly headerMeta = computed<string>(() => {
