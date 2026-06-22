@@ -1,3 +1,18 @@
+## [0.37.0](https://github.com/WilliamChelman/sparqly/compare/v0.36.0...v0.37.0) (2026-06-22)
+
+### Features
+
+* **cache:** byte-budget LRU eviction + maxBytes/maxEntryBytes (ADR-0054, [#414](https://github.com/WilliamChelman/sparqly/issues/414)) ([cc80ff6](https://github.com/WilliamChelman/sparqly/commit/cc80ff63c8aa3751e0cbe00338ace2be31e033c7))
+* **cache:** CLI control surface — --no-cache/--refresh + cache clear/stats (ADR-0054, [#417](https://github.com/WilliamChelman/sparqly/issues/417)) ([d8da786](https://github.com/WilliamChelman/sparqly/commit/d8da7867837473f1c7e76c65171d2660b274c39f))
+* **cache:** content-aware freshness token for local sources (ADR-0054, [#415](https://github.com/WilliamChelman/sparqly/issues/415)) ([77c13a9](https://github.com/WilliamChelman/sparqly/commit/77c13a92a3e0c9b55c01ae8d5f04d13457ec3123))
+* **cache:** non-determinism guard + per-source ttl override (ADR-0054, [#416](https://github.com/WilliamChelman/sparqly/issues/416)) ([0a72604](https://github.com/WilliamChelman/sparqly/commit/0a726040cb3f5e383d62cd8e201cb800a99fb07b))
+* **cache:** opt-in endpoint query-result cache (ADR-0054, [#413](https://github.com/WilliamChelman/sparqly/issues/413)) ([482c5b7](https://github.com/WilliamChelman/sparqly/commit/482c5b73a3f8d976a0217a5d143939c3e1753288))
+* **cache:** serve per-request refresh + read-only gating + webapp cached badge (ADR-0054, [#418](https://github.com/WilliamChelman/sparqly/issues/418)) ([9280f23](https://github.com/WilliamChelman/sparqly/commit/9280f23e4e25706b648cc5a018e141ee6b6a6a0f))
+
+### Bug Fixes
+
+* **cache:** address PR [#419](https://github.com/WilliamChelman/sparqly/issues/419) self-review across query-result cache (ADR-0054) ([7d40d04](https://github.com/WilliamChelman/sparqly/commit/7d40d041bee7e85559585ad1d828fdf6389ec596)), closes [#416](https://github.com/WilliamChelman/sparqly/issues/416)
+
 ## [0.36.0](https://github.com/WilliamChelman/sparqly/compare/v0.35.0...v0.36.0) (2026-06-04)
 
 ### Features
