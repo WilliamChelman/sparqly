@@ -13,12 +13,14 @@ import {
   tabularDiff,
   type DiffError,
   type HunkedRdfDiff,
+  type ParsedGlobSource,
   type ParsedSource,
   type RawPassThroughTargetError,
   type SelectShapeReport,
   type SourceError,
   type SourceRecordSidecar,
   type SourceSpecInput,
+  type SourceSpecObjectInput,
   type TabularDiffResult,
   type TabularRow,
 } from 'core';
@@ -385,10 +387,24 @@ function inlineQueryUpstream(
   target: ParsedSource,
   side: 'left' | 'right',
 ): Result<SourceSpecInput, DiffError> {
-  if (target.kind === 'glob') return ok(target.glob);
+  if (target.kind === 'glob') return ok(globUpstreamSpec(target));
   if (target.kind === 'file') return ok(target.path);
   if (target.kind === 'endpoint') return ok(target.endpoint);
   return err({ kind: 'inline-upstream-kind', side, targetKind: target.kind });
+}
+
+// A pinned glob must carry its `gitRef` (and `splitByFile`, so the resolver
+// enumerates the git tree at the SHA rather than the working tree) into the
+// inline-query upstream. A plain bare-glob string would drop the pin and
+// resolve both diff sides against the working tree — silently yielding zero
+// diff for files that exist only at the ref.
+function globUpstreamSpec(target: ParsedGlobSource): SourceSpecInput {
+  if (target.gitRef === undefined) return target.glob;
+  const spec: SourceSpecObjectInput = { glob: target.glob, gitRef: target.gitRef };
+  if (target.gitRoot !== undefined) spec.gitRoot = target.gitRoot;
+  if (target.splitByFile === true) spec.splitByFile = true;
+  if (target.id !== undefined) spec.id = target.id;
+  return spec;
 }
 
 function rawPassThroughRejection(
